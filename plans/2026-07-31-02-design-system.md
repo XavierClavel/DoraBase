@@ -52,6 +52,31 @@ sache qu'il ne sera pas relisible tel quel en devtools.
 build — vérifié. Une woff2 sous 4 Ko serait inlinée en data URI ; les vraies polices
 dépasseront la limite et sortiront en fichiers.
 
+Et trois acquis de la configuration Biome, tous vérifiés par exécution.
+
+**Prévoir un helper `cx()` dès le premier composant.** `noUncheckedIndexedAccess` type les
+classes de CSS Modules en `string | undefined`, et la règle `noNonNullAssertion` de Biome
+interdit le `!` qui serait le réflexe. Les deux outils poussent en sens inverse sur le
+geste le plus fréquent du design system. En JSX direct `className={styles.root}` passe
+sans rien ; c'est dans les littéraux de gabarit que ça coince. Un
+`cx(...parts) => parts.filter(Boolean).join(' ')` satisfait les deux et règle la question
+une fois pour toutes. Ne désactive ni l'une ni l'autre.
+
+**`:global()` dans un CSS Module est un piège d'ordre.** Les imports CSS à effet de bord
+sont des ancres que Biome ne déplace jamais, mais les imports de CSS Modules ont une
+liaison par défaut et **sont** réordonnés par `organizeImports`. Sans conséquence tant que
+les classes sont hashées — sauf si un module utilise `:global()`, dont les règles sortent
+du scope et redeviennent sensibles à l'ordre de cascade. Mets ces règles dans une feuille
+globale importée en effet de bord, pas dans un module.
+
+**Biome n'a aucune règle de nom accessible.** Ses 38 règles a11y couvrent beaucoup — un
+`role="switch"` sans `aria-checked`, une coquille dans un attribut ARIA, un `<div onClick>`
+sans rôle — mais rien n'attrape un `<button type="button" />` sans nom accessible. Ce
+n'est pas un réglage manquant, c'est une limite de l'outil. La couverture doit donc venir
+des tests : les assertions de ce plan sont volontairement écrites en
+`getByRole('switch', { name: … })` plutôt que par sélecteur ou `data-testid`. C'est ce qui
+tient lieu de garde-fou, ne les affaiblis pas.
+
 ## Structure de fichiers
 
 | Fichier | Responsabilité |
