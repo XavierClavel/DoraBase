@@ -6,9 +6,9 @@
   "packageManager": "pnpm@10.18.3",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc -b && vite build",
     "tauri": "tauri",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -b",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "test": "vitest run",
