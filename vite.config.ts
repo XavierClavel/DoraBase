@@ -4,8 +4,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
-  server: { port: 5173, strictPort: true },
-  build: { target: 'safari15' },
+  server: { port: 5173, strictPort: true, watch: { ignored: ['**/src-tauri/**'] } },
+  build: { target: 'safari16.4', cssTarget: 'safari16.4' },
   test: {
     environment: 'jsdom',
     globals: true,
