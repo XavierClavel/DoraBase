@@ -30,6 +30,28 @@ C'est une modification du périmètre validé : **à confirmer avant d'exécuter
 
 ---
 
+## À savoir avant de commencer
+
+Trois comportements de la chaîne de build établis au plan `01`, vérifiés par exécution,
+qui touchent directement ce plan.
+
+**Les classes de CSS Modules sont typées `string | undefined`.** C'est la conséquence de
+`noUncheckedIndexedAccess: true` combiné au type que `vite/client` donne aux CSS Modules.
+En pratique `className={styles.card}` passe très bien, puisque `className` accepte
+`undefined` — mais toute affectation vers un `string` strict échouera. Ne désactive pas
+`noUncheckedIndexedAccess` pour contourner ça.
+
+**Le CSS est minifié par lightningcss, ciblé Safari 16.4.** `oklch()` et `lch()`
+traversent intacts, le nesting `&:hover` est aplati en sélecteur explicite — sans
+conséquence sémantique. En revanche `color-mix()` **entièrement littéral** est replié en
+`oklab(…)` au build, inconditionnellement. Le handoff mélangeant toujours depuis
+`var(--accent)`, le cas ne devrait pas se présenter ; si tu écris un mélange littéral,
+sache qu'il ne sera pas relisible tel quel en devtools.
+
+**Les imports `?raw`, woff2 et CSS à effet de bord fonctionnent**, au typecheck comme au
+build — vérifié. Une woff2 sous 4 Ko serait inlinée en data URI ; les vraies polices
+dépasseront la limite et sortiront en fichiers.
+
 ## Structure de fichiers
 
 | Fichier | Responsabilité |
