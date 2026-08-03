@@ -95,9 +95,15 @@ qui produit les premières captures de référence.
 ## Terminé quand
 
 - `pnpm tauri dev` ouvre une fenêtre native macOS, titrée « DoraBase »,
-  redimensionnable, avec les feux tricolores du système visibles et non recouverts.
+  redimensionnable, avec les feux tricolores du système présents.
+  *Le non-recouvrement des feux par le contenu relève de `07`* : c'est la barre de titre
+  de l'application qui réserve leur espace, et elle n'existe pas encore. Vérifié en
+  revanche que `titleBarStyle: Overlay` rend bien 28 px de hauteur au contenu.
 - `pnpm tauri build` produit un `.app` qui se lance depuis le Finder.
-- L'icône de l'app dans le Dock et le Finder est celle du handoff, lisible à 32 px.
+- L'icône de l'app est celle du handoff. *Lisible à 32 px pour le sac à dos seulement* :
+  la carte de la poche latérale s'y réduit à un amas de pixels, dette de design consignée
+  dans `README.md`. Le critère reste donc partiellement ouvert, par manque d'une variante
+  simplifiée du tracé — pas par défaut d'implémentation.
 - `pnpm typecheck`, `pnpm lint`, `pnpm test`, `cargo clippy` passent en local.
 - La CI est verte sur une branche poussée.
 - Aucune police, feuille de style ou script n'est chargé depuis le réseau.
