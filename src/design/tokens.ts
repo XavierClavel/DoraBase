@@ -114,6 +114,7 @@ export type TokenName =
   | 'text-meta'
   | 'text-title'
   | 'text-wordmark'
+  | 'track-off'
   | 'tracking-caps'
   | 'tracking-caps-sm'
   | 'violet'
@@ -243,6 +244,7 @@ export const tokens: Record<TokenName, string> = {
   'text-meta': 'var(--text-meta)',
   'text-title': 'var(--text-title)',
   'text-wordmark': 'var(--text-wordmark)',
+  'track-off': 'var(--track-off)',
   'tracking-caps': 'var(--tracking-caps)',
   'tracking-caps-sm': 'var(--tracking-caps-sm)',
   'violet': 'var(--violet)',

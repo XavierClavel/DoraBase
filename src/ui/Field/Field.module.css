@@ -1,0 +1,75 @@
+/*
+ * Champ de saisie, relevé sur les dix écrans du handoff.
+ *
+ *   taille | hauteur         | occurrences | contexte
+ *   -------|-----------------|-------------|----------------------------------
+ *   md     | --h-field (30)  | 17          | formulaires principaux
+ *   sm     | 28px            | 11          | panneau proxy / tunnel de A2
+ *
+ * Commun aux deux : rayon `--radius-field` (8), fond `--field`, bordure 1px
+ * `--border-field` (.16), remplissage `0 10px`, texte 12px (`--text-control`).
+ *
+ * L'étiquette est en `600 11px` avec `color: rgba(35,32,28,.6)` dans le mockup
+ * (30 occurrences du motif exact). On utilise `--ink-2` (.55) : l'écart de .05 est
+ * imperceptible, le handoff lui-même employant .55/.6/.65/.7 indifféremment pour
+ * l'encre secondaire, et ajouter un token à .05 d'un existant serait de l'inflation
+ * sans gain visuel.
+ *
+ * La hauteur de 28px n'a pas de token : c'est une métrique interne à cette taille,
+ * absente des tables du handoff (qui ne donne que « champ 30 px »).
+ */
+
+.root {
+  display: flex;
+  flex-direction: column;
+}
+
+.label {
+  margin-bottom: var(--space-1);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-2);
+}
+
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 var(--space-5);
+  border: 1px solid var(--border-field);
+  border-radius: var(--radius-field);
+  background: var(--field);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
+}
+
+.input::placeholder {
+  color: var(--ink-3);
+}
+
+.input:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.input:disabled {
+  background: var(--muted);
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+
+/* Toute valeur technique — hôte, port, utilisateur, chemin — est en mono dans le
+ * handoff ; le texte courant reste en Nunito. C'est un choix du design, pas un détail. */
+.mono {
+  font-family: var(--font-mono);
+}
+
+.md {
+  height: var(--h-field);
+}
+
+.sm {
+  height: 28px; /* panneau proxy de A2, sans token — métrique interne */
+}
