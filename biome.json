@@ -12,7 +12,8 @@
       "!dist",
       "!src-tauri/target",
       "!src-tauri/capabilities",
-      "!src/design/icons/sprite.svg"
+      "!src/design/icons/sprite.svg",
+      "!design/handoff"
     ]
   },
   "formatter": {
