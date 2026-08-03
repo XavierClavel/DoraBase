@@ -17,16 +17,15 @@ jamais redessinées. Les primitives ne lisent que des tokens.
 
 ---
 
-## Amendement proposé au périmètre
+## Périmètre réduit — tranché
 
-La spec liste onze primitives. Quatre d'entre elles — popover, tooltip, contrôle
-segmenté, stepper — **ne sont utilisées par aucun écran avant les specs `08` et `10`**.
-Les construire maintenant, c'est décider de leur API sans le cas d'usage qui la
-contraint, donc la refaire ensuite.
+Quatre primitives ont été **retirées de la spec `02`** : popover, tooltip, contrôle
+segmenté et stepper. Aucun écran ne les utilise avant `08`, `09` et `10` ; les construire
+ici figerait leur API sans le cas d'usage qui la contraint, donc obligerait à les refaire.
 
-Ce plan les met donc en tâches **différées** (11 à 13), à déplacer dans les specs
-d'écran qui les réclament. Les tâches 1 à 10 couvrent ce dont A1 et A2 ont besoin.
-C'est une modification du périmètre validé : **à confirmer avant d'exécuter la tâche 11**.
+Chacune rejoint la spec qui la réclame en premier — popover et tooltip en `10`, contrôle
+segmenté en `09`, stepper en `10`. Les tâches 1 à 10 de ce plan couvrent l'intégralité du
+périmètre restant.
 
 ---
 
@@ -529,19 +528,7 @@ git add -A && git commit -m "feat(design): galerie des primitives"
 
 ---
 
-## Tâches différées — à confirmer
-
-Voir § Amendement proposé au périmètre. Ces primitives sont à déplacer vers les specs
-qui les réclament, plutôt que construites ici sans cas d'usage.
-
-- [ ] **Tâche 11 :** Popover et Tooltip → spec `10` (popover d'opérateur, tooltip de
-      raccourcis d'édition)
-- [ ] **Tâche 12 :** contrôle segmenté → spec `09` (Tables / Vues / Fonctions / Index)
-- [ ] **Tâche 13 :** stepper → spec `10` (LIMIT)
-
----
-
-## Tâche 14 : vérification de fin
+## Tâche 11 : vérification de fin
 
 Contrôler chaque critère de `specs/02-design-system.md` § Terminé quand.
 

@@ -13,8 +13,7 @@ C'est la spec qui rend la fidélité au pixel tenable sur quinze écrans.
 - Génération de `tokens.css` et `tokens.ts` depuis `tokens.json`.
 - Polices auto-hébergées : Baloo 2, Nunito, JetBrains Mono.
 - Sprite d'icônes en trait + composant `<Icon>`.
-- Primitives : bouton, champ, select, toggle, chip, badge, pastille, popover,
-  tooltip, contrôle segmenté, stepper.
+- Primitives : bouton, champ, select, toggle, chip, badge, pastille.
 - États dérivés : hover, focus clavier, désactivé.
 - Galerie interne des primitives, en développement seulement.
 
@@ -27,6 +26,12 @@ C'est la spec qui rend la fidélité au pixel tenable sur quinze écrans.
   rôle précisément pour les rendre possibles plus tard ; seul le thème « Cahier »
   est implémenté ici.
 - Nuancier d'accent réglable par l'utilisateur → `15`.
+- **Popover, tooltip, contrôle segmenté et stepper.** Aucun écran ne les utilise avant
+  `08`, `09` et `10` : les construire ici figerait leur API sans le cas d'usage qui la
+  contraint, donc obligerait à les refaire. Chacun rejoint la spec qui le réclame en
+  premier — popover et tooltip en `10` (popover d'opérateur, tooltip de raccourcis
+  d'édition), contrôle segmenté en `09` (Tables / Vues / Fonctions / Index), stepper en
+  `10` (LIMIT).
 
 ## Approche
 
