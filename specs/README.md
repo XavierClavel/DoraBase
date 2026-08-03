@@ -47,16 +47,28 @@ n'échoue pas silencieusement. Du code qui ne l'attrape pas plantera net.
 Points établis par les relectures d'implémentation, qui ne peuvent pas être décidés au
 moment où ils se posent sans coûter un retour en arrière.
 
-**Signature de code et Trousseau — à trancher avant d'écrire `05`.** Les ACL du Trousseau
-macOS sont liées à la **signature de code** de l'application. Le bundle est aujourd'hui
-signé en ad-hoc (`flags=0x20002(adhoc,linker-signed)`, aucune `signingIdentity`
-configurée), et une signature ad-hoc change à chaque reconstruction. Conséquence : un
-outil qui range des identifiants de bases dans le Trousseau redemandera l'autorisation à
-chaque build, et les entrées créées par un build ne seront pas lisibles par le suivant.
-Développer le stockage des identifiants sans avoir résolu ça, c'est développer contre une
-cible mouvante.
+**Signature de code et Trousseau — tranché : le stockage des identifiants sera abstrait.**
 
-**L'icône n'est pas lisible à 32 px — dette de design.** Le handoff prévient que le tracé
+Le problème : les ACL du Trousseau macOS sont liées à la **signature de code**. Le bundle
+est signé en ad-hoc (`flags=0x20002(adhoc,linker-signed)`, aucune `signingIdentity`), et
+une signature ad-hoc change à chaque reconstruction — donc un outil qui range des
+identifiants dans le Trousseau redemanderait l'autorisation à chaque build, et les entrées
+d'un build seraient illisibles par le suivant.
+
+La décision : `05` définit une **interface de stockage des identifiants** avec deux
+implémentations — Trousseau pour les builds signés, fichier chiffré local en
+développement. Le choix se fait au démarrage selon la signature effective.
+
+Pourquoi cette forme plutôt qu'obtenir un Developer ID d'abord : l'abstraction est de
+toute façon nécessaire, puisque Windows et Linux n'ont pas de Trousseau et sont des cibles
+gardées ouvertes. Elle découple donc `05` d'une décision d'achat, sans rien coûter en
+complexité inutile. Un Developer ID reste **requis pour toute diffusion** — Gatekeeper et
+notarisation — mais cette échéance n'a pas à bloquer le développement.
+
+Le badge vert « Trousseau » du handoff (écran A2) reste donc exact en release, et devra
+refléter honnêtement le mécanisme réellement utilisé en développement.
+
+**L'icône n'est pas lisible à 32 px — dette assumée, à reprendre avant diffusion.** Le handoff prévient que le tracé
 doit être simplifié sous cette taille, et la génération l'a confirmé : le sac à dos reste
 identifiable, mais la carte de la poche latérale se réduit à un amas de pixels colorés
 sans forme reconnaissable. C'est visible là où macOS utilise les petites tailles — Dock
