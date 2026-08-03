@@ -3,7 +3,13 @@
 // Aucune lecture ni écriture de fichier ici — l'entrée/sortie viendra avec le
 // script de build (tâche 3), qui appellera ces fonctions sur `src/design/tokens.json`.
 
-const GENERATED_HEADER = '/* Généré par pnpm tokens:build — ne pas éditer */'
+// La seconde ligne désarme le formateur de Biome sur les deux sorties : il
+// abaisserait la casse des hexadécimaux et retirerait les guillemets des clés,
+// alors que la mise en forme est décidée ici et vérifiée par `pnpm tokens:check`.
+const GENERATED_HEADER = [
+  '/* Généré par pnpm tokens:build — ne pas éditer */',
+  '/* biome-ignore-all format: fichier généré, mise en forme produite par le générateur */',
+].join('\n')
 
 /**
  * Aplatit un arbre de tokens imbriqué en un objet à un seul niveau.

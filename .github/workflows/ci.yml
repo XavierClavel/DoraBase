@@ -30,6 +30,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint
+
+      # Garde-fou : `tokens.css` et `tokens.ts` sont générés depuis `tokens.json`.
+      # Régénérer puis exiger un diff vide échoue si quelqu'un les a édités à la main.
+      - run: pnpm tokens:check
+
       - run: pnpm test
       - run: cargo fmt --all --check
         working-directory: src-tauri

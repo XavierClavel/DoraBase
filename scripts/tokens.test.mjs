@@ -25,6 +25,13 @@ test('émet un type TokenName et des références var()', () => {
   expect(ts).toContain('export type TokenName')
 })
 
+test('les deux sorties portent l’en-tête « ne pas éditer »', () => {
+  for (const output of [emitCss(flatten(tree)), emitTs(flatten(tree))]) {
+    expect(output.startsWith('/* Généré par pnpm tokens:build — ne pas éditer */\n')).toBe(true)
+    expect(output).toContain('biome-ignore-all format')
+  }
+})
+
 test('aplatit une imbrication à trois niveaux', () => {
   expect(flatten({ surface: { overlay: { base: '#000', hover: '#111' } } })).toEqual({
     'surface-overlay': '#000',
