@@ -40,6 +40,7 @@ export type TokenName =
   | 'h-btn-lg'
   | 'h-btn-md'
   | 'h-btn-sm'
+  | 'h-btn-xl'
   | 'h-btn-xs'
   | 'h-field'
   | 'h-statusbar'
@@ -162,6 +163,7 @@ export const tokens: Record<TokenName, string> = {
   'h-btn-lg': 'var(--h-btn-lg)',
   'h-btn-md': 'var(--h-btn-md)',
   'h-btn-sm': 'var(--h-btn-sm)',
+  'h-btn-xl': 'var(--h-btn-xl)',
   'h-btn-xs': 'var(--h-btn-xs)',
   'h-field': 'var(--h-field)',
   'h-statusbar': 'var(--h-statusbar)',
