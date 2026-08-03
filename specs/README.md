@@ -22,6 +22,26 @@ défaillance à éviter dans un client de bases écrit en Tauri.
 S'applique à `06` (couche moteur) et `10` (visualiseur), et à toute spec qui
 transporte des lignes.
 
+## À trancher avant certaines specs
+
+Points établis par les relectures d'implémentation, qui ne peuvent pas être décidés au
+moment où ils se posent sans coûter un retour en arrière.
+
+**Signature de code et Trousseau — à trancher avant d'écrire `05`.** Les ACL du Trousseau
+macOS sont liées à la **signature de code** de l'application. Le bundle est aujourd'hui
+signé en ad-hoc (`flags=0x20002(adhoc,linker-signed)`, aucune `signingIdentity`
+configurée), et une signature ad-hoc change à chaque reconstruction. Conséquence : un
+outil qui range des identifiants de bases dans le Trousseau redemandera l'autorisation à
+chaque build, et les entrées créées par un build ne seront pas lisibles par le suivant.
+Développer le stockage des identifiants sans avoir résolu ça, c'est développer contre une
+cible mouvante.
+
+**`blob:` n'est pas autorisé par la CSP.** `img-src 'self' data:` ne le couvre pas. Un
+export CSV par `URL.createObjectURL`, un aperçu d'image, un téléchargement de résultats —
+tous plausibles pour `10` et `14` — seront bloqués. Deux réponses possibles le jour où ça
+se pose : ajouter `blob:` à la directive concernée, ou gérer l'écriture côté Rust. Ne pas
+élargir la CSP par anticipation.
+
 ## Fondations
 
 | Spec | Scope | État |
