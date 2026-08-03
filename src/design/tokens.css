@@ -46,11 +46,15 @@
   --h-statusbar: 26px;
   --h-titlebar: 40px;
   --h-tree-row: 22px;
+  --hover-bg: #FFFDF8;
+  --hover-border: rgba(35,32,28,.26);
+  --hover-row: rgba(35,32,28,.05);
   --info: #3B82C4;
   --info-bg: rgba(59,130,196,.10);
   --ink: #23201C;
   --ink-2: rgba(35,32,28,.55);
   --ink-3: rgba(35,32,28,.35);
+  --ink-on-accent: #FFFFFF;
   --ink-on-dark: #EDE7DA;
   --json-key: #31648F;
   --json-number: #2E7D57;
@@ -79,6 +83,7 @@
   --rowh-min: 20px;
   --shadow-accent: 0 5px 12px -5px color-mix(in oklab, var(--accent) 70%, transparent);
   --shadow-cell: 0 6px 16px -6px rgba(35,32,28,.40);
+  --shadow-focus: 0 0 0 2px color-mix(in oklab, var(--accent) 45%, transparent);
   --shadow-modal: 0 30px 70px -18px rgba(35,32,28,.55);
   --shadow-popover: 0 16px 34px -12px rgba(35,32,28,.40);
   --shadow-window: 0 26px 60px -26px rgba(35,32,28,.45), 0 0 0 1px rgba(35,32,28,.13);
@@ -102,6 +107,7 @@
   --text-body: 12.5px;
   --text-caps: 10.5px;
   --text-caps-sm: 9.5px;
+  --text-control: 12px;
   --text-dense: 11.5px;
   --text-hero: 27px;
   --text-label: 11px;
