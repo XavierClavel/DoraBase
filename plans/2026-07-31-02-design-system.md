@@ -428,6 +428,28 @@ pnpm vitest run src/design/icons/Icon.test.tsx
 - [ ] **Étape 3 : implémenter `Icon` et `Sprite`, monter `Sprite` dans `App`**
 
 `name` est typé par l'union générée : une icône inexistante ne compile pas.
+
+**Le piège du drapeau d'idempotence, vérifié coûteux.** L'envie naturelle est de garder un
+booléen au niveau du module pour ne rendre le sprite qu'une fois. Sous `StrictMode` — que
+`main.tsx` applique — React invoque la fonction de rendu **deux fois** : le premier appel
+met le drapeau à `true` et rend le sprite, le second voit `true` et rend `null`, et c'est
+ce second résultat que React commit. Le sprite disparaît donc du DOM **en développement
+seulement**, StrictMode ne doublant pas les rendus en production : un écart dev/prod
+silencieux sur le composant dont tout le design system dépend.
+
+Rendre inconditionnellement. Un double montage réel produirait deux `<symbol>` de même
+identifiant, qui résolvent au premier sans conséquence visible — rien à défendre de ce côté.
+
+Corollaire de méthode : ce défaut a survécu à quatre tests unitaires verts, dont un qui
+**protégeait activement le bug** en affirmant que « `Sprite` ne rend qu'une fois même monté
+deux fois ». Un test qui documente un défaut le rend permanent — le prochain qui corrigera
+le composant verra rouge et croira avoir cassé quelque chose. Le test utile est celui qui
+rend sous `StrictMode` et vérifie la présence du symbole.
+
+`logo` reste **hors de l'union `IconName`** : `viewBox 0 0 512 512` au lieu de `24 24`, et
+aplats de couleur au lieu d'un trait en `currentColor`. L'inclure rendrait `Icon` menteur
+sur ses attributs par défaut pour ce seul cas. Il est dans le sprite, référençable
+directement par `<use href="#logo">`.
 Taille par défaut 14, `strokeWidth` par défaut 2, `aria-hidden` par défaut.
 
 - [ ] **Étape 4 : lancer, constater le succès**
