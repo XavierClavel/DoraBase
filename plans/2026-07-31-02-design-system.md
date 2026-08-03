@@ -296,8 +296,32 @@ Baloo 2 700, JetBrains Mono 400/500/600/700.
 
 - [ ] **Étape 2 : écrire `fonts.css` et l'importer dans `main.tsx`**
 
-Importer les paquets Fontsource, puis `font-display: block` — un rendu court en police
-de substitution décalerait toute la grille dense.
+**Un simple import des paquets Fontsource ne suffit pas** : ils figent
+`font-display: swap` en dur dans chaque `@font-face`, et un descripteur de `@font-face`
+ne se surcharge pas de façon fiable par une seconde règle. Or `swap` provoque un rendu
+court en police de substitution, qui décalerait toute la grille dense.
+
+`fonts.css` **redéclare donc les `@font-face` à la main** — mêmes fichiers woff2
+référencés depuis les paquets, mêmes `unicode-range`, même plage de graisse — avec
+`font-display: block`. Et surtout avec le **nom de famille nu** (`'Baloo 2'`, `Nunito`,
+`'JetBrains Mono'`) et non le `<Police> Variable` de Fontsource : sans ça les tokens de
+famille ne se raccrocheraient jamais aux fichiers chargés, et tout retomberait en silence
+sur la substitution système.
+
+Vérifier l'absence de `swap` **dans le CSS buildé**, pas seulement dans la source : c'est
+la seule preuve que rien ne fuit des paquets.
+
+**Risque de maintenance à connaître** : ces `@font-face` référencent des chemins de
+fichiers internes aux paquets. Une montée de version de Fontsource qui renommerait un
+fichier casse le build **bruyamment**, ce qui est le bon mode de défaillance — mais un
+sous-ensemble Unicode nouvellement ajouté par le paquet serait **silencieusement omis**.
+À revoir lors de toute montée de version.
+
+Les sous-ensembles Unicode sont conservés au complet, et non restreints à latin : un
+explorateur de bases affiche des données arbitraires, `unicode-range` ne charge que ce qui
+sert, et 428 Ko sur un `.app` de 9,5 Mo ne se discutent pas. Un sous-ensemble de 2 Ko
+passe sous le seuil de 4 Ko de Vite et sort en data URI — sans conséquence, tout reste
+local.
 
 - [ ] **Étape 3 : vérifier hors ligne**
 
