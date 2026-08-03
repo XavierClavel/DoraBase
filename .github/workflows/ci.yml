@@ -31,9 +31,13 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
 
-      # Garde-fou : `tokens.css` et `tokens.ts` sont générés depuis `tokens.json`.
-      # Régénérer puis exiger un diff vide échoue si quelqu'un les a édités à la main.
+      # Garde-fous : ces fichiers sont générés, jamais édités à la main. Régénérer puis
+      # exiger un diff vide échoue si quelqu'un y a touché — ou si la source a bougé sans
+      # que la sortie soit reconstruite.
+      #   tokens : `tokens.css` et `tokens.ts` depuis `tokens.json`
+      #   icônes : `sprite.svg` et `names.ts` depuis le mockup du handoff
       - run: pnpm tokens:check
+      - run: pnpm icons:check
 
       - run: pnpm test
       - run: cargo fmt --all --check
