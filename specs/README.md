@@ -22,6 +22,26 @@ défaillance à éviter dans un client de bases écrit en Tauri.
 S'applique à `06` (couche moteur) et `10` (visualiseur), et à toute spec qui
 transporte des lignes.
 
+## Acquis techniques à connaître
+
+Établis par exécution pendant l'implémentation du socle. Ils évitent des impasses.
+
+**Les capacités Tauri ne gouvernent que les appels IPC venant de la webview.** Elles ne
+restreignent pas ce que fait le code Rust. Prouvé : un menu natif complet, accélérateurs
+compris, s'installe sans la permission `core:menu` ; et une commande définie par l'app
+fonctionne sans aucune entrée dans `capabilities/default.json`. Conséquence pour les specs
+à venir : persistance de la géométrie des panneaux, onglets, préférences, export — tout ce
+qui sera écrit comme commande Rust du projet passe hors ACL.
+
+**`core:window:default` n'accorde aucune permission d'écriture** — 0 des 42 disponibles.
+La lecture de géométrie passe, `set_size` est refusé. Ça concerne la taille de la
+**fenêtre**, pas la géométrie des panneaux, qui est de la mise en page DOM persistée en
+données. Si `03` veut restaurer la taille de fenêtre : ajouter
+`core:window:allow-set-size`, ou le faire côté Rust au démarrage.
+
+**Un WebSocket refusé par la CSP lève un `SecurityError` synchrone** sous WKWebView, il
+n'échoue pas silencieusement. Du code qui ne l'attrape pas plantera net.
+
 ## À trancher avant certaines specs
 
 Points établis par les relectures d'implémentation, qui ne peuvent pas être décidés au
