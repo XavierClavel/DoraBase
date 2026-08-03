@@ -62,17 +62,17 @@ export type TokenName =
   | 'muted'
   | 'paper'
   | 'paper-alt'
-  | 'radius-lg'
-  | 'radius-lg-2'
-  | 'radius-lg-3'
+  | 'radius-badge'
+  | 'radius-badge-2'
+  | 'radius-control'
+  | 'radius-control-2'
+  | 'radius-field'
+  | 'radius-field-2'
   | 'radius-logo'
-  | 'radius-md'
-  | 'radius-md-2'
-  | 'radius-pill'
-  | 'radius-pill-2'
-  | 'radius-sm'
-  | 'radius-sm-2'
-  | 'radius-xl'
+  | 'radius-panel'
+  | 'radius-panel-2'
+  | 'radius-panel-3'
+  | 'radius-window'
   | 'rowh'
   | 'rowh-max'
   | 'rowh-min'
@@ -184,17 +184,17 @@ export const tokens: Record<TokenName, string> = {
   'muted': 'var(--muted)',
   'paper': 'var(--paper)',
   'paper-alt': 'var(--paper-alt)',
-  'radius-lg': 'var(--radius-lg)',
-  'radius-lg-2': 'var(--radius-lg-2)',
-  'radius-lg-3': 'var(--radius-lg-3)',
+  'radius-badge': 'var(--radius-badge)',
+  'radius-badge-2': 'var(--radius-badge-2)',
+  'radius-control': 'var(--radius-control)',
+  'radius-control-2': 'var(--radius-control-2)',
+  'radius-field': 'var(--radius-field)',
+  'radius-field-2': 'var(--radius-field-2)',
   'radius-logo': 'var(--radius-logo)',
-  'radius-md': 'var(--radius-md)',
-  'radius-md-2': 'var(--radius-md-2)',
-  'radius-pill': 'var(--radius-pill)',
-  'radius-pill-2': 'var(--radius-pill-2)',
-  'radius-sm': 'var(--radius-sm)',
-  'radius-sm-2': 'var(--radius-sm-2)',
-  'radius-xl': 'var(--radius-xl)',
+  'radius-panel': 'var(--radius-panel)',
+  'radius-panel-2': 'var(--radius-panel-2)',
+  'radius-panel-3': 'var(--radius-panel-3)',
+  'radius-window': 'var(--radius-window)',
   'rowh': 'var(--rowh)',
   'rowh-max': 'var(--rowh-max)',
   'rowh-min': 'var(--rowh-min)',
