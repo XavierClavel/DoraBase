@@ -36,6 +36,14 @@ chaque build, et les entrées créées par un build ne seront pas lisibles par l
 Développer le stockage des identifiants sans avoir résolu ça, c'est développer contre une
 cible mouvante.
 
+**L'icône n'est pas lisible à 32 px — dette de design.** Le handoff prévient que le tracé
+doit être simplifié sous cette taille, et la génération l'a confirmé : le sac à dos reste
+identifiable, mais la carte de la poche latérale se réduit à un amas de pixels colorés
+sans forme reconnaissable. C'est visible là où macOS utilise les petites tailles — Dock
+réduit, vignette Finder, barre des menus. Il faut une **variante simplifiée du tracé**
+pour les petites tailles : silhouette plus grossière du repli de carte, sans les tracés
+fins. Travail de design, à fournir avant de considérer l'identité de l'app terminée.
+
 **`blob:` n'est pas autorisé par la CSP.** `img-src 'self' data:` ne le couvre pas. Un
 export CSV par `URL.createObjectURL`, un aperçu d'image, un téléchargement de résultats —
 tous plausibles pour `10` et `14` — seront bloqués. Deux réponses possibles le jour où ça
