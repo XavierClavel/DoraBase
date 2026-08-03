@@ -1,0 +1,36 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+
+      # La toolchain Rust est épinglée dans src-tauri/rust-toolchain.toml (canal +
+      # composants) : rustup l'installe elle-même à la première commande cargo/rustc
+      # exécutée dans ce dossier. Pas d'action dédiée ici, pour garder une seule
+      # source de vérité sur la version de Rust.
+      - run: rustup show
+        working-directory: src-tauri
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: cargo fmt --all --check
+        working-directory: src-tauri
+      - run: cargo clippy --all-targets -- -D warnings
+        working-directory: src-tauri
+      - run: pnpm tauri build
