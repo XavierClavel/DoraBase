@@ -111,9 +111,16 @@ Aucune requête réseau : la contrainte est déjà posée en `01` et vérifiée 
 
 ### Primitives et états
 
-Chaque primitive est une fonction des tokens, jamais d'une valeur littérale. Les
-variantes suivent celles observables dans les maquettes : bouton en accent, en
-encre `#23201C`, secondaire bordé, fantôme ; tailles 23–25 px et 28–31 px.
+Chaque primitive est une fonction des tokens, jamais d'une valeur littérale de couleur ni
+d'espacement partagé. Ses **métriques internes** — remplissage et espacement propres à une
+taille donnée, que nulle autre primitive ne partage — peuvent rester en valeurs documentées
+et renvoyant au mockup : l'échelle d'espacement du handoff (3·5·6·7·9·11·14·16) ne les
+couvre pas, et les approximer trahirait la fidélité au pixel.
+
+Les variantes sont **celles réellement observables dans les maquettes**, relevées et non
+supposées : pour le bouton, accent, encre `#23201C` et secondaire bordé. **Pas de variante
+fantôme** — recherchée dans les dix écrans, elle n'existe pas. Cinq tailles, 23 · 25 · 28 ·
+31 · 34 px, le rayon corrélant avec la hauteur.
 
 Les états ne sont pas maquettés, le handoff dit de les dériver. On applique ses
 règles telles quelles : hover de ligne à `rgba(35,32,28,.05)`, hover de bouton
