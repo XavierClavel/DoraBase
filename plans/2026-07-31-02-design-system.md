@@ -47,6 +47,28 @@ conséquence sémantique. En revanche `color-mix()` **entièrement littéral** e
 `var(--accent)`, le cas ne devrait pas se présenter ; si tu écris un mélange littéral,
 sache qu'il ne sera pas relisible tel quel en devtools.
 
+### Quatre pièges de nommage des tokens
+
+Relevés à la relecture croisée, qui n'a trouvé aucune permutation valeur-rôle sur les 120
+tokens. À connaître avant de consommer `tokens.ts`.
+
+- **`text-meta` vaut 10 px**, alors que la table du handoff écrit « 11 px (méta), 10 px
+  (compteurs) ». C'est la prose des écrans qui a été suivie — « métadonnée mono 10 px » —
+  et elle est plus précise. Qui lirait la seule table prendrait `text-meta` en croyant
+  obtenir 11 px : c'est `text-label` qu'il faut alors. Un pixel d'écart sur du petit texte,
+  répété sur quinze écrans.
+- **`radius-field` couvre trois rôles** du handoff : bouton, champ et carte. Le nom n'en
+  retient qu'un, `radius-control` étant déjà pris par « petit contrôle ». Un rayon de
+  bouton, c'est donc `radius-field`.
+- **`text-title` est le titre de *modale*** (14,5 px). La barre de titre de la fenêtre
+  utilise `text-wordmark` (13 px). Le mot « title » attirera la main au mauvais endroit en
+  écrivant la `TitleBar` de la spec `07`.
+- **Deux interlettrages seulement sont tokenisés**, ceux des tables. La maquette en emploie
+  sept valeurs distinctes (.2 à .7 et 2 px) : les micro-labels à 9 px et les valeurs mono
+  espacées rencontreront des littéraux. Conforme au périmètre — on transcrit les tables,
+  pas la maquette — mais mieux vaut le savoir avant d'écrire les composants que de le
+  découvrir en les contournant.
+
 **Les imports `?raw`, woff2 et CSS à effet de bord fonctionnent**, au typecheck comme au
 build — vérifié. Une woff2 sous 4 Ko serait inlinée en data URI ; les vraies polices
 dépasseront la limite et sortiront en fichiers.
