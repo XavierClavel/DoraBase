@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="DoraBase — sac à dos avec une carte dans la poche latérale">
+  <title>DoraBase app icon</title>
+  <rect width="512" height="512" rx="114" fill="#FBF7EF"></rect>
+  <rect x="10" y="10" width="492" height="492" rx="106" fill="none" stroke="#23201C" stroke-opacity=".08" stroke-width="4"></rect>
+  <g fill="none" stroke="#23201C" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M232 154q24-44 48 0"></path>
+    <path d="M210 156h92a64 64 0 0 1 64 64v114a64 64 0 0 1-64 64h-92a64 64 0 0 1-64-64V220a64 64 0 0 1 64-64z" fill="#F2653A"></path>
+    <path d="M146 240q110 26 220 0v-20a64 64 0 0 0-64-64h-92a64 64 0 0 0-64 64z" fill="#E4573F"></path>
+    <path d="M184 302h144a24 24 0 0 1 24 24v34a30 30 0 0 1-30 30H190a30 30 0 0 1-30-30v-34a24 24 0 0 1 24-24z" fill="#FBF7EF"></path>
+    <path d="M256 302v-6"></path>
+    <rect x="238" y="284" width="36" height="28" rx="9" fill="#F5B335"></rect>
+    <g transform="rotate(-12 132 232)">
+      <path d="M96 148h84a10 10 0 0 1 10 10v128a10 10 0 0 1-10 10H96a10 10 0 0 1-10-10V158a10 10 0 0 1 10-10z" fill="#FBF7EF"></path>
+      <path d="M124 148v148M158 148v148" stroke-width="8" stroke-opacity=".22"></path>
+      <path d="M100 178h20a10 10 0 0 1 0 20h-20z" fill="#2E9E6B" stroke-width="0"></path>
+      <path d="M148 160c14 16-4 30 8 46s-2 30 6 44" stroke="#3B82C4" stroke-width="9"></path>
+      <path d="M104 262c18-6 22-24 38-24s20 14 38 6" stroke="#D9432F" stroke-width="9" stroke-dasharray="12 11"></path>
+      <circle cx="112" cy="228" r="9" fill="#D9432F" stroke-width="0"></circle>
+    </g>
+    <path d="M150 252h-24a30 30 0 0 0-30 30v54a30 30 0 0 0 30 30h24z" fill="#E4573F"></path>
+    <path d="M108 300h30" stroke-opacity=".55" stroke-width="10"></path>
+  </g>
+</svg>
