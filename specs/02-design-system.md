@@ -79,6 +79,24 @@ de vérité, donc une dérive garantie. Elle fixe les **groupes et le nommage** 
 Trois tokens restent réglables à chaud, comme le prototype les expose :
 `--accent`, `--rowh`, `--gridline`.
 
+Quatre pièges de nommage, relevés à la relecture croisée :
+
+- **`text-meta` vaut 10 px**, alors que la table du handoff écrit « 11 px (méta), 10 px
+  (compteurs) ». C'est la prose des écrans qui a été suivie — « métadonnée mono 10 px » —
+  et elle est plus précise que la table. Qui lirait la seule table prendrait `text-meta`
+  en croyant obtenir 11 px : c'est `text-label` qu'il faut alors.
+- **`radius-field` couvre trois rôles** du handoff : bouton, champ et carte. Le nom n'en
+  retient qu'un, `radius-control` étant déjà pris par « petit contrôle ». Un rayon de
+  bouton, c'est donc `radius-field`.
+- **`text-title` est le titre de *modale*** (14,5 px). La barre de titre de la fenêtre
+  utilise `text-wordmark` (13 px). Le mot « title » attirera la main au mauvais endroit en
+  écrivant la `TitleBar` de `07`.
+- **Deux interlettrages seulement sont tokenisés**, ceux des tables. La maquette en emploie
+  sept valeurs distinctes (.2 à .7 et 2 px) : les micro-labels à 9 px et les valeurs mono
+  espacées rencontreront donc des littéraux. C'est conforme au périmètre — on transcrit les
+  tables, pas la maquette — mais mieux vaut le savoir avant d'écrire les composants que de
+  le contourner en les écrivant.
+
 **La transcription ne couvre que les tables « Design tokens » du handoff.** Sa section
 « Écrans » contient d'autres valeurs littérales — teintes ambre de l'édition inline
 (`#FDF6E8`, `#FBEFD6`, `#E9A82B`), rayons 2 et 3 px des poignées de redimensionnement,
