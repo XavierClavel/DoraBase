@@ -4,9 +4,24 @@
 // qu'une dépendance système (librsvg, imagemagick...) : la régénération de
 // l'icône reste ainsi reproductible sans installation supplémentaire.
 //
+// Le PNG produit n'est pas versionné : il est régénérable à volonté par ce
+// script, donc l'ajouter à l'historique git serait du poids binaire inutile.
+// Le défaut de sortie pointe donc vers node_modules/.tmp/ (déjà ignoré par
+// git, cf. node_modules/ dans .gitignore) plutôt que dans le dépôt, pour
+// qu'un lancement sans argument ne puisse pas y déposer de fichier.
+//
+// Ensuite, `pnpm tauri icon <png>` régénère le jeu d'icônes dans
+// src-tauri/icons/. Attention : la CLI Tauri 2 (testée en 2.11.4) n'expose
+// aucune option pour limiter les plateformes ciblées — elle produit
+// systématiquement macOS/Windows *et* les jeux iOS/Android (android/, ios/),
+// même si aucune cible mobile n'est configurée dans tauri.conf.json. DoraBase
+// est desktop uniquement (macOS, Windows/Linux gardés ouverts) : après chaque
+// régénération, supprimer manuellement src-tauri/icons/android/ et
+// src-tauri/icons/ios/ avant de commiter.
+//
 // Usage : node scripts/render-icon.mjs [chemin-svg] [chemin-png-sortie]
 
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from '@playwright/test'
@@ -16,7 +31,9 @@ const projectRoot = resolve(__dirname, '..')
 
 const SIZE = 1024
 const svgPath = resolve(projectRoot, process.argv[2] ?? 'design/handoff/icon-dorabase.svg')
-const outPath = resolve(projectRoot, process.argv[3] ?? 'design/handoff/icon-dorabase-1024.png')
+const outPath = resolve(projectRoot, process.argv[3] ?? 'node_modules/.tmp/icon-dorabase-1024.png')
+
+await mkdir(dirname(outPath), { recursive: true })
 
 const svg = await readFile(svgPath, 'utf8')
 
