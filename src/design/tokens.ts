@@ -46,11 +46,15 @@ export type TokenName =
   | 'h-statusbar'
   | 'h-titlebar'
   | 'h-tree-row'
+  | 'hover-bg'
+  | 'hover-border'
+  | 'hover-row'
   | 'info'
   | 'info-bg'
   | 'ink'
   | 'ink-2'
   | 'ink-3'
+  | 'ink-on-accent'
   | 'ink-on-dark'
   | 'json-key'
   | 'json-number'
@@ -79,6 +83,7 @@ export type TokenName =
   | 'rowh-min'
   | 'shadow-accent'
   | 'shadow-cell'
+  | 'shadow-focus'
   | 'shadow-modal'
   | 'shadow-popover'
   | 'shadow-window'
@@ -102,6 +107,7 @@ export type TokenName =
   | 'text-body'
   | 'text-caps'
   | 'text-caps-sm'
+  | 'text-control'
   | 'text-dense'
   | 'text-hero'
   | 'text-label'
@@ -169,11 +175,15 @@ export const tokens: Record<TokenName, string> = {
   'h-statusbar': 'var(--h-statusbar)',
   'h-titlebar': 'var(--h-titlebar)',
   'h-tree-row': 'var(--h-tree-row)',
+  'hover-bg': 'var(--hover-bg)',
+  'hover-border': 'var(--hover-border)',
+  'hover-row': 'var(--hover-row)',
   'info': 'var(--info)',
   'info-bg': 'var(--info-bg)',
   'ink': 'var(--ink)',
   'ink-2': 'var(--ink-2)',
   'ink-3': 'var(--ink-3)',
+  'ink-on-accent': 'var(--ink-on-accent)',
   'ink-on-dark': 'var(--ink-on-dark)',
   'json-key': 'var(--json-key)',
   'json-number': 'var(--json-number)',
@@ -202,6 +212,7 @@ export const tokens: Record<TokenName, string> = {
   'rowh-min': 'var(--rowh-min)',
   'shadow-accent': 'var(--shadow-accent)',
   'shadow-cell': 'var(--shadow-cell)',
+  'shadow-focus': 'var(--shadow-focus)',
   'shadow-modal': 'var(--shadow-modal)',
   'shadow-popover': 'var(--shadow-popover)',
   'shadow-window': 'var(--shadow-window)',
@@ -225,6 +236,7 @@ export const tokens: Record<TokenName, string> = {
   'text-body': 'var(--text-body)',
   'text-caps': 'var(--text-caps)',
   'text-caps-sm': 'var(--text-caps-sm)',
+  'text-control': 'var(--text-control)',
   'text-dense': 'var(--text-dense)',
   'text-hero': 'var(--text-hero)',
   'text-label': 'var(--text-label)',
