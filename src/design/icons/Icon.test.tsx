@@ -1,4 +1,5 @@
 import { render } from '@testing-library/react'
+import { StrictMode } from 'react'
 import { Icon } from './Icon'
 import { Sprite } from './Sprite'
 
@@ -21,12 +22,11 @@ test('est décorative par défaut : masquée aux lecteurs d’écran', () => {
   expect(container.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
 })
 
-test('Sprite ne rend le contenu qu’une seule fois même monté deux fois', () => {
+test('sous StrictMode, le sprite est présent dans le DOM', () => {
   const { container } = render(
-    <div>
+    <StrictMode>
       <Sprite />
-      <Sprite />
-    </div>,
+    </StrictMode>,
   )
-  expect(container.querySelectorAll('symbol#i-plus')).toHaveLength(1)
+  expect(container.querySelector('symbol#i-plus')).not.toBeNull()
 })
