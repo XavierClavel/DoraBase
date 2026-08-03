@@ -70,7 +70,7 @@ de vérité, donc une dérive garantie. Elle fixe les **groupes et le nommage** 
 | Moteurs | `engine-pg`, `-my`, `-sq`, `-mg`, `-rd`, `-sf`, `-bq` — base et `-bg` |
 | Syntaxe | `syn-keyword`, `-string`, `-number`, `-ident`, `-comment`, `-linenum` |
 | JSON sur papier | `json-key`, `-string`, `-number`, `-punct` |
-| Typographie | familles, tailles, graisses, interlignes |
+| Typographie | familles, tailles, graisses, interlignes, interlettrages |
 | Espacement | `space-1` → `space-8`, sur l'échelle 3 · 5 · 6 · 7 · 9 · 11 · 14 · 16 |
 | Rayons | `radius-badge`, `-control`, `-field`, `-panel`, `-window`, `-logo` ; suffixe `-2`/`-3` pour les valeurs secondaires d'un même rôle |
 | Ombres | `shadow-window`, `-modal`, `-popover`, `-accent`, `-cell` |
@@ -78,6 +78,14 @@ de vérité, donc une dérive garantie. Elle fixe les **groupes et le nommage** 
 
 Trois tokens restent réglables à chaud, comme le prototype les expose :
 `--accent`, `--rowh`, `--gridline`.
+
+**La transcription ne couvre que les tables « Design tokens » du handoff.** Sa section
+« Écrans » contient d'autres valeurs littérales — teintes ambre de l'édition inline
+(`#FDF6E8`, `#FBEFD6`, `#E9A82B`), rayons 2 et 3 px des poignées de redimensionnement,
+dégradé radial du fond d'accueil, voile `rgba(35,32,28,.28)` des modales, `#DCD6CB` des
+feux grisés. Chacune revient à la spec d'écran qui la réclame, qui **ajoutera son token**
+plutôt que d'écrire un littéral. Ne pas les transcrire ici : elles n'ont de rôle que dans
+leur contexte.
 
 ### Icônes : récupérées, pas redessinées
 
