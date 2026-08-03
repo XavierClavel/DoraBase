@@ -1,0 +1,33 @@
+import { emitCss, emitTs, flatten } from './tokens.mjs'
+
+const tree = {
+  surface: { canvas: '#EFEAE0', paper: '#FBF7EF' },
+  ink: { base: '#23201C', 2: 'rgba(35,32,28,.55)' },
+}
+
+test('aplatit en joignant par tiret et absorbe la clé base', () => {
+  expect(flatten(tree)).toEqual({
+    'surface-canvas': '#EFEAE0',
+    'surface-paper': '#FBF7EF',
+    ink: '#23201C',
+    'ink-2': 'rgba(35,32,28,.55)',
+  })
+})
+
+test('émet un bloc :root trié', () => {
+  expect(emitCss(flatten(tree))).toContain('  --surface-canvas: #EFEAE0;')
+  expect(emitCss(flatten(tree))).toMatch(/^:root \{/m)
+})
+
+test('émet un type TokenName et des références var()', () => {
+  const ts = emitTs(flatten(tree))
+  expect(ts).toContain("'surface-canvas': 'var(--surface-canvas)'")
+  expect(ts).toContain('export type TokenName')
+})
+
+test('aplatit une imbrication à trois niveaux', () => {
+  expect(flatten({ surface: { overlay: { base: '#000', hover: '#111' } } })).toEqual({
+    'surface-overlay': '#000',
+    'surface-overlay-hover': '#111',
+  })
+})
