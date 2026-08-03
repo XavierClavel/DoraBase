@@ -66,13 +66,13 @@ de vérité, donc une dérive garantie. Elle fixe les **groupes et le nommage** 
 | Encre | `ink`, `ink-2`, `ink-3`, `ink-on-dark` |
 | Traits | `border`, `border-field`, `divider`, `gridline` |
 | Accent | `accent`, `accent-deep`, `accent-deeper` |
-| Sémantique | `success`, `warn`, `danger`, `info`, `violet`, `gold` — chacun décliné en base, `-bg`, `-ink` |
+| Sémantique | `success`, `warn`, `danger`, `info`, `violet`, `gold` — déclinés en base, `-bg`, `-ink` **là où le handoff fournit la valeur** |
 | Moteurs | `engine-pg`, `-my`, `-sq`, `-mg`, `-rd`, `-sf`, `-bq` — base et `-bg` |
 | Syntaxe | `syn-keyword`, `-string`, `-number`, `-ident`, `-comment`, `-linenum` |
 | JSON sur papier | `json-key`, `-string`, `-number`, `-punct` |
 | Typographie | familles, tailles, graisses, interlignes |
 | Espacement | `space-1` → `space-8`, sur l'échelle 3 · 5 · 6 · 7 · 9 · 11 · 14 · 16 |
-| Rayons | `radius-pill`, `-sm`, `-md`, `-lg`, `-xl` |
+| Rayons | `radius-badge`, `-control`, `-field`, `-panel`, `-window`, `-logo` ; suffixe `-2`/`-3` pour les valeurs secondaires d'un même rôle |
 | Ombres | `shadow-window`, `-modal`, `-popover`, `-accent`, `-cell` |
 | Hauteurs | ligne d'arbre, ligne de grille, petit bouton, bouton, champ, barre, barre de titre, barre d'état |
 
