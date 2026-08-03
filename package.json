@@ -15,7 +15,9 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "tokens:build": "node scripts/build-tokens.mjs",
-    "tokens:check": "node scripts/build-tokens.mjs && git diff --exit-code src/design/tokens.css src/design/tokens.ts"
+    "tokens:check": "node scripts/build-tokens.mjs && git diff --exit-code src/design/tokens.css src/design/tokens.ts",
+    "icons:build": "node scripts/extract-icons.mjs",
+    "icons:check": "node scripts/extract-icons.mjs && git diff --exit-code src/design/icons/sprite.svg src/design/icons/names.ts"
   },
   "dependencies": {
     "@fontsource-variable/baloo-2": "^5.3.0",
