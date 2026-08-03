@@ -13,7 +13,9 @@
     "lint:fix": "biome check --write .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "tokens:build": "node scripts/build-tokens.mjs",
+    "tokens:check": "node scripts/build-tokens.mjs && git diff --exit-code src/design/tokens.css src/design/tokens.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
