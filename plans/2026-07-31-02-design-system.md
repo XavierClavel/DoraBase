@@ -231,6 +231,19 @@ du handoff a bien un token.
 
 Ajouter `- run: pnpm tokens:check` dans `.github/workflows/ci.yml`, après `pnpm lint`.
 
+**Piège en local, à connaître avant de conclure que le garde-fou ne marche pas** : une
+édition à la main seulement présente dans l'arbre de travail est écrasée par la
+régénération **avant** que `git diff` ne la voie, donc le contrôle passe. Il faut
+`git add` la version éditée pour voir l'échec. C'est le bon comportement en CI, où le
+fichier vient de `HEAD` — mais quelqu'un qui teste sans indexer conclura à tort.
+
+**Les fichiers générés portent une suppression de format Biome**
+(`/* biome-ignore-all format: … */`), émise par le générateur lui-même. Sans elle, Biome
+abaisse la casse des hexadécimaux du CSS et retire les guillemets des clés du TS, et
+`pnpm lint` échoue sur des fichiers qu'aucun humain n'édite. Cette forme est préférable à
+une exclusion dans `biome.json` : le lint reste actif, seul le formatage est suspendu, et
+la raison voyage avec le fichier.
+
 - [ ] **Étape 5 : commit**
 
 ```bash
