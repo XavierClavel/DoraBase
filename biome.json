@@ -7,7 +7,13 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!dist", "!src-tauri/target", "!src/design/icons/sprite.svg"]
+    "includes": [
+      "**",
+      "!dist",
+      "!src-tauri/target",
+      "!src-tauri/capabilities",
+      "!src/design/icons/sprite.svg"
+    ]
   },
   "formatter": {
     "enabled": true,
