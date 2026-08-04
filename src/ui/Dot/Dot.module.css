@@ -1,0 +1,27 @@
+/*
+ * Pastille d'état, 6 px, relevée sept fois dans le handoff — toujours au fil du texte
+ * de statut, jamais seule : `--success` six fois (statut de connexion dans l'en-tête
+ * du sélecteur de projet, A4/A5/A7…), `--gold` une fois (A6, bandeau « modifications
+ * en attente »).
+ *
+ * Une variante à 7 px existe aussi (5 × `--danger`, 1 × `--success`), mais toujours
+ * imbriquée dans le sélecteur d'environnement de l'en-tête — un composant non encore
+ * construit. C'est une métrique interne à ce futur composant, pas une taille de cette
+ * primitive : `Dot` ne modélise que l'usage autonome à 6 px.
+ */
+
+.root {
+  display: inline-block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.success {
+  background: var(--success);
+}
+
+.gold {
+  background: var(--gold);
+}

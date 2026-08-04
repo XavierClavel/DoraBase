@@ -1,0 +1,114 @@
+/*
+ * Trois familles de chip relevées dans le handoff, distinguées par taille et teinte —
+ * jamais indépendamment, comme pour `Button` et `Badge`.
+ *
+ *   taille | hauteur         | rayon                    | police         | occurrences
+ *   -------|-----------------|--------------------------|----------------|-------------
+ *   sm     | 23px            | --radius-control-2 (7)   | 11px hors échelle | filtre actif A6 (681), tri A6/A7 (682)
+ *   md     | 25px            | --radius-control-2 (7)   | --text-dense (11.5)| filtre actif A5 (520), tri A5 (522)
+ *   lg     | 30px            | --radius-field-2 (9)     | --text-control (12)| moteurs A2/A3 (180-182, 272-278)
+ *
+ * `sm` et `md` sont le même chip (filtre ou tri) à deux densités : la barre latérale
+ * d'A6/A7 est plus étroite que celle d'A5 et toute sa police descend d'un cran — ce
+ * n'est pas une variante volontaire par chip, mais deux tailles cohérentes qu'on
+ * expose telles quelles plutôt que d'en moyenner une seule qui trahirait les deux.
+ *
+ *   teinte    | fond                                              | bordure                                        | texte              | occurrences
+ *   ----------|---------------------------------------------------|------------------------------------------------|--------------------|-------------
+ *   default   | #fff / --field                                    | --border                                        | --ink-2            | tri ×2, moteur inactif ×6 (dont Redis/Snowflake/BigQuery sans initiales)
+ *   accent    | color-mix(in oklab, var(--accent) 13%, transparent)| color-mix(in oklab, var(--accent) 45%, transparent)| --accent-deeper  | filtre actif ×2 (lignes 520, 681)
+ *   selected  | --accent                                           | transparent                                     | --ink-on-accent    | moteur actif ×1 (PostgreSQL, ligne 272)
+ *
+ * Le fond et la bordure de `accent` sont exactement `color-mix(in oklab, var(--accent)
+ * 13%, transparent)` / `45%` dans le handoff (ligne 520 : `background:rgba(242,101,58,
+ * .13)`, `border:1px solid rgba(242,101,58,.45)` — `#F2653A` = `--accent` en rgba) :
+ * on reprend l'idiome `color-mix` déjà employé pour `--shadow-focus` plutôt que de
+ * figer un `rgba()`, pour que la teinte suive `--accent` si le token change.
+ *
+ * Le gap icône/texte est `--space-3` (6) pour `accent`/`default` (relevé 5-6px selon
+ * l'instance, 6 retenu comme valeur dominante) et `--space-4` (7) pour `lg`.
+ */
+
+.root {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  border: 1px solid transparent;
+  font-family: var(--font-ui);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+.root[role="button"] {
+  cursor: pointer;
+}
+
+.root:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* --- Teintes --- */
+
+.default {
+  background: var(--field);
+  border-color: var(--border);
+  color: var(--ink-2);
+}
+
+.accent {
+  background: color-mix(in oklab, var(--accent) 13%, transparent);
+  border-color: color-mix(in oklab, var(--accent) 45%, transparent);
+  color: var(--accent-deeper);
+}
+
+.selected {
+  background: var(--accent);
+  color: var(--ink-on-accent);
+  font-weight: var(--weight-bold);
+  box-shadow: var(--shadow-accent);
+}
+
+/* --- Tailles --- */
+
+.sm {
+  height: 23px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-control-2);
+  font-size: 11px; /* hors échelle --text-*, mesuré lignes 681-682 */
+}
+
+.md {
+  height: 25px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-control-2);
+  font-size: var(--text-dense);
+}
+
+.lg {
+  height: 30px;
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-field-2);
+  font-size: var(--text-control);
+  gap: var(--space-4);
+}
+
+/*
+ * La croix de suppression : un vrai bouton imbriqué, sans chrome propre (pas de fond
+ * ni de bordure dans le handoff — la croix suit directement le texte, ligne 520) mais
+ * avec son propre focus visible, indépendant de celui du chip englobant.
+ */
+.remove {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.remove:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
