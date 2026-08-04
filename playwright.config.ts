@@ -8,6 +8,10 @@ export default defineConfig({
   // masquer un échec local, qui reste immédiat.
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
+  // `list` seul n'écrit rien sur disque : sans rapporteur `html`, l'artefact de CI
+  // uploadé en cas d'échec serait vide — constaté en pratique, `playwright-report/`
+  // n'existait pas après un échec.
+  reporter: [['list'], ['html', { open: 'never' }]],
   webServer: {
     command: 'pnpm dev',
     port: 5173,

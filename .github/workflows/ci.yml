@@ -49,7 +49,12 @@ jobs:
         if: failure()
         with:
           name: playwright-report
-          path: playwright-report/
+          # `test-results/` porte les captures réelle/attendue/diff produites par
+          # l'échec — c'est ce qu'on récupère pour committer la référence générée en
+          # CI. `playwright-report/` est le rapport HTML de navigation, utile en plus.
+          path: |
+            playwright-report/
+            test-results/
 
       - run: cargo fmt --all --check
         working-directory: src-tauri
