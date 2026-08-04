@@ -1,0 +1,28 @@
+/*
+ * Remise à zéro minimale. Sans elle, `html`/`body` n'ont pas de hauteur explicite : un
+ * `height: 100%` posé plus bas (comme celui de `WelcomeScreen`) se résout contre un
+ * parent en `auto` et s'effondre à la hauteur du contenu — trouvé en générant la première
+ * capture de référence de l'écran d'accueil, dont la fenêtre ne faisait que 372 px de haut
+ * au lieu de 814, avec la marge par défaut de 8 px du navigateur encore présente.
+ *
+ * Volontairement minimale : pas de reset `box-sizing`, les primitives (`Button`, `Field`,
+ * `TitleBar`…) déclarent `content-box` explicitement là où le mockup l'exige — un reset
+ * global en `border-box` n'aurait rien cassé par spécificité, mais ajouterait une couche
+ * dont ce projet n'a pas besoin.
+ */
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-ui);
+}
