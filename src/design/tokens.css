@@ -68,6 +68,7 @@
   --muted: #F1ECE2;
   --paper: #FBF7EF;
   --paper-alt: #F7F2E8;
+  --paper-bright: #FFFDF8;
   --radius-badge: 4px;
   --radius-badge-2: 5px;
   --radius-control: 6px;
@@ -114,7 +115,7 @@
   --text-label: 11px;
   --text-meta: 10px;
   --text-title: 14.5px;
-  --text-wordmark: 13px;
+  --text-wordmark: 14px;
   --track-off: rgba(35,32,28,.18);
   --tracking-caps: .7px;
   --tracking-caps-sm: .6px;
