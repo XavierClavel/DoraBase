@@ -1,0 +1,111 @@
+/*
+ * Étiquette d'état, relevée sur six instances de `design/handoff/DoraBase.dc.html` :
+ * quatre tailles, chacune propre à une famille d'usage — la hauteur, le rayon et la
+ * police croissent ensemble, comme pour `Button`.
+ *
+ *   taille | hauteur | rayon                  | police                | occurrences
+ *   -------|---------|------------------------|------------------------|-------------
+ *   xs     | 15px    | --radius-badge (4)     | 9px hors échelle       | PROD ×4 (lignes 360,489,657,998), STAGING ×1 (892)
+ *   sm     | 16px    | --radius-badge-2 (5)   | --text-caps-sm (9.5)   | LECTURE SEULE ×1 (343), ÉDITION ×1 (636)
+ *   md     | 19px    | --radius-control (6)   | --text-caps (10.5)     | SSH activé ×2 (210, 306)
+ *   lg     | 22px    | --radius-control (6)   | --text-caps (10.5)     | Trousseau ×2 (196, 292)
+ *
+ * `xs` et `sm` sont sans icône dans le handoff (sauf ÉDITION, qui en a une avec
+ * `gap:3px` — exactement `--space-1`). `lg` a toujours une icône avec `gap:4px`, hors
+ * échelle `--space-*` (3 ou 5 les valeurs voisines), documenté en littéral. `md`
+ * (SSH activé) n'a pas d'icône ni d'espacement.
+ *
+ * La graisse suit la famille visuelle observée, pas la taille : PROD/STAGING/ÉDITION
+ * (constats critiques) sont en `--weight-black` (800), LECTURE SEULE/Trousseau/SSH
+ * activé (informatifs) en `--weight-bold` (700) — d'où sa déclaration par teinte,
+ * pas par taille.
+ *
+ * La lettre-espacement de PROD/STAGING (.3px) et d'ÉDITION (.4px) est hors des deux
+ * jetons `--tracking-caps-*` (.6/.7) et diverge d'une instance à l'autre ; omise sur
+ * `sm` (LECTURE SEULE n'en a pas), conservée en littéral sur `xs` où les quatre
+ * occurrences PROD s'accordent.
+ */
+
+.root {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-ui);
+  white-space: nowrap;
+}
+
+/* --- Teintes (couleur + graisse) --- */
+
+.danger {
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+  font-weight: var(--weight-black);
+}
+
+/*
+ * STAGING (#E9F5E4 / #3C7A2B) ne correspond à aucune paire sémantique existante :
+ * `--success-bg`/`--success-ink` sont un vert différent (#E7F3EC/#2E7D57). La teinte
+ * coïncide exactement avec `--engine-mg`/`--engine-mg-bg` — réemployée ici plutôt que
+ * de demander un token dédié pour une seule occurrence.
+ */
+.engine-mg {
+  background: var(--engine-mg-bg);
+  color: var(--engine-mg);
+  font-weight: var(--weight-black);
+}
+
+.warn {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  font-weight: var(--weight-black);
+}
+
+.muted {
+  background: var(--muted);
+  color: var(--ink-2);
+  font-weight: var(--weight-bold);
+}
+
+.success {
+  background: var(--success-bg);
+  color: var(--success-ink);
+  font-weight: var(--weight-bold);
+}
+
+.violet {
+  background: var(--violet-bg);
+  color: var(--violet-ink);
+  font-weight: var(--weight-bold);
+}
+
+/* --- Tailles --- */
+
+.xs {
+  height: 15px;
+  border-radius: var(--radius-badge);
+  padding: 0 var(--space-2);
+  font-size: 9px; /* hors échelle --text-*, mesuré lignes 360/489/657/892/998 */
+  letter-spacing: 0.3px; /* hors échelle --tracking-caps-*, mesuré lignes 360/489/657/892/998 */
+}
+
+.sm {
+  height: 16px;
+  border-radius: var(--radius-badge-2);
+  padding: 0 var(--space-3);
+  font-size: var(--text-caps-sm);
+  gap: var(--space-1);
+}
+
+.md {
+  height: 19px;
+  border-radius: var(--radius-control);
+  padding: 0 var(--space-4);
+  font-size: var(--text-caps);
+}
+
+.lg {
+  height: 22px;
+  border-radius: var(--radius-control);
+  padding: 0 var(--space-4);
+  font-size: var(--text-caps);
+  gap: 4px; /* hors échelle --space-* (3 ou 5 les valeurs voisines), mesuré lignes 196/292 */
+}
