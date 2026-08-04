@@ -110,8 +110,9 @@ foi, puisque la fidélité se mesure contre lui.
 - L'app se lance sur A1 et la comparaison côte à côte avec le mockup à 1360 px de
   large ne montre aucun écart, hormis la version dans la barre d'état.
 - Les feux tricolores du système sont visibles et non recouverts.
-- La fenêtre se redimensionne proprement : les barres gardent 40 et 26 px, la
-  sidebar garde 236 px, le bloc central reste centré.
+- La fenêtre se redimensionne proprement : les barres gardent leur hauteur (40 et 26 px
+  déclarés, 41 et 27 px rendus — `content-box` plus 1 px de filet, cohérent avec le rendu
+  du mockup lui-même), la sidebar garde 236 px, le bloc central reste centré.
 - `⌘N` et les deux boutons appellent le même callback, vérifié par un test Vitest.
 - Le parcours au clavier atteint les deux boutons et l'anneau de focus est visible.
 - Les captures Playwright de référence sont commitées et la CI les vérifie.
