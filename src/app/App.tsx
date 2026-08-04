@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { Sprite } from '../design/icons/Sprite'
+import { WelcomeScreen } from '../screens/Welcome/WelcomeScreen'
 
 // La galerie (`src/design/gallery/`) ne doit jamais partir dans le bundle livré : elle
 // est montée derrière deux conditions, `import.meta.env.DEV` ET `?gallery` dans l'URL.
@@ -15,6 +16,11 @@ const Gallery = showGallery
   ? lazy(() => import('../design/gallery/Gallery').then((module) => ({ default: module.Gallery })))
   : null
 
+// Pas de projet à ce stade : le modèle de domaine (Projet / Base / Environnement) et sa
+// persistance viennent de la spec 05. `onNewProject` reste vide, la création de projet
+// étant construite en spec 08 — voir specs/07-a1-accueil.md § Hors périmètre.
+function handleNewProject() {}
+
 export function App() {
   return (
     <>
@@ -24,7 +30,7 @@ export function App() {
           <Gallery />
         </Suspense>
       ) : (
-        <div>DoraBase</div>
+        <WelcomeScreen onNewProject={handleNewProject} projectCount={0} />
       )}
     </>
   )
