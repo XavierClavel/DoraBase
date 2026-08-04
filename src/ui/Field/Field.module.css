@@ -17,6 +17,16 @@
  *
  * La hauteur de 28px n'a pas de token : c'est une métrique interne à cette taille,
  * absente des tables du handoff (qui ne donne que « champ 30 px »).
+ *
+ * `box-sizing: content-box` est IMPOSÉ, et ce n'est pas cosmétique. Le mockup ne déclare
+ * aucun `box-sizing`, donc ses éléments sont en `content-box` : un champ à `height:30px`
+ * avec 1px de bordure y rend **32px** — mesuré. Or `<input>` et `<button>` sont en
+ * `border-box` par la feuille de style du navigateur, ce qui ferait rendre 30px et
+ * raccourcirait le champ de 2px par rapport à la maquette.
+ *
+ * En `content-box`, `--h-field` signifie donc exactement ce qu'il signifie dans le
+ * handoff : la hauteur du contenu, la bordure s'ajoutant par-dessus. C'est le seul
+ * réglage qui rend les tokens de hauteur comparables au mockup sans arithmétique.
  */
 
 .root {
@@ -34,7 +44,9 @@
 
 .input {
   width: 100%;
-  box-sizing: border-box;
+  /* Voir la note en tête de fichier : `content-box` est imposé pour que les tokens de
+   * hauteur signifient la même chose que dans le mockup. */
+  box-sizing: content-box;
   padding: 0 var(--space-5);
   border: 1px solid var(--border-field);
   border-radius: var(--radius-field);
