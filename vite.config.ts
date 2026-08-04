@@ -38,5 +38,13 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    // Le glob par défaut de Vitest (`**/*.spec.ts`) ramasse aussi `e2e/*.spec.ts`, qui
+    // importe son propre `test` depuis `@playwright/test` — Vitest l'exécute alors avec
+    // sa fonction `test()` globale au lieu de celle de Playwright, et le fichier échoue
+    // au chargement avec « did not expect test() to be called here ». Trouvé en CI,
+    // reproduit en local : `pnpm test` sortait en 1 en silence, la ligne de résumé des
+    // tests ne comptant pas une suite qui a échoué au chargement. `scripts/` est inclus
+    // explicitement, ses `.test.mjs` n'étant pas sous `src/`.
+    include: ['src/**/*.{test,spec}.{ts,tsx}', 'scripts/**/*.test.mjs'],
   },
 })
