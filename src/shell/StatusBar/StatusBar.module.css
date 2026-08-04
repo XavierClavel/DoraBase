@@ -1,0 +1,31 @@
+/*
+ * Barre d'état, `design/handoff/DoraBase.dc.html` ligne 153 : hauteur 26, `padding 0 12`
+ * (hors échelle `--space-*`, métrique interne), gap 14 (`--space-7`), fond `--bar`.
+ *
+ * Le filet haut est `rgba(35,32,28,.1)` — c'est `--divider`, pas `--border` (.14) comme
+ * on pourrait le supposer par analogie avec d'autres filets du handoff.
+ *
+ * Le texte est `rgba(35,32,28,.45)` — ni `--ink-2` (.55) ni `--ink-3` (.35) : une
+ * troisième teinte d'encre, absente de la table du handoff mais présente 51 fois dans le
+ * mockup (breadcrumb, compteurs, annotations de type), toujours en mono 10-11px. D'où
+ * `--ink-meta`, ajouté au token le plus proche de son nom (`--text-meta`, `--text-label`).
+ */
+
+.root {
+  box-sizing: content-box;
+  display: flex;
+  align-items: center;
+  gap: var(--space-7);
+  height: var(--h-statusbar);
+  padding: 0 12px;
+  background: var(--bar);
+  border-top: 1px solid var(--divider);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  color: var(--ink-meta);
+}
+
+.spacer {
+  flex: 1;
+}
