@@ -1,6 +1,7 @@
 import react from '@vitejs/plugin-react'
 import type { Plugin } from 'vite'
 import { defineConfig } from 'vitest/config'
+import pkg from './package.json'
 
 // `tauri dev` ne fait pas respecter la CSP de `tauri.conf.json` : ce garde-fou n'existe
 // qu'en release sans ce plugin, et une source externe ajoutée par erreur passerait
@@ -27,6 +28,10 @@ function devCsp(): Plugin {
 export default defineConfig({
   plugins: [react(), devCsp()],
   clearScreen: false,
+  // La version affichée (barre d'état, `tauri.conf.json`) vient du build, pas de l'IPC :
+  // `getVersion()` échouerait sous Playwright, qui exécute l'app dans Chromium sans
+  // runtime Tauri, et rendrait les captures de référence non déterministes.
+  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   server: { port: 5173, strictPort: true, watch: { ignored: ['**/src-tauri/**'] } },
   build: { target: 'safari16.4', cssTarget: 'safari16.4' },
   test: {
