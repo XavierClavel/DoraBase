@@ -39,12 +39,14 @@ Un `.app` macOS de 9,5 Mo qui se lance. CSP prouvée efficace en release *et* en
 développement. IPC sur son chemin rapide. Six permissions au lieu des 92 par défaut.
 Toolchain Rust épinglée. CI en 1 min 31 avec cache.
 
-**Plan `02` — design system : 10/11.** Reste la **tâche 11, vérification de fin** — un
-sous-agent l'avait entamée, son résultat n'est pas parvenu. À refaire : contrôler chaque
-critère de `specs/02-design-system.md` § « Terminé quand », le plus important étant
-l'absence de littéraux de couleur hors `tokens.json` sur l'ensemble de `src/`
-(`rg -nE "#[0-9A-Fa-f]{3,6}|rgba\(" src/ --glob '!src/design/tokens.*'`, chaque ligne à
-justifier).
+**Plan `02` — design system : terminé, 11/11.** Les six critères de
+`specs/02-design-system.md` § « Terminé quand » sont vérifiés sur pièces.
+
+Le critère central — aucun littéral de couleur hors `tokens.json` — est rempli : les seules
+occurrences dans `src/` sont le symbole `logo` de `sprite.svg`, extrait *verbatim* du mockup
+et volontairement hors du type `IconName` parce que c'est une illustration de marque à
+couleurs fixes et non une icône thématisée par `currentColor`, et des commentaires de
+traçabilité dans les CSS des primitives.
 
 Livré : **128 tokens** générés, **3 polices** auto-hébergées (300 Ko), **48 icônes**
 extraites du mockup, **6 primitives** (`Button`, `Field`, `Toggle`, `Badge`, `Chip`, `Dot`)
@@ -152,7 +154,19 @@ Le travail a été mené par sous-agents : un implémenteur par tâche, puis rel
 - **`export PATH="$HOME/.cargo/bin:$PATH"`** devant toute commande cargo ou tauri : le shell
   des outils ne relit pas `~/.zshenv`.
 
-## 9. Commandes
+## 9. Un « manque » qui n'en est pas un
+
+**Seul `Button` en variante secondaire a un style de survol.** `Button` accent et encre,
+`Field`, `Toggle` et `Chip` n'en ont aucun, et la galerie l'affiche franchement — « aucun
+style de survol défini ».
+
+**Ne le « corrigez » pas.** Le handoff ne définit un survol que pour deux choses : les lignes
+d'arbre et de tableau (`rgba(35,32,28,.05)`, déjà tokenisé en `--hover-row` pour les specs
+`04` et `10`) et le bouton secondaire. Inventer un survol pour les autres serait exactement
+l'erreur que ce projet évite depuis le début : une valeur qui n'est ni dans les tables ni
+dans le mockup.
+
+## 10. Commandes
 
 ```bash
 pnpm dev            # serveur Vite
@@ -168,12 +182,11 @@ pnpm icons:check    # idem pour le sprite
 
 `?gallery` dans l'URL en développement affiche la galerie des primitives.
 
-## 10. La suite
+## 11. La suite
 
-1. **Finir la tâche 11 du plan `02`** — vérification de fin, critère 3 en priorité.
-2. **Exécuter le plan `07`** — écran A1. Ce sera la première fois que la fidélité au pixel
+1. **Exécuter le plan `07`** — écran A1. Ce sera la première fois que la fidélité au pixel
    sera jugeable côte à côte avec la maquette, et la première capture Playwright de
    référence. Attention : `maxDiffPixelRatio` est à 0 délibérément, et les références doivent
    être **générées en CI**, pas en local — le rendu des polices varie d'une machine à l'autre.
-3. **Décider l'ordre ensuite** : remonter les fondations (`03` coquille, `04` menu latéral)
+2. **Décider l'ordre ensuite** : remonter les fondations (`03` coquille, `04` menu latéral)
    ou dérisquer tôt l'accès aux données (`05` modèle, `06` PostgreSQL).
