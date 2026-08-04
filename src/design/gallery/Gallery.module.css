@@ -58,8 +58,9 @@
   font-size: var(--text-dense);
 }
 
-/* Grille des variantes × tailles : largeur de carte non partagée par les primitives
- * elles-mêmes, propre à cette mise en page de galerie. */
+/* Grille des variantes × tailles : 120px est une largeur minimale de carte propre à
+ * cette mise en page de galerie, pas une métrique du handoff — cet outil n'apparaît sur
+ * aucun écran, donc rien à mesurer. */
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
@@ -79,7 +80,9 @@
   font-family: var(--font-mono);
 }
 
-/* Tableau des quatre états : une ligne par variante, quatre colonnes fixes. */
+/* Tableau des quatre états : une ligne par variante, quatre colonnes fixes. 110px est la
+ * largeur de la colonne d'étiquette, propre à cette mise en page — même remarque que .grid
+ * ci-dessus. */
 .statesRow {
   display: grid;
   grid-template-columns: 110px repeat(4, 1fr);
@@ -114,7 +117,7 @@
   gap: var(--space-2);
 }
 
-/* Planche d'icônes */
+/* Planche d'icônes — 84px, même remarque que .grid. */
 .iconGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
@@ -150,6 +153,7 @@
   color: var(--ink-3);
 }
 
+/* 160px, même remarque que .grid. */
 .swatchGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -175,7 +179,7 @@
 .swatchMeta {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 2px; /* interligne nom/valeur, plus fin que --space-1 (3px) — démonstration seulement */
   min-width: 0;
 }
 
@@ -223,6 +227,8 @@
   gap: var(--space-3);
 }
 
+/* 48px : taille de démonstration du carré de rayon, sans rapport avec l'échelle du
+ * handoff — choisie assez grande pour que chaque rayon reste visible à l'œil. */
 .radiusBox {
   width: 48px;
   height: 48px;
@@ -238,6 +244,7 @@
   padding: var(--space-6);
 }
 
+/* 64 × 40px : taille de démonstration de la carte d'ombre, même remarque que .radiusBox. */
 .shadowBox {
   width: 64px;
   height: 40px;
