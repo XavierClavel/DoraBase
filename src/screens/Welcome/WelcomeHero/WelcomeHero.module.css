@@ -1,0 +1,64 @@
+/*
+ * Zone centrale de l'écran d'accueil, `design/handoff/DoraBase.dc.html` l. 141-151.
+ *
+ * `#F8F3E9` est un littéral local à ce dégradé : une seule occurrence dans tout le
+ * mockup, pas une valeur de rôle partagée — pas de token. `--paper-bright` couvre
+ * l'autre point d'arrêt, déjà tokenisé en écrivant `TitleBar`.
+ *
+ * Logo 72px `--radius-logo` (17, valeur du mockup — la table du handoff annonçait 20px,
+ * écart déjà consigné dans specs/07-a1-accueil.md). Ombre : forme locale à une seule
+ * occurrence, couleur `--ink-4` référencée par `var()` — pas un littéral `rgba()`.
+ *
+ * Titre 27px `--text-hero`, interligne 1.15 : hors échelle `--leading-*`, une seule
+ * occurrence, métrique locale documentée. Sous-titre 13.5px : même situation, hors
+ * `--text-*`, une seule occurrence.
+ */
+
+.root {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(120% 90% at 50% 0%, var(--paper-bright), #f8f3e9);
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-7);
+  width: 640px;
+}
+
+.logo {
+  display: block;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-logo);
+  box-shadow: 0 12px 26px -10px var(--ink-4);
+}
+
+.title {
+  font-family: var(--font-title);
+  font-size: var(--text-hero);
+  font-weight: var(--weight-bold);
+  line-height: 1.15; /* hors échelle --leading-*, mesuré ligne 144 */
+  text-align: center;
+}
+
+.subtitle {
+  max-width: 420px;
+  font-family: var(--font-ui);
+  font-size: 13.5px; /* hors échelle --text-*, mesuré ligne 145 */
+  font-weight: var(--weight-normal);
+  line-height: 1.5; /* hors échelle --leading-*, mesuré ligne 145 */
+  color: var(--ink-2);
+  text-align: center;
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-5);
+  margin-top: var(--space-3);
+}
