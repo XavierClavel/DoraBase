@@ -47,6 +47,24 @@ conséquence sémantique. En revanche `color-mix()` **entièrement littéral** e
 `var(--accent)`, le cas ne devrait pas se présenter ; si tu écris un mélange littéral,
 sache qu'il ne sera pas relisible tel quel en devtools.
 
+### Réserve sur le `Chip` interactif — à trancher au premier écran qui l'utilise
+
+Avec `onClick`, la racine du chip est un `<div role="button" tabIndex={0}>` avec gestion
+clavier écrite à la main, parce que la croix de suppression est un vrai `<button>` et que
+le HTML interdit un bouton dans un bouton. C'est un motif ARIA reconnu, testé, et documenté
+dans le composant.
+
+Mais c'est une dette : la gestion clavier manuelle est exactement ce que `Toggle` évite en
+restant un `<button>` natif. Une structure à **deux boutons frères** dans une racine
+`<span>` — un pour le corps, un pour la croix — donnerait le clavier natif, supprimerait le
+`role`, le `tabIndex`, le `biome-ignore` et le `stopPropagation`.
+
+Pourquoi ne pas l'avoir fait tout de suite : le placement de l'anneau de focus change
+(sur le corps plutôt que sur la pastille entière), et **aucun écran ne consomme encore un
+chip interactif**. Le handoff suggère d'ailleurs que dans la grille c'est **l'opérateur**
+qui est cliquable, pas le chip entier — ce qui rendrait les deux boutons frères plus
+fidèles *et* plus simples. À trancher contre un écran réel, pas par spéculation.
+
 ### Le piège du `box-sizing`, mesuré et systématique
 
 **Le mockup ne déclare aucun `box-sizing`**, donc tous ses éléments sont en `content-box`.
