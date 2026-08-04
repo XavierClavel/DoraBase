@@ -18,11 +18,24 @@
  * documentée en littéral plutôt qu'approximée, pour ne pas trahir le pixel.
  */
 
+/*
+ * `box-sizing: content-box` est imposé, et ce n'est pas cosmétique. Le mockup ne déclare
+ * aucun `box-sizing`, donc ses éléments sont en `content-box` : un bouton secondaire à
+ * `height:25px` avec 1px de bordure y rend **27px** — mesuré. Or `<button>` est en
+ * `border-box` par la feuille de style du navigateur, ce qui ferait rendre 25px et
+ * raccourcirait tous les boutons bordés de 2px par rapport à la maquette.
+ *
+ * Corollaire : **aucune bordure sur `.root`**, pas même transparente. En `content-box`
+ * une bordure transparente compte dans la hauteur rendue, ce qui rendrait les variantes
+ * accent et encre 2px trop hautes — elles n'en ont aucune dans le mockup. Seule la
+ * variante secondaire est bordée, et c'est elle seule qui la déclare.
+ */
 .root {
   display: inline-flex;
+  box-sizing: content-box;
   align-items: center;
   justify-content: center;
-  border: 1px solid transparent;
+  border: none;
   font-family: var(--font-ui);
   white-space: nowrap;
   cursor: pointer;
@@ -57,6 +70,7 @@
 }
 
 .secondary {
+  border: 1px solid;
   background: var(--field);
   color: var(--ink-2); /* opacité observée .55 à .7 selon l'instance, --ink-2 (.55) retenu */
   font-weight: var(--weight-semibold);

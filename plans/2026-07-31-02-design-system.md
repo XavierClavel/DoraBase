@@ -47,6 +47,32 @@ conséquence sémantique. En revanche `color-mix()` **entièrement littéral** e
 `var(--accent)`, le cas ne devrait pas se présenter ; si tu écris un mélange littéral,
 sache qu'il ne sera pas relisible tel quel en devtools.
 
+### Le piège du `box-sizing`, mesuré et systématique
+
+**Le mockup ne déclare aucun `box-sizing`**, donc tous ses éléments sont en `content-box`.
+Mesuré dans un navigateur sur `design/handoff/DoraBase.dc.html` : un champ à `height:30px`
+avec 1 px de bordure y rend **32 px**, un chip à `height:23px` rend **25 px**, un bouton
+sans bordure à `height:28px` rend **28 px**.
+
+Or `<input>` et `<button>` sont en **`border-box`** par la feuille de style du navigateur.
+Toute primitive bordée bâtie sur ces éléments rend donc **2 px trop court** si on la laisse
+au défaut — et le défaut est invisible : les variantes sans bordure tombent juste par
+coïncidence, seules les variantes bordées sont fausses.
+
+**La règle, valable pour toute primitive et tout écran** : déclarer
+`box-sizing: content-box` sur tout élément dont la hauteur vient d'un token. Les tokens de
+hauteur du handoff désignent la hauteur du **contenu**, la bordure s'ajoutant par-dessus.
+C'est le seul réglage qui rend un token comparable au mockup sans arithmétique.
+
+**Corollaire, moins évident** : pas de bordure transparente « pour préserver la hauteur ».
+En `content-box` elle compte, donc une bordure transparente sur la racine rendrait les
+variantes non bordées 2 px trop hautes. Seule la variante qui a une bordure dans la
+maquette la déclare.
+
+Et la leçon de méthode : la première mesure de `Button` comparait le rendu de l'app à la
+valeur **déclarée** du mockup au lieu de son rendu **réel**. Comparer au mockup exige
+d'ouvrir le mockup, pas de lire ses styles.
+
 ### Quatre pièges de nommage des tokens
 
 Relevés à la relecture croisée, qui n'a trouvé aucune permutation valeur-rôle sur les 120
