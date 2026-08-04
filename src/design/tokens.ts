@@ -54,6 +54,7 @@ export type TokenName =
   | 'ink'
   | 'ink-2'
   | 'ink-3'
+  | 'ink-meta'
   | 'ink-on-accent'
   | 'ink-on-dark'
   | 'json-key'
@@ -184,6 +185,7 @@ export const tokens: Record<TokenName, string> = {
   'ink': 'var(--ink)',
   'ink-2': 'var(--ink-2)',
   'ink-3': 'var(--ink-3)',
+  'ink-meta': 'var(--ink-meta)',
   'ink-on-accent': 'var(--ink-on-accent)',
   'ink-on-dark': 'var(--ink-on-dark)',
   'json-key': 'var(--json-key)',
