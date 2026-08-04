@@ -1,7 +1,7 @@
 import react from '@vitejs/plugin-react'
 import type { Plugin } from 'vite'
 import { defineConfig } from 'vitest/config'
-import pkg from './package.json'
+import pkg from './package.json' with { type: 'json' }
 
 // `tauri dev` ne fait pas respecter la CSP de `tauri.conf.json` : ce garde-fou n'existe
 // qu'en release sans ce plugin, et une source externe ajoutée par erreur passerait

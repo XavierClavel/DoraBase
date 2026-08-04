@@ -1,0 +1,73 @@
+/*
+ * Barre de titre, `design/handoff/DoraBase.dc.html` l. 117-128 : hauteur 40, gap 12,
+ * padding `0 12`, fond `linear-gradient(#FFFDF8, #F5F0E6)`, filet bas `--divider` (.1,
+ * pas `--border` : même correction que la barre d'état).
+ *
+ * `padding-left: 78px` dégage les feux tricolores du système, la barre de titre native
+ * n'existant plus sous `titleBarStyle: Overlay` — voir spec 01.
+ *
+ * Wordmark en `--text-wordmark` (14px, corrigé à la valeur du mockup — la table du
+ * handoff annonçait 13px, écart déjà consigné dans specs/07-a1-accueil.md).
+ *
+ * L'icône de préférences est seule à droite : pas d'icône console sur cet écran.
+ */
+
+.root {
+  box-sizing: content-box;
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  height: var(--h-titlebar);
+  padding: 0 var(--space-6) 0 78px;
+  background: linear-gradient(to bottom, var(--paper-bright), var(--bar));
+  border-bottom: 1px solid var(--divider);
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-left: var(--space-3);
+}
+
+.logo {
+  display: block;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-control);
+}
+
+.name {
+  font-family: var(--font-title);
+  font-size: var(--text-wordmark);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.1px; /* hors échelle --tracking-*, mesuré ligne 121 */
+}
+
+.spacer {
+  flex: 1;
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-4);
+  color: var(--ink-meta);
+}
+
+.action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.action:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}

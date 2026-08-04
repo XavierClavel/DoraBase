@@ -68,6 +68,7 @@ export type TokenName =
   | 'muted'
   | 'paper'
   | 'paper-alt'
+  | 'paper-bright'
   | 'radius-badge'
   | 'radius-badge-2'
   | 'radius-control'
@@ -199,6 +200,7 @@ export const tokens: Record<TokenName, string> = {
   'muted': 'var(--muted)',
   'paper': 'var(--paper)',
   'paper-alt': 'var(--paper-alt)',
+  'paper-bright': 'var(--paper-bright)',
   'radius-badge': 'var(--radius-badge)',
   'radius-badge-2': 'var(--radius-badge-2)',
   'radius-control': 'var(--radius-control)',
