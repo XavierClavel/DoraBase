@@ -4,7 +4,7 @@ Ce document existe pour qu'une session neuve reprenne le travail sans avoir la
 conversation précédente. Il complète les specs et les plans, qui disent *quoi* construire ;
 lui dit **où on en est, ce qui a été décidé, et pourquoi**.
 
-Dernière mise à jour : 4 août 2026, branche `feat/tranche-1-socle-design-a1`.
+Dernière mise à jour : 4 août 2026 (soir), branche `feat/tranche-1-socle-design-a1`.
 
 ---
 
@@ -48,11 +48,32 @@ et volontairement hors du type `IconName` parce que c'est une illustration de ma
 couleurs fixes et non une icône thématisée par `currentColor`, et des commentaires de
 traçabilité dans les CSS des primitives.
 
-Livré : **128 tokens** générés, **3 polices** auto-hébergées (300 Ko), **48 icônes**
-extraites du mockup, **6 primitives** (`Button`, `Field`, `Toggle`, `Badge`, `Chip`, `Dot`)
-plus `cx`, une **galerie** de développement. **44 tests.**
+Livré : **128 tokens** (133 après le plan `07`), **3 polices** auto-hébergées (300 Ko),
+**48 icônes** extraites du mockup, **6 primitives** (`Button`, `Field`, `Toggle`, `Badge`,
+`Chip`, `Dot`) plus `cx`, une **galerie** de développement.
 
-**Plan `07` — écran A1 : pas commencé.** Prêt, 9 tâches, à jour de tout ce qui a été appris.
+**Plan `07` — écran A1 : terminé, 9/9, CI verte.** L'écran d'accueil est fidèle au mockup —
+comparaison pixel par pixel (fonds, bouton accent) identique octet pour octet, comparaison
+visuelle complète sans écart. `⌘N` et les deux boutons partagent un callback, couvert par
+Vitest. Redimensionnement propre à 960×600 (minimum) et 1600×900. Parcours clavier complet,
+anneau de focus visible. Capture de référence Playwright commitée, générée en CI comme
+prévu — voir § 6 pour comment.
+
+**62 tests au total.** `src/design/reset.css` ajouté (remise à zéro minimale, `html`/`body`/
+`#root` en hauteur 100 %) — absent avant le plan `07`, découvert manquant en générant la
+première capture. `src/shell/{TitleBar,StatusBar}/` et `src/screens/Welcome/` livrés.
+
+**Non vérifié, à faire au premier `pnpm tauri dev` manuel** : que les feux tricolores du
+système ne sont pas recouverts. Confirmé indirectement (`padding-left: 78px` leur réserve
+l'espace, l'app compile et démarre sous Tauri) mais jamais vu à l'œil — cet environnement
+n'a pas d'outil de capture d'écran pour une fenêtre native, seul Chromium via Playwright est
+accessible. Une minute à vérifier, pas un risque connu.
+
+**Points en suspens, à trancher avant les prochains plans** :
+- **Ordre des primitives différées.** `08` (modale, popover/tooltip), `09` (menu latéral,
+  contrôle segmenté), `10` (visualiseur, stepper) attendent encore leurs primitives.
+- **`Chip` interactif reste une dette** — `div[role=button]` avec gestion clavier manuelle
+  plutôt que deux boutons frères natifs. Voir § 9.
 
 ## 4. Décisions prises, et pourquoi
 
@@ -92,10 +113,10 @@ Consigné dans `specs/README.md` § « À trancher avant certaines specs » :
   pixels. Travail de design, dette assumée.
 - **`blob:` non autorisé par la CSP** — touchera l'export CSV de la spec `10`.
 
-## 6. Les six défauts trouvés, et par quelle méthode
+## 6. Les défauts trouvés, et par quelle méthode
 
-À lire avant d'écrire du code : chacun était **invisible** et aucun n'a été trouvé par la CI
-ni par des tests verts.
+À lire avant d'écrire du code : chacun était **invisible**, aucun trouvé par la CI ni par
+des tests verts au moment où il a été introduit.
 
 | Défaut | Trouvé par |
 | --- | --- |
@@ -105,12 +126,15 @@ ni par des tests verts.
 | CSP bloquait l'IPC de Tauri, qui retombait sur `postMessage` | instrumentation de la page |
 | `Sprite` absent du DOM sous `StrictMode` — cassé en dev, correct en prod | un test que le sous-agent n'avait pas écrit |
 | Toutes les primitives bordées 2 px trop courtes | mesure du **mockup lui-même** dans un navigateur |
+| `html`/`body` sans hauteur : la fenêtre entière ne faisait que 372 px sur 814 | histogramme de couleurs de la première capture — 57 % de blanc pur, alors qu'aucun token de surface n'est blanc |
+| Vitest ramassait `e2e/*.spec.ts` par son glob par défaut, `pnpm test` sortait en 1 **en silence** | lecture attentive du résumé : « Tests 62 passed » ne compte pas une suite qui échoue au chargement |
+| `playwright-report/` vide après un échec en CI : le rapporteur `list` seul n'écrit rien sur disque | l'artefact de CI remonté vide aurait fait perdre la capture de référence |
 
 **Les méthodes qui ont payé**, à réutiliser :
 
 1. **Mesurer le mockup dans un navigateur**, pas lire ses styles. Le mockup est en
    `content-box` : un champ à `height:30px` avec 1 px de bordure y rend **32 px**. Comparer
-   notre rendu à une valeur *déclarée* est le piège qui a produit le sixième défaut.
+   notre rendu à une valeur *déclarée* plutôt que *rendue* a produit deux défauts distincts.
 2. **Contrôle positif systématique.** « Zéro requête réseau » ne vaut rien sans preuve que la
    page tournait. Toute vérification négative doit être accompagnée d'un cas qui, lui, passe.
 3. **Vérifier dans l'application réelle**, pas seulement en test unitaire — les tests ne
@@ -119,6 +143,17 @@ ni par des tests verts.
    délibérément la faute et constater l'échec.
 5. **Un test qui documente un défaut le rend permanent.** Un sous-agent avait écrit
    « `Sprite` ne rend qu'une fois même monté deux fois » — ce test protégeait le bug.
+6. **Un histogramme de couleurs vaut un coup d'œil, quand on n'a pas d'écran.** Sans capture
+   visuelle possible dans cet environnement, comparer la distribution des couleurs d'un
+   rendu à celle attendue (aucune couleur de la palette n'est blanc pur) a suffi à détecter
+   un écran qui ne remplissait pas sa fenêtre.
+7. **`toHaveTextContent` normalise l'espace insécable du DOM réel, pas la chaîne attendue.**
+   Un test conçu pour détecter la perte d'un ` ` doit comparer `.textContent` par
+   `.toBe()` — le matcher normalisé masquerait justement la régression qu'il devait révéler.
+8. **La CI n'a pas fini de mentir tant que le job entier n'est pas vert.** Un `X` sur une
+   étape peut avoir sa vraie cause sur une étape *antérieure* dont le résumé masque
+   l'échec (voir Vitest/e2e ci-dessus) — toujours vérifier l'étape qui échoue en premier,
+   pas la dernière affichée.
 
 ## 7. Ce qui a marché dans l'orchestration
 
@@ -154,7 +189,7 @@ Le travail a été mené par sous-agents : un implémenteur par tâche, puis rel
 - **`export PATH="$HOME/.cargo/bin:$PATH"`** devant toute commande cargo ou tauri : le shell
   des outils ne relit pas `~/.zshenv`.
 
-## 9. Un « manque » qui n'en est pas un
+## 9. Deux « manques » qui n'en sont pas, et une vraie dette
 
 **Seul `Button` en variante secondaire a un style de survol.** `Button` accent et encre,
 `Field`, `Toggle` et `Chip` n'en ont aucun, et la galerie l'affiche franchement — « aucun
@@ -166,13 +201,38 @@ d'arbre et de tableau (`rgba(35,32,28,.05)`, déjà tokenisé en `--hover-row` p
 l'erreur que ce projet évite depuis le début : une valeur qui n'est ni dans les tables ni
 dans le mockup.
 
-## 10. Commandes
+**`⌘N` a un raccourci affiché à opacité `.6`, le mockup en montre `.5`/`.6`/`.7` selon
+l'instance.** Décision déjà prise et documentée dans `Button.module.css` : une valeur
+représentative plutôt que trois props. Pareil pour l'encre du texte secondaire de `Button`
+(`--ink-2`, alors que le mockup varie `.55`–`.7`).
+
+**`Chip` interactif reste une vraie dette**, consignée dans le plan `02` § « Réserve sur le
+Chip interactif ». Racine `div[role=button] tabIndex={0}` avec gestion clavier manuelle,
+parce que sa croix de suppression est un vrai `<button>` et qu'un bouton dans un bouton est
+interdit en HTML. Deux boutons frères seraient plus fidèles au handoff (qui semble rendre
+l'opérateur cliquable, pas tout le chip) *et* natifs au clavier. À trancher contre un écran
+réel avant de construire `08` ou `09`, pas par spéculation.
+
+## 10. Deux pièges d'environnement, propres à cette machine
+
+**`cargo` n'est pas dans le `PATH`** des commandes shell de cet outillage — `~/.zshenv`
+source `~/.cargo/env`, mais ce shell ne le relit pas. Préfixer *chaque* commande cargo ou
+`pnpm tauri` par `export PATH="$HOME/.cargo/bin:$PATH"`.
+
+**Pas de capture d'écran de fenêtre native.** Playwright pilote Chromium, donc `pnpm dev`
+est entièrement vérifiable (mesures, captures, pixels). `pnpm tauri dev` compile et
+s'exécute, vérifiable par ses logs et par requête HTTP/DOM via Playwright pointé sur
+`localhost:5173`, mais **la fenêtre native elle-même ne peut pas être vue**. Un histogramme
+de couleurs sur une capture Chromium (§ 6, méthode 6) est le substitut qui a fonctionné.
+
+## 11. Commandes
 
 ```bash
 pnpm dev            # serveur Vite
-pnpm tauri dev      # l'app (bloquant, ouvre une fenêtre)
-pnpm tauri build    # .app et .dmg
-pnpm test           # 44 tests
+pnpm tauri dev      # l'app (bloquant, ouvre une fenêtre) — export PATH d'abord
+pnpm tauri build    # .app et .dmg — export PATH d'abord
+pnpm test           # 62 tests
+pnpm test:e2e       # Playwright — nécessite pnpm dev actif ou webServer auto
 pnpm lint           # Biome
 pnpm typecheck      # tsc -b, les deux programmes
 pnpm tokens:build   # régénère tokens.css et tokens.ts
@@ -182,11 +242,15 @@ pnpm icons:check    # idem pour le sprite
 
 `?gallery` dans l'URL en développement affiche la galerie des primitives.
 
-## 11. La suite
+## 12. La suite
 
-1. **Exécuter le plan `07`** — écran A1. Ce sera la première fois que la fidélité au pixel
-   sera jugeable côte à côte avec la maquette, et la première capture Playwright de
-   référence. Attention : `maxDiffPixelRatio` est à 0 délibérément, et les références doivent
-   être **générées en CI**, pas en local — le rendu des polices varie d'une machine à l'autre.
-2. **Décider l'ordre ensuite** : remonter les fondations (`03` coquille, `04` menu latéral)
-   ou dérisquer tôt l'accès aux données (`05` modèle, `06` PostgreSQL).
+1. **Choisir le prochain plan.** Deux voies raisonnables : remonter les fondations
+   partagées (`03` coquille de split-panes/onglets, `04` menu latéral standard réutilisé par
+   `05`→`10`) avant d'attaquer un écran de travail, ou dérisquer tôt l'accès aux données
+   (`05` modèle de domaine, `06` adaptateur PostgreSQL) puisque c'est la partie la plus
+   susceptible de réserver des surprises d'architecture. Aucune spec n'existe encore pour
+   `03`–`06` — à écrire en premier, sur le modèle de `01`/`02`/`07`.
+2. **Trancher la signature de code avant `05`** (§ 5) : les ACL du Trousseau en dépendent.
+3. **Décider l'ordre des primitives différées** (§ 3) au moment d'écrire la spec qui les
+   réclame en premier — popover/tooltip pour `08` ou `10`, contrôle segmenté pour `09`,
+   stepper pour `10`.
