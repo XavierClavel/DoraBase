@@ -2,6 +2,11 @@
 
 Working agreements for AI agents on the DoraBase project.
 
+> **Resuming work on this project? Read [`REPRISE.md`](REPRISE.md) first.** It records
+> where the work stands, which decisions were already taken and why, the defects found and
+> the verification methods that caught them. The specs say *what* to build; that document
+> says *where we are*.
+
 ## Session start: ask for the working language
 
 At the beginning of every session, **ask the user which language to communicate in**
