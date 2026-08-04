@@ -1,0 +1,246 @@
+/*
+ * Feuille de style de la galerie interne — outil de développement, jamais livré (voir
+ * App.tsx). Comme pour les primitives, aucune couleur ni espacement partagé n'est en
+ * littéral ; seules des métriques propres à cette mise en page (largeur de grille,
+ * tailles de pastilles de démonstration) restent documentées en dur.
+ */
+
+.root {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: var(--space-8);
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-ui);
+}
+
+.title {
+  margin: 0 0 var(--space-8);
+  font-family: var(--font-title);
+  font-size: var(--text-hero);
+  color: var(--ink);
+}
+
+.section {
+  margin-bottom: var(--space-8);
+  padding: var(--space-7);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--paper);
+}
+
+.sectionTitle {
+  margin: 0 0 var(--space-6);
+  font-size: var(--text-title);
+  color: var(--ink);
+}
+
+.sub {
+  margin-bottom: var(--space-7);
+}
+
+.sub:last-child {
+  margin-bottom: 0;
+}
+
+.subTitle {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps-sm);
+  color: var(--ink-2);
+}
+
+.note {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--text-dense);
+}
+
+/* Grille des variantes × tailles : largeur de carte non partagée par les primitives
+ * elles-mêmes, propre à cette mise en page de galerie. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--space-6);
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.cellCaption {
+  font-size: var(--text-meta);
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+}
+
+/* Tableau des quatre états : une ligne par variante, quatre colonnes fixes. */
+.statesRow {
+  display: grid;
+  grid-template-columns: 110px repeat(4, 1fr);
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--divider);
+}
+
+.statesRow:last-child {
+  border-bottom: none;
+}
+
+.statesLabel {
+  font-family: var(--font-mono);
+  font-size: var(--text-dense);
+  color: var(--ink-2);
+}
+
+.statesHead {
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps-sm);
+  color: var(--ink-3);
+}
+
+.stateCell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+/* Planche d'icônes */
+.iconGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: var(--space-5);
+}
+
+.iconCell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--field);
+  color: var(--ink-2);
+}
+
+.iconLabel {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  color: var(--ink-2);
+}
+
+/* Planche des tokens */
+.swatchGroup {
+  margin-bottom: var(--space-6);
+}
+
+.swatchGroupTitle {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-3);
+}
+
+.swatchGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-5);
+}
+
+.swatchCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/* 28px : taille de pastille de démonstration propre à la galerie, sans rapport avec les
+ * pastilles d'état (`Dot`, 6px, voir Dot.module.css). */
+.swatch {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+}
+
+.swatchMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.swatchName {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  color: var(--ink);
+}
+
+.swatchValue {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+
+.fontList,
+.textList,
+.spaceList,
+.miscTable {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.fontRow,
+.textRow,
+.spaceRow,
+.miscRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.spaceBar {
+  height: 10px; /* hauteur de démonstration, indépendante de l'échelle --space-* */
+  background: var(--accent);
+  border-radius: var(--radius-badge);
+}
+
+.radiusCell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.radiusBox {
+  width: 48px;
+  height: 48px;
+  background: var(--field);
+  border: 1px solid var(--border);
+}
+
+.shadowCell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-5);
+  padding: var(--space-6);
+}
+
+.shadowBox {
+  width: 64px;
+  height: 40px;
+  border-radius: var(--radius-control);
+  background: var(--paper);
+}
