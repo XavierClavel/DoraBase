@@ -16,6 +16,7 @@
   --dark: #23201C;
   --dark-2: #2E2A25;
   --divider: rgba(35,32,28,.10);
+  --divider-2: rgba(35,32,28,.08);
   --engine-bq: #5B47AE;
   --engine-bq-bg: #EEEAFA;
   --engine-mg: #3C7A2B;
@@ -54,6 +55,8 @@
   --ink: #23201C;
   --ink-2: rgba(35,32,28,.55);
   --ink-3: rgba(35,32,28,.35);
+  --ink-4: rgba(35,32,28,.4);
+  --ink-5: rgba(35,32,28,.3);
   --ink-meta: rgba(35,32,28,.45);
   --ink-on-accent: #FFFFFF;
   --ink-on-dark: #EDE7DA;
