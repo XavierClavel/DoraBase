@@ -16,6 +16,7 @@ export type TokenName =
   | 'dark'
   | 'dark-2'
   | 'divider'
+  | 'divider-2'
   | 'engine-bq'
   | 'engine-bq-bg'
   | 'engine-mg'
@@ -54,6 +55,8 @@ export type TokenName =
   | 'ink'
   | 'ink-2'
   | 'ink-3'
+  | 'ink-4'
+  | 'ink-5'
   | 'ink-meta'
   | 'ink-on-accent'
   | 'ink-on-dark'
@@ -148,6 +151,7 @@ export const tokens: Record<TokenName, string> = {
   'dark': 'var(--dark)',
   'dark-2': 'var(--dark-2)',
   'divider': 'var(--divider)',
+  'divider-2': 'var(--divider-2)',
   'engine-bq': 'var(--engine-bq)',
   'engine-bq-bg': 'var(--engine-bq-bg)',
   'engine-mg': 'var(--engine-mg)',
@@ -186,6 +190,8 @@ export const tokens: Record<TokenName, string> = {
   'ink': 'var(--ink)',
   'ink-2': 'var(--ink-2)',
   'ink-3': 'var(--ink-3)',
+  'ink-4': 'var(--ink-4)',
+  'ink-5': 'var(--ink-5)',
   'ink-meta': 'var(--ink-meta)',
   'ink-on-accent': 'var(--ink-on-accent)',
   'ink-on-dark': 'var(--ink-on-dark)',

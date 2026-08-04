@@ -1,0 +1,91 @@
+/*
+ * Sidebar de l'écran d'accueil, `design/handoff/DoraBase.dc.html` l. 130-140 :
+ * 236 px, `--paper-alt`, filet droit `--divider`.
+ *
+ * En-tête 32 px, gap 6, `padding 0 10`, filet bas `--divider-2` (.08 — plus léger que le
+ * filet principal `.1`, réservé aux séparateurs internes d'un panneau).
+ *
+ * État vide : gap 10 et `padding 0 26` hors échelle `--space-*` (métriques internes).
+ * Carré 46×46 `--radius-window` (14), bordure en tirets `--track-off` (.18, déjà tokenisé
+ * pour l'interrupteur — même valeur, réutilisée telle quelle). Icône en `--ink-5` (.3,
+ * nouveau : une cinquième teinte d'encre, plus claire qu'`--ink-3`).
+ *
+ * Titre en `--ink-2`. Sous-texte en `--ink-4` (.4, nouveau : entre `--ink-meta` et
+ * `--ink-3`) — trois teintes d'encre découvertes dans ce seul composant, la table du
+ * handoff n'en documentant que deux.
+ *
+ * Pied : `padding 8` hors échelle, filet haut `--divider-2`, bouton pleine largeur
+ * `--h-btn-md` / `--radius-field` en accent.
+ */
+
+.root {
+  box-sizing: content-box;
+  display: flex;
+  flex-direction: column;
+  width: 236px;
+  border-right: 1px solid var(--divider);
+  background: var(--paper-alt);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 32px;
+  padding: 0 var(--space-5);
+  border-bottom: 1px solid var(--divider-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-caps);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-meta);
+}
+
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px; /* hors échelle --space-*, mesuré ligne 132 */
+  padding: 0 26px; /* hors échelle --space-*, mesuré ligne 132 */
+  text-align: center;
+}
+
+.emptyIcon {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border: 2px dashed var(--track-off);
+  border-radius: var(--radius-window);
+  color: var(--ink-5);
+}
+
+.emptyTitle {
+  font-family: var(--font-ui);
+  font-size: var(--text-control);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-2);
+}
+
+.emptyText {
+  max-width: 100%;
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  line-height: 1.5; /* hors échelle --leading-*, mesuré ligne 135 */
+  color: var(--ink-4);
+}
+
+.footer {
+  padding: var(--space-5);
+  border-top: 1px solid var(--divider-2);
+}
+
+.newProject {
+  width: 100%;
+  box-sizing: border-box;
+}
