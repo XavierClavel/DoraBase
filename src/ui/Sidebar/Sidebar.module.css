@@ -1,0 +1,25 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  width: 212px;
+  height: 100%;
+  flex: none;
+  border-right: 1px solid var(--divider);
+  background: var(--paper-alt);
+  /* `content-box` : 212 px est la largeur du contenu, le filet droit s'ajoute — le mockup
+     rend donc 213 px, comme partout ailleurs dans ce projet. */
+  box-sizing: content-box;
+  /* La graisse et la famille de toute la sidebar, posées une fois : les lignes d'arbre en
+     héritent, seules les lignes de colonne repassent en mono. */
+  font: var(--weight-semibold) var(--text-dense) var(--font-ui);
+}
+
+.body {
+  flex: 1;
+  /* `min-height: 0` est ce qui autorise le défilement : sans lui, un enfant flex refuse de
+     descendre sous la hauteur de son contenu et la colonne entière déborderait. */
+  min-height: 0;
+  overflow-y: auto;
+  /* 5 px de respiration en haut et en bas de l'arbre, relevés dans le mockup. */
+  padding: var(--space-2) 0;
+}
