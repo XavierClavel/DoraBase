@@ -39,6 +39,11 @@ jobs:
       - run: pnpm tokens:check
       - run: pnpm icons:check
 
+      #   domaine : `src/domain/config.ts`, projeté depuis les types Rust par ts-rs.
+      #   `ts-rs` exporte pendant `cargo test`, et la sortie est reformatée par Biome —
+      #   chaîne déterministe, vérifiée par deux générations successives identiques.
+      - run: pnpm domain:check
+
       - run: pnpm test
 
       - run: pnpm exec playwright install --with-deps chromium

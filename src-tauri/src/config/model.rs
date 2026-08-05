@@ -1,22 +1,34 @@
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 /// Les sept moteurs du handoff, et rien d'autre : un moteur inconnu ne compile pas.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+// Noms sérialisés **explicites**, et non dérivés : `rename_all = "kebab-case"` produisait
+// « postgre-sql », « my-sql », « mongo-db », « big-query » — valeurs qui auraient fini
+// telles quelles dans le fichier de configuration de `05b`, où l'utilisateur peut les
+// lire. Les changer après coup serait une migration. Constaté en relisant la projection
+// TypeScript générée, pas en lisant le code Rust.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/domain/config.ts")]
+#[serde(rename_all = "lowercase")]
 pub enum Engine {
+    #[serde(rename = "postgresql")]
     PostgreSql,
+    #[serde(rename = "mysql")]
     MySql,
     Sqlite,
+    #[serde(rename = "mongodb")]
     MongoDb,
     Redis,
     Snowflake,
+    #[serde(rename = "bigquery")]
     BigQuery,
 }
 
 /// Les trois environnements du handoff. L'environnement actif est une propriété du
 /// **projet**, pas de la base — c'est ce qui permet à un basculement de recharger
 /// l'arbre entier sur d'autres serveurs sans changer l'arborescence.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/domain/config.ts")]
 #[serde(rename_all = "kebab-case")]
 pub enum Environment {
     Dev,
@@ -24,7 +36,8 @@ pub enum Environment {
     Prod,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/domain/config.ts")]
 #[serde(rename_all = "kebab-case")]
 pub enum SslMode {
     Disable,
@@ -40,7 +53,12 @@ pub enum SslMode {
 /// Type distinct plutôt qu'un alias de `String` : une valeur de secret ne peut pas y
 /// être affectée par erreur, puisqu'aucune conversion implicite n'existe. Rien à
 /// divulguer ici de toute façon, une référence n'est pas un secret.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(
+    export,
+    export_to = "../../src/domain/config.ts",
+    type = "string & { readonly __secretRef: unique symbol }"
+)]
 pub struct SecretRef(String);
 
 impl SecretRef {
@@ -53,7 +71,8 @@ impl SecretRef {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/domain/config.ts")]
 #[serde(rename_all = "kebab-case")]
 pub enum TunnelKind {
     Ssh,
@@ -61,7 +80,9 @@ pub enum TunnelKind {
 
 /// Proxy / tunnel du panneau de `A2`. Le **chemin** de la clé privée est de la
 /// configuration, pas un secret — voir `specs/05c` § Hors périmètre.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/domain/config.ts")]
 pub struct Tunnel {
     pub kind: TunnelKind,
     pub bastion_host: String,
@@ -75,7 +96,9 @@ pub struct Tunnel {
 /// Les réglages de connexion d'une base **pour un environnement donné**. Le handoff pose
 /// « host/port/creds différents par env », donc tout le formulaire de `A2` vit ici, à
 /// l'exception du nom et du moteur qui appartiennent à la base.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/domain/config.ts")]
 pub struct EnvironmentVariant {
     pub environment: Environment,
     pub host: String,
@@ -136,13 +159,16 @@ impl std::fmt::Display for ModelError {
 impl std::error::Error for ModelError {}
 
 /// Une base d'un projet, déclinée en 1..n environnements.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/domain/config.ts")]
 pub struct Database {
     pub name: String,
     pub engine: Engine,
-    /// **Privé, délibérément** : c'est ce qui rend l'invariant « 1..n variantes »
-    /// inviolable. Public, un appelant pourrait vider la liste après construction et
-    /// contourner la validation de `new`.
+    // Privé, délibérément : c'est ce qui rend l'invariant « 1..n variantes » inviolable.
+    // Public, un appelant pourrait vider la liste après construction et contourner la
+    // validation de `new`. Commentaire `//` et non `///` : la remarque ne concerne que
+    // Rust, et n'aurait aucun sens dans la projection TypeScript où le champ est présent.
     variants: Vec<EnvironmentVariant>,
 }
 
@@ -201,7 +227,9 @@ impl Database {
 }
 
 /// Un projet : ce que la sidebar liste. Pas des connexions — le handoff insiste.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/domain/config.ts")]
 pub struct Project {
     pub name: String,
     /// Global au projet, et persisté (`05b`) : le handoff le traite comme une propriété
