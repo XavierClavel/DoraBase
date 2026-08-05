@@ -1,0 +1,87 @@
+/* La racine est soit un `<div>`, soit un `<button>` selon qu'elle est cliquable : les deux
+   partagent cette classe, d'où la remise à zéro des styles propres au bouton. */
+.root {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  height: var(--h-tree-row);
+  padding-right: 8px;
+  border: none;
+  background: none;
+  /* La graisse et la famille viennent de la sidebar (600 11.5px Nunito) ; un `<button>`
+     ne les hérite pas de lui-même. */
+  font: inherit;
+  text-align: left;
+  color: var(--ink-6);
+  cursor: pointer;
+}
+
+/* Aplat d'accent volontairement atténué, pas un aplat plein — le handoff insiste. */
+.selected {
+  background: color-mix(in oklab, var(--accent) 22%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+  color: var(--ink);
+  font-weight: var(--weight-bold);
+}
+
+/* Encre pleine et graisse 700 sans aplat : l'état du projet actif déplié, distinct de la
+   ligne sélectionnée qui, elle, porte le fond d'accent. */
+.strong {
+  color: var(--ink);
+  font-weight: var(--weight-bold);
+}
+
+.root:hover {
+  background: var(--hover-row);
+}
+
+/* La sélection reste visible au survol : sans cette règle, `--hover-row` écraserait
+   l'aplat d'accent puisque les deux règles ont la même spécificité. */
+.selected:hover {
+  background: color-mix(in oklab, var(--accent) 22%, transparent);
+}
+
+.root:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.chevron {
+  color: var(--ink-meta);
+  flex: none;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+.icon {
+  flex: none;
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  font: 500 var(--text-meta) var(--font-mono);
+  color: var(--ink-3);
+  flex: none;
+}
+
+/* La métadonnée s'éclaircit d'un cran sur la ligne sélectionnée : .45 contre .35 —
+   relevé dans le mockup, elle suit le gain de contraste du libellé. */
+.selected .meta {
+  color: var(--ink-meta);
+}
+
+/* Seconde typographie de métadonnée du mockup : le « n bases » des projets repliés. */
+.metaCaps {
+  font: var(--weight-bold) var(--text-caps-sm) var(--font-ui);
+  color: var(--ink-3);
+}
