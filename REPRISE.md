@@ -4,7 +4,7 @@ Ce document existe pour qu'une session neuve reprenne le travail sans avoir la
 conversation précédente. Il complète les specs et les plans, qui disent *quoi* construire ;
 lui dit **où on en est, ce qui a été décidé, et pourquoi**.
 
-Dernière mise à jour : 4 août 2026 (soir), branche `feat/tranche-1-socle-design-a1`.
+Dernière mise à jour : 5 août 2026, branche `feat/tranche-1-socle-design-a1`.
 
 ---
 
@@ -24,8 +24,8 @@ plan par plan.
 | --- | --- |
 | `AGENTS.md` | conventions du projet — langue de travail, taille des specs |
 | `specs/README.md` | index des ~20 specs, contrainte IPC transverse, **acquis techniques**, **décisions à trancher** |
-| `specs/01`, `02`, `07` | les trois specs écrites et validées |
-| `plans/2026-07-31-*` | les plans d'implémentation, tâche par tâche, avec les **pièges vérifiés** |
+| `specs/01`–`04`, `07` | les cinq specs écrites, toutes implémentées |
+| `plans/2026-07-31-*`, `plans/2026-08-05-*` | les plans d'implémentation, tâche par tâche, avec les **pièges vérifiés** |
 | `design/handoff/` | le handoff, **source de vérité du design** |
 
 **Le mockup fait foi contre la prose du handoff**, et contre les specs. Les écarts constatés
@@ -69,22 +69,27 @@ l'espace, l'app compile et démarre sous Tauri) mais jamais vu à l'œil — cet
 n'a pas d'outil de capture d'écran pour une fenêtre native, seul Chromium via Playwright est
 accessible. Une minute à vérifier, pas un risque connu.
 
-**Specs `03` et `04` écrites, en attente de relecture humaine** (2026-08-05) : la voie
-choisie pour la suite est fondations d'abord (`03`, `04`) plutôt que données d'abord
-(`05`, `06`), parce que `05` a une décision humaine bloquante en attente (signature de
-code, § 5) alors que `03`/`04` n'en ont aucune. Choix fait sans repasser par l'utilisateur
-(cohérent avec les « fais le choix » précédents), documenté dans `specs/README.md` §
-« Ordre d'exécution ».
+**Plans `03` et `04` — terminés, 15/15** (2026-08-05). La voie choisie était fondations
+d'abord (`03`, `04`) plutôt que données d'abord (`05`, `06`), parce que `05` a une décision
+humaine bloquante en attente (signature de code, § 5). Documenté dans `specs/README.md`
+§ « Ordre d'exécution ».
 
-- `specs/03-coquille-panneaux-onglets.md` : `SplitPane` (panneaux redimensionnables,
-  taille persistée en `localStorage`) et `TabStrip` (bande d'onglets réordonnable,
-  fermable). Hors périmètre, délibérément : la pastille projet/environnement de la barre
-  de titre (dépend de `05`), la persistance de l'état des onglets entre sessions.
-- `specs/04-menu-lateral-standard.md` : les briques présentationnelles de la sidebar
-  212px partagée par `A5`→`A9` (`SidebarFilterBar`, `TreeRow`, `ColumnRow`,
-  `ConsoleFooterButton`). Hors périmètre, délibérément : la sidebar 252px propre à `A4`
-  (composant différent, pas une variante — voir la spec), l'état de l'arbre et les
-  données réelles (attendent `10` et `05`).
+Livré : **`SplitPane`** (panneaux redimensionnables, taille persistée et recadrée à la
+lecture), **`TabStrip`** (onglets réordonnables et fermables), **cinq briques de sidebar**
+(`SidebarFilterBar`, `TreeRow`, `ColumnRow`, `SidebarSectionTitle`, `ConsoleFooterButton`)
+plus leur **`Sidebar`** d'assemblage, l'icône console optionnelle de la barre de titre, et
+trois teintes d'encre (`--ink-6/7/8`). **112 tests unitaires**, **4 tests e2e**, 136 tokens.
+
+Hors périmètre, délibérément : la pastille projet/environnement de la barre de titre
+(dépend de `05`), la persistance de l'état des onglets entre sessions, la sidebar 252 px
+propre à `A4` (composant différent, pas une variante), l'état de l'arbre et les données
+réelles (attendent `10` et `05`), un `SplitPane` à orientation horizontale (attend `12`).
+
+**Le fait marquant de ces deux plans : quatre défauts de mise en page, tous invisibles en
+test unitaire.** `jsdom` ne calcule aucune mise en page — y mesurer un
+`getBoundingClientRect()` renvoie zéro. Toute exigence de hauteur, largeur ou position est
+donc structurellement hors de portée de Vitest, et a besoin de Playwright :
+`e2e/layout-primitives.spec.ts` existe pour ça. Détail dans les deux plans.
 
 **Points en suspens, à trancher avant les prochains plans** :
 - **Ordre des primitives différées.** `08` (modale, popover/tooltip), `09` (menu latéral,
@@ -146,6 +151,12 @@ des tests verts au moment où il a été introduit.
 | `html`/`body` sans hauteur : la fenêtre entière ne faisait que 372 px sur 814 | histogramme de couleurs de la première capture — 57 % de blanc pur, alors qu'aucun token de surface n'est blanc |
 | Vitest ramassait `e2e/*.spec.ts` par son glob par défaut, `pnpm test` sortait en 1 **en silence** | lecture attentive du résumé : « Tests 62 passed » ne compte pas une suite qui échoue au chargement |
 | `playwright-report/` vide après un échec en CI : le rapporteur `list` seul n'écrit rien sur disque | l'artefact de CI remonté vide aurait fait perdre la capture de référence |
+| `localStorage` **undefined** sous Vitest : Node 26 expose un global expérimental, inactif sans `--localstorage-file`, dont l'accesseur masque celui de jsdom | le premier test qui y touche, puis sondes de descripteurs — `sessionStorage` de jsdom marche, `localStorage` non |
+| L'écriture dans `localStorage` n'était couverte par aucun test, alors que trois d'entre eux « testaient la persistance » | contrôle négatif : `setItem` supprimé, suite toujours verte |
+| La racine de `SplitPane` prenait la hauteur de son contenu — 15 px dans une boîte de 180 — cassant la disposition même de `A4` | mise en scène dans la galerie, puis mesure de la chaîne de parents |
+| Onglet actif 5 px trop large, et fond `--paper-bright` au lieu de `--paper` | mesure du mockup **et** de notre rendu, comparés chiffre par chiffre |
+| `width: 100%` en `content-box` s'ajoute au padding : les lignes de sidebar sortaient à 234 px dans un corps de 212, leur métadonnée rognée (« int8 » rendu « in ») | mesure de la ligne contre son conteneur |
+| Les données de démonstration de la galerie mélangeaient `A4` dans une disposition `A5` | captures du mockup et de notre rendu **côte à côte** |
 
 **Les méthodes qui ont payé**, à réutiliser :
 
@@ -171,6 +182,22 @@ des tests verts au moment où il a été introduit.
    étape peut avoir sa vraie cause sur une étape *antérieure* dont le résumé masque
    l'échec (voir Vitest/e2e ci-dessus) — toujours vérifier l'étape qui échoue en premier,
    pas la dernière affichée.
+9. **jsdom ne calcule aucune mise en page.** Hauteur, largeur, position : `getBoundingClientRect()`
+   y renvoie zéro. Ces exigences sont **structurellement hors de portée de Vitest** et ont
+   besoin de Playwright — `e2e/layout-primitives.spec.ts` existe pour ça, et chacune de ses
+   assertions a été validée par sabotage. Quatre défauts de mise en page sont passés sous
+   une suite unitaire verte avant qu'on s'en dote.
+10. **Le contrôle négatif se fait par sabotage, pas par relecture.** Trois tests qui
+   « testent la persistance » peuvent ne tester que la lecture : c'est en retirant la ligne
+   soupçonnée du composant, et en constatant que la suite reste verte, qu'on l'apprend.
+   Généralisation de la méthode 4, appliquée systématiquement dans les plans `03` et `04`.
+11. **Comparer deux captures côte à côte attrape ce qu'aucune mesure ne cherche.** Couleurs,
+   graisses et paliers pouvaient tous être justes tandis que les *données* de démonstration
+   venaient du mauvais écran. Une mesure vérifie une hypothèse ; un inventaire visuel en
+   révèle l'absence.
+12. **`box-sizing: border-box` n'est pas une entorse à la convention `content-box`.** Celle-ci
+   vaut pour les **hauteurs** issues d'un token. Un élément dont la **largeur** est à 100 %
+   avec du padding a besoin de `border-box`, sinon les deux s'additionnent.
 
 ## 7. Ce qui a marché dans l'orchestration
 
@@ -261,13 +288,29 @@ pnpm icons:check    # idem pour le sprite
 
 ## 12. La suite
 
-1. **Choisir le prochain plan.** Deux voies raisonnables : remonter les fondations
-   partagées (`03` coquille de split-panes/onglets, `04` menu latéral standard réutilisé par
-   `05`→`10`) avant d'attaquer un écran de travail, ou dérisquer tôt l'accès aux données
-   (`05` modèle de domaine, `06` adaptateur PostgreSQL) puisque c'est la partie la plus
-   susceptible de réserver des surprises d'architecture. Aucune spec n'existe encore pour
-   `03`–`06` — à écrire en premier, sur le modèle de `01`/`02`/`07`.
-2. **Trancher la signature de code avant `05`** (§ 5) : les ACL du Trousseau en dépendent.
-3. **Décider l'ordre des primitives différées** (§ 3) au moment d'écrire la spec qui les
-   réclame en premier — popover/tooltip pour `08` ou `10`, contrôle segmenté pour `09`,
-   stepper pour `10`.
+Les fondations partagées sont posées (`01`, `02`, `03`, `04`) et un écran réel existe
+(`07`). Deux voies pour la suite, aucune spec n'existant encore :
+
+1. **Dérisquer l'accès aux données** — `05` (modèle de domaine) puis `06` (adaptateur
+   PostgreSQL). C'est la partie la plus susceptible de réserver des surprises
+   d'architecture, et la contrainte IPC transverse de `specs/README.md` n'a encore jamais
+   été mise à l'épreuve. **Demande de trancher la signature de code d'abord** (§ 5).
+2. **Continuer par les écrans** — `08` (modale de connexion) ou `09` (explorateur `A4`),
+   qui consommeraient enfin `SplitPane`, `TabStrip` et la `Sidebar` dans un vrai contexte.
+   `09` révélerait la forme réelle de l'état d'arbre, que `04` a délibérément laissée
+   ouverte. Ne dépend d'aucune décision en attente.
+
+Recommandation : `09`, parce qu'il valide les cinq briques de `04` contre un usage réel
+avant que `10`→`14` ne s'appuient dessus, et qu'il n'attend aucune décision humaine. Il
+tranchera aussi trois questions laissées ouvertes : la forme de l'état d'arbre, la dette du
+`Chip` interactif (§ 9), et la sidebar 252 px propre à `A4`.
+
+À trancher au passage, quel que soit le choix :
+
+- **Signature de code avant `05`** (§ 5) : les ACL du Trousseau en dépendent.
+- **Ordre des primitives différées** (§ 3) au moment d'écrire la spec qui les réclame en
+  premier — popover/tooltip pour `08` ou `10`, contrôle segmenté pour `09`, stepper pour `10`.
+- **26 px dans l'échelle de `Button`** au moment d'écrire `15` : la hauteur revient onze
+  fois dans le mockup, `ConsoleFooterButton` la porte aujourd'hui en dur.
+- **`SplitPane` horizontal** pour `12` (console SQL) : géométrie de poignée différente
+  (pastille 26×3 au lieu de 3×26).
