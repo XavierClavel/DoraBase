@@ -251,3 +251,22 @@
   border-radius: var(--radius-control);
   background: var(--paper);
 }
+
+/* Encadre la démo de SplitPane : sans hauteur explicite, des panneaux en `stretch` sur un
+   contenu vide s'effondreraient et la poignée serait insaisissable. */
+.splitDemo {
+  height: 180px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+}
+
+.splitZone {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper-alt);
+  font: var(--weight-semibold) var(--text-label) var(--font-ui);
+  color: var(--ink-2);
+}

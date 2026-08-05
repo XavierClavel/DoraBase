@@ -6,6 +6,14 @@
      flex refuse par défaut de descendre sous la hauteur de son contenu, ce qui ferait
      déborder le panneau au lieu de le laisser défiler. */
   min-height: 0;
+  /* `height: 100%` : sans lui, un conteneur flex de niveau bloc prend la hauteur de son
+     contenu. Mesuré dans la galerie avant correction — la racine faisait 15 px dans une
+     boîte de 180, réduisant les trois zones à la hauteur de leur texte et rendant la
+     poignée insaisissable. Un panneau doit remplir la hauteur qu'on lui donne ; c'est ce
+     que la disposition de A4 attend (barre de titre, corps flexible, barre d'état).
+     Non détectable en test unitaire : jsdom ne calcule aucune mise en page — d'où le test
+     e2e qui mesure la hauteur réelle dans un navigateur. */
+  height: 100%;
 }
 
 .pane {

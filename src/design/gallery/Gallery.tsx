@@ -4,6 +4,8 @@ import { Button } from '../../ui/Button/Button'
 import { Chip } from '../../ui/Chip/Chip'
 import { Dot } from '../../ui/Dot/Dot'
 import { Field } from '../../ui/Field/Field'
+import { SplitPane } from '../../ui/SplitPane/SplitPane'
+import { type Tab, TabStrip } from '../../ui/TabStrip/TabStrip'
 import { Toggle } from '../../ui/Toggle/Toggle'
 import { Icon } from '../icons/Icon'
 import { tokens } from '../tokens'
@@ -622,6 +624,92 @@ function TokenBoard() {
   )
 }
 
+// Les trois familles d'onglet du handoff. Le filet supérieur suit la famille (accent pour
+// les données, violet pour les consoles), l'icône suit le type d'objet — deux valeurs
+// distinctes, voir `specs/03-coquille-panneaux-onglets.md`.
+const GALLERY_TABS: Tab[] = [
+  {
+    id: 'public',
+    icon: 'schema',
+    iconColor: 'var(--accent-deep)',
+    accentColor: 'var(--accent)',
+    label: 'public',
+  },
+  {
+    id: 'orders',
+    icon: 'table',
+    iconColor: 'var(--success)',
+    accentColor: 'var(--accent)',
+    label: 'orders',
+  },
+  {
+    id: 'console-1',
+    icon: 'term',
+    iconColor: 'var(--violet-ink)',
+    accentColor: 'var(--violet)',
+    label: 'console 1',
+    meta: '·psql',
+  },
+]
+
+function TabStripGallery() {
+  const [tabs, setTabs] = useState(GALLERY_TABS)
+  const [activeId, setActiveId] = useState('orders')
+
+  return (
+    <Section title="TabStrip">
+      <Sub title="Bande contrôlée — cliquer, fermer, glisser pour réordonner">
+        <TabStrip
+          tabs={tabs}
+          activeId={activeId}
+          onSelect={setActiveId}
+          onClose={(id) => setTabs((current) => current.filter((tab) => tab.id !== id))}
+          onReorder={setTabs}
+        />
+      </Sub>
+      <Note>
+        La croix n'apparaît que sur l'onglet actif : lecture littérale du mockup, qui n'en montre
+        sur aucun onglet inactif. Fermer tous les onglets vide la bande — recharger la page la remet
+        en état.
+      </Note>
+    </Section>
+  )
+}
+
+function SplitPaneGallery() {
+  return (
+    <Section title="SplitPane">
+      <Sub title="Deux SplitPane imbriqués — la disposition à trois zones de A4">
+        <div className={styles.splitDemo}>
+          <SplitPane
+            storageKey="gallery-sidebar"
+            defaultSize={212}
+            min={150}
+            max={320}
+            start={<div className={styles.splitZone}>sidebar 212</div>}
+            end={
+              <SplitPane
+                storageKey="gallery-detail"
+                defaultSize={300}
+                min={200}
+                max={420}
+                handleShadow="end"
+                start={<div className={styles.splitZone}>centre</div>}
+                end={<div className={styles.splitZone}>détail 300</div>}
+              />
+            }
+          />
+        </div>
+      </Sub>
+      <Note>
+        Aucun composant à N zones : trois zones s'obtiennent en imbriquant deux `SplitPane`, sans
+        code supplémentaire. Glisser une poignée ou la focaliser puis utiliser les flèches ; la
+        taille survit à un rechargement de la page.
+      </Note>
+    </Section>
+  )
+}
+
 export function Gallery() {
   return (
     <div className={styles.root}>
@@ -632,6 +720,8 @@ export function Gallery() {
       <BadgeGallery />
       <ChipGallery />
       <DotGallery />
+      <SplitPaneGallery />
+      <TabStripGallery />
       <IconBoard />
       <TokenBoard />
     </div>

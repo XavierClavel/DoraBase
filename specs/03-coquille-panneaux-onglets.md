@@ -58,7 +58,14 @@ convention établie en `02` pour les valeurs à usage unique.
 **Bande d'onglets** (l. 381-385) — hauteur 34 (`--h-bar`), fond `--bar`
 (`#F5F0E6`), filet bas `--divider`. Chaque onglet : `padding 0 12`, filet droit
 `--divider`, `700 11.5px Nunito` si actif sinon `600 11.5px` en `--ink-2`.
-Onglet actif : fond `--paper-bright` plus un `border-top 2px`.
+Onglet actif : fond `--paper` (`#FBF7EF`) plus un `border-top 2px`. Mesuré sur le
+mockup, qui rend `rgb(251, 247, 239)` — **pas** `--paper-bright` (`#FFFDF8`), qui
+n'habille que le haut du dégradé de la barre de titre.
+
+L'écart libellé → croix vaut **7 px**, comme le `gap` du conteneur unique du
+mockup. Une croix rendue en bouton frère doit donc porter ce 7 px en
+`padding-right` du corps, et non répéter le 12 px du bord : mesuré, l'onglet
+sortait sinon 5 px trop large.
 
 **Deux couleurs indépendantes par onglet, à ne pas confondre** — relevé sur les
 cinq onglets actifs du mockup (l. 389, 512, 806, 912, 1022). Le trait supérieur
