@@ -136,10 +136,14 @@ Première tranche : `01` → `02` → `07`. Elle produit un `.app` qui se lance 
 écran d'accueil fidèle, et le socle de fidélité dont tous les autres écrans
 dépendent, sans toucher aux bases de données.
 
-Ensuite : fondations d'abord (`03`, `04`), avant `05`/`06`. Raison : `05` a une
-décision humaine en attente (signature de code, voir § « À trancher ») qui
-bloquerait le début de son écriture, alors que `03`/`04` ne dépendent d'aucune
-décision en suspens.
+Puis les fondations partagées (`03`, `04`), dont les briques servent cinq écrans.
+
+Puis le modèle et l'accès aux données : `05a` (fait) → `05b` → `05c` → `06`. Ensuite
+les écrans, en commençant par `08` — le premier qui crée vraiment une entité de
+configuration.
+
+**Aucune décision humaine ne bloque cette suite.** Le point de signature de code plus
+haut est *tranché*, et l'achat d'un Developer ID ne concerne que la diffusion.
 
 ## Source de vérité du design
 

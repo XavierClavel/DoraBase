@@ -70,9 +70,9 @@ n'a pas d'outil de capture d'écran pour une fenêtre native, seul Chromium via 
 accessible. Une minute à vérifier, pas un risque connu.
 
 **Plans `03` et `04` — terminés, 15/15** (2026-08-05). La voie choisie était fondations
-d'abord (`03`, `04`) plutôt que données d'abord (`05`, `06`), parce que `05` a une décision
-humaine bloquante en attente (signature de code, § 5). Documenté dans `specs/README.md`
-§ « Ordre d'exécution ».
+d'abord (`03`, `04`) plutôt que données d'abord. Le motif invoqué sur le moment — « `05` est
+bloquée par la signature de code » — était **faux**, voir la correction du § 5. Le choix
+restait défendable (les briques de `04` servent à cinq écrans), mais il n'était pas contraint.
 
 Livré : **`SplitPane`** (panneaux redimensionnables, taille persistée et recadrée à la
 lecture), **`TabStrip`** (onglets réordonnables et fermables), **cinq briques de sidebar**
