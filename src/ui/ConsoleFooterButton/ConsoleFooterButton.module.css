@@ -1,0 +1,37 @@
+.root {
+  /* 8px : hors de l'échelle `--space-*` (3, 5, 6, 7, 9, 11, 14, 16), comme le `padding`
+     horizontal de `Button` — même convention, littéral et commentaire. */
+  padding: 8px;
+  border-top: 1px solid var(--divider-2);
+  flex: none;
+}
+
+.button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  /* 26 px : hors de l'échelle `--h-btn-*` (23, 25, 28, 31, 34). Voir le commentaire du
+     composant — à promouvoir dans `Button` au moment de la spec 15. */
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--field);
+  /* `content-box` : la hauteur du handoff désigne le contenu, la bordure s'ajoute — sans
+     quoi le bouton rendrait 2 px plus court, `<button>` étant en `border-box` par défaut. */
+  box-sizing: content-box;
+  font: var(--weight-bold) var(--text-label) var(--font-ui);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.button:hover {
+  border-color: var(--hover-border);
+  background: var(--hover-bg);
+}
+
+.button:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
