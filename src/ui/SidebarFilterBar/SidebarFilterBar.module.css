@@ -1,0 +1,45 @@
+.root {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--h-bar);
+  padding: 0 9px;
+  border-bottom: 1px solid var(--divider-2);
+  /* Comme partout : les hauteurs du handoff désignent le contenu, le filet s'ajoute. */
+  box-sizing: content-box;
+  flex: none;
+}
+
+.icon {
+  color: var(--ink-4);
+  flex: none;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  font: 500 var(--text-dense) var(--font-ui);
+  /* `--ink-3` pour le texte saisi comme pour le substitut : le mockup ne les distingue
+     pas — la barre de A5 affiche « order », une vraie saisie (son compteur dit 2/8), dans
+     la même teinte que le substitut de A4. Suivi tel quel, faute de valeur distincte dans
+     le handoff ; à revoir si un écran réel montre du texte saisi plus contrasté. */
+  color: var(--ink-3);
+}
+
+.input::placeholder {
+  color: var(--ink-3);
+}
+
+.input:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.count {
+  font: 500 var(--text-meta) var(--font-mono);
+  color: var(--ink-3);
+  flex: none;
+}
