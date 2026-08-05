@@ -69,6 +69,23 @@ l'espace, l'app compile et démarre sous Tauri) mais jamais vu à l'œil — cet
 n'a pas d'outil de capture d'écran pour une fenêtre native, seul Chromium via Playwright est
 accessible. Une minute à vérifier, pas un risque connu.
 
+**Specs `03` et `04` écrites, en attente de relecture humaine** (2026-08-05) : la voie
+choisie pour la suite est fondations d'abord (`03`, `04`) plutôt que données d'abord
+(`05`, `06`), parce que `05` a une décision humaine bloquante en attente (signature de
+code, § 5) alors que `03`/`04` n'en ont aucune. Choix fait sans repasser par l'utilisateur
+(cohérent avec les « fais le choix » précédents), documenté dans `specs/README.md` §
+« Ordre d'exécution ».
+
+- `specs/03-coquille-panneaux-onglets.md` : `SplitPane` (panneaux redimensionnables,
+  taille persistée en `localStorage`) et `TabStrip` (bande d'onglets réordonnable,
+  fermable). Hors périmètre, délibérément : la pastille projet/environnement de la barre
+  de titre (dépend de `05`), la persistance de l'état des onglets entre sessions.
+- `specs/04-menu-lateral-standard.md` : les briques présentationnelles de la sidebar
+  212px partagée par `A5`→`A9` (`SidebarFilterBar`, `TreeRow`, `ColumnRow`,
+  `ConsoleFooterButton`). Hors périmètre, délibérément : la sidebar 252px propre à `A4`
+  (composant différent, pas une variante — voir la spec), l'état de l'arbre et les
+  données réelles (attendent `10` et `05`).
+
 **Points en suspens, à trancher avant les prochains plans** :
 - **Ordre des primitives différées.** `08` (modale, popover/tooltip), `09` (menu latéral,
   contrôle segmenté), `10` (visualiseur, stepper) attendent encore leurs primitives.

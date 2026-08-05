@@ -9,12 +9,20 @@
  * `TitleBar`…) déclarent `content-box` explicitement là où le mockup l'exige — un reset
  * global en `border-box` n'aurait rien cassé par spécificité, mais ajouterait une couche
  * dont ce projet n'a pas besoin.
+ *
+ * `overflow: hidden` : sans lui, WKWebView applique son rebond élastique natif (le
+ * « scroll bounce » macOS) au document entier dès qu'on force un geste de défilement à la
+ * souris ou au trackpad — visible même quand le contenu tient exactement dans la fenêtre,
+ * puisque l'élasticité ne demande pas de dépassement réel. Cet outil n'a pas de document
+ * défilant à la racine ; les futurs panneaux qui en auront un (grille, éditeur) géreront
+ * leur propre `overflow` localement, sans toucher à celui-ci.
  */
 
 html,
 body {
   height: 100%;
   margin: 0;
+  overflow: hidden;
 }
 
 #root {

@@ -88,8 +88,8 @@ se pose : ajouter `blob:` à la directive concernée, ou gérer l'écriture côt
 | --- | --- | --- |
 | [`01`](01-socle-tauri.md) | Socle : Tauri 2 + React/TS/Vite, structure du repo, packaging `.app`, CI | à relire |
 | [`02`](02-design-system.md) | Design system : tokens, polices, icônes, primitives | à relire |
-| `03` | Coquille : barre de titre, barre d'état, split panes redimensionnables + persistance, onglets | à écrire |
-| `04` | Menu latéral standard — le composant partagé A5 → A9 | à écrire |
+| [`03`](03-coquille-panneaux-onglets.md) | Coquille : panneaux redimensionnables + persistance, bande d'onglets | à relire |
+| [`04`](04-menu-lateral-standard.md) | Menu latéral standard — le composant partagé A5 → A9 | à relire |
 
 ## Modèle et accès aux données
 
@@ -123,8 +123,10 @@ Première tranche : `01` → `02` → `07`. Elle produit un `.app` qui se lance 
 écran d'accueil fidèle, et le socle de fidélité dont tous les autres écrans
 dépendent, sans toucher aux bases de données.
 
-Ensuite, l'ordre reste à décider : soit remonter les fondations (`03`, `04`) avant
-les écrans, soit dérisquer tôt l'accès aux données (`05`, `06`).
+Ensuite : fondations d'abord (`03`, `04`), avant `05`/`06`. Raison : `05` a une
+décision humaine en attente (signature de code, voir § « À trancher ») qui
+bloquerait le début de son écriture, alors que `03`/`04` ne dépendent d'aucune
+décision en suspens.
 
 ## Source de vérité du design
 
