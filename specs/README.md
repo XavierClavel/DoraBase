@@ -88,8 +88,8 @@ se pose : ajouter `blob:` à la directive concernée, ou gérer l'écriture côt
 | --- | --- | --- |
 | [`01`](01-socle-tauri.md) | Socle : Tauri 2 + React/TS/Vite, structure du repo, packaging `.app`, CI | à relire |
 | [`02`](02-design-system.md) | Design system : tokens, polices, icônes, primitives | à relire |
-| [`03`](03-coquille-panneaux-onglets.md) | Coquille : panneaux redimensionnables + persistance, bande d'onglets | à relire |
-| [`04`](04-menu-lateral-standard.md) | Menu latéral standard — le composant partagé A5 → A9 | à relire |
+| [`03`](03-coquille-panneaux-onglets.md) | Coquille : panneaux redimensionnables + persistance, bande d'onglets | **fait** |
+| [`04`](04-menu-lateral-standard.md) | Menu latéral standard — le composant partagé A5 → A9 | **fait** |
 
 ## Modèle et accès aux données
 

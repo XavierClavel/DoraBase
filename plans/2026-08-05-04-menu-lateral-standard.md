@@ -472,21 +472,68 @@ git add -A && git commit -m "feat(design): galerie — sidebar standard"
 
 ---
 
+## Acquis d'exécution
+
+**Détails du mockup que ce plan avait manqués**, tous relevés en lisant les lignes
+réelles plutôt que la description :
+
+- La métadonnée de fin de ligne **change de teinte avec la sélection** : `--ink-3`
+  au repos, `--ink-meta` sur la ligne sélectionnée. Elle suit le gain de contraste
+  du libellé.
+- Le **trait des icônes passe de 1,8 à 2** sur la ligne sélectionnée, et sa taille
+  de 13 à 12 px pour les icônes de table.
+- Le handoff emploie **deux typographies de métadonnée** : mono 10 px pour les
+  tailles et comptages, capitales 9,5 px pour le « n bases » des projets repliés.
+  D'où la prop `metaVariant`.
+- Le `ConsoleFooterButton` est un **bouton blanc bordé**, que ce plan décrivait
+  comme du texte simple en `--ink-2`. Il est en réalité proche de
+  `Button variant="secondary"`, mais en diffère sur trois points : hauteur 26 px
+  (absente de l'échelle `--h-btn-*`), graisse 700, encre pleine.
+- Le « + » du pied est une **icône**, pas un caractère du libellé — l'inclure dans
+  le texte le ferait annoncer « plus Nouvelle console ».
+
+**Un quatrième défaut de mise en page, du même genre que ceux du plan `03`** :
+
+| Défaut | Trouvé par |
+| --- | --- |
+| `width: 100%` en `content-box` s'ajoute au padding : les lignes sortaient à 234 px dans un corps de 212, la métadonnée se faisait rogner (« int8 » rendu « in ») | mise en scène dans la galerie, puis mesure de la ligne contre son conteneur |
+| Les données de démonstration mélangeaient `A4` dans une disposition `A5` — métadonnées sur `analytics` et `public`, un projet voisin et deux colonnes manquants | capture du mockup et de notre rendu **côte à côte** |
+
+**Les leçons :**
+
+1. **`box-sizing: border-box` est la bonne réponse pour une largeur à 100 %**, et
+   ce n'est pas contradictoire avec la convention `content-box` du projet : celle-ci
+   vaut pour les **hauteurs** issues d'un token. Un `<button>` étant `inline-block`,
+   il a besoin de `width: 100%` pour remplir sa ligne, et ce 100 % doit alors inclure
+   le padding. Documenté à l'endroit de la déclaration, dans les deux composants.
+2. **Comparer deux captures côte à côte attrape ce qu'aucune mesure ne cherche.**
+   Les mesures de couleurs, de graisses et de paliers étaient toutes justes ; c'est
+   l'inventaire visuel qui a révélé que les *données* venaient du mauvais écran.
+3. **Une brique presque identique à une primitive existante mérite d'être signalée
+   comme dette, pas fusionnée à la hâte.** 26 px avec rayon 8 revient onze fois dans
+   le mockup, mais les autres occurrences appartiennent à `A10` : la promotion dans
+   l'échelle de `Button` se fera en écrivant la spec `15`, avec les cas sous les yeux.
+
 ## Tâche 8 : vérification de fin
 
-Contrôler chaque critère de `specs/04-menu-lateral-standard.md` § Terminé quand.
+Contrôlé contre `specs/04-menu-lateral-standard.md` § Terminé quand.
 
-- [ ] les cinq briques rendent, pixel pour pixel, les valeurs mesurées (ligne
-      normale `.75`, sélectionnée, repliée ; colonne normale `.7`, filtrée,
-      triée, résumé `.5`)
-- [ ] `Sidebar` composé de dix lignes de démonstration atteint 212px, comparé au
-      mockup `A5`
-- [ ] le survol de ligne utilise `--hover-row`
-- [ ] parcours clavier : chaque `TreeRow`/`ColumnRow` interactive atteinte, anneau
-      de focus visible
-- [ ] les cinq briques visibles dans la galerie
-- [ ] `rg -n "#[0-9A-Fa-f]{3,6}|rgba\(" src/ui/TreeRow src/ui/ColumnRow
-      src/ui/SidebarFilterBar src/ui/ConsoleFooterButton src/ui/Sidebar` ne
-      remonte aucun résultat — les trois teintes sont maintenant dans
-      `tokens.json`
-- [ ] `pnpm test && pnpm lint && pnpm typecheck` verts
+- [x] **les briques rendent les valeurs mesurées** — ligne normale `.75` graisse 600,
+      sélectionnée fond 22 % d'accent + `inset 2px 0 0` + encre pleine graisse 700,
+      métadonnée `.45` contre `.35` au repos. Colonnes en `.7`, résumé en `.5`.
+      Vérifié dans le navigateur, valeur par valeur.
+- [x] **`Sidebar` atteint 212 px** (213 rendus, filet compris — cohérent avec le
+      reste du projet), comparé au mockup `A5` capturé côte à côte : arbre et
+      colonnes correspondent ligne pour ligne.
+- [x] **le survol utilise `--hover-row`** — transparent → `rgba(35, 32, 28, 0.05)`,
+      et la sélection **reste visible** au survol, ce qui a demandé une règle
+      explicite : sans elle, `--hover-row` écrasait l'aplat d'accent à spécificité
+      égale.
+- [x] **parcours clavier** — filtre → six lignes d'arbre → deux lignes de colonne
+      cliquables → pied, dans l'ordre visuel. Les lignes non cliquables (`id`,
+      `user_id`, `total_cents`, `currency`, `shipped_at`, `+ 11 autres`) en sont
+      bien absentes : ce sont du contenu, pas des commandes. Anneau `--shadow-focus`
+      résolu en `oklab(…)` sur les deux types de ligne.
+- [x] les briques visibles dans la galerie, absentes du bundle de production.
+- [x] `rg` ne remonte aucun littéral de couleur dans les cinq composants.
+- [x] `pnpm test` (112), `pnpm lint`, `pnpm typecheck`, `pnpm test:e2e` (4) verts.
