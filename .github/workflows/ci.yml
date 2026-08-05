@@ -60,4 +60,10 @@ jobs:
         working-directory: src-tauri
       - run: cargo clippy --all-targets -- -D warnings
         working-directory: src-tauri
+
+      # `clippy --all-targets` **compile** les tests mais ne les exécute pas : un test
+      # qui échoue passait donc la CI en silence, jusqu'au 5 août 2026. Constaté par
+      # contrôle négatif — un `assert_eq!(1, 2)` laissait clippy vert.
+      - run: cargo test
+        working-directory: src-tauri
       - run: pnpm tauri build

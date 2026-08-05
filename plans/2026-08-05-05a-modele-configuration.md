@@ -219,16 +219,30 @@ Attendu : 4 tests passants, clippy propre.
 
 - [ ] **Étape 5 : vérifier que l'invariant est réellement inviolable**
 
-Ajouter temporairement, dans un test, une tentative de vider les variantes après
-construction :
+Sans ce contrôle, « privé » n'est qu'une intention.
+
+**Piège vérifié, à ne pas reproduire :** la tentative doit venir d'un **autre module**
+que celui qui déclare le type. Un `#[cfg(test)] mod tests` placé au bas de `model.rs`
+est un module *enfant* de `model`, et un enfant accède aux champs privés de son
+parent — le sabotage y **compile sans erreur**, et le contrôle ne prouve rien. Constaté
+en le faisant.
+
+Poser donc la sonde dans `config/mod.rs`, module frère :
 
 ```rust
-// doit NE PAS compiler
-// base.variants.clear();
+#[cfg(test)]
+mod sonde_encapsulation {
+    use super::*;
+    #[test]
+    fn depuis_un_autre_module_le_champ_est_inaccessible() {
+        let mut base = Database::new("a", Engine::PostgreSql, vec![]).unwrap();
+        base.variants.clear(); // doit NE PAS compiler
+    }
+}
 ```
 
-Décommenter, lancer `cargo test`, constater l'erreur de compilation (champ privé),
-recommenter. Sans ce contrôle, « privé » n'est qu'une intention.
+Lancer `cargo test`, constater `error[E0616]: field 'variants' ... is private`, puis
+retirer la sonde.
 
 - [ ] **Étape 6 : commit**
 
