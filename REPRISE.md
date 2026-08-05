@@ -129,11 +129,23 @@ ne porte que du chrome applicatif. Documenté dans `fonts.css`.
 
 Consigné dans `specs/README.md` § « À trancher avant certaines specs » :
 
-- **Signature de code** avant d'écrire la spec `05` — un Developer ID est requis pour
-  diffuser de toute façon.
 - **Variante d'icône simplifiée** sous 32 px : la carte du sac à dos devient un amas de
   pixels. Travail de design, dette assumée.
 - **`blob:` non autorisé par la CSP** — touchera l'export CSV de la spec `10`.
+- **Un Developer ID reste requis pour *diffuser*** (Gatekeeper, notarisation). C'est une
+  décision d'achat, à prendre avant la première distribution — **pas avant d'écrire du
+  code**.
+
+**Correction, 5 août 2026.** Ce paragraphe listait auparavant « signature de code avant
+d'écrire la spec `05` » comme décision bloquante. C'était **faux**, et contredisait
+`specs/README.md`, qui porte la décision réelle : le stockage des identifiants est
+**abstrait derrière une interface**, précisément pour découpler `05` de l'achat d'un
+Developer ID — « cette échéance n'a pas à bloquer le développement ». L'erreur a coûté une
+décision d'ordonnancement : `03`/`04` ont été préférés à `05`/`06` sur la foi d'un blocage
+inexistant. Le choix restait défendable pour d'autres raisons, mais il n'était pas
+contraint. Leçon : **deux documents qui se recouvrent divergent** — quand `REPRISE.md`
+résume `specs/README.md`, c'est le second qui fait foi, et un résumé qui transforme
+« tranché » en « à trancher » est pire que pas de résumé.
 
 ## 6. Les défauts trouvés, et par quelle méthode
 
@@ -289,28 +301,30 @@ pnpm icons:check    # idem pour le sprite
 ## 12. La suite
 
 Les fondations partagées sont posées (`01`, `02`, `03`, `04`) et un écran réel existe
-(`07`). Deux voies pour la suite, aucune spec n'existant encore :
+(`07`). Aucune spec n'existe encore pour `05` et suivantes.
 
-1. **Dérisquer l'accès aux données** — `05` (modèle de domaine) puis `06` (adaptateur
-   PostgreSQL). C'est la partie la plus susceptible de réserver des surprises
-   d'architecture, et la contrainte IPC transverse de `specs/README.md` n'a encore jamais
-   été mise à l'épreuve. **Demande de trancher la signature de code d'abord** (§ 5).
-2. **Continuer par les écrans** — `08` (modale de connexion) ou `09` (explorateur `A4`),
-   qui consommeraient enfin `SplitPane`, `TabStrip` et la `Sidebar` dans un vrai contexte.
-   `09` révélerait la forme réelle de l'état d'arbre, que `04` a délibérément laissée
-   ouverte. Ne dépend d'aucune décision en attente.
+**`05` est le prochain, et rien ne le bloque** (voir la correction du § 5). Raison de fond :
+tous les écrans restants affichent des **projets, bases, environnements, schémas et objets**.
+Écrire `08` ou `09` d'abord obligerait à inventer la forme de ces données à l'intérieur
+d'une spec d'écran — exactement ce que `04` a refusé de faire en laissant l'état de l'arbre
+ouvert. Le modèle de domaine est la dépendance commune ; le construire ailleurs, c'est le
+construire deux fois.
 
-Recommandation : `09`, parce qu'il valide les cinq briques de `04` contre un usage réel
-avant que `10`→`14` ne s'appuient dessus, et qu'il n'attend aucune décision humaine. Il
-tranchera aussi trois questions laissées ouvertes : la forme de l'état d'arbre, la dette du
-`Chip` interactif (§ 9), et la sidebar 252 px propre à `A4`.
+Ordre proposé : `05` (modèle de domaine et persistance) → `06` (adaptateur PostgreSQL) →
+`08` (modale de connexion, premier écran qui crée vraiment une entité) → `09` (explorateur).
 
-À trancher au passage, quel que soit le choix :
+**`05` est probablement trop large pour une seule spec** — modèle de domaine, persistance
+sur disque, et interface de stockage des identifiants sont trois préoccupations séparables,
+la dernière étant sensible en sécurité. `AGENTS.md` demande de proposer le découpage *avant*
+d'écrire. À faire en premier.
 
-- **Signature de code avant `05`** (§ 5) : les ACL du Trousseau en dépendent.
-- **Ordre des primitives différées** (§ 3) au moment d'écrire la spec qui les réclame en
+À trancher au passage, le moment venu :
+
+- **Ordre des primitives différées** (§ 3), au moment d'écrire la spec qui les réclame en
   premier — popover/tooltip pour `08` ou `10`, contrôle segmenté pour `09`, stepper pour `10`.
 - **26 px dans l'échelle de `Button`** au moment d'écrire `15` : la hauteur revient onze
   fois dans le mockup, `ConsoleFooterButton` la porte aujourd'hui en dur.
 - **`SplitPane` horizontal** pour `12` (console SQL) : géométrie de poignée différente
   (pastille 26×3 au lieu de 3×26).
+- **Dette du `Chip` interactif** (§ 9) et **sidebar 252 px de `A4`**, contre l'écran réel
+  qui les réclame (`08` ou `09`), pas par spéculation.
