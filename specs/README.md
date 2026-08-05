@@ -95,8 +95,21 @@ se pose : ajouter `blob:` à la directive concernée, ou gérer l'écriture côt
 
 | Spec | Scope | État |
 | --- | --- | --- |
-| `05` | Modèle de domaine : Projet / Base / Environnement / Schéma / Objet, persistance, Trousseau | à écrire |
+| [`05a`](05a-modele-configuration.md) | Modèle de configuration : Projet / Base / Environnement, types et invariants | à relire |
+| [`05b`](05b-persistance-disque.md) | Persistance sur disque : emplacement, écriture atomique, version et migration | à relire |
+| [`05c`](05c-stockage-identifiants.md) | Stockage des identifiants : interface, Trousseau, fichier chiffré | à relire |
 | `06` | Couche moteur en Rust : abstraction + adaptateur PostgreSQL, test de connexion, SSL, tunnel SSH | à écrire |
+
+**Pourquoi `05` a été découpé en trois** (5 août 2026) : le périmètre indexé —
+« modèle de domaine, persistance, Trousseau » — mêlait trois préoccupations
+séparables, dont une sensible en sécurité, et dépassait largement la limite de
+~150 lignes d'`AGENTS.md`. Les sous-lettres évitent de renuméroter `06`→`15`, dont
+`07` déjà implémenté et cité partout.
+
+**L'introspection reste avec le moteur.** Schéma, table, vue, fonction, index,
+comptages et tailles ne viennent pas de l'utilisateur mais du catalogue de la base,
+et leur forme est dictée par chaque moteur. Ils appartiennent donc à `06`, pas au
+modèle de configuration — c'est la ligne de faille qui a guidé le découpage.
 
 ## Écrans
 
