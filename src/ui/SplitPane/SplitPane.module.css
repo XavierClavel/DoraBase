@@ -1,0 +1,51 @@
+.root {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  /* `min-height: 0` en plus de `min-width` : imbriqué dans une colonne flex, un enfant
+     flex refuse par défaut de descendre sous la hauteur de son contenu, ce qui ferait
+     déborder le panneau au lieu de le laisser défiler. */
+  min-height: 0;
+}
+
+.pane {
+  flex: none;
+  min-width: 0;
+}
+
+.end {
+  flex: 1;
+  min-width: 0;
+}
+
+.handle {
+  width: 5px;
+  flex: none;
+  position: relative;
+  cursor: col-resize;
+  /* .06 : littéral relevé dans le mockup (DoraBase.dc.html l. 386). Aucun rôle
+     sémantique propre — il n'existe que dans ce dégradé, d'où l'absence de token. */
+  background: linear-gradient(90deg, rgba(35, 32, 28, 0.06), transparent);
+}
+
+/* Le mockup inverse le sens du dégradé selon le panneau que la poignée borde : elle
+   s'assombrit du côté du panneau, pas systématiquement à gauche. */
+.handleEnd {
+  background: linear-gradient(-90deg, rgba(35, 32, 28, 0.06), transparent);
+}
+
+.handle:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.grip {
+  position: absolute;
+  top: 50%;
+  left: 1px;
+  width: 3px;
+  height: 26px;
+  border-radius: 2px;
+  background: var(--field);
+  transform: translateY(-50%);
+}
