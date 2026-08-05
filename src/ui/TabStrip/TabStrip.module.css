@@ -37,9 +37,16 @@
 }
 
 .active .select {
-  background: var(--paper-bright);
+  /* `--paper` (#FBF7EF), pas `--paper-bright` (#FFFDF8) : mesuré sur l'onglet actif du
+     mockup, qui rend `rgb(251, 247, 239)`. La prose du handoff dit la même chose. */
+  background: var(--paper);
   font-weight: var(--weight-bold);
   color: var(--ink);
+  /* L'écart libellé → croix vaut 7 px dans le mockup, où icône, libellé et croix vivent
+     dans un même conteneur à `gap: 7px`. Ici la croix est un bouton frère : le 7 px vient
+     donc de ce `padding-right`, et le 12 px du bord est porté par la croix. Laisser les
+     deux à 12 px rendait l'onglet 5 px trop large — écart mesuré, pas supposé. */
+  padding-right: 7px;
 }
 
 .meta {
@@ -50,11 +57,11 @@
 .close {
   display: flex;
   align-items: center;
-  /* Pas de `padding-left` : la croix suit immédiatement le libellé, comme dans le mockup
-     où elle vit à l'intérieur du même bloc que lui. */
+  /* Pas de `padding-left` : l'écart de 7 px vient du `padding-right` de `.select`. Le
+     12 px à droite est celui du bord de l'onglet. */
   padding: 0 12px 0 0;
   border: none;
-  background: var(--paper-bright);
+  background: var(--paper);
   color: var(--ink-5);
   cursor: pointer;
 }
