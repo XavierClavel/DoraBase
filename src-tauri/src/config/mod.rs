@@ -5,8 +5,10 @@
 //! avec `05b`, les secrets avec `05c`, l'introspection des bases avec `06`.
 
 mod model;
+mod query;
 
 pub use model::{
     Database, Engine, Environment, EnvironmentVariant, ModelError, Project, SecretRef, SslMode,
     Tunnel, TunnelKind,
 };
+pub use query::{active_variant, databases_available, validate};
