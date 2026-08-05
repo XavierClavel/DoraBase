@@ -270,3 +270,13 @@
   font: var(--weight-semibold) var(--text-label) var(--font-ui);
   color: var(--ink-2);
 }
+
+/* Encadre la sidebar de démonstration : sans hauteur, sa zone défilante s'effondrerait. */
+.sidebarDemo {
+  /* Assez haut pour montrer les treize lignes de A5 sans défilement. */
+  height: 420px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+  display: flex;
+}

@@ -2,11 +2,17 @@ import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Badge } from '../../ui/Badge/Badge'
 import { Button } from '../../ui/Button/Button'
 import { Chip } from '../../ui/Chip/Chip'
+import { ColumnRow } from '../../ui/ColumnRow/ColumnRow'
+import { ConsoleFooterButton } from '../../ui/ConsoleFooterButton/ConsoleFooterButton'
 import { Dot } from '../../ui/Dot/Dot'
 import { Field } from '../../ui/Field/Field'
+import { Sidebar } from '../../ui/Sidebar/Sidebar'
+import { SidebarFilterBar } from '../../ui/SidebarFilterBar/SidebarFilterBar'
+import { SidebarSectionTitle } from '../../ui/SidebarSectionTitle/SidebarSectionTitle'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
 import { type Tab, TabStrip } from '../../ui/TabStrip/TabStrip'
 import { Toggle } from '../../ui/Toggle/Toggle'
+import { TreeRow } from '../../ui/TreeRow/TreeRow'
 import { Icon } from '../icons/Icon'
 import { tokens } from '../tokens'
 import styles from './Gallery.module.css'
@@ -710,6 +716,123 @@ function SplitPaneGallery() {
   )
 }
 
+// Reproduit la hiérarchie de A5 : projet actif déplié → base → schéma → deux tables, dont
+// une sélectionnée → projets voisins repliés → section contextuelle et ses colonnes. Les
+// données sont fictives, comme le veut le handoff pour tout ce qui n'est pas encore branché
+// sur un vrai modèle (spec 05).
+function SidebarGallery() {
+  const [filtre, setFiltre] = useState('order')
+  const [selection, setSelection] = useState('orders')
+
+  return (
+    <Section title="Sidebar standard (A5 → A9)">
+      <Sub title="Assemblage complet — filtre, arbre, section contextuelle, pied">
+        <div className={styles.sidebarDemo}>
+          <Sidebar
+            filter={
+              <SidebarFilterBar value={filtre} onChange={setFiltre} matchCount={2} totalCount={8} />
+            }
+            footer={<ConsoleFooterButton onClick={() => {}} />}
+          >
+            <TreeRow
+              depth={0}
+              label="Atelier Nord"
+              icon="bag"
+              iconColor="var(--accent-deep)"
+              chevron="open"
+              strong
+              trailing={
+                <Badge tone="danger" size="xs">
+                  PROD
+                </Badge>
+              }
+              onClick={() => {}}
+            />
+            {/* Ni `analytics` ni `public` ne portent de métadonnée dans A5 — c'est la
+                sidebar de A4, plus large, qui affiche leur taille et leur compte d'objets. */}
+            <TreeRow
+              depth={1}
+              label="analytics"
+              icon="db"
+              iconColor="var(--engine-pg)"
+              chevron="open"
+              onClick={() => {}}
+            />
+            <TreeRow
+              depth={2}
+              label="public"
+              icon="schema"
+              iconColor="var(--accent-deep)"
+              chevron="open"
+              onClick={() => {}}
+            />
+            <TreeRow
+              depth={3}
+              label="orders"
+              icon="table"
+              iconColor="var(--success)"
+              meta="1.9 M"
+              selected={selection === 'orders'}
+              onClick={() => setSelection('orders')}
+            />
+            <TreeRow
+              depth={3}
+              label="order_items"
+              icon="table"
+              iconColor="var(--success)"
+              meta="6.4 M"
+              selected={selection === 'order_items'}
+              onClick={() => setSelection('order_items')}
+            />
+            <TreeRow
+              depth={0}
+              label="Outils internes"
+              icon="bag"
+              chevron="closed"
+              muted
+              meta="4 bases"
+              metaVariant="caps"
+              onClick={() => {}}
+            />
+            <TreeRow
+              depth={0}
+              label="Data science"
+              icon="bag"
+              chevron="closed"
+              muted
+              meta="3 bases"
+              metaVariant="caps"
+              onClick={() => {}}
+            />
+            <SidebarSectionTitle>Colonnes de {selection}</SidebarSectionTitle>
+            <ColumnRow label="id" typeIcon="key" typeIconColor="var(--gold)" meta="int8" />
+            <ColumnRow label="user_id" typeIcon="fk" typeIconColor="var(--info)" meta="int8" />
+            <ColumnRow label="status" typeGlyph="T" meta="filtré" metaActive onClick={() => {}} />
+            <ColumnRow label="total_cents" typeGlyph="#" meta="int4" />
+            <ColumnRow label="currency" typeGlyph="T" meta="bpchar" />
+            <ColumnRow
+              label="created_at"
+              typeGlyph="⏱"
+              meta="tri ↓"
+              metaActive
+              onClick={() => {}}
+            />
+            <ColumnRow label="shipped_at" typeGlyph="⏱" meta="tstz" />
+            <ColumnRow label="+ 11 autres" summary />
+          </Sidebar>
+        </div>
+      </Sub>
+      <Note>
+        Arbre et colonnes reproduisent A5 ligne pour ligne. Le pied « Nouvelle console », lui,
+        n'existe pas dans A5 — il appartient aux consoles (A7, A8) et n'est montré ici que pour
+        couvrir la brique. Aucune récursion ni modèle de données : l'écran consommateur aplatit son
+        arbre et place lui-même ses lignes. Sélection et filtre sont de simples états locaux à la
+        galerie, pour que les états se voient vraiment.
+      </Note>
+    </Section>
+  )
+}
+
 export function Gallery() {
   return (
     <div className={styles.root}>
@@ -722,6 +845,7 @@ export function Gallery() {
       <DotGallery />
       <SplitPaneGallery />
       <TabStripGallery />
+      <SidebarGallery />
       <IconBoard />
       <TokenBoard />
     </div>

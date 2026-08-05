@@ -15,6 +15,7 @@ import { expect, test } from '@playwright/test'
 test.beforeEach(async ({ page }) => {
   await page.goto('/?gallery')
   await page.waitForSelector('[role=separator]')
+  await page.waitForSelector('[data-depth]')
   await page.evaluate(() => document.fonts.ready)
 })
 
@@ -36,6 +37,41 @@ test('SplitPane remplit la hauteur de son conteneur', async ({ page }) => {
   // imbrication. Toutes doivent occuper les 180 px intérieurs.
   expect(mesures.zones).toEqual([180, 180, 180])
   expect(mesures.poignees).toEqual([180, 180])
+})
+
+// Défaut trouvé à la mesure : `width: 100%` en `content-box` s'ajoute au padding, donc les
+// lignes sortaient à 234 px dans un corps de 212 et leur métadonnée se faisait rogner
+// (« int8 » rendu « in »). Invisible en test unitaire, et discret à l'œil — seule la fin de
+// la métadonnée disparaissait.
+test('aucune ligne de la sidebar ne déborde de sa colonne', async ({ page }) => {
+  const mesures = await page.evaluate(() => {
+    const demo = document.querySelector('[class*=sidebarDemo]')
+    const corps = demo?.querySelector('[class*=body]')
+    if (corps == null) throw new Error('corps de la sidebar introuvable')
+
+    const borneDroite = corps.getBoundingClientRect().right
+    const lignes = [...corps.querySelectorAll('[data-depth], [data-meta], [data-glyph-slot]')]
+
+    return {
+      largeurCorps: Math.round(corps.getBoundingClientRect().width),
+      // Une demi-tolérance de pixel absorbe les arrondis sous-pixel du moteur de rendu.
+      debordantes: lignes
+        .filter((el) => el.getBoundingClientRect().right > borneDroite + 0.5)
+        .map((el) => el.textContent),
+      // `scrollWidth > clientWidth` sur le conteneur : la preuve globale qu'aucun enfant
+      // ne dépasse, indépendamment de la liste ci-dessus.
+      debordementHorizontal: corps.scrollWidth - corps.clientWidth,
+      // Aucune métadonnée ne doit être tronquée par son propre débordement.
+      metadonneesTronquees: [...corps.querySelectorAll('[data-meta]')]
+        .filter((el) => el.scrollWidth > el.clientWidth + 0.5)
+        .map((el) => el.textContent),
+    }
+  })
+
+  expect(mesures.largeurCorps).toBe(212)
+  expect(mesures.debordantes).toEqual([])
+  expect(mesures.debordementHorizontal).toBe(0)
+  expect(mesures.metadonneesTronquees).toEqual([])
 })
 
 test("l'onglet actif de TabStrip est conforme au mockup", async ({ page }) => {
