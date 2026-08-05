@@ -97,13 +97,18 @@ pub struct EnvironmentVariant {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModelError {
     /// Le handoff pose qu'une base existe en 1..n environnements — jamais zéro.
-    AucuneVariante { database: String },
+    AucuneVariante {
+        database: String,
+    },
     /// Deux variantes du même environnement rendraient « la variante de prod » ambiguë.
     EnvironnementEnDouble {
         database: String,
         environment: Environment,
     },
-    NomDeBaseEnDouble { project: String, database: String },
+    NomDeBaseEnDouble {
+        project: String,
+        database: String,
+    },
 }
 
 impl std::fmt::Display for ModelError {
