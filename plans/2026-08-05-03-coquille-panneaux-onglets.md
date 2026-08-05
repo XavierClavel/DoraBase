@@ -685,18 +685,65 @@ git add -A && git commit -m "feat(design): galerie — SplitPane et TabStrip"
 
 ---
 
+## Acquis d'exécution — quatre défauts, aucun vu par la CI
+
+À lire avant d'écrire d'autres primitives : les quatre étaient **invisibles** au moment
+de leur introduction, tests unitaires verts.
+
+| Défaut | Trouvé par |
+| --- | --- |
+| `localStorage` est `undefined` sous Vitest : Node 26 expose un global expérimental, inactif sans `--localstorage-file`, dont l'accesseur masque celui de jsdom | le premier test qui y touche, puis sondes de descripteurs — `sessionStorage` de jsdom marche, `localStorage` non, et jsdom seul le fournit correctement |
+| L'écriture dans `localStorage` n'était **pas couverte** : les 3 tests de la tâche 1 restaient verts avec `setItem` supprimé | contrôle négatif systématique |
+| La racine de `SplitPane` prenait la hauteur de son contenu — 15 px dans une boîte de 180 — au lieu de remplir sa boîte | mise en scène dans la galerie, puis mesure de la chaîne de parents |
+| Onglet actif 5 px trop large, et fond `--paper-bright` au lieu de `--paper` | mesure du **mockup lui-même** dans un navigateur, comparée chiffre par chiffre au nôtre |
+
+**Les leçons, transposables :**
+
+1. **jsdom ne calcule aucune mise en page.** Toute exigence de hauteur, largeur ou
+   position est structurellement hors de portée de Vitest — y mesurer un
+   `getBoundingClientRect()` renvoie zéro. Ces exigences ont besoin d'un test
+   Playwright : `e2e/layout-primitives.spec.ts` existe pour ça, et chacune de ses
+   assertions a été vérifiée par sabotage.
+2. **Le contrôle négatif se fait par sabotage, pas par relecture.** Trois tests qui
+   « testent la persistance » peuvent ne tester que la lecture. Retirer la ligne
+   soupçonnée et constater que la suite reste verte est la seule preuve.
+3. **`--paper` et `--paper-bright` sont faciles à confondre**, et l'erreur est
+   invisible à l'œil (#FBF7EF contre #FFFDF8). `--paper-bright` n'habille que le haut
+   du dégradé de la barre de titre ; toute surface de contenu est `--paper`.
+4. **Une croix rendue en bouton frère ne reproduit pas les espacements d'un conteneur
+   unique.** Le mockup pose un `gap` que le corps doit porter en `padding-right`, sans
+   répéter le padding du bord. Répéter les deux élargit l'onglet en silence.
+5. **Biome refuse les gestionnaires d'événements sur un élément statique**, y compris
+   sous `role="presentation"`. Le glisser-déposer d'un onglet vit donc sur le bouton
+   `role="tab"`, ce qui est de toute façon plus juste — l'élément interactif porte
+   l'interaction. Conséquence assumée : la zone de dépôt de l'onglet actif exclut la
+   largeur de la croix.
+
 ## Tâche 7 : vérification de fin
 
-Contrôler chaque critère de `specs/03-coquille-panneaux-onglets.md` § Terminé quand.
+Contrôlé contre `specs/03-coquille-panneaux-onglets.md` § Terminé quand.
 
-- [ ] `SplitPane` redimensionne à la souris et au clavier, respecte ses bornes,
-      retrouve sa taille après rechargement (`pnpm dev`, tester à la main)
-- [ ] deux `SplitPane` imbriqués reproduisent la disposition à trois zones de `A4`
-- [ ] `TabStrip` : fond, `border-top` coloré, poids de police conformes à l'onglet
-      actif ; réordonnancement par glisser ; `onClose` sur la croix
-- [ ] parcours clavier : poignée et onglets atteints, anneau de focus visible
-- [ ] icône console visible et focalisable quand `showConsole` est vrai, absente sinon
-- [ ] les deux primitives visibles dans la galerie
-- [ ] `rg -n "#[0-9A-Fa-f]{3,6}|rgba\(" src/ui/SplitPane src/ui/TabStrip` ne
-      remonte que le `.06` documenté du dégradé de poignée
-- [ ] `pnpm test && pnpm lint && pnpm typecheck` verts
+- [x] **`SplitPane` redimensionne à la souris et au clavier, respecte ses bornes,
+      retrouve sa taille après rechargement** — vérifié dans un navigateur réel :
+      212 → 228 par deux `ArrowRight`, valeur retrouvée après `reload()`. Bornes
+      couvertes par test unitaire. Glissement pointeur couvert par test unitaire et
+      vérifié à la main.
+- [x] **deux `SplitPane` imbriqués reproduisent la disposition à trois zones de `A4`** —
+      mesuré : trois zones et deux poignées à 180 px dans un conteneur de 182,
+      verrouillé par test e2e.
+- [x] **`TabStrip` conforme à l'onglet actif du mockup** — largeur 98,3 px, fond
+      `rgb(251, 247, 239)`, trait `rgb(242, 101, 58)`, écart libellé-croix 7 px :
+      **identiques au mockup sur les cinq mesures**. Réordonnancement et fermeture
+      couverts par tests unitaires, deux sabotages détectés.
+- [x] **parcours clavier** — poignées atteintes dans l'ordre (212 puis 300), bande
+      parcourue `public → orders → Fermer orders → console 1·psql`, anneau de focus
+      `--shadow-focus` résolu en `oklab(…)` sur les trois types de cible. Curseur
+      `col-resize` sur la poignée.
+- [x] **icône console** visible et focalisable sous `showConsole`, absente sinon — le
+      test qui protège `A1` reste vert sans modification, et l'ordre console-avant-
+      préférences du mockup est couvert.
+- [x] les deux primitives visibles dans la galerie, absentes du bundle de production.
+- [x] `rg` ne remonte que le `.06` documenté du dégradé de poignée.
+- [x] `pnpm test` (79), `pnpm lint`, `pnpm typecheck`, `pnpm test:e2e` (3) verts —
+      dont la capture `A1` à tolérance zéro, qui confirme que ni `showConsole` ni
+      l'`overflow: hidden` de `reset.css` n'ont altéré l'écran d'accueil.
