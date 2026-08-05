@@ -76,8 +76,28 @@ Le fichier porte un numéro de version en tête. À la lecture :
   cas d'un utilisateur qui rétrograde l'app : écraser serait perdre des données que
   cette version ne comprend pas.
 
+**Un refus de lire doit se voir.** Retomber sur une configuration vide serait le pire
+comportement possible : l'utilisateur verrait l'écran d'accueil de `07`, croirait
+avoir tout perdu, créerait un projet — et cette écriture, elle, écraserait le fichier
+qu'on venait de refuser d'ouvrir. La lecture distingue donc **« vide »** de
+**« illisible »**, et l'app doit refuser d'écrire tant qu'elle est dans le second cas.
+Ce scope livre la distinction dans le type de retour ; l'écran qui l'affiche viendra
+avec `09`, faute d'écran maquetté pour cet état.
+
 Aucune migration n'est écrite dans ce scope — il n'y a qu'une version. Ce qui est
 livré ici, c'est le **mécanisme** et son test, tant qu'il est gratuit de le poser.
+
+### L'environnement actif est persisté
+
+Question laissée ouverte par `05a`, tranchée ici : **oui**. Le handoff pose que
+l'environnement est choisi « une fois pour tout le projet » et que le badge de l'arbre
+le reflète ; rouvrir l'app sur `dev` alors qu'on travaillait en `prod` serait une
+surprise, et l'inverse — rouvrir silencieusement sur `prod` — un risque. Dans les deux
+cas, mieux vaut que l'état soit explicite et retrouvé tel quel.
+
+Il vit donc dans le fichier de configuration, sur le projet, et non en
+`localStorage` comme la géométrie des panneaux de `03` : ce n'est pas une préférence
+d'affichage mais une propriété du projet, que le handoff traite comme telle.
 
 ### Lecture d'un fichier abîmé
 
@@ -100,8 +120,13 @@ passe pas par les ACL : aucune permission à ajouter.
   l'ancien fichier intact, vérifié par un test qui provoque l'interruption.
 - Les quatre cas de lecture — absent, vide, illisible, version postérieure — ont
   chacun un test, et aucun ne panique.
+- **« Absent » et « illisible » sont deux retours distincts**, et une tentative
+  d'écriture après un « illisible » est refusée — testé, parce que c'est le chemin par
+  lequel on perdrait réellement les données de l'utilisateur.
 - Un fichier illisible est conservé sous un nom d'écart, et l'original n'est jamais
   perdu.
+- L'environnement actif d'un projet survit à un redémarrage, couvert par un
+  aller-retour.
 - Le chemin est résolu par l'API de Tauri, sans littéral de plateforme dans le code.
 - Le mécanisme de migration a un test, avec une version factice pour l'exercer.
 - Aucun identifiant n'atteint le fichier : un test écrit un projet dont la

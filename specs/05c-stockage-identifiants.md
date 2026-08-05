@@ -2,9 +2,12 @@
 
 ## Objectif
 
-Ranger les secrets — mots de passe, phrases de passe de clé SSH — hors du fichier de
-configuration, derrière une interface unique, avec le Trousseau en release signée et
-un fichier chiffré en développement.
+Ranger les secrets hors du fichier de configuration, derrière une interface unique,
+avec le Trousseau en release signée et un fichier chiffré en développement.
+
+**Un seul secret existe dans le handoff** : le mot de passe de base de données, saisi
+en `A2`. L'interface est générique, mais rien n'est construit pour un second type —
+voir « Hors périmètre ».
 
 ## Dépend de
 
@@ -30,7 +33,13 @@ contient aucun).
 - **L'usage du secret** pour ouvrir une connexion → `06`.
 - **La gestion de clés SSH** : génération, agent, `ssh-add`. Le handoff ne prévoit
   qu'un **chemin** vers une clé existante, qui est de la configuration (`05a`), pas
-  un secret. Seule sa phrase de passe en est un.
+  un secret.
+- **La phrase de passe d'une clé SSH chiffrée.** Le handoff n'en montre aucun champ —
+  vérifié, zéro occurrence dans le bundle. Une clé chiffrée est pourtant courante, et
+  `06` s'y heurtera peut-être en ouvrant un tunnel ; ce sera alors un second secret,
+  rangé par la même interface sans la modifier. **Ne rien construire pour l'instant** :
+  ce serait inventer un champ que le design ne demande pas, l'erreur que ce projet
+  évite depuis `02`.
 - **Le badge « Trousseau » de `A2`** : son rendu appartient à `08`. Ce scope fournit
   l'information qu'il affiche.
 - **Toute rotation, expiration ou politique de mot de passe** — hors handoff.

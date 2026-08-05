@@ -14,6 +14,13 @@ et leurs déclinaisons par environnement. C'est la dépendance commune de tous l
 
 - Les types du modèle : `Project`, `Database`, `EnvironmentVariant`, `Environment`,
   `Engine`.
+- **Les champs sont ceux que l'écran `A2` fait saisir** — voir
+  `design/handoff/README.md` § A2 pour l'inventaire, que cette spec ne recopie pas
+  (convention de `specs/README.md`). Répartition : le nom de la base et son moteur
+  appartiennent à `Database` ; hôte, port, base par défaut, utilisateur, mode SSL,
+  les deux bascules et toute la configuration de tunnel appartiennent à
+  `EnvironmentVariant`, puisque le handoff pose « host/port/creds différents par
+  env ». Seul le mot de passe n'est pas dans le modèle → `05c`.
 - Les invariants, exprimés dans le code plutôt qu'en commentaire : une base
   appartient à un projet et existe en **1..n** variantes d'environnement ;
   l'environnement actif est une propriété du **projet**, pas de la base.
@@ -79,11 +86,34 @@ Le choix de l'outil (`ts-rs`, `specta`, ou un générateur maison) se fait à
 l'implémentation, sur un critère simple : qu'un champ ajouté en Rust et non
 régénéré fasse **échouer la CI**, pas dériver en silence.
 
+### Une ambiguïté du handoff à ne pas trancher ici
+
+« Ouvrir en lecture seule » apparaît **trois fois** dans le handoff, et les trois ne
+disent pas la même chose :
+
+| Où | Ce que c'est |
+| --- | --- |
+| `A2`, bascule par base (l. 117) | un réglage de configuration, donc du modèle |
+| `A10`, garde-fou global (l. 287) | « ouvrir les bases *prod* en lecture seule », une préférence |
+| § Interactions (l. 335) | « passer en prod réapplique les garde-fous » |
+
+Le modèle porte donc **le réglage saisi**, celui de `A2`, et rien de plus. L'état
+effectif d'une base ouverte est une composition de ce réglage, de la préférence
+globale et de l'environnement courant — donc une règle, pas une donnée.
+
+Ce scope ne l'écrit pas : la préférence globale n'existe pas avant `15`, et c'est
+`11` (édition inline) qui aura à faire respecter le résultat. La consigner ici évite
+qu'elle soit découverte deux fois, et interdit surtout de dériver le réglage saisi
+depuis l'environnement — ce serait perdre ce que l'utilisateur a demandé.
+
 ### Ce que ce scope ne décide pas
 
 La forme de l'état d'arbre de `09` reste ouverte. Ce modèle décrit la
 *configuration*, pas la vue : quels nœuds sont ouverts, ce qui est sélectionné, et
 comment l'arbre est aplati pour la `Sidebar` de `04` appartiennent à l'écran.
+
+**L'environnement actif d'un projet est-il persisté ?** Question ouverte, tranchée
+en `05b` : elle porte sur le cycle de vie de la donnée, pas sur sa forme.
 
 ## Terminé quand
 
