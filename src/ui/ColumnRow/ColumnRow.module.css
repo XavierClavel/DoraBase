@@ -1,0 +1,69 @@
+.root {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  /* 20 px, une ligne plus basse qu'une ligne d'arbre (22) : la section contextuelle est
+     plus dense que l'arbre. Pas de token, la valeur n'apparaît qu'ici. */
+  height: 20px;
+  /* Indentation de 14 px, sans rapport avec les paliers de l'arbre : la section
+     contextuelle n'est pas un niveau d'arborescence. */
+  padding: 0 8px 0 14px;
+  border: none;
+  background: none;
+  font: 500 var(--text-label) var(--font-mono);
+  text-align: left;
+  color: var(--ink-7);
+  cursor: pointer;
+}
+
+/* Ligne de comptage : une encre plus atténuée que les colonnes qu'elle résume. */
+.summary {
+  color: var(--ink-8);
+  cursor: default;
+}
+
+.root:hover {
+  background: var(--hover-row);
+}
+
+.summary:hover {
+  background: none;
+}
+
+.root:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* Le glyphe, l'icône et l'emplacement vide partagent la même largeur : c'est ce qui aligne
+   les libellés de toutes les lignes, quel que soit leur type. */
+.glyph,
+.glyphSlot,
+.typeIcon {
+  width: 11px;
+  flex: none;
+}
+
+.glyph {
+  text-align: center;
+  color: var(--ink-5);
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  color: var(--ink-3);
+  flex: none;
+}
+
+/* Colonne filtrée ou triée : la métadonnée passe en accent soutenu. */
+.metaActive {
+  color: var(--accent-deep);
+}
