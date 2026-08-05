@@ -63,16 +63,21 @@ Projet ── environnement actif : dev | staging | prod   ← global au projet
   logique**, autre serveur. C'est ce qui interdit de modéliser l'environnement
   comme une propriété de la base.
 
-### Le typage porte les invariants
+### Le typage porte les invariants — et seulement ceux qui en sont
 
 « 1..n variantes » n'est pas un commentaire mais un type : une liste non vide, avec
 un constructeur qui refuse la liste vide. De même, l'environnement actif vit sur le
 projet ; aucune signature ne permet de lire une variante sans dire *laquelle*.
 
-L'intérêt est concret : `09` devra afficher un arbre où basculer l'environnement
-change les serveurs sans changer l'arborescence. Si le type autorise une base sans
-variante pour l'environnement courant, cet écran devra traiter un cas que le modèle
-aurait dû rendre impossible.
+**Ce que le typage ne peut pas garantir, et ne doit pas prétendre garantir :** qu'une
+base ait une variante pour l'environnement *courant*. Le handoff dit `1..n`, pas `n` —
+une base déclarée en `dev` seulement est parfaitement légitime, et basculer le projet
+en `prod` la laisse alors sans variante. Résoudre la variante active rend donc un
+résultat **optionnel**, et c'est un état réel du domaine, pas un trou de modélisation.
+
+Conséquence pour `09`, à ne pas découvrir en l'implémentant : l'arbre devra montrer
+*quelque chose* pour une base absente de l'environnement courant. Le handoff ne
+maquette pas ce cas — à trancher contre l'écran, sans inventer ici.
 
 ### Où vivent les types, et pourquoi les deux côtés
 
@@ -120,6 +125,8 @@ en `05b` : elle porte sur le cycle de vie de la donnée, pas sur sa forme.
 - Les types existent en Rust, avec les invariants portés par le typage : une base
   sans variante d'environnement ne se construit pas, et lire une variante exige de
   nommer l'environnement.
+- Résoudre la variante active rend un **résultat optionnel**, et un test couvre le cas
+  d'une base absente de l'environnement courant — état légitime, pas erreur.
 - Les fonctions pures — variante active, bases d'un projet pour un environnement,
   validation d'un projet — sont couvertes par des tests, y compris les cas
   d'échec (liste vide refusée, environnement absent).
