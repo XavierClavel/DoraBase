@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { type Tab, TabStrip } from './TabStrip'
 
 // Les trois familles d'onglet du handoff, avec leurs deux couleurs distinctes : le trait
@@ -69,4 +70,74 @@ test('un onglet de console porte un trait violet', () => {
   const { container } = renderStrip('console-1')
   const active = container.querySelector('[data-active="true"]') as HTMLElement
   expect(active.style.borderTopColor).toBe('var(--violet)')
+})
+
+test('cliquer un onglet le sélectionne', async () => {
+  const onSelect = vi.fn()
+  render(
+    <TabStrip
+      tabs={demoTabs}
+      activeId="orders"
+      onSelect={onSelect}
+      onClose={vi.fn()}
+      onReorder={vi.fn()}
+    />,
+  )
+  await userEvent.click(screen.getByRole('tab', { name: /public/i }))
+  expect(onSelect).toHaveBeenCalledWith('public')
+})
+
+test('la croix ferme sans sélectionner', async () => {
+  const onClose = vi.fn()
+  const onSelect = vi.fn()
+  render(
+    <TabStrip
+      tabs={demoTabs}
+      activeId="orders"
+      onSelect={onSelect}
+      onClose={onClose}
+      onReorder={vi.fn()}
+    />,
+  )
+  await userEvent.click(screen.getByRole('button', { name: /fermer orders/i }))
+  expect(onClose).toHaveBeenCalledWith('orders')
+  expect(onSelect).not.toHaveBeenCalled()
+})
+
+// `dataTransfer` est fourni à la main : jsdom ne construit pas l'objet natif, et
+// `fireEvent` accepte de le remplacer par un espion.
+test('glisser un onglet sur un autre les réordonne', () => {
+  const onReorder = vi.fn()
+  render(
+    <TabStrip
+      tabs={demoTabs}
+      activeId="orders"
+      onSelect={vi.fn()}
+      onClose={vi.fn()}
+      onReorder={onReorder}
+    />,
+  )
+  const tabs = screen.getAllByRole('tab')
+  const dataTransfer = { setData: vi.fn(), getData: vi.fn(() => 'public') }
+  fireEvent.dragStart(tabs[0] as HTMLElement, { dataTransfer })
+  fireEvent.drop(tabs[2] as HTMLElement, { dataTransfer })
+  expect(onReorder).toHaveBeenCalledWith([demoTabs[1], demoTabs[2], demoTabs[0]])
+})
+
+test('déposer un onglet sur lui-même ne réordonne pas', () => {
+  const onReorder = vi.fn()
+  render(
+    <TabStrip
+      tabs={demoTabs}
+      activeId="orders"
+      onSelect={vi.fn()}
+      onClose={vi.fn()}
+      onReorder={onReorder}
+    />,
+  )
+  const tabs = screen.getAllByRole('tab')
+  const dataTransfer = { setData: vi.fn(), getData: vi.fn(() => 'public') }
+  fireEvent.dragStart(tabs[0] as HTMLElement, { dataTransfer })
+  fireEvent.drop(tabs[0] as HTMLElement, { dataTransfer })
+  expect(onReorder).not.toHaveBeenCalled()
 })
