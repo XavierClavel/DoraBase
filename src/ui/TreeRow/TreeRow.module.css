@@ -7,6 +7,13 @@
   width: 100%;
   height: var(--h-tree-row);
   padding-right: 8px;
+  /* Exception assumée à la convention `content-box` du projet, qui vaut pour les hauteurs
+     issues d'un token. Ici c'est la **largeur** qui est à 100 %, et un `<button>` étant
+     `inline-block` il ne remplit pas sa ligne sans elle. En `content-box`, `width: 100%`
+     s'ajouterait au padding d'indentation — jusqu'à 60 px au palier 3 — et la métadonnée
+     de fin de ligne se ferait rogner. La hauteur n'en souffre pas : ni padding vertical,
+     ni bordure. */
+  box-sizing: border-box;
   border: none;
   background: none;
   /* La graisse et la famille viennent de la sidebar (600 11.5px Nunito) ; un `<button>`
