@@ -383,9 +383,58 @@ git add -A && git commit -m "feat(config): projection TypeScript générée depu
 
 ---
 
+## Acquis d'exécution
+
+| Défaut | Trouvé par |
+| --- | --- |
+| La CI n'exécutait aucun test Rust : `clippy --all-targets` **compile** les tests, donc un `assert_eq!(1, 2)` la laissait verte | contrôle négatif délibéré, tâche 1 |
+| Une sonde d'encapsulation placée dans le `mod tests` du **même fichier** ne prouve rien : un module enfant accède aux champs privés de son parent, le sabotage y compile | l'avoir fait, et constaté l'absence d'erreur |
+| `rename_all = "kebab-case"` mutilait les moteurs en « postgre-sql », « my-sql », « mongo-db » — valeurs destinées au fichier de configuration de `05b` | **lecture du fichier TypeScript généré**, invisible dans le code Rust |
+| `SecretRef` se projetait en `string` nu, perdant la garantie du type distinct au passage de la frontière | même lecture |
+| Des commentaires `///` propres à Rust fuyaient dans le TypeScript — « privé, délibérément » sur un champ manifestement présent | même lecture |
+| Un commit est passé avec `clippy` et `cargo fmt` rouges | ma faute : `cargo clippy … \| tail -3` remplace le code de sortie par celui de `tail` |
+
+**Les leçons :**
+
+1. **Tuber une commande jette son code de sortie.** `cmd | tail` sort avec le statut de
+   `tail`, donc toujours 0. Un commit gaté sur une telle chaîne n'est pas gaté du tout.
+   Vérifier avec `cmd >/dev/null 2>&1 && echo OK || echo ÉCHEC`, et gater sur la
+   commande elle-même.
+2. **Relire un fichier généré, pas seulement le code qui le génère.** Les trois défauts
+   de projection étaient invisibles côté Rust : `kebab-case` y semblait raisonnable, et
+   c'est sa *sortie* qui ne l'était pas. Même leçon que « mesurer le mockup dans un
+   navigateur » au plan `02`.
+3. **Une sonde d'encapsulation doit venir d'un autre module** que celui qui déclare le
+   type. Sinon elle valide l'inverse de ce qu'elle prétend.
+4. **Les noms sérialisés sont un contrat de données**, pas un détail de style : ils
+   partent sur le disque en `05b`. Les dériver d'une convention automatique, c'est
+   accepter ce que la convention produit — ici, quatre noms de moteurs faux sur sept.
+5. **Faire formater la sortie d'un générateur par Biome** plutôt que l'exclure du lint :
+   la chaîne reste déterministe (vérifié par deux générations identiques), le formatage
+   reste cohérent, et aucun en-tête d'exclusion n'est nécessaire. Variante préférable à
+   celle retenue pour `tokens.css` au plan `02`, où le générateur émettait l'en-tête.
+
 ## Tâche 5 : vérification de fin
 
-Contrôler chaque critère de `specs/05a-modele-configuration.md` § Terminé quand.
+Contrôlé contre `specs/05a-modele-configuration.md` § Terminé quand.
+
+- [x] **une base sans variante ne se construit pas**, **deux variantes du même
+      environnement sont refusées**, et le champ est **privé** — prouvé depuis un module
+      frère par `error[E0616]: field 'variants' … is private`.
+- [x] **lire une variante exige de nommer l'environnement**, et le résultat est optionnel —
+      test sur une base déclarée en `dev` seulement, absente de l'environnement `prod`
+      courant.
+- [x] **fonctions pures couvertes, cas d'échec compris** — 12 tests, et chaque sabotage
+      (validation qui rend toujours `Ok`, filtre retiré) fait échouer exactement un test.
+- [x] **`pnpm domain:check` échoue si la projection a dérivé** — vérifié en ajoutant un
+      champ Rust sans régénérer.
+- [x] **aucun secret dans le modèle** : seul `Option<SecretRef>` apparaît, jamais une
+      valeur.
+- [x] **les sept moteurs sont représentés**, avec des noms sérialisés lisibles
+      (`postgresql`, `mysql`, `sqlite`, `mongodb`, `redis`, `snowflake`, `bigquery`).
+- [x] `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`,
+      `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm domain:check` — tous verts,
+      chacun vérifié **sans tube**.
 
 - [ ] une base sans variante ne se construit pas ; deux variantes du même
       environnement sont refusées ; le champ est privé, vérifié par une tentative
