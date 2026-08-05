@@ -303,7 +303,12 @@ pnpm icons:check    # idem pour le sprite
 Les fondations partagées sont posées (`01`, `02`, `03`, `04`) et un écran réel existe
 (`07`). Aucune spec n'existe encore pour `05` et suivantes.
 
-**`05` est le prochain, et rien ne le bloque** (voir la correction du § 5). Raison de fond :
+**`05a` est fait** (5 août 2026) : le modèle de configuration existe en Rust, projeté en
+TypeScript par `ts-rs` avec garde-fou `domain:check`. La CI exécute enfin les tests Rust —
+elle ne le faisait pas, et un test faux la laissait verte. Prochain : `05b` (persistance),
+puis `05c` (identifiants).
+
+**Rien ne bloque cette suite** (voir la correction du § 5). Raison de fond :
 tous les écrans restants affichent des **projets, bases, environnements, schémas et objets**.
 Écrire `08` ou `09` d'abord obligerait à inventer la forme de ces données à l'intérieur
 d'une spec d'écran — exactement ce que `04` a refusé de faire en laissant l'état de l'arbre
