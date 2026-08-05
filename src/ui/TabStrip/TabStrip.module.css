@@ -1,0 +1,66 @@
+.root {
+  display: flex;
+  align-items: stretch;
+  height: var(--h-bar);
+  background: var(--bar);
+  border-bottom: 1px solid var(--divider);
+  /* `content-box` : les hauteurs du handoff désignent le contenu, le filet s'ajoutant
+     par-dessus — le mockup ne déclare aucun `box-sizing`, donc rend en `content-box`.
+     La bande fait ainsi 35 px rendus pour 34 déclarés, comme dans la maquette. */
+  box-sizing: content-box;
+  /* Une bande d'onglets ne se réduit jamais : c'est le panneau sous elle qui absorbe. */
+  flex: none;
+}
+
+.tab {
+  display: flex;
+  /* `stretch`, pas `center` : le fond de l'onglet actif doit couvrir toute la hauteur de
+     la bande, d'un filet à l'autre, et non la seule hauteur de son texte. */
+  align-items: stretch;
+  border-right: 1px solid var(--divider);
+  /* Filet supérieur réservé sur tous les onglets, transparent tant qu'ils sont inactifs :
+     sans lui, activer un onglet le décalerait de 2 px vers le bas. La couleur est posée en
+     ligne par le composant, elle dépend de la famille d'onglet. */
+  border-top: 2px solid transparent;
+}
+
+.select {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: none;
+  background: none;
+  font: var(--weight-semibold) 11.5px var(--font-ui);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.active .select {
+  background: var(--paper-bright);
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+}
+
+.meta {
+  font: 500 10px var(--font-mono);
+  color: var(--ink-4);
+}
+
+.close {
+  display: flex;
+  align-items: center;
+  /* Pas de `padding-left` : la croix suit immédiatement le libellé, comme dans le mockup
+     où elle vit à l'intérieur du même bloc que lui. */
+  padding: 0 12px 0 0;
+  border: none;
+  background: var(--paper-bright);
+  color: var(--ink-5);
+  cursor: pointer;
+}
+
+.select:focus-visible,
+.close:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}

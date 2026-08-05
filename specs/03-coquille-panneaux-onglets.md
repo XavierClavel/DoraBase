@@ -57,14 +57,28 @@ convention établie en `02` pour les valeurs à usage unique.
 
 **Bande d'onglets** (l. 381-385) — hauteur 34 (`--h-bar`), fond `--bar`
 (`#F5F0E6`), filet bas `--divider`. Chaque onglet : `padding 0 12`, filet droit
-`--divider`, `700 11.5px Nunito` si actif sinon `600 11.5px` en `--ink-2`. Icône
-16×13 dans une couleur propre à son type (schéma `--accent-deep`, table
-`--success-base`, console `#7C5CD6` — déjà `--violet`). Onglet actif : fond
-`--paper-bright`, `border-top 2px` dans la couleur de son type. Bouton de
-fermeture (`i-x` 12px, `--ink-5`) : visible sur l'onglet actif dans le mockup ;
-aucun onglet inactif n'en montre. On retient cette lecture littérale plutôt que
-d'inventer un survol qui révélerait la croix — cohérent avec `REPRISE.md` § 9 sur
-les états non maquettés. À revoir si un écran réel le contredit.
+`--divider`, `700 11.5px Nunito` si actif sinon `600 11.5px` en `--ink-2`.
+Onglet actif : fond `--paper-bright` plus un `border-top 2px`.
+
+**Deux couleurs indépendantes par onglet, à ne pas confondre** — relevé sur les
+cinq onglets actifs du mockup (l. 389, 512, 806, 912, 1022). Le trait supérieur
+suit la **famille** d'onglet, l'icône suit le **type d'objet** :
+
+| Onglet | `border-top` | Icône |
+| --- | --- | --- |
+| schéma | `--accent` | `--accent-deep` |
+| table | `--accent` | `--success` |
+| console | `--violet` | `--violet-ink` |
+
+Les fusionner en une seule valeur donnerait un trait vert sur les onglets de
+table et un trait `--violet-ink` sur les consoles : aucun des deux n'existe dans
+le mockup. Tout est déjà tokenisé, aucun ajout nécessaire.
+
+Bouton de fermeture (`i-x` 12px, `--ink-5`) : visible sur l'onglet actif dans le
+mockup ; aucun onglet inactif n'en montre. On retient cette lecture littérale
+plutôt que d'inventer un survol qui révélerait la croix — cohérent avec
+`REPRISE.md` § 9 sur les états non maquettés. À revoir si un écran réel le
+contredit.
 
 ### Redimensionnement
 
