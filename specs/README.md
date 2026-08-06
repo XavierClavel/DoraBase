@@ -97,7 +97,7 @@ se pose : ajouter `blob:` à la directive concernée, ou gérer l'écriture côt
 | --- | --- | --- |
 | [`05a`](05a-modele-configuration.md) | Modèle de configuration : Projet / Base / Environnement, types et invariants | **fait** |
 | [`05b`](05b-persistance-disque.md) | Persistance sur disque : emplacement, écriture atomique, version et migration | **fait** |
-| [`05c`](05c-stockage-identifiants.md) | Stockage des identifiants : interface, Trousseau, fichier chiffré | à relire |
+| [`05c`](05c-stockage-identifiants.md) | Stockage des identifiants : interface, Trousseau, fichier chiffré | **fait** (Trousseau non vérifié) |
 | `06` | Couche moteur en Rust : abstraction + adaptateur PostgreSQL, test de connexion, SSL, tunnel SSH | à écrire |
 
 **Pourquoi `05` a été découpé en trois** (5 août 2026) : le périmètre indexé —
