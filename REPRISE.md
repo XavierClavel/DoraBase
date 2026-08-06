@@ -315,6 +315,27 @@ fichier corrompu, qui est mis en quarantaine et bloque l'écriture. La CI exécu
 tests Rust — elle ne le faisait pas, et un test faux la laissait verte. **40 tests Rust.**
 Prochain : `05c` (identifiants).
 
+**`06a` et `06b` sont faits** (6 août 2026). Le contrat de la couche moteur — trait, modèle
+d'introspection, fenêtre de lignes — et la connexion PostgreSQL avec son test de connexion.
+**87 tests Rust** dont 7 contre un vrai PostgreSQL 17.6.
+
+La contrainte IPC transverse est désormais portée par un **type** : `RowLimit` est une
+énumération fermée (100/500/1000/5000), donc « demander tout » n'est pas exprimable.
+
+**Deux réserves à ne pas oublier :**
+- **Le TLS n'est pas branché** en `06b` : `NoTls`, donc `Require`, `VerifyCa` et
+  `VerifyFull` ne vérifient rien. Dit dans le module. Demande de trancher entre `rustls` et
+  `native-tls` — ce dernier reconnaît les autorités internes déjà installées, argument
+  sérieux en entreprise.
+- **Le backend Trousseau de `05c` reste non vérifié** (pas de Developer ID).
+
+**Infrastructure de test acquise** : un second job de CI sur `ubuntu-latest` avec un service
+`postgres:17`, parce que les *service containers* n'existent pas sur les runners macOS. Les
+tests concernés sont derrière la feature `db-tests` et non `#[ignore]` — sans la feature ils
+n'existent pas, ce qui garde le compte d'ignorés réservé au Trousseau. En local, conteneur
+dédié `dorabase-test-pg` sur le port **55432**, choisi pour ne croiser aucun autre projet de
+la machine.
+
 **Le pont JavaScript → Rust n'est pas encore exercé** : Playwright ne pilote pas WKWebView
 et aucun plugin de log JS n'est installé, donc `invoke()` depuis le front n'a jamais été
 appelé. L'enregistrement des commandes est garanti par la compilation ; le pont le sera par
