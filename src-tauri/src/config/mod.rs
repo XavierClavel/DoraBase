@@ -6,9 +6,11 @@
 
 mod model;
 mod query;
+mod store;
 
 pub use model::{
     Database, Engine, Environment, EnvironmentVariant, ModelError, Project, SecretRef, SslMode,
     Tunnel, TunnelKind,
 };
 pub use query::{active_variant, databases_available, validate};
+pub use store::{load, save, ConfigStore, LoadOutcome, StoreError, VERSION_COURANTE};
