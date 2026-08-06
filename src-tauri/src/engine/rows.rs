@@ -1,0 +1,249 @@
+//! Requête de lignes et fenêtre de résultat. Voir `specs/06a-contrat-couche-moteur.md`.
+//!
+//! C'est ici que la contrainte transverse du projet devient un **type** plutôt qu'une
+//! recommandation : `specs/README.md` pose qu'aucun jeu de résultats complet ne traverse
+//! l'IPC. Une recommandation se contourne ; `RowLimit` étant une énumération fermée,
+//! « demander tout » n'est pas exprimable.
+
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+
+use super::introspection::RowCount;
+
+/// Les paliers de `LIMIT` du stepper de `A5` : 100 / 500 / 1000 / 5000.
+///
+/// Une énumération, **pas un `u32`** : c'est ce qui empêche un appelant de demander cinq
+/// millions de lignes, et donc ce qui rend la contrainte IPC vérifiable par le compilateur
+/// au lieu de reposer sur la discipline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub enum RowLimit {
+    OneHundred,
+    FiveHundred,
+    OneThousand,
+    FiveThousand,
+}
+
+impl RowLimit {
+    pub fn value(self) -> u32 {
+        match self {
+            Self::OneHundred => 100,
+            Self::FiveHundred => 500,
+            Self::OneThousand => 1000,
+            Self::FiveThousand => 5000,
+        }
+    }
+
+    pub fn tous() -> [Self; 4] {
+        [
+            Self::OneHundred,
+            Self::FiveHundred,
+            Self::OneThousand,
+            Self::FiveThousand,
+        ]
+    }
+}
+
+/// Les cinq opérateurs du popover de `A5` : `=`, `≠`, `in`, `~`, `is null`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub enum FilterOperator {
+    Eq,
+    Ne,
+    In,
+    /// Correspondance de motif — le `~` du mockup.
+    Matches,
+    IsNull,
+}
+
+impl FilterOperator {
+    /// `is null` est le seul à ne pas prendre de valeur. Le savoir ici évite à chaque
+    /// écran et à chaque adaptateur de le redécouvrir.
+    pub fn prend_une_valeur(self) -> bool {
+        !matches!(self, Self::IsNull)
+    }
+
+    pub fn tous() -> [Self; 5] {
+        [Self::Eq, Self::Ne, Self::In, Self::Matches, Self::IsNull]
+    }
+}
+
+/// Un filtre par en-tête de colonne, tel que `A5` le saisit.
+///
+/// La valeur reste une **chaîne** : c'est ce que l'utilisateur a tapé, et c'est
+/// l'adaptateur qui la lie en paramètre selon le type de la colonne. La convertir ici
+/// exigerait de connaître les types de sept moteurs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub struct Filter {
+    pub column: String,
+    pub operator: FilterOperator,
+    /// `None` pour `is null`.
+    pub value: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub enum SortDirection {
+    Ascending,
+    Descending,
+}
+
+/// Un critère de tri. `A5` en accepte plusieurs, numérotés — leur ordre dans le vecteur
+/// **est** leur rang.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub struct SortKey {
+    pub sabotage: bool,
+    pub column: String,
+    pub direction: SortDirection,
+}
+
+/// L'intention d'une lecture, que l'adaptateur traduit en SQL paramétré.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub struct RowQuery {
+    pub schema: String,
+    pub table: String,
+    pub filters: Vec<Filter>,
+    pub sort: Vec<SortKey>,
+    #[ts(type = "number")]
+    pub offset: u64,
+    /// Toujours présente, et prise dans un ensemble fermé.
+    pub limit: RowLimit,
+}
+
+impl RowQuery {
+    /// Le seul constructeur : il **exige** une limite. Il n'existe aucune façon de
+    /// construire une requête sans en donner une.
+    pub fn new(schema: impl Into<String>, table: impl Into<String>, limit: RowLimit) -> Self {
+        Self {
+            schema: schema.into(),
+            table: table.into(),
+            filters: Vec::new(),
+            sort: Vec::new(),
+            offset: 0,
+            limit,
+        }
+    }
+}
+
+/// Une valeur de cellule, **typée** et non préformatée.
+///
+/// `A5` rend `NULL` distinctement, aligne nombres et dates en mono, et met certaines
+/// colonnes en pastille. C'est donc l'écran qui formate — lui seul connaît la densité et
+/// la locale. Rendre une chaîne déjà formatée lui retirerait cette décision.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "kind"
+)]
+#[ts(export_to = "engine.ts")]
+pub enum Value {
+    Null,
+    Bool {
+        value: bool,
+    },
+    Int {
+        #[ts(type = "number")]
+        value: i64,
+    },
+    Float {
+        value: f64,
+    },
+    Text {
+        value: String,
+    },
+    /// Horodatage tel que la base le rend — voir `introspection.rs` sur l'absence de type
+    /// de date.
+    Timestamp {
+        value: String,
+    },
+    Json {
+        value: String,
+    },
+    /// Contenu binaire, rendu en base64 : l'IPC transporte du JSON.
+    Binary {
+        base64: String,
+    },
+}
+
+/// Une fenêtre de lignes — jamais un jeu complet.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub struct RowWindow {
+    #[ts(type = "number")]
+    pub offset: u64,
+    pub rows: Vec<Vec<Value>>,
+    /// Le total, **quand il est connu**. Optionnel délibérément : le compter exactement
+    /// sur une grande table coûte un parcours complet, et `A5` affiche de toute façon le
+    /// compte de la fenêtre.
+    pub total: Option<RowCount>,
+    /// Le SQL réellement exécuté, que `A5` montre derrière « Voir le SQL ».
+    pub sql: String,
+    /// Durée de la requête, pour la barre d'état de `A5` (« 41 ms »).
+    pub duration_ms: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn une_requete_de_lignes_porte_toujours_une_limite() {
+        let requete = RowQuery::new("public", "orders", RowLimit::FiveHundred);
+        assert_eq!(requete.limit.value(), 500);
+    }
+
+    #[test]
+    fn les_paliers_de_limite_sont_ceux_du_handoff() {
+        let paliers: Vec<u32> = RowLimit::tous().iter().map(|p| p.value()).collect();
+        assert_eq!(paliers, vec![100, 500, 1000, 5000]);
+    }
+
+    #[test]
+    fn les_cinq_operateurs_de_a5_existent() {
+        assert_eq!(FilterOperator::tous().len(), 5);
+    }
+
+    #[test]
+    fn seul_is_null_ne_prend_pas_de_valeur() {
+        assert!(!FilterOperator::IsNull.prend_une_valeur());
+        for operateur in FilterOperator::tous() {
+            if operateur != FilterOperator::IsNull {
+                assert!(
+                    operateur.prend_une_valeur(),
+                    "{operateur:?} devrait prendre une valeur"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn une_fenetre_a_un_total_optionnel() {
+        let fenetre = RowWindow {
+            offset: 0,
+            rows: vec![],
+            total: None,
+            sql: "select 1".into(),
+            duration_ms: 3,
+        };
+        assert!(fenetre.total.is_none());
+    }
+
+    #[test]
+    fn une_requete_neuve_n_a_ni_filtre_ni_tri_ni_decalage() {
+        let requete = RowQuery::new("public", "orders", RowLimit::OneHundred);
+        assert!(requete.filters.is_empty());
+        assert!(requete.sort.is_empty());
+        assert_eq!(requete.offset, 0);
+    }
+}

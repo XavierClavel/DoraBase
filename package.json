@@ -18,8 +18,8 @@
     "tokens:check": "node scripts/build-tokens.mjs && git diff --exit-code src/design/tokens.css src/design/tokens.ts",
     "icons:build": "node scripts/extract-icons.mjs",
     "icons:check": "node scripts/extract-icons.mjs && git diff --exit-code src/design/icons/sprite.svg src/design/icons/names.ts",
-    "domain:build": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "domain:check": "cargo test --manifest-path src-tauri/Cargo.toml && git diff --exit-code src/domain/config.ts"
+    "domain:build": "cargo run --quiet --manifest-path src-tauri/Cargo.toml --bin export-types",
+    "domain:check": "cargo run --quiet --manifest-path src-tauri/Cargo.toml --bin export-types && git diff --exit-code src/domain/"
   },
   "dependencies": {
     "@fontsource-variable/baloo-2": "^5.3.0",

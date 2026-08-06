@@ -14,7 +14,7 @@ use super::{EncryptedFileStore, KeychainStore, SecretError, SecretStore};
 /// pouvoir dire la vérité, donc il a besoin de cette information.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/domain/config.ts")]
+#[ts(export_to = "config.ts")]
 pub enum SecretMechanism {
     /// Trousseau du système — build à signature stable.
     Keychain,
