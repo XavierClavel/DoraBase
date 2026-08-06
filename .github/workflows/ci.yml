@@ -72,3 +72,45 @@ jobs:
       - run: cargo test
         working-directory: src-tauri
       - run: pnpm tauri build
+
+  # Second job, sur Linux, dédié aux tests qui exigent une vraie base.
+  #
+  # Pourquoi un job séparé : les *service containers* de GitHub Actions n'existent que sur
+  # les runners Linux, or le job `build` doit rester sur macOS pour produire le `.app`. Les
+  # deux tournent en parallèle, donc la CI ne rallonge pas.
+  #
+  # Les tests concernés sont derrière la feature `db-tests` et non `#[ignore]` : sans la
+  # feature ils n'existent pas, ce que le job macOS démontre par un compte à zéro.
+  engine:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: dorabase
+          POSTGRES_PASSWORD: dorabase-test
+          POSTGRES_DB: dorabase_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - run: rustup show
+        working-directory: src-tauri
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          # Clé distincte de celle du job macOS : les cibles diffèrent, et les mélanger
+          # ferait invalider un cache par l'autre.
+          key: engine
+
+      - run: cargo test --features db-tests
+        working-directory: src-tauri
+        env:
+          DORABASE_TEST_PG: postgres://dorabase:dorabase-test@localhost:5432/dorabase_test

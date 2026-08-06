@@ -17,6 +17,7 @@
 
 mod error;
 mod introspection;
+mod postgres;
 mod rows;
 
 use std::future::Future;

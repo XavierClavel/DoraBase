@@ -15,6 +15,13 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2.6.3", features = [] }
 
+# Les tests exigeant une vraie base sont derrière cette feature, et non `#[ignore]` :
+# une feature les rend *absents* du job macOS au lieu de silencieux. Le compte d'ignorés
+# reste ainsi réservé au Trousseau de `05c`, plutôt que de devenir une poubelle où deux
+# familles de tests se cachent. Lancés par le job Linux de la CI.
+[features]
+db-tests = []
+
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -24,6 +31,8 @@ tauri-plugin-log = "2"
 ts-rs = "12.0.1"
 chacha20poly1305 = { version = "0.11.0", features = ["getrandom", "rand_core"] }
 keyring = "4.1.6"
+tokio-postgres = "0.7.18"
 
 [dev-dependencies]
 tempfile = "3.27.0"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
