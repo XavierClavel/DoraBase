@@ -98,8 +98,8 @@ se pose : ajouter `blob:` à la directive concernée, ou gérer l'écriture côt
 
 | Spec | Scope | État |
 | --- | --- | --- |
-| [`01`](01-socle-tauri.md) | Socle : Tauri 2 + React/TS/Vite, structure du repo, packaging `.app`, CI | à relire |
-| [`02`](02-design-system.md) | Design system : tokens, polices, icônes, primitives | à relire |
+| [`01`](01-socle-tauri.md) | Socle : Tauri 2 + React/TS/Vite, structure du repo, packaging `.app`, CI | **fait** |
+| [`02`](02-design-system.md) | Design system : tokens, polices, icônes, primitives | **fait** |
 | [`03`](03-coquille-panneaux-onglets.md) | Coquille : panneaux redimensionnables + persistance, bande d'onglets | **fait** |
 | [`04`](04-menu-lateral-standard.md) | Menu latéral standard — le composant partagé A5 → A9 | **fait** |
 
@@ -110,11 +110,11 @@ se pose : ajouter `blob:` à la directive concernée, ou gérer l'écriture côt
 | [`05a`](05a-modele-configuration.md) | Modèle de configuration : Projet / Base / Environnement, types et invariants | **fait** |
 | [`05b`](05b-persistance-disque.md) | Persistance sur disque : emplacement, écriture atomique, version et migration | **fait** |
 | [`05c`](05c-stockage-identifiants.md) | Stockage des identifiants : interface, Trousseau, fichier chiffré | **fait** (Trousseau non vérifié) |
-| [`06a`](06a-contrat-couche-moteur.md) | Contrat de la couche moteur : trait, modèle d'introspection, fenêtre de lignes | à relire |
-| [`06b`](06b-connexion-postgresql.md) | Connexion PostgreSQL, modes SSL, test de connexion, infra de test | à relire |
-| [`06c`](06c-introspection-postgresql.md) | Introspection PostgreSQL : catalogue → modèle, DDL | à relire |
-| [`06d`](06d-lecture-paginee.md) | Lecture paginée des lignes : filtres, tri, contrainte IPC | à relire |
-| [`06e`](06e-tunnel-ssh.md) | Tunnel SSH vers un bastion | à relire |
+| [`06a`](06a-contrat-couche-moteur.md) | Contrat de la couche moteur : trait, modèle d'introspection, fenêtre de lignes | relue, à faire |
+| [`06b`](06b-connexion-postgresql.md) | Connexion PostgreSQL, modes SSL, test de connexion, infra de test | relue, à faire |
+| [`06c`](06c-introspection-postgresql.md) | Introspection PostgreSQL : catalogue → modèle, DDL | relue, à faire |
+| [`06d`](06d-lecture-paginee.md) | Lecture paginée des lignes : filtres, tri, contrainte IPC | relue, à faire |
+| [`06e`](06e-tunnel-ssh.md) | Tunnel SSH vers un bastion | relue, à faire |
 
 **Pourquoi `05` a été découpé en trois** (5 août 2026) : le périmètre indexé —
 « modèle de domaine, persistance, Trousseau » — mêlait trois préoccupations
@@ -137,7 +137,7 @@ propres critères de vérification.
 
 | Spec | Écran | Scope | État |
 | --- | --- | --- | --- |
-| [`07`](07-a1-accueil.md) | A1 | Première ouverture, aucun projet | à relire |
+| [`07`](07-a1-accueil.md) | A1 | Première ouverture, aucun projet | **fait** |
 | `08` | A2 + A3 | Modale nouvelle connexion, et son échec | à écrire |
 | `09` | A4 | Explorateur : projets → bases → schémas → tables | à écrire |
 | `10` | A5 | Visualiseur de table : grille, filtres par en-tête, tri, LIMIT | à écrire |
