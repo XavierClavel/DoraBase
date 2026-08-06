@@ -4,8 +4,12 @@
 //! saisi en `A2`. L'interface est générique, mais rien n'est construit pour un second.
 
 mod file;
+mod keychain;
+mod signature;
 
 pub use file::EncryptedFileStore;
+pub use keychain::KeychainStore;
+pub use signature::{analyser_signature, signature_courante, SignatureKind};
 
 use super::config::SecretRef;
 
