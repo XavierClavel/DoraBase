@@ -421,18 +421,64 @@ magasin de secrets n'écrit **jamais** dans le fichier de configuration.
 
 ---
 
+## Acquis d'exécution
+
+| Défaut | Trouvé par |
+| --- | --- |
+| **La chaîne de génération de `05a` avait un footgun** : `cargo test` réécrit `src/domain/config.ts` en sortie brute de `ts-rs`, tandis que `domain:build` la reformatait ensuite par Biome — donc tout `git add` suivant un simple `cargo test` indexait du non formaté | m'être fait piéger : un commit est parti avec la version brute |
+| **Un commit est passé avec `clippy` rouge**, alors que le plan `05a` avait déjà consigné la leçon | j'avais *affiché* le résultat de clippy sans **gater** le commit dessus |
+| Ma détection de signature ne pouvait pas reconnaître un binaire signé : elle cherchait un `Signature=` autre que `adhoc`, or un binaire signé imprime `Signature size=9000` — la ligne n'existe pas sous cette forme | le test sur la sortie signée |
+| `Nonce::from_slice` est déprécié dans la 0.11 au profit de `TryFrom` | clippy, avec `-D warnings` |
+| L'API de `chacha20poly1305` 0.11 n'est ni `aead::OsRng` ni `generate_nonce` : elle passe par `Generate`, derrière **deux** features (`getrandom` **et** `rand_core`) | trois tentatives de compilation, puis lecture de la source du crate |
+
+**Les leçons :**
+
+1. **Un fichier généré ne doit avoir qu'un seul producteur.** Faire dépendre sa forme
+   committée de deux outils rend la chaîne sensible à l'ordre, et l'ordre finit par être
+   violé — par la CI, ou par soi. Biome ne formate plus ce fichier (il continue de le
+   linter) ; `cargo test` seul produit désormais la forme committée, vérifié en constatant
+   que l'arbre reste propre après un `cargo test` nu. C'est une **révision** de la
+   préférence énoncée au plan `05a`, qui avait causé le défaut.
+2. **Vérifier n'est pas gater.** `cmd >/dev/null && echo OK || echo ÉCHEC` *affiche* le
+   résultat ; il ne l'impose pas. Le commit doit être **dans la chaîne** :
+   `verif1 && verif2 && { git commit …; } || echo ÉCHEC`. Avoir écrit la leçon au plan
+   précédent ne m'a pas empêché de la répéter — d'où sa reformulation en une forme de
+   commande à copier, plutôt qu'en principe.
+3. **Détecter une propriété positivement, pas par l'absence de son contraire.** Les deux
+   cas de `codesign` n'ont pas la même forme de sortie : déduire « signé » de « pas
+   d'ad-hoc trouvé » revient à conclure depuis un motif qui n'existe dans aucun des deux.
+4. **Une sentinelle plus un contrôle positif.** « Zéro occurrence du secret dans le
+   journal » ne vaut rien sans la preuve que le journal *contient bien* la sonde. Les deux
+   assertions vont ensemble, toujours.
+5. **Le test le plus utile de ce plan est le moins évident** : « un second magasin relit ce
+   que le premier a écrit ». Régénérer la clé à chaque ouverture passe tous les autres
+   tests, et rend pourtant tous les secrets illisibles au redémarrage suivant.
+
 ## Tâche 7 : vérification de fin
 
-- [ ] interface définie, deux implémentations, le code appelant ignore laquelle est active
-- [ ] aller-retour couvert pour le fichier chiffré ; couvert mais `#[ignore]` pour le
-      Trousseau, et **dit comme tel**
-- [ ] mécanisme choisi d'après la signature, vérifié sur les deux entrées enregistrées et
-      sur le binaire réel
-- [ ] le fichier chiffré **refuse un contenu altéré**, vérifié en retournant un octet
-- [ ] la clé est en mode `0600` et **réutilisée** entre deux ouvertures
-- [ ] aucun secret dans les journaux — vérifié au `grep` sur un journal réel
-- [ ] aucun secret dans un message d'erreur, `Display` et `Debug`
-- [ ] aucune API propre à macOS hors de `keychain.rs` — `rg` le confirme
-- [ ] le front peut afficher le mécanisme réellement actif
-- [ ] `cargo test`, `clippy`, `fmt`, `pnpm typecheck`, `lint`, `test`, `domain:check` —
-      chacun **sans tube** — et la CI verte
+- [x] **interface définie, deux implémentations**, et un test manipule un
+      `dyn SecretStore` sans savoir lequel — ce que fera le reste de l'app.
+- [x] **aller-retour couvert pour le fichier chiffré** (8 tests) ; couvert mais `#[ignore]`
+      pour le Trousseau (3 tests), et **dit comme tel** en tête de son module : cette
+      implémentation part non vérifiée, faute de Developer ID et parce que l'invite
+      graphique bloquerait la CI.
+- [x] **mécanisme choisi d'après la signature** — vérifié sur les deux sorties enregistrées,
+      sur quatre cas limites, et **sur le binaire réel** : un test assure que le binaire de
+      ce projet est bien ad-hoc, prémisse de toute la spec.
+- [x] **le fichier chiffré refuse un contenu altéré** — un octet retourné au milieu du
+      chiffré donne `SecretError::Altere`, pas des octets faux.
+- [x] **la clé est en mode `0600`** (vérifié aussi sur le disque réel : `-rw-------`) **et
+      réutilisée** entre deux ouvertures.
+- [x] **aucun secret dans les journaux** — vérifié sur pièces avec sentinelle *et contrôle
+      positif* : le journal de `~/Library/Logs/` contient bien les quatre lignes de la sonde
+      et `Secret(***)`, et la sentinelle zéro fois.
+- [x] **aucun secret dans un message d'erreur** : aucune variante de `SecretError` ne porte
+      de `Secret`, donc c'est vrai par construction, `Display` comme `Debug`.
+- [x] **aucune API propre à macOS hors de `keychain.rs`** — `rg` le confirme.
+- [x] **le front peut afficher le mécanisme réellement actif** — `SecretMechanism` projeté
+      en `"keychain" | "encryptedFile"`.
+- [x] les sept vérifications passent, et le commit a été **gaté** sur elles.
+
+**Ce qui reste à faire avant diffusion**, et qu'il ne faut pas oublier : lancer les tests du
+Trousseau au premier build signé — `cargo test … keychain -- --ignored` — et vérifier que
+`SecretMechanism` bascule alors sur `Keychain`.
