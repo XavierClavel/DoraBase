@@ -3,6 +3,7 @@
 // seraient du code mort aux yeux de clippy — et masquer cet avertissement plutôt que
 // déclarer l'intention aurait caché de vraies régressions plus tard.
 pub mod config;
+pub mod secrets;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

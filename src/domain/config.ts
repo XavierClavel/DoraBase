@@ -7,82 +7,56 @@
  * décider quoi afficher, et lui envoyer un chemin absolu du disque de l'utilisateur
  * n'apporterait rien. Il a besoin de savoir **s'il peut écrire**.
  */
-export type ConfigLoad =
-  | { kind: 'fresh' }
-  | { kind: 'loaded'; projects: Array<Project> }
-  | {
-      kind: 'unreadable'
-      reason: string
-      /**
-       * Où l'original a été mis de côté, à montrer pour qu'il soit récupérable.
-       */
-      quarantinedTo: string
-    }
-  | { kind: 'tooNew'; found: number; supported: number }
+export type ConfigLoad = { "kind": "fresh" } | { "kind": "loaded", projects: Array<Project>, } | { "kind": "unreadable", reason: string, 
+/**
+ * Où l'original a été mis de côté, à montrer pour qu'il soit récupérable.
+ */
+quarantinedTo: string, } | { "kind": "tooNew", found: number, supported: number, };
 
 /**
  * Une base d'un projet, déclinée en 1..n environnements.
  */
-export type Database = { name: string; engine: Engine; variants: Array<EnvironmentVariant> }
+export type Database = { name: string, engine: Engine, variants: Array<EnvironmentVariant>, };
 
 /**
  * Les sept moteurs du handoff, et rien d'autre : un moteur inconnu ne compile pas.
  */
-export type Engine =
-  | 'postgresql'
-  | 'mysql'
-  | 'sqlite'
-  | 'mongodb'
-  | 'redis'
-  | 'snowflake'
-  | 'bigquery'
+export type Engine = "postgresql" | "mysql" | "sqlite" | "mongodb" | "redis" | "snowflake" | "bigquery";
 
 /**
  * Les trois environnements du handoff. L'environnement actif est une propriété du
  * **projet**, pas de la base — c'est ce qui permet à un basculement de recharger
  * l'arbre entier sur d'autres serveurs sans changer l'arborescence.
  */
-export type Environment = 'dev' | 'staging' | 'prod'
+export type Environment = "dev" | "staging" | "prod";
 
 /**
  * Les réglages de connexion d'une base **pour un environnement donné**. Le handoff pose
  * « host/port/creds différents par env », donc tout le formulaire de `A2` vit ici, à
  * l'exception du nom et du moteur qui appartiennent à la base.
  */
-export type EnvironmentVariant = {
-  environment: Environment
-  host: string
-  port: number
-  defaultDatabase: string
-  username: string
-  /**
-   * Référence vers le mot de passe, jamais le mot de passe. `None` pour un moteur
-   * qui n'en demande pas — SQLite sur fichier, par exemple.
-   */
-  password: SecretRef | null
-  sslMode: SslMode
-  /**
-   * Réglage **saisi** dans `A2`. L'état effectif d'une base ouverte compose ce
-   * réglage, la préférence globale de `A10` et l'environnement courant : c'est une
-   * règle, pas une donnée, et elle appartient à `11`. Voir `specs/05a`.
-   */
-  readOnly: boolean
-  reconnectOnStartup: boolean
-  tunnel: Tunnel | null
-}
+export type EnvironmentVariant = { environment: Environment, host: string, port: number, defaultDatabase: string, username: string, 
+/**
+ * Référence vers le mot de passe, jamais le mot de passe. `None` pour un moteur
+ * qui n'en demande pas — SQLite sur fichier, par exemple.
+ */
+password: SecretRef | null, sslMode: SslMode, 
+/**
+ * Réglage **saisi** dans `A2`. L'état effectif d'une base ouverte compose ce
+ * réglage, la préférence globale de `A10` et l'environnement courant : c'est une
+ * règle, pas une donnée, et elle appartient à `11`. Voir `specs/05a`.
+ */
+readOnly: boolean, reconnectOnStartup: boolean, tunnel: Tunnel | null, };
 
 /**
  * Un projet : ce que la sidebar liste. Pas des connexions — le handoff insiste.
  */
-export type Project = {
-  name: string
-  /**
-   * Global au projet, et persisté (`05b`) : le handoff le traite comme une propriété
-   * du projet, pas comme une préférence d'affichage.
-   */
-  activeEnvironment: Environment
-  databases: Array<Database>
-}
+export type Project = { name: string, 
+/**
+ * Global au projet, et persisté (`05b`) : le handoff le traite comme une propriété
+ * du projet, pas comme une préférence d'affichage.
+ */
+activeEnvironment: Environment, databases: Array<Database>, };
 
 /**
  * Référence vers un secret rangé par `05c` — **jamais sa valeur**.
@@ -91,24 +65,18 @@ export type Project = {
  * être affectée par erreur, puisqu'aucune conversion implicite n'existe. Rien à
  * divulguer ici de toute façon, une référence n'est pas un secret.
  */
-export type SecretRef = string & { readonly __secretRef: unique symbol }
+export type SecretRef = string & { readonly __secretRef: unique symbol };
 
-export type SslMode = 'disable' | 'allow' | 'prefer' | 'require' | 'verify-ca' | 'verify-full'
+export type SslMode = "disable" | "allow" | "prefer" | "require" | "verify-ca" | "verify-full";
 
 /**
  * Proxy / tunnel du panneau de `A2`. Le **chemin** de la clé privée est de la
  * configuration, pas un secret — voir `specs/05c` § Hors périmètre.
  */
-export type Tunnel = {
-  kind: TunnelKind
-  bastionHost: string
-  bastionPort: number
-  username: string
-  privateKeyPath: string
-  /**
-   * `None` signifie « auto » — le port local est choisi à l'ouverture par `06`.
-   */
-  localPort: number | null
-}
+export type Tunnel = { kind: TunnelKind, bastionHost: string, bastionPort: number, username: string, privateKeyPath: string, 
+/**
+ * `None` signifie « auto » — le port local est choisi à l'ouverture par `06`.
+ */
+localPort: number | null, };
 
-export type TunnelKind = 'ssh'
+export type TunnelKind = "ssh";
