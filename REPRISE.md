@@ -195,6 +195,17 @@ des tests verts au moment où il a été introduit.
 7. **`toHaveTextContent` normalise l'espace insécable du DOM réel, pas la chaîne attendue.**
    Un test conçu pour détecter la perte d'un ` ` doit comparer `.textContent` par
    `.toBe()` — le matcher normalisé masquerait justement la régression qu'il devait révéler.
+8bis. **« ÉCHEC à l'étape X » ne dit pas que X a échoué pour la raison qu'on croit.** Le job
+   Linux a signalé un échec sur `cargo test --features db-tests` : en réalité la crate ne
+   **compilait pas**, `tauri` exigeant la pile GTK/WebKit absente du runner. La commande
+   citée était la bonne, la cause était deux étapes en amont *dans* cette commande. Lire
+   `gh run view --log-failed`, pas seulement le nom de l'étape.
+8ter. **Tout échec de CI n'est pas un défaut du code.** `Set up job` rendant
+   « Service Unavailable / Failed to resolve action download info » est une panne de
+   GitHub Actions : la réponse est de relancer, pas de corriger. Vérifier *quelle* étape
+   échoue avant de chercher un coupable dans le dépôt — la même journée a vu huit échecs
+   de sous-agents en erreur 529, tous côté service.
+
 8. **La CI n'a pas fini de mentir tant que le job entier n'est pas vert.** Un `X` sur une
    étape peut avoir sa vraie cause sur une étape *antérieure* dont le résumé masque
    l'échec (voir Vitest/e2e ci-dessus) — toujours vérifier l'étape qui échoue en premier,
