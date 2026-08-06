@@ -3,10 +3,12 @@
 //! Un seul type de secret existe dans le handoff : le mot de passe de base de données,
 //! saisi en `A2`. L'interface est générique, mais rien n'est construit pour un second.
 
+mod commands;
 mod file;
 mod keychain;
 mod signature;
 
+pub use commands::{selectionner, selectionner_pour, ActiveSecretStore, SecretMechanism};
 pub use file::EncryptedFileStore;
 pub use keychain::KeychainStore;
 pub use signature::{analyser_signature, signature_courante, SignatureKind};

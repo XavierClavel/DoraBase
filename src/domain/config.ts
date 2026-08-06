@@ -59,6 +59,14 @@ export type Project = { name: string,
 activeEnvironment: Environment, databases: Array<Database>, };
 
 /**
+ * Le mécanisme réellement employé, tel que le front l'apprend.
+ *
+ * Le badge vert « Trousseau » de `A2` serait un mensonge en développement : l'écran doit
+ * pouvoir dire la vérité, donc il a besoin de cette information.
+ */
+export type SecretMechanism = "keychain" | "encryptedFile";
+
+/**
  * Référence vers un secret rangé par `05c` — **jamais sa valeur**.
  *
  * Type distinct plutôt qu'un alias de `String` : une valeur de secret ne peut pas y
