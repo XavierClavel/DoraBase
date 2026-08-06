@@ -63,11 +63,16 @@ prévu — voir § 6 pour comment.
 `#root` en hauteur 100 %) — absent avant le plan `07`, découvert manquant en générant la
 première capture. `src/shell/{TitleBar,StatusBar}/` et `src/screens/Welcome/` livrés.
 
-**Non vérifié, à faire au premier `pnpm tauri dev` manuel** : que les feux tricolores du
-système ne sont pas recouverts. Confirmé indirectement (`padding-left: 78px` leur réserve
-l'espace, l'app compile et démarre sous Tauri) mais jamais vu à l'œil — cet environnement
-n'a pas d'outil de capture d'écran pour une fenêtre native, seul Chromium via Playwright est
-accessible. Une minute à vérifier, pas un risque connu.
+**Feux tricolores : vérifiés à l'œil par l'utilisateur le 6 août 2026.** Ils sont visibles
+et non recouverts — le `padding-left: 78px` de la barre de titre fait bien son office. Ce
+point est resté ouvert plusieurs sessions faute d'outil de capture pour une fenêtre native
+dans cet environnement ; il est clos.
+
+**Les boutons de `A1` sont inertes, et c'est voulu** — question posée le 6 août, réponse
+dans `specs/07` § Hors périmètre : « le callback est vide : les boutons sont vrais,
+focalisables, cliquables, et ne déclenchent rien ». `08` le remplira. Idem pour l'icône de
+préférences (`15`), le rappel `⌘K` de la barre d'état (texte statique), et le compteur
+« 0 projet », figé en dur tant que rien n'appelle `load_config`.
 
 **Plans `03` et `04` — terminés, 15/15** (2026-08-05). La voie choisie était fondations
 d'abord (`03`, `04`) plutôt que données d'abord. Le motif invoqué sur le moment — « `05` est
