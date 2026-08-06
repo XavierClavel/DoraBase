@@ -100,6 +100,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # La crate dépend de `tauri`, qui exige la pile GTK/WebKit sur Linux — même pour une
+      # simple compilation de bibliothèque, `glib-sys` cherchant `glib-2.0.pc` par
+      # `pkg-config`. Sans ces paquets, le job échoue avant d'atteindre le moindre test.
+      #
+      # C'est du gaspillage assumé : installer WebKit pour tester un adaptateur PostgreSQL.
+      # La bonne forme serait d'extraire `config`, `secrets` et `engine` dans une crate
+      # sans `tauri` — le domaine n'a aucune raison de dépendre du toolkit graphique. À
+      # faire quand le coût de cette étape le justifiera.
+      - run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+
       - run: rustup show
         working-directory: src-tauri
 
