@@ -303,10 +303,17 @@ pnpm icons:check    # idem pour le sprite
 Les fondations partagées sont posées (`01`, `02`, `03`, `04`) et un écran réel existe
 (`07`). Aucune spec n'existe encore pour `05` et suivantes.
 
-**`05a` est fait** (5 août 2026) : le modèle de configuration existe en Rust, projeté en
-TypeScript par `ts-rs` avec garde-fou `domain:check`. La CI exécute enfin les tests Rust —
-elle ne le faisait pas, et un test faux la laissait verte. Prochain : `05b` (persistance),
-puis `05c` (identifiants).
+**`05a` et `05b` sont faits** (5-6 août 2026) : le modèle de configuration existe en Rust,
+projeté en TypeScript par `ts-rs` avec garde-fou `domain:check`, et sa persistance sur
+disque est atomique et non destructive — vérifiée dans l'app réelle, y compris le cas d'un
+fichier corrompu, qui est mis en quarantaine et bloque l'écriture. La CI exécute enfin les
+tests Rust — elle ne le faisait pas, et un test faux la laissait verte. **40 tests Rust.**
+Prochain : `05c` (identifiants).
+
+**Le pont JavaScript → Rust n'est pas encore exercé** : Playwright ne pilote pas WKWebView
+et aucun plugin de log JS n'est installé, donc `invoke()` depuis le front n'a jamais été
+appelé. L'enregistrement des commandes est garanti par la compilation ; le pont le sera par
+`08`. Ne pas le présenter comme vérifié d'ici là.
 
 **Rien ne bloque cette suite** (voir la correction du § 5). Raison de fond :
 tous les écrans restants affichent des **projets, bases, environnements, schémas et objets**.

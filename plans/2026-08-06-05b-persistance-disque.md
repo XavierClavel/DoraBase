@@ -390,17 +390,68 @@ Ce test est un contrôle positif **et** négatif : il vérifie que la référenc
 
 ---
 
+## Acquis d'exécution
+
+| Défaut | Trouvé par |
+| --- | --- |
+| **Le test d'atomicité ne testait pas `save`** : il appelait le helper directement, donc restait vert en remplaçant tout le corps de `save` par un `fs::write` | sabotage — et c'est le trou le plus instructif de ces plans |
+| `sauvegarde_de_migration` rend le prochain chemin **libre**, donc ne peut pas servir à retrouver la sauvegarde qui vient d'être écrite | le test a échoué en cherchant `.avant-v0` alors que la fonction rendait déjà `.avant-v0.1` |
+| `generate_handler!` a besoin des éléments cachés que `#[tauri::command]` génère à côté de la fonction, qu'un `pub use` ne réexporte pas | `error[E0433]: cannot find __cmd__load_config` |
+| `rename_all` renomme les **variantes** d'une énumération, pas les champs de leurs structures — `quarantined_to` restait en snake_case dans un fichier camelCase | lecture de la projection générée |
+| Une sonde appelée avant d'être définie fait échouer `tauri dev` en silence dans son journal | le moniteur, qui surveillait aussi `error[E` |
+
+**Les leçons :**
+
+1. **Vérifier que le test porte sur le bon sujet.** Un test qui exerce un helper ne dit
+   rien de la fonction publique qui devrait l'appeler. La question à se poser : « si je
+   remplaçais tout le corps de la fonction publique, ce test échouerait-il ? » Ici la
+   réponse était non. La correction a demandé une propriété **observable de l'extérieur** —
+   un `rename` change l'inode, une troncature en place le conserve.
+2. **Un générateur de « prochain nom libre » n'est pas un localisateur.** Les deux usages
+   sont incompatibles par construction : le premier évite ce qui existe, le second le
+   cherche. Lister le répertoire est la bonne façon de retrouver ce qui a été écrit.
+3. **Les macros Tauri exigent des chemins de module, pas des réexports.**
+4. **Une sonde dans `setup()` atteint ce qu'aucun test unitaire ne peut** : la résolution
+   réelle de `app_config_dir()` et l'écriture sur le vrai disque. Vérifié —
+   `~/Library/Application Support/com.dorabase.desktop/config.json`, contenu conforme,
+   aucun temporaire résiduel.
+
+**Ce qui n'a pas été exercé, et pourquoi.** Le pont **JavaScript → Rust** lui-même :
+Playwright ne pilote pas WKWebView, et aucun plugin de log côté JS n'est installé pour
+remonter les traces de la webview. La sonde vérifie tout le chemin *sauf* l'appel
+`invoke()` depuis le front. L'enregistrement des commandes est garanti par la compilation
+(`generate_handler!` échouerait sinon), et le pont sera réellement exercé par `08`, premier
+écran à appeler ces commandes. À ne pas présenter comme vérifié d'ici là.
+
 ## Tâche 8 : vérification de fin
 
-Contrôler chaque critère de `specs/05b-persistance-disque.md` § Terminé quand.
+Contrôlé contre `specs/05b-persistance-disque.md` § Terminé quand.
 
-- [ ] aller-retour identique
-- [ ] **atomicité prouvée** par un test d'interruption, et le contrôle négatif fait
-- [ ] les quatre cas de lecture testés, aucune panique
-- [ ] « absent » et « illisible » distincts, et l'écriture refusée après « illisible »
-- [ ] chemin résolu par l'API de Tauri, aucun littéral de plateforme
-- [ ] mécanisme de migration testé avec une version factice
-- [ ] aucun secret dans le fichier, vérifié en texte brut
-- [ ] l'environnement actif survit à un redémarrage
-- [ ] `cargo test`, `clippy`, `fmt`, `pnpm typecheck`, `lint`, `test`, `domain:check` —
-      chacun vérifié **sans tube** — et la CI verte
+- [x] **aller-retour identique** — test unitaire, et vérifié dans l'app réelle : le fichier
+      écrit sous `~/Library/Application Support/com.dorabase.desktop/config.json` porte
+      `"version": 1`, des champs camelCase, et se relit avec son environnement actif.
+- [x] **atomicité prouvée** — deux tests : l'un vérifie qu'une écriture interrompue avant
+      le renommage laisse l'ancien fichier intact, l'autre que `save` **remplace** le
+      fichier au lieu de le tronquer (l'inode change). Le second existe parce que le
+      premier ne détectait pas le sabotage ; il le détecte.
+- [x] **les quatre cas de lecture testés**, aucune panique.
+- [x] **« absent » et « illisible » distincts, écriture refusée après « illisible »** —
+      vérifié en test *et dans l'app réelle* : fichier corrompu à la main, l'app rend
+      `Unreadable` avec sa raison, refuse d'écrire, et déplace l'original en
+      `config.json.illisible` où il se retrouve **octet pour octet**.
+- [x] **chemin résolu par l'API de Tauri** — `app_config_dir()`, confirmé par la sonde ;
+      aucun littéral de plateforme dans le code.
+- [x] **mécanisme de migration testé** avec une version 0 factice, sauvegarde comprise.
+- [x] **aucun secret dans le fichier** — test à contrôle positif *et* négatif : la
+      référence doit y être, la valeur non.
+- [x] **l'environnement actif survit** — test d'aller-retour, et confirmé par la sonde
+      (`env = Some(Prod)`).
+- [x] `cargo test` (40), `clippy`, `fmt`, `pnpm typecheck`, `lint`, `test`, `domain:check` —
+      chacun vérifié **sans tube**.
+
+**Une question d'ergonomie laissée à `08`/`09`**, révélée par la sonde : après une mise en
+quarantaine, la cible n'existe plus, donc la *session suivante* lit `Fresh` et peut écrire —
+c'est voulu, l'utilisateur doit pouvoir repartir. Mais la session **qui découvre** la
+corruption, elle, ne peut pas écrire du tout. Si l'écran d'erreur propose « repartir de
+zéro », il faudra soit rouvrir le magasin, soit redémarrer l'app. À trancher avec l'écran,
+pas ici.
