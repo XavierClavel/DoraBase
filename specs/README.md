@@ -76,6 +76,18 @@ réduit, vignette Finder, barre des menus. Il faut une **variante simplifiée du
 pour les petites tailles : silhouette plus grossière du repli de carte, sans les tracés
 fins. Travail de design, à fournir avant de considérer l'identité de l'app terminée.
 
+**Clé d'hôte SSH : le design ne tranche pas, `06e` tranche par défaut.** Un tunnel sans
+vérification de la clé d'hôte est vulnérable à un intermédiaire — ce contre quoi un
+bastion est justement censé protéger. Mais le handoff ne maquette ni fichier
+`known_hosts`, ni invite « faire confiance à cet hôte ». `06e` retient donc la
+vérification contre le `~/.ssh/known_hosts` de l'utilisateur, un hôte inconnu faisant
+échouer la connexion avec une erreur qui dit quoi faire.
+
+C'est le compromis le plus honnête sans écran, **mais ce n'est pas la bonne réponse** :
+une invite de confiance à la première connexion le serait. À trancher avec le design
+avant diffusion — un utilisateur dont le bastion n'est pas déjà dans son `known_hosts`
+devra passer par un `ssh` manuel, ce qui est une friction réelle.
+
 **`blob:` n'est pas autorisé par la CSP.** `img-src 'self' data:` ne le couvre pas. Un
 export CSV par `URL.createObjectURL`, un aperçu d'image, un téléchargement de résultats —
 tous plausibles pour `10` et `14` — seront bloqués. Deux réponses possibles le jour où ça
@@ -98,7 +110,11 @@ se pose : ajouter `blob:` à la directive concernée, ou gérer l'écriture côt
 | [`05a`](05a-modele-configuration.md) | Modèle de configuration : Projet / Base / Environnement, types et invariants | **fait** |
 | [`05b`](05b-persistance-disque.md) | Persistance sur disque : emplacement, écriture atomique, version et migration | **fait** |
 | [`05c`](05c-stockage-identifiants.md) | Stockage des identifiants : interface, Trousseau, fichier chiffré | **fait** (Trousseau non vérifié) |
-| `06` | Couche moteur en Rust : abstraction + adaptateur PostgreSQL, test de connexion, SSL, tunnel SSH | à écrire |
+| [`06a`](06a-contrat-couche-moteur.md) | Contrat de la couche moteur : trait, modèle d'introspection, fenêtre de lignes | à relire |
+| [`06b`](06b-connexion-postgresql.md) | Connexion PostgreSQL, modes SSL, test de connexion, infra de test | à relire |
+| [`06c`](06c-introspection-postgresql.md) | Introspection PostgreSQL : catalogue → modèle, DDL | à relire |
+| [`06d`](06d-lecture-paginee.md) | Lecture paginée des lignes : filtres, tri, contrainte IPC | à relire |
+| [`06e`](06e-tunnel-ssh.md) | Tunnel SSH vers un bastion | à relire |
 
 **Pourquoi `05` a été découpé en trois** (5 août 2026) : le périmètre indexé —
 « modèle de domaine, persistance, Trousseau » — mêlait trois préoccupations
@@ -108,8 +124,14 @@ séparables, dont une sensible en sécurité, et dépassait largement la limite 
 
 **L'introspection reste avec le moteur.** Schéma, table, vue, fonction, index,
 comptages et tailles ne viennent pas de l'utilisateur mais du catalogue de la base,
-et leur forme est dictée par chaque moteur. Ils appartiennent donc à `06`, pas au
+et leur forme est dictée par chaque moteur. Ils appartiennent donc à `06a`, pas au
 modèle de configuration — c'est la ligne de faille qui a guidé le découpage.
+
+**Pourquoi `06` a été découpé en cinq** (6 août 2026) : son périmètre indexé mêlait
+le contrat, la connexion, l'introspection, la lecture de lignes et le tunnel SSH —
+cinq préoccupations aux risques distincts. La lecture paginée en particulier porte
+la contrainte IPC transverse, jamais mise à l'épreuve jusque-là, et mérite ses
+propres critères de vérification.
 
 ## Écrans
 
@@ -138,9 +160,12 @@ dépendent, sans toucher aux bases de données.
 
 Puis les fondations partagées (`03`, `04`), dont les briques servent cinq écrans.
 
-Puis le modèle et l'accès aux données : `05a` (fait) → `05b` → `05c` → `06`. Ensuite
-les écrans, en commençant par `08` — le premier qui crée vraiment une entité de
-configuration.
+Puis le modèle et l'accès aux données : `05a`, `05b`, `05c` (faits) → `06a` → `06b` →
+`06c` → `06d` → `06e`. Ensuite les écrans, en commençant par `08` — le premier qui crée
+vraiment une entité de configuration.
+
+`06e` (tunnel SSH) peut se glisser après `06b` sans attendre `06c`/`06d` : il ne dépend
+que de la connexion.
 
 **Aucune décision humaine ne bloque cette suite.** Le point de signature de code plus
 haut est *tranché*, et l'achat d'un Developer ID ne concerne que la diffusion.
