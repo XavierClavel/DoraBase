@@ -32,7 +32,7 @@ const NOM_FICHIER: &str = "config.json";
     rename_all_fields = "camelCase",
     tag = "kind"
 )]
-#[ts(export, export_to = "../../src/domain/config.ts")]
+#[ts(export_to = "config.ts")]
 pub enum ConfigLoad {
     /// Aucun fichier : premier lancement, l'écran `A1` s'applique.
     Fresh,

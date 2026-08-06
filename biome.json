@@ -47,9 +47,17 @@
   },
   "overrides": [
     {
-      "includes": ["src/domain/config.ts"],
-      "formatter": { "enabled": false },
-      "assist": { "actions": { "source": { "organizeImports": "off" } } }
+      "includes": ["src/domain/config.ts", "src/domain/engine.ts"],
+      "formatter": {
+        "enabled": false
+      },
+      "assist": {
+        "actions": {
+          "source": {
+            "organizeImports": "off"
+          }
+        }
+      }
     }
   ]
 }

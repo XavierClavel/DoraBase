@@ -8,7 +8,7 @@ use ts_rs::TS;
 // lire. Les changer après coup serait une migration. Constaté en relisant la projection
 // TypeScript générée, pas en lisant le code Rust.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/domain/config.ts")]
+#[ts(export_to = "config.ts")]
 #[serde(rename_all = "lowercase")]
 pub enum Engine {
     #[serde(rename = "postgresql")]
@@ -28,7 +28,7 @@ pub enum Engine {
 /// **projet**, pas de la base — c'est ce qui permet à un basculement de recharger
 /// l'arbre entier sur d'autres serveurs sans changer l'arborescence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/domain/config.ts")]
+#[ts(export_to = "config.ts")]
 #[serde(rename_all = "kebab-case")]
 pub enum Environment {
     Dev,
@@ -37,7 +37,7 @@ pub enum Environment {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/domain/config.ts")]
+#[ts(export_to = "config.ts")]
 #[serde(rename_all = "kebab-case")]
 pub enum SslMode {
     Disable,
@@ -55,7 +55,6 @@ pub enum SslMode {
 /// divulguer ici de toute façon, une référence n'est pas un secret.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(
-    export,
     export_to = "../../src/domain/config.ts",
     type = "string & { readonly __secretRef: unique symbol }"
 )]
@@ -72,7 +71,7 @@ impl SecretRef {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/domain/config.ts")]
+#[ts(export_to = "config.ts")]
 #[serde(rename_all = "kebab-case")]
 pub enum TunnelKind {
     Ssh,
@@ -82,7 +81,7 @@ pub enum TunnelKind {
 /// configuration, pas un secret — voir `specs/05c` § Hors périmètre.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/domain/config.ts")]
+#[ts(export_to = "config.ts")]
 pub struct Tunnel {
     pub kind: TunnelKind,
     pub bastion_host: String,
@@ -98,7 +97,7 @@ pub struct Tunnel {
 /// l'exception du nom et du moteur qui appartiennent à la base.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/domain/config.ts")]
+#[ts(export_to = "config.ts")]
 pub struct EnvironmentVariant {
     pub environment: Environment,
     pub host: String,
@@ -161,7 +160,7 @@ impl std::error::Error for ModelError {}
 /// Une base d'un projet, déclinée en 1..n environnements.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/domain/config.ts")]
+#[ts(export_to = "config.ts")]
 pub struct Database {
     pub name: String,
     pub engine: Engine,
@@ -229,7 +228,7 @@ impl Database {
 /// Un projet : ce que la sidebar liste. Pas des connexions — le handoff insiste.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/domain/config.ts")]
+#[ts(export_to = "config.ts")]
 pub struct Project {
     pub name: String,
     /// Global au projet, et persisté (`05b`) : le handoff le traite comme une propriété

@@ -1,0 +1,58 @@
+//! Exporte les types Rust vers leur projection TypeScript.
+//!
+//! # Pourquoi un binaire et non `cargo test`
+//!
+//! `ts-rs` propose un export automatique par `#[ts(export)]`, déclenché pendant
+//! `cargo test`. Cette voie a un défaut découvert à l'usage : **un `cargo test <filtre>`
+//! corrompt les fichiers générés**. Les tests d'export ne tournent que s'ils matchent le
+//! filtre, or `ts-rs` tronque le fichier cible avant d'y écrire — donc un
+//! `cargo test engine` a réduit `config.ts` de 84 lignes à une seule, en silence.
+//!
+//! Ce binaire supprime le couplage : `cargo test` ne touche plus aux fichiers générés, et
+//! ce programme est leur **unique producteur**. C'est la leçon du plan `05c` appliquée
+//! correctement — un fichier généré n'a qu'un seul producteur, sinon la chaîne devient
+//! sensible à l'ordre et aux options d'invocation.
+//!
+//! Lancé par `pnpm domain:build`, vérifié par `pnpm domain:check`.
+
+use dorabase_lib::config::{ConfigLoad, Project};
+use dorabase_lib::engine::{
+    ConnectionProbe, EngineError, RowQuery, RowWindow, SchemaInfo, TableDetail, TableSummary,
+};
+use dorabase_lib::secrets::SecretMechanism;
+use ts_rs::TS;
+
+/// Le répertoire de destination, en **absolu**, dérivé à la compilation.
+///
+/// Défaut de `ts-rs` : `./bindings`, relatif au **répertoire courant**. Combiné à un
+/// `export_to = "../../src/domain/…"`, cela écrivait les projections *hors du dépôt* quand
+/// le binaire était lancé depuis la racine plutôt que depuis `src-tauri` — silencieusement,
+/// et `git diff` ne voyait donc aucun changement. Le garde-fou passait à vide.
+///
+/// Deux corrections ici : le chemin est absolu, donc indépendant du répertoire courant, et
+/// les `export_to` ne portent plus que des noms de fichiers nus — plus aucun `../..` à
+/// interpréter.
+const REPERTOIRE_DOMAINE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../src/domain");
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ts_rs::Config::default().with_out_dir(REPERTOIRE_DOMAINE);
+
+    // `export_all` entraîne les dépendances de chaque type : il suffit donc de nommer les
+    // **racines** — celles que l'IPC transporte — et non les cinquante types intermédiaires.
+    // Un type atteignable depuis aucune racine n'est pas projeté, ce qui est voulu : il ne
+    // traverse pas l'IPC.
+    Project::export_all(&config)?;
+    ConfigLoad::export_all(&config)?;
+    SecretMechanism::export_all(&config)?;
+
+    ConnectionProbe::export_all(&config)?;
+    EngineError::export_all(&config)?;
+    SchemaInfo::export_all(&config)?;
+    TableSummary::export_all(&config)?;
+    TableDetail::export_all(&config)?;
+    RowQuery::export_all(&config)?;
+    RowWindow::export_all(&config)?;
+
+    println!("projections TypeScript écrites dans {REPERTOIRE_DOMAINE}");
+    Ok(())
+}
