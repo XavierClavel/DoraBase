@@ -290,16 +290,55 @@ de `06a` devient un vrai `match`.
 
 ---
 
+## Acquis d'exécution
+
+| Défaut / surprise | Trouvé par |
+| --- | --- |
+| `tokio::spawn` est du code de **production**, or `tokio` n'avait été ajouté qu'en dépendance de développement | `error[E0433]: cannot find module tokio` sans la feature de test |
+| `expect_err` exige `Debug` sur le type `Ok`, donc sur l'adaptateur — qu'un dérivé exposerait avec sa configuration, mot de passe compris | la compilation des tests de base |
+| Trois modes SSL sur six partagent `Require` côté `tokio-postgres` : la **vérification** du certificat se règle ailleurs, par le fournisseur TLS | lecture de l'API, avant d'écrire |
+
+**Les leçons :**
+
+1. **Une feature cargo bat `#[ignore]` pour isoler des tests d'infrastructure.** Sans la
+   feature, les tests n'existent pas — vérifié par un compte à zéro. Avec `#[ignore]`, ils
+   se seraient ajoutés au compte du Trousseau de `05c`, et deux familles de tests silencieux
+   auraient cohabité dans le même chiffre.
+2. **Le contrôle négatif d'un job de CI vaut d'être fait pour de vrai.** Un test qui panique
+   a été poussé délibérément : `build: success`, `engine: failure`. C'est la seule preuve
+   que chaque job lance ce qu'on croit — et elle a coûté un aller-retour de CI, pas plus.
+3. **Un test « la version est correcte » ne vaut rien sans contrôle croisé.** Le premier
+   test vérifiait que la chaîne commence par « PostgreSQL » : une constante l'aurait passé.
+   Le second la compare à une requête que l'adaptateur n'a pas façonnée, et le sabotage par
+   valeur codée en dur le fait bien échouer.
+4. **`Debug` dérivé est un risque partout où passe un secret**, pas seulement sur le type
+   qui le porte. L'adaptateur ne contient pas de `Secret`, mais son client tient la
+   configuration de connexion — qui en porte un.
+
 ## Tâche 6 : vérification de fin
 
-- [ ] une connexion s'ouvre contre une vraie base et se ferme proprement
-- [ ] la version rendue est **contrôlée contre** ce que la base dit par ailleurs
-- [ ] les six modes SSL sont acceptés, et un test distingue une famille vérifiante d'une
-      non vérifiante
-- [ ] une variante à tunnel est refusée, pas connectée en direct
-- [ ] `28P01`, `3D000` et un hôte injoignable ont chacun un test
-- [ ] **aucun secret dans un message d'erreur**, sur un échec réel, sentinelle et contrôle
-      positif
-- [ ] le job macOS **ne compile pas** les tests de base — vérifié par un compte à zéro
-- [ ] le job Linux est vert
-- [ ] les sept vérifications habituelles passent, le commit **gaté** sur elles
+- [x] **une connexion s'ouvre** contre un vrai PostgreSQL 17.6.
+- [x] **la version rendue est contrôlée contre** ce que la base dit par ailleurs, et le
+      sabotage par constante codée en dur fait bien échouer ce test.
+- [x] **les six modes SSL sont acceptés** — mais voir la réserve ci-dessous : ils ne sont
+      pas encore *distingués*, faute de TLS branché.
+- [x] **une variante à tunnel est refusée**, avec un message qui dit pourquoi et renvoie
+      à `06e`.
+- [x] **`28P01`, `3D000` et un hôte injoignable** ont chacun leur test contre la vraie base,
+      et le sabotage « tout échec est une erreur serveur » est détecté.
+- [x] **aucun secret dans un message d'erreur** — échec réel, sentinelle, contrôle positif
+      sur le code `28P01`, et le sabotage qui injecte la sentinelle est détecté.
+- [x] **le job macOS ne compile pas les tests de base** — `grep -c tests_db` rend 0.
+- [x] **le job Linux lance bien les tests de base** — prouvé par le contrôle négatif :
+      `build: success`, `engine: failure`.
+- [x] les huit vérifications passent, le commit **gaté** sur elles.
+
+**Réserve assumée : le TLS n'est pas branché.** `ouvrir` emploie `NoTls`, donc `Require`,
+`VerifyCa` et `VerifyFull` partagent le même comportement et **ne vérifient rien**. La
+tâche 3 du plan reste donc à faire, et elle demande de trancher entre `rustls` (Rust pur,
+cohérent avec `russh` de `06e`) et `native-tls` (reconnaît les autorités déjà installées
+dans le trousseau de l'utilisateur — argument sérieux pour un outil d'entreprise dont les
+bases portent souvent un certificat interne).
+
+Cette réserve est **inscrite dans le module**, pas seulement ici : quiconque lit `ouvrir`
+apprend que le mode SSL demandé n'est pas encore honoré.
