@@ -110,7 +110,7 @@ se pose : ajouter `blob:` à la directive concernée, ou gérer l'écriture côt
 | [`05a`](05a-modele-configuration.md) | Modèle de configuration : Projet / Base / Environnement, types et invariants | **fait** |
 | [`05b`](05b-persistance-disque.md) | Persistance sur disque : emplacement, écriture atomique, version et migration | **fait** |
 | [`05c`](05c-stockage-identifiants.md) | Stockage des identifiants : interface, Trousseau, fichier chiffré | **fait** (Trousseau non vérifié) |
-| [`06a`](06a-contrat-couche-moteur.md) | Contrat de la couche moteur : trait, modèle d'introspection, fenêtre de lignes | relue, à faire |
+| [`06a`](06a-contrat-couche-moteur.md) | Contrat de la couche moteur : trait, modèle d'introspection, fenêtre de lignes | **fait** |
 | [`06b`](06b-connexion-postgresql.md) | Connexion PostgreSQL, modes SSL, test de connexion, infra de test | relue, à faire |
 | [`06c`](06c-introspection-postgresql.md) | Introspection PostgreSQL : catalogue → modèle, DDL | relue, à faire |
 | [`06d`](06d-lecture-paginee.md) | Lecture paginée des lignes : filtres, tri, contrainte IPC | relue, à faire |

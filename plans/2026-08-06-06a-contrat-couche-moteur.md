@@ -248,15 +248,45 @@ constater l'échec.
 
 ---
 
+## Acquis d'exécution
+
+| Défaut | Trouvé par |
+| --- | --- |
+| **`cargo test <filtre>` corrompait les fichiers générés** : les tests d'export de `ts-rs` ne tournent que s'ils matchent le filtre, or `ts-rs` tronque la cible avant d'écrire — un `cargo test engine` a réduit `config.ts` de 84 lignes à une seule | avoir lancé un test filtré, puis remarqué la taille du fichier |
+| **L'exporteur écrivait hors du dépôt** : `export_dir` vaut `./bindings` relatif au **répertoire courant**, et combiné aux `export_to = "../../src/domain/…"`, un lancement depuis la racine visait `projects/src/domain/` | le contrôle négatif du garde-fou, qui passait alors qu'il n'aurait pas dû |
+| `i64` se projetait en `bigint`, alors que l'IPC de Tauri passe par JSON et rend un `number` | lecture de la projection générée |
+| Clippy : une **implémentation** de trait peut écrire `async fn` là où la **déclaration** a besoin de `impl Future + Send` | `clippy::manual_async_fn` |
+
+**Les leçons :**
+
+1. **Un générateur ne doit pas être déclenché par une commande dont l'utilisateur choisit
+   le périmètre.** L'export automatique de `ts-rs` pendant `cargo test` est pratique et
+   piégeux : le résultat dépend du filtre passé. Un binaire dédié n'a pas ce défaut, et
+   `cargo test` ne touche plus aux fichiers générés du tout.
+2. **Un chemin de sortie relatif est un bug qui attend son répertoire courant.** Rendre le
+   chemin absolu depuis `CARGO_MANIFEST_DIR` et supprimer les `../..` élimine les deux
+   causes ensemble : ni CWD à deviner, ni segments à interpréter.
+3. **Un garde-fou qui passe est une information, pas une garantie.** Ici il passait parce
+   qu'il comparait des fichiers que le générateur n'avait pas touchés. Le contrôle négatif
+   est ce qui distingue « rien n'a changé » de « rien n'a été fait » — et c'est la
+   deuxième fois de la session qu'il attrape un garde-fou vide (voir plan `05b`).
+4. **`bigint` est le type juste et la mauvaise réponse.** `i64` dépasse l'entier sûr de
+   JavaScript, donc `bigint` est correct sur le papier ; mais `JSON.parse` ne rend jamais
+   de `bigint`, donc le type annoncé serait faux à l'exécution. Le bon critère n'est pas
+   « quel type représente cette plage » mais « que livre réellement le runtime ».
+
 ## Tâche 5 : vérification de fin
 
-- [ ] le trait compile sans aucun adaptateur, et l'énumération est vide et documentée
-- [ ] le modèle couvre les six lignes du tableau de la spec, et rien de plus
-- [ ] `RowLimit` rend « demander tout » inexprimable, vérifié par un contrôle négatif
-- [ ] l'erreur porte code, position, message
-- [ ] la propriété `Send` est vérifiée par le compilateur
-- [ ] la projection TypeScript est générée, exclue du formatage, et son garde-fou étendu
-      échoue si elle dérive
-- [ ] aucun test n'a besoin d'une base
-- [ ] `cargo test`, `clippy`, `fmt`, `pnpm typecheck`, `lint`, `test`, `domain:check` —
-      le commit **gaté** sur eux, pas seulement affichés
+- [x] **le trait compile sans aucun adaptateur**, et `AnyEngine` est vide et documentée.
+- [x] **le modèle couvre les six lignes du tableau de la spec**, et rien de plus : chaque
+      champ correspond à une colonne qu'un écran affiche.
+- [x] **`RowLimit` rend « demander tout » inexprimable** — énumération fermée, et le seul
+      constructeur de `RowQuery` l'exige.
+- [x] l'erreur porte code, position, message ; un test note explicitement qu'il est
+      **faible seul** et que la vraie garantie viendra de `06b`.
+- [x] **la propriété `Send` est vérifiée par le compilateur** : une borne appliquée aux cinq
+      appels du trait, plus un contrôle positif par adaptateur factice.
+- [x] la projection TypeScript est générée par un **binaire dédié**, exclue du formatage, et
+      son garde-fou échoue sur les deux fichiers — vérifié par sabotage de chacun.
+- [x] aucun test n'a besoin d'une base.
+- [x] les sept vérifications passent, et le commit a été **gaté** sur elles.
