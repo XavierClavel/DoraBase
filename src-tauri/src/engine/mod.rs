@@ -17,7 +17,7 @@
 
 mod error;
 mod introspection;
-mod postgres;
+pub mod postgres;
 mod rows;
 
 use std::future::Future;
@@ -65,37 +65,46 @@ pub trait EngineAdapter {
 
 /// Le moteur actif, réparti statiquement.
 ///
-/// **Aucune variante à ce stade**, délibérément : `06b` ajoutera `Postgres`. Un type sans
-/// variante est légal en Rust et rend l'ensemble des moteurs explicite dès maintenant —
-/// il ne peut simplement pas encore être construit, ce que le compilateur signale à qui
-/// essaierait.
-pub enum AnyEngine {}
+/// Six variantes manquent encore — MySQL, SQLite, MongoDB, Redis, Snowflake, BigQuery,
+/// specs `16` à `21`. L'exhaustivité du `match` est ce qui garantit qu'aucune ne sera
+/// oubliée en cours de route : chaque ajout fait échouer la compilation ici.
+pub enum AnyEngine {
+    Postgres(postgres::PostgresAdapter),
+}
 
 impl AnyEngine {
-    /// Délègue à la variante active. Le `match` sur une énumération vide se réduit à rien,
-    /// ce que Rust accepte : la fonction est inhabitable tant qu'aucun moteur n'existe.
     pub async fn probe(&self) -> Result<ConnectionProbe, EngineError> {
-        match *self {}
+        match self {
+            Self::Postgres(adaptateur) => adaptateur.probe().await,
+        }
     }
 
     pub async fn schemas(&self) -> Result<Vec<SchemaInfo>, EngineError> {
-        match *self {}
+        match self {
+            Self::Postgres(adaptateur) => adaptateur.schemas().await,
+        }
     }
 
-    pub async fn objects(&self, _schema: &str) -> Result<Vec<TableSummary>, EngineError> {
-        match *self {}
+    pub async fn objects(&self, schema: &str) -> Result<Vec<TableSummary>, EngineError> {
+        match self {
+            Self::Postgres(adaptateur) => adaptateur.objects(schema).await,
+        }
     }
 
     pub async fn table_detail(
         &self,
-        _schema: &str,
-        _table: &str,
+        schema: &str,
+        table: &str,
     ) -> Result<TableDetail, EngineError> {
-        match *self {}
+        match self {
+            Self::Postgres(adaptateur) => adaptateur.table_detail(schema, table).await,
+        }
     }
 
-    pub async fn rows(&self, _query: &RowQuery) -> Result<RowWindow, EngineError> {
-        match *self {}
+    pub async fn rows(&self, query: &RowQuery) -> Result<RowWindow, EngineError> {
+        match self {
+            Self::Postgres(adaptateur) => adaptateur.rows(query).await,
+        }
     }
 }
 
@@ -158,11 +167,14 @@ mod tests {
 
     #[test]
     fn les_futurs_de_l_enumeration_sont_send_aussi() {
-        // L'énumération est vide, donc on ne peut pas l'instancier : c'est le *type* du
-        // futur qui est vérifié, via une fonction qui ne sera jamais appelée.
+        // Vérifié sur le *type* : construire un `AnyEngine::Postgres` exigerait une vraie
+        // connexion, ce qui n'a pas sa place dans un test sans base.
         fn _verifie(moteur: &AnyEngine) {
             exige_send(moteur.probe());
             exige_send(moteur.schemas());
+            exige_send(moteur.objects("public"));
+            exige_send(moteur.table_detail("public", "orders"));
+            exige_send(moteur.rows(&RowQuery::new("public", "t", RowLimit::OneHundred)));
         }
     }
 
