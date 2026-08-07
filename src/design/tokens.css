@@ -40,6 +40,7 @@
   --font-ui: Nunito, system-ui, sans-serif;
   --gold: #F5B335;
   --gridline: rgba(35,32,28,.07);
+  --gridline-2: rgba(35,32,28,.12);
   --h-bar: 34px;
   --h-btn-lg: 31px;
   --h-btn-md: 28px;
@@ -92,6 +93,7 @@
   --rowh: 26px;
   --rowh-max: 36px;
   --rowh-min: 20px;
+  --selected: color-mix(in oklab, var(--accent) 9%, transparent);
   --shadow-accent: 0 5px 12px -5px color-mix(in oklab, var(--accent) 70%, transparent);
   --shadow-accent-2: 0 4px 10px -4px color-mix(in oklab, var(--accent) 70%, transparent);
   --shadow-cell: 0 6px 16px -6px rgba(35,32,28,.40);

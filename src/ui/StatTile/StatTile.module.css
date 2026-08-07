@@ -1,0 +1,40 @@
+/*
+ * Tuile de statistique, relevée sur le panneau de détail de A4.
+ *
+ *   radius 9px · fond --field · bordure 1px .10 · remplissage 7px 9px
+ *   intitulé  700 9.5px Nunito, capitales, interlettrage .5px, encre .4
+ *   valeur    700 15px JetBrains Mono
+ *
+ * La bordure est à .10 dans le mockup, ce qui est `--divider` et non `--border` (.14) : le
+ * handoff emploie la teinte de filet pour ces encadrés intérieurs, pas celle de bordure.
+ */
+
+.root {
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-field-2);
+  background: var(--field);
+}
+
+.label {
+  font-family: var(--font-ui);
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+.value {
+  font-family: var(--font-mono);
+  font-size: 15px; /* sans jeton : métrique propre à cette tuile, absente des tables */
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+}
+
+/* L'astérisque d'une valeur estimée. `aria-hidden` : l'information passe par le `title` de la
+ * tuile, qu'un lecteur d'écran annonce, et un astérisque lu à voix haute n'apprendrait rien. */
+.approx {
+  margin-left: 1px;
+  color: var(--ink-4);
+}

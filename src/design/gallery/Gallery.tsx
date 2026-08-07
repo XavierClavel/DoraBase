@@ -5,15 +5,19 @@ import { Chip } from '../../ui/Chip/Chip'
 import { CollapsiblePanel } from '../../ui/CollapsiblePanel/CollapsiblePanel'
 import { ColumnRow } from '../../ui/ColumnRow/ColumnRow'
 import { ConsoleFooterButton } from '../../ui/ConsoleFooterButton/ConsoleFooterButton'
+import { type Column, DataTable } from '../../ui/DataTable/DataTable'
 import { Dot } from '../../ui/Dot/Dot'
 import { Field } from '../../ui/Field/Field'
+import { ABSENT, formatBytes, formatCount } from '../../ui/format'
 import { Modal } from '../../ui/Modal/Modal'
 import { RadioGroup } from '../../ui/RadioGroup/RadioGroup'
+import { SegmentedControl } from '../../ui/SegmentedControl/SegmentedControl'
 import { Select } from '../../ui/Select/Select'
 import { Sidebar } from '../../ui/Sidebar/Sidebar'
 import { SidebarFilterBar } from '../../ui/SidebarFilterBar/SidebarFilterBar'
 import { SidebarSectionTitle } from '../../ui/SidebarSectionTitle/SidebarSectionTitle'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
+import { StatTile } from '../../ui/StatTile/StatTile'
 import { type Tab, TabStrip } from '../../ui/TabStrip/TabStrip'
 import { Toggle } from '../../ui/Toggle/Toggle'
 import { TreeRow } from '../../ui/TreeRow/TreeRow'
@@ -1048,6 +1052,169 @@ function ModalGallery() {
   )
 }
 
+// --- Primitives de `09a` -----------------------------------------------------------
+
+const SEGMENTS = [
+  { value: 'tables', label: 'Tables', count: 8 },
+  { value: 'vues', label: 'Vues', count: 2 },
+  { value: 'fonctions', label: 'Fonctions', count: 6 },
+  { value: 'index', label: 'Index', count: 31 },
+] as const
+
+function SegmentedControlGallery() {
+  const [actif, setActif] = useState<(typeof SEGMENTS)[number]['value']>('tables')
+
+  return (
+    <Section title="SegmentedControl">
+      <Note>
+        **Pas un RadioGroup** : 25px contre 30, actif en `--dark` contre l’accent, et un compte
+        accolé au libellé. L’accent dit « ce que vous avez choisi de faire », l’encre « ce que vous
+        regardez ». Le compte **fait partie** du nom accessible.
+      </Note>
+      <Sub title="Filtre d’objets de A4">
+        <SegmentedControl
+          label="Type d’objet"
+          segments={SEGMENTS}
+          value={actif}
+          onValueChange={setActif}
+        />
+      </Sub>
+    </Section>
+  )
+}
+
+function StatTileGallery() {
+  return (
+    <Section title="StatTile">
+      <Note>
+        Le compte de lignes de A4 est une **estimation** (`reltuples`), la taille est exacte. Les
+        présenter à l’identique est un mensonge de précision, que le handoff commet — d’où
+        l’astérisque et le `title`.
+      </Note>
+      <Sub title="Les deux tuiles du panneau de détail">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, width: 278 }}>
+          <StatTile label="Lignes" value={formatCount(1_900_000)} approximate />
+          <StatTile label="Taille" value={formatBytes(2.1 * 1024 ** 3)} />
+        </div>
+      </Sub>
+      <Sub title="Formatage (format.ts)">
+        <div className={styles.grid}>
+          {[0, 999, 1000, 1024, 128_000, 1_900_000, -1].map((v) => (
+            <div key={v} className={styles.cell}>
+              <span style={{ fontFamily: 'var(--font-mono)' }}>{formatCount(v)}</span>
+              <span className={styles.cellCaption}>formatCount({v})</span>
+            </div>
+          ))}
+        </div>
+        <Note>
+          999 reste brut, 1000 s’abrège. Les comptes sont en puissances de **1000**, les tailles en
+          puissances de **1024** — les confondre afficherait « 1.0 k » pour 1024 lignes.
+        </Note>
+      </Sub>
+    </Section>
+  )
+}
+
+type ObjetDemo = {
+  nom: string
+  lignes: number
+  taille: number
+  colonnes: number
+  cle: string
+  analyze: string
+  commentaire: string
+}
+
+const OBJETS: ObjetDemo[] = [
+  {
+    nom: 'orders',
+    lignes: 1_900_000,
+    taille: 2.1 * 1024 ** 3,
+    colonnes: 18,
+    cle: 'id',
+    analyze: '2026-08-06 04:12',
+    commentaire: 'Commandes, une ligne par achat',
+  },
+  {
+    nom: 'users',
+    lignes: 128_000,
+    taille: 96 * 1024 ** 2,
+    colonnes: 12,
+    cle: 'id',
+    analyze: '2026-08-06 04:12',
+    commentaire: '',
+  },
+  {
+    nom: 'orders_by_day',
+    lignes: -1,
+    taille: 8 * 1024,
+    colonnes: 3,
+    cle: '',
+    analyze: '',
+    commentaire: 'Vue jamais analysée',
+  },
+]
+
+const COLONNES_DEMO: Column<ObjetDemo>[] = [
+  { key: 'nom', header: 'Nom', cell: (o) => o.nom, ui: true, width: '210px' },
+  {
+    key: 'lignes',
+    header: 'Lignes',
+    cell: (o) => formatCount(o.lignes),
+    numeric: true,
+    width: '88px',
+  },
+  {
+    key: 'taille',
+    header: 'Taille',
+    cell: (o) => formatBytes(o.taille),
+    numeric: true,
+    width: '78px',
+  },
+  { key: 'col', header: 'Col.', cell: (o) => o.colonnes, numeric: true, width: '66px' },
+  { key: 'cle', header: 'Clé primaire', cell: (o) => o.cle || ABSENT, width: '150px' },
+  { key: 'analyze', header: 'Dernier ANALYZE', cell: (o) => o.analyze || ABSENT, width: '120px' },
+  { key: 'commentaire', header: 'Commentaire', cell: (o) => o.commentaire || ABSENT },
+]
+
+function DataTableGallery() {
+  const [choisi, setChoisi] = useState<string | null>('orders')
+
+  return (
+    <Section title="DataTable">
+      <Note>
+        Un vrai `&lt;table&gt;` : avec `scope=col` et `scope=row`, un lecteur d’écran annonce
+        l’en-tête de chaque cellule sans un seul `aria-colindex`. La grille de A5 (spec 10) aura
+        besoin de l’inverse — virtualisée, éditable — d’où deux composants séparés.
+      </Note>
+      <Note>
+        Trois points que la seule prose du handoff aurait manqués : les en-têtes **ne sont pas** en
+        capitales, les cellules sont en **mono par défaut** (seul le nom est en Nunito), et il y a
+        des filets **verticaux** entre colonnes.
+      </Note>
+      <Sub title="Objets d’un schéma — 7 colonnes, ligne sélectionnable">
+        <DataTable
+          label="Objets du schéma"
+          columns={COLONNES_DEMO}
+          rows={OBJETS}
+          rowId={(o) => o.nom}
+          selectedId={choisi}
+          onSelect={(o) => setChoisi(o.nom)}
+        />
+      </Sub>
+      <Sub title="État vide">
+        <DataTable
+          label="Objets du schéma"
+          columns={COLONNES_DEMO}
+          rows={[]}
+          rowId={(o) => o.nom}
+          empty={<span>Ce schéma ne contient aucune table.</span>}
+        />
+      </Sub>
+    </Section>
+  )
+}
+
 export function Gallery() {
   return (
     <div className={styles.root}>
@@ -1061,6 +1228,9 @@ export function Gallery() {
       <SelectGallery />
       <CollapsiblePanelGallery />
       <ModalGallery />
+      <SegmentedControlGallery />
+      <StatTileGallery />
+      <DataTableGallery />
       <DotGallery />
       <SplitPaneGallery />
       <TabStripGallery />

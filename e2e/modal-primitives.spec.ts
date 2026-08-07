@@ -112,9 +112,15 @@ test('la modale de 820 px tient dans la fenêtre minimale de 960 px', async ({ p
   expect(debordement?.largeur).toBe(822)
 })
 
+// **Le sélecteur a dû être resserré.** La première version balayait tous les
+// `fieldset[class*=root]` de la galerie, et `09a` y a ajouté `SegmentedControl` — dont les
+// segments font 25 px, cinq de moins. Le test est tombé pour une raison étrangère à son sujet.
+// Un test de mise en page doit nommer ce qu'il mesure, pas le deviner par une classe partagée.
 test('les boutons radio font 30 px, y compris celui à bordure de 1.5 px', async ({ page }) => {
   const hauteurs = await page.evaluate(() => {
-    const groupes = [...document.querySelectorAll('fieldset[class*=root]')]
+    const groupes = [...document.querySelectorAll('fieldset')].filter(
+      (f) => f.querySelector('input[value=postgresql]') ?? f.querySelector('input[value=prod]'),
+    )
     return groupes.flatMap((g) =>
       [...g.querySelectorAll('label')].map((l) => Math.round(l.getBoundingClientRect().height)),
     )
