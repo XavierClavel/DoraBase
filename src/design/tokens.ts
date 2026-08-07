@@ -40,6 +40,7 @@ export type TokenName =
   | 'font-ui'
   | 'gold'
   | 'gridline'
+  | 'gridline-2'
   | 'h-bar'
   | 'h-btn-lg'
   | 'h-btn-md'
@@ -92,6 +93,7 @@ export type TokenName =
   | 'rowh'
   | 'rowh-max'
   | 'rowh-min'
+  | 'selected'
   | 'shadow-accent'
   | 'shadow-accent-2'
   | 'shadow-cell'
@@ -184,6 +186,7 @@ export const tokens: Record<TokenName, string> = {
   'font-ui': 'var(--font-ui)',
   'gold': 'var(--gold)',
   'gridline': 'var(--gridline)',
+  'gridline-2': 'var(--gridline-2)',
   'h-bar': 'var(--h-bar)',
   'h-btn-lg': 'var(--h-btn-lg)',
   'h-btn-md': 'var(--h-btn-md)',
@@ -236,6 +239,7 @@ export const tokens: Record<TokenName, string> = {
   'rowh': 'var(--rowh)',
   'rowh-max': 'var(--rowh-max)',
   'rowh-min': 'var(--rowh-min)',
+  'selected': 'var(--selected)',
   'shadow-accent': 'var(--shadow-accent)',
   'shadow-accent-2': 'var(--shadow-accent-2)',
   'shadow-cell': 'var(--shadow-cell)',

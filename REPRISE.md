@@ -26,7 +26,7 @@ plan par plan.
 | `specs/README.md` | index des ~20 specs, contrainte IPC transverse, **acquis techniques**, **décisions à trancher** |
 | `specs/01`–`04`, `05a`–`05c`, `06a`–`06e`, `07` | treize specs, **toutes implémentées** |
 | `specs/08a`–`08e` | cinq specs, **toutes faites**. Deux vérifications à l'œil restent dues |
-| `specs/09a`–`09f` | six specs écrites, **aucune implémentée** — le prochain travail |
+| `specs/09a`–`09f` | six specs ; `09a` **faite**, `09b`–`09f` à faire |
 | `plans/2026-07-31-*`, `plans/2026-08-05-*` | les plans d'implémentation, tâche par tâche, avec les **pièges vérifiés** |
 | `design/handoff/` | le handoff, **source de vérité du design** |
 
@@ -281,6 +281,25 @@ des tests verts au moment où il a été introduit.
    du module de test, faute de pouvoir construire un `SshTunnel` sans bastion. C'est le même
    défaut que sur l'atomicité de `05b` (point 5). Corrigé en extrayant `Surveillance`, un
    type que le tunnel **et** le test appellent.
+42. **La feuille de style du mockup dit ce que sa prose ne dit pas.** Le handoff décrit le
+   tableau de `A4` en une phrase ; son `<style>` porte l'essentiel, et trois points s'y jouaient à
+   l'inverse de ce que j'avais écrit : les en-têtes **ne sont pas** en capitales (700 11px, casse
+   normale), les cellules sont en **mono par défaut** — seule la colonne du nom est en Nunito —
+   et il y a des filets **verticaux** entre colonnes. Mon API avait posé `mono?: boolean`, ce qui
+   aurait fait de six colonnes sur sept une exception ; c'est devenu `ui?: boolean`. **Lire le
+   `<style>` du mockup avant d'écrire du CSS**, pas seulement les blocs `style=` en ligne.
+43. **Un `var()` vers un jeton inexistant ne casse rien de visible.** J'avais écrit
+   `var(--rowh-base)` ; le générateur aplatit `rowh.base` en `--rowh`. La déclaration devenait
+   invalide, l'en-tête retombait en hauteur automatique — 15px au lieu de 26 — et rien ne le
+   signalait : ni TypeScript, ni Vitest, ni l'œil. C'est une mesure e2e qui l'a attrapé, et il a
+   fallu mesurer la hauteur **calculée** plutôt que le rectangle, lequel incluait le filet et
+   masquait l'écart derrière un arrondi.
+44. **Un test de mise en page doit nommer ce qu'il mesure.** Le test « les boutons radio font
+   30 px » de `08a` balayait tous les `fieldset[class*=root]` de la galerie. `09a` y a ajouté
+   `SegmentedControl`, dont les segments font 25 px : le test est tombé pour une raison étrangère
+   à son sujet. Resserré sur les groupes qu'il visait réellement, identifiés par une valeur
+   d'option connue.
+
 38. **Un `<select>` contrôlé dont la valeur n'est dans aucune option affiche la première, sans
    le dire.** `A2` montrait « Atelier Nord » sélectionné alors que le brouillon portait encore
    la chaîne vide : l'enregistrement visait donc un projet inexistant. **À l'écran, tout allait
@@ -638,7 +657,7 @@ test, le refus de saisie, le cas « aucun projet », et le panneau proxy replié
 
 | Spec | Ce qu'elle livre |
 | --- | --- |
-| `09a` | `SegmentedControl`, `StatTile`, `DataTable` + galerie |
+| `09a` | **fait** — `SegmentedControl`, `StatTile`, `DataTable`, `format.ts` |
 | `09b` | **le câblage** : `load_config` au démarrage, registre de connexions, introspection |
 | `09c` | A4 : barre de titre — pastille projet, fil d'Ariane, sélecteur d'environnement |
 | `09d` | A4 : sidebar 252 px et son arbre à quatre niveaux |

@@ -1,0 +1,77 @@
+/*
+ * Contrôle segmenté, relevé sur la barre de fil d'Ariane de A4.
+ *
+ *   hauteur 25px · radius 8px · gap 4px · remplissage 0 9px
+ *   actif    fond --dark, texte --paper, 700
+ *   inactif  fond --field, bordure 1px --border, texte --ink-2, 600
+ *   compte   opacity .55
+ *
+ * `--h-btn-sm` vaut 25px : la hauteur est donc un jeton, contrairement au 28px interne des
+ * champs du panneau proxy de A2.
+ */
+
+.root {
+  display: flex;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+/* La légende nomme le groupe pour un lecteur d'écran sans occuper de place — même dispositif
+ * que `RadioGroup`, et pour la même raison : `display: none` la retirerait du nom accessible. */
+.legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.segment {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  height: var(--h-btn-sm);
+  padding: 0 var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--field);
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.segment:has(.input:focus-visible) {
+  box-shadow: var(--shadow-focus);
+}
+
+/* Fond **sombre**, pas accent. Voir la note du composant : l'accent dit « ce que vous avez
+ * choisi de faire », l'encre dit « ce que vous regardez ». */
+.active {
+  border-color: transparent;
+  background: var(--dark);
+  /* `--paper` et non `--ink-on-dark` : le mockup emploie `#FBF7EF` sur les huit fonds sombres
+   * qu'il contient, et `Button.dark` a déjà tranché ainsi en `02`. `--ink-on-dark` (#EDE7DA)
+   * sert la barre d'état, dont le fond n'est pas le même. */
+  color: var(--paper);
+  font-weight: var(--weight-bold);
+}
+
+/* Visuellement absent mais **focalisable** : `display: none` ou `visibility: hidden` le
+ * retireraient de l'ordre de tabulation et casseraient la navigation aux flèches. */
+.input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.count {
+  opacity: 0.55;
+}

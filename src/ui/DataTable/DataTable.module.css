@@ -1,0 +1,122 @@
+/*
+ * Tableau dense d'objets, relevé sur le centre de A4 — **feuille de style du mockup comprise**,
+ * qui porte l'essentiel :
+ *
+ *   table    border-collapse: collapse ; table-layout: fixed
+ *   th, td   padding 0 8px ; text-align left ; nowrap ; ellipsis
+ *   th       hauteur 26px ; 700 11px Nunito ; interlettrage .2px
+ *   td       hauteur var(--rowh, 26px) ; 500 11.5px JetBrains Mono
+ *   td+td    filet **vertical** 1px --gridline
+ *   thead    fond --bar, encre .5, filet bas 1px .12
+ *
+ * Trois points qu'une lecture de la seule prose du handoff aurait manqués :
+ *   1. les en-têtes ne sont **pas** en capitales — 700 11px, casse normale ;
+ *   2. les cellules sont en **mono par défaut**, seule la colonne du nom est en Nunito ;
+ *   3. il y a des filets **verticaux** entre colonnes, pas seulement horizontaux.
+ *
+ * `--rowh` est une variable de densité : le mockup la laisse à 26px pour A4, et `A5` (spec 10)
+ * la fera varier entre 20 et 36 (`--rowh-min` / `--rowh-max`). La poser ici en `var(--rowh, …)`
+ * prépare ce réglage sans l'implémenter.
+ */
+
+.root {
+  width: 100%;
+  border-collapse: collapse;
+  /* `fixed` : les largeurs viennent du `<colgroup>` et ne dépendent plus du contenu. Sans lui,
+   * les colonnes changeraient de largeur d'un schéma à l'autre. */
+  table-layout: fixed;
+  font-family: var(--font-ui);
+  color: var(--ink);
+}
+
+/* Le nom accessible du tableau, sans occuper de place. `clip-path` plutôt que `display: none`,
+ * qui le retirerait de l'arbre d'accessibilité. */
+.caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.th {
+  height: var(--rowh);
+  /* 8px : absent de l'échelle d'espacement, qui va de 7 à 9. Métrique du tableau, comme la
+   * hauteur de 28px des champs du panneau proxy de A2. */
+  padding: 0 8px;
+  border-bottom: 1px solid var(--gridline-2);
+  background: var(--bar);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.2px;
+  color: var(--ink-8);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Filets verticaux, entre colonnes seulement — pas de filet au bord gauche du tableau. */
+.th + .th,
+.td + .td,
+.td + .th {
+  border-left: 1px solid var(--gridline);
+}
+
+.tr[aria-selected] {
+  cursor: pointer;
+}
+
+.tr:hover:not(.selected) {
+  background: var(--hover-row);
+}
+
+.selected {
+  background: var(--selected);
+  /* Liseré intérieur à gauche, et **non une bordure** : une bordure ajouterait 2px à la boîte
+   * et décalerait le contenu de la ligne sélectionnée par rapport aux autres. */
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.td,
+.rowHeader {
+  height: var(--rowh);
+  padding: 0 8px;
+  /* Mono par défaut : c'est la règle du mockup, et le tableau liste des identifiants de
+   * catalogue. Voir la note en tête de fichier. */
+  font-family: var(--font-mono);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* La seule exception du mockup : la colonne du nom, en Nunito 600 12px. */
+.ui {
+  font-family: var(--font-ui);
+  font-size: var(--text-control);
+  font-weight: var(--weight-semibold);
+}
+
+.rowHeader {
+  font-family: var(--font-ui);
+  font-size: var(--text-control);
+  font-weight: var(--weight-semibold);
+}
+
+.numeric {
+  text-align: right;
+  /* Sans `tabular-nums`, la largeur variable des glyphes fait onduler une colonne de nombres. */
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  padding: var(--space-8);
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  color: var(--ink-2);
+}
