@@ -18,15 +18,20 @@
  * La hauteur de 28px n'a pas de token : c'est une métrique interne à cette taille,
  * absente des tables du handoff (qui ne donne que « champ 30 px »).
  *
- * `box-sizing: content-box` est IMPOSÉ, et ce n'est pas cosmétique. Le mockup ne déclare
- * aucun `box-sizing`, donc ses éléments sont en `content-box` : un champ à `height:30px`
- * avec 1px de bordure y rend **32px** — mesuré. Or `<input>` et `<button>` sont en
- * `border-box` par la feuille de style du navigateur, ce qui ferait rendre 30px et
- * raccourcirait le champ de 2px par rapport à la maquette.
+ * **Le mockup rend 32px pour un champ de 30.** Il ne déclare aucun `box-sizing`, donc ses
+ * éléments sont en `content-box` : `height:30px` plus 1px de bordure de chaque côté. C'est la
+ * hauteur à reproduire, et `--h-field` désigne bien la hauteur du *contenu*.
  *
- * En `content-box`, `--h-field` signifie donc exactement ce qu'il signifie dans le
- * handoff : la hauteur du contenu, la bordure s'ajoutant par-dessus. C'est le seul
- * réglage qui rend les tokens de hauteur comparables au mockup sans arithmétique.
+ * **Mais `content-box` ne peut pas être employé tel quel**, et une première version l'a été
+ * à tort. En `content-box`, `width: 100%` désigne la largeur du contenu : le remplissage et
+ * la bordure s'ajoutent *par-dessus*, et le champ déborde de sa piste de grille. Mesuré en
+ * `A2` : le champ Port rendait **104px dans une piste de 84**. Le mockup n'a pas ce problème
+ * parce que ses champs sont des `<div>` à largeur `auto`, qui se rétractent ; un `<input>`,
+ * lui, ne remplit son conteneur que par `width: 100%`.
+ *
+ * D'où `border-box` avec la hauteur explicitée : `--h-field` reste la hauteur du contenu, les
+ * 2px de bordure sont ajoutés dans le `calc`. L'arithmétique est visible au lieu d'être
+ * implicite, et la largeur est enfin correcte.
  */
 
 .root {
@@ -44,9 +49,9 @@
 
 .input {
   width: 100%;
-  /* Voir la note en tête de fichier : `content-box` est imposé pour que les tokens de
-   * hauteur signifient la même chose que dans le mockup. */
-  box-sizing: content-box;
+  /* Voir la note en tête de fichier : `border-box` plus la hauteur explicitée, pour que la
+   * largeur ne déborde pas de la piste de grille. */
+  box-sizing: border-box;
   padding: 0 var(--space-5);
   border: 1px solid var(--border-field);
   border-radius: var(--radius-field);
@@ -79,9 +84,58 @@
 }
 
 .md {
-  height: var(--h-field);
+  /* 30px de contenu plus les 2px de bordure : la hauteur totale du mockup. */
+  height: calc(var(--h-field) + 2px);
 }
 
 .sm {
-  height: 28px; /* panneau proxy de A2, sans token — métrique interne */
+  /* 28px de contenu plus 2px : panneau proxy de A2. Sans token — métrique interne au
+   * composant, absente des tables du handoff, qui ne donne que « champ 30 px ». */
+  height: 30px;
+}
+
+/* --- Variante à suffixe (mot de passe de A2, clé privée du panneau proxy) ---
+ *
+ * L'enveloppe porte la bordure et le fond ; l'`<input>` devient nu. Le remplissage droit
+ * tombe à 8px (6px en `sm`) pour laisser place au suffixe, exactement comme le mockup.
+ */
+.wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  padding: 0 var(--space-3) 0 var(--space-5);
+  border: 1px solid var(--border-field);
+  border-radius: var(--radius-field);
+  background: var(--field);
+}
+
+/* L'anneau de focus est porté par l'enveloppe : sur l'`<input>` nu, il flotterait au milieu
+ * de la boîte. Même arbitrage que dans `Select`. */
+.wrap:focus-within {
+  box-shadow: var(--shadow-focus);
+}
+
+.wrap.sm {
+  padding-right: var(--space-4);
+}
+
+.bare {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
+}
+
+.bare:focus-visible {
+  outline: none;
+}
+
+.bare::placeholder {
+  color: var(--ink-3);
 }

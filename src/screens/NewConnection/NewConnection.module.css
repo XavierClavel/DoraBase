@@ -1,0 +1,189 @@
+/*
+ * A2 — nouvelle connexion. Métriques relevées sur le mockup, bloc par bloc.
+ *
+ *   bloc                | remplissage      | notes
+ *   --------------------|------------------|--------------------------------------------
+ *   sélecteur de moteur | 14px 16px 0      | titre « MOTEUR » en caps, gap 6px
+ *   formulaire          | 16px             | grille 1fr 1fr, gap 12px 18px
+ *   panneau proxy (08c) | 0 16px           | marge latérale seule
+ *   pied                | 0 16px, h 56px   | marge haute 14px
+ *
+ * `Modal` ne pose aucun remplissage sur son corps précisément parce que ces trois blocs en
+ * ont des différents ; un padding commun forcerait chacun à le compenser.
+ */
+
+.engineBlock {
+  padding: var(--space-7) var(--space-8) 0;
+}
+
+/* « MOTEUR » : 10.5px/700 en capitales, interlettrage .7px, encre .4. */
+.blockTitle {
+  margin-bottom: var(--space-4);
+  font-family: var(--font-ui);
+  font-size: var(--text-caps);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+/* Même style que l'étiquette de `Field` : la variante d'environnement est un `RadioGroup`,
+ * qui n'a pas d'étiquette visible à lui, mais doit s'aligner sur ses voisins de rangée. */
+.label {
+  margin-bottom: var(--space-1);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-2);
+}
+
+.form {
+  display: grid;
+  /* Deux colonnes égales, gap 12px vertical et 18px horizontal. */
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 18px;
+  padding: var(--space-8);
+}
+
+/* Rangée 1, pleine largeur : nom · projet · variante d'environnement.
+ *
+ * `align-items: end` est structurel, pas cosmétique : les trois cellules ont des étiquettes
+ * de hauteurs différentes (une ligne pour « Projet », une pour « Variante d'environnement »
+ * qui peut passer à deux si la fenêtre rétrécit). Sans lui, les champs se décaleraient
+ * verticalement les uns par rapport aux autres. */
+.rowIdentity {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 1fr 196px auto;
+  gap: 12px;
+  align-items: end;
+}
+
+/* Le nom de la base est en Nunito 12.5px là où les valeurs techniques sont en 12px.
+ * Écart d'un demi-pixel relevé sur le mockup, et non arrondi : c'est la seule valeur du
+ * formulaire que l'utilisateur *nomme* au lieu de la *transcrire*. */
+.nameField {
+  font-size: var(--text-body);
+}
+
+/* Le port est collé à l'hôte : gap 8px, contre les 18px de la grille principale. */
+.rowHost {
+  display: grid;
+  grid-template-columns: 1fr 84px;
+  gap: var(--space-5);
+}
+
+.rowSsl {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+/* Les deux bascules s'alignent sur la ligne de base des champs voisins, d'où le décalage
+ * bas de 5px — relevé sur le mockup, où il compense la hauteur de l'étiquette absente. */
+.toggles {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-8);
+  padding-bottom: var(--space-2);
+}
+
+/* --- L'habillage propre à `prod` ---
+ *
+ * Le rouge est une propriété de **prod**, pas de « actif » : le handoff le décrit ainsi, et
+ * le mockup ne montre `dev` ou `staging` qu'inactifs. `RadioGroup` applique l'accent
+ * générique à l'option active ; cette classe le remplace pour `prod`, sélectionné ou non.
+ *
+ * La bordure passe à 1.5px. C'est pour cela que `RadioGroup` est en `border-box` : en
+ * `content-box`, ce bouton serait plus large et plus haut d'un pixel que ses deux voisins,
+ * dans une rangée où ils se touchent. */
+/* Le remplissage des variantes d'environnement est de 10px, contre 12px pour le sélecteur de
+ * moteur, et leur rayon de 8px contre 9px. Deux écarts d'un ou deux pixels, voulus par le
+ * design : la rangée de trois doit tenir à côté de deux autres champs. Les uniformiser
+ * effacerait une intention. */
+.envOption {
+  padding: 0 10px;
+  border-radius: var(--radius-field);
+  font-size: var(--text-dense);
+}
+
+/* **La classe est doublée pour gagner en spécificité.**
+ *
+ * `RadioGroup` applique sa propre classe `.active` à l'option sélectionnée, avec le fond
+ * accent. Ici il faut la battre — sans quoi `prod` sélectionné deviendrait orange. Deux
+ * règles à une classe se départagent par leur **ordre dans la feuille finale**, que rien ne
+ * garantit entre deux modules CSS ; et `:global(.active)` ne peut pas viser une classe
+ * hachée par un autre module. Doubler le sélecteur porte la spécificité à (0,2,0) et tranche
+ * sans dépendre de l'ordre ni du nom de l'autre classe. */
+.envDanger.envDanger {
+  border: 1.5px solid var(--danger);
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+  font-weight: var(--weight-bold);
+  box-shadow: none;
+}
+
+/* --- L'œil du champ mot de passe ---
+ *
+ * Un `<button>` nu : sans remise à zéro, le navigateur lui donne une bordure et un fond, que
+ * le mockup n'a pas — l'icône y est seule dans la boîte du champ. Défaut vu à la capture,
+ * qu'aucun test unitaire n'aurait signalé.
+ */
+.eye {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink-4);
+  cursor: pointer;
+}
+
+.eye:focus-visible {
+  outline: none;
+  border-radius: var(--radius-badge-2);
+  box-shadow: var(--shadow-focus);
+}
+
+/* --- Bascules avec libellé ---
+ *
+ * 7px entre la piste et le texte, 11.5px/600. Le libellé de la bascule **éteinte** est en
+ * encre secondaire — relevé sur les deux instances du mockup, où « Se reconnecter au
+ * démarrage » est plus pâle que « Ouvrir en lecture seule ».
+ */
+.toggleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.toggleLabel {
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+}
+
+.toggleLabelOff {
+  color: var(--ink-2);
+}
+
+.flask {
+  color: var(--success);
+}
+
+.footerSpacer {
+  flex: 1;
+}
+
+/* Un moteur sans adaptateur : le pied le dit au lieu de laisser « Tester » échouer sans
+ * explication. Encre secondaire, pas rouge — ce n'est pas une erreur, c'est un état. */
+.unsupported {
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-2);
+}

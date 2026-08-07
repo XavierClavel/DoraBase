@@ -8,9 +8,11 @@ import styles from './WelcomeScreen.module.css'
 type WelcomeScreenProps = {
   onNewProject: () => void
   projectCount: number
+  /** Vrai quand une modale bloque la fenêtre : la barre de titre se ternit (`08b`). */
+  dimmed?: boolean
 }
 
-export function WelcomeScreen({ onNewProject, projectCount }: WelcomeScreenProps) {
+export function WelcomeScreen({ onNewProject, projectCount, dimmed = false }: WelcomeScreenProps) {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.metaKey && event.key.toLowerCase() === 'n') {
@@ -24,7 +26,7 @@ export function WelcomeScreen({ onNewProject, projectCount }: WelcomeScreenProps
 
   return (
     <div className={styles.root}>
-      <TitleBar />
+      <TitleBar dimmed={dimmed} />
       <div className={styles.body}>
         <ProjectSidebar onNewProject={onNewProject} />
         <WelcomeHero onNewProject={onNewProject} />
