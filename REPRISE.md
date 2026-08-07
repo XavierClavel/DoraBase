@@ -263,6 +263,27 @@ des tests verts au moment où il a été introduit.
    commande, donc `tail` réussit toujours. « TOUT VERT » s'est affiché avec trois
    vérifications rouges. D'où `scripts/verifier-tout.sh`, qui ne tronque rien, enregistre
    chaque échec et les rappelle à la fin. À utiliser au lieu de rechaîner.
+17. **« Ça s'ouvre » ne prouve pas « ça sert ».** Même leçon que le point 13, retrouvée en
+   `06e` sur un autre terrain : l'image `linuxserver/openssh-server` livre
+   `AllowTcpForwarding no`. La session SSH s'ouvrait, s'authentifiait, annonçait son port
+   local — et chaque connexion acheminée était coupée. Le test « un tunnel s'ouvre » était
+   vert pendant que la redirection était morte. Ce qui l'a trouvé : un test qui envoie une
+   vraie requête SSL PostgreSQL dans le tunnel et attend la réponse du serveur.
+18. **`JoinHandle::abort` n'est pas synchrone.** Il *planifie* l'annulation ; au retour, la
+   tâche tient encore ses ressources. Un `Drop` qui se contentait d'`abort` laissait donc le
+   port local pris, et le test qui le redemandait aussitôt échouait sur « Address already in
+   use ». D'où `SshTunnel::fermer`, qui attend le handle après l'avoir abandonné — `Drop`
+   n'étant plus qu'un filet, ce que sa documentation dit explicitement.
+19. **Un test qui recopie la logique du sujet ne le teste pas.** Écrit puis corrigé dans la
+   même heure en `06e` : la lecture d'`etat()` était reconstituée dans une fonction d'appoint
+   du module de test, faute de pouvoir construire un `SshTunnel` sans bastion. C'est le même
+   défaut que sur l'atomicité de `05b` (point 5). Corrigé en extrayant `Surveillance`, un
+   type que le tunnel **et** le test appellent.
+20. **Un test qui se saute tout seul rend un succès.** Les tests de tunnel s'abstiennent
+   quand le décor SSH manque — nécessaire pour le job macOS, mais un bastion qui échoue à
+   démarrer les rendrait invisibles sans casser la CI. Une étape dédiée du job Linux relit la
+   sortie et refuse la présence de « décor SSH absent ». Le saut est aussi **annoncé** sur
+   `stderr` plutôt que muet.
 
 ## 7. Ce qui a marché dans l'orchestration
 
@@ -369,24 +390,48 @@ pnpm icons:check    # idem pour le sprite
 pnpm domain:check   # idem pour les projections ts-rs (exige un arbre git propre)
 ```
 
+Pour les tests de tunnel (`06e`), un bastion en plus :
+
 ```bash
-cd src-tauri && cargo test --features db-tests   # 135 tests, dont 24 sur base réelle
+./scripts/bastion-test.sh demarrer /tmp/bastion
+. /tmp/bastion/bastion.env
+./scripts/bastion-test.sh arreter   # quand c'est fini
+```
+
+Sans lui, les tests SSH se **sautent** en l'annonçant sur `stderr` ; la CI a une étape dédiée
+qui refuse ce silence.
+
+```bash
+cd src-tauri && cargo test --features db-tests   # 183 tests, dont 41 sur base et bastion
 ```
 
 `?gallery` dans l'URL en développement affiche la galerie des primitives.
 
 ## 12. La suite
 
-**Fait au 7 août 2026 : `05a`, `05b`, `05c`, `06a`, `06b`, `06c`, `06d`.** Reste `06e`
-(tunnel SSH), dont la spec est écrite et relue mais non implémentée.
+**Fait au 7 août 2026 : `05a`, `05b`, `05c`, `06a`, `06b`, `06c`, `06d`, `06e`.** La série
+`06` est complète : plus aucune spec écrite n'attend son implémentation.
 
 Ce que ça représente concrètement : le modèle de configuration existe en Rust et est projeté
 en TypeScript par `ts-rs`, sa persistance sur disque est atomique et non destructive (fichier
 corrompu mis en quarantaine, écriture bloquée), les identifiants ont leur magasin, et la
-couche moteur sait **ouvrir une connexion PostgreSQL, introspecter un schéma et lire une
-fenêtre de lignes**.
+couche moteur sait **ouvrir une connexion PostgreSQL, introspecter un schéma, lire une
+fenêtre de lignes, et faire passer tout cela par un tunnel SSH**.
 
-**135 tests Rust** dont **24 contre un vrai PostgreSQL 17.6**, 112 Vitest, 4 Playwright.
+**183 tests Rust** dont **41 contre un vrai PostgreSQL 17.6 et un vrai bastion SSH**,
+112 Vitest, 4 Playwright.
+
+Le test qui donne sa valeur à `06e` : la base visée est le **nom du conteneur PostgreSQL sur
+un réseau Docker**, que la machine hôte ne résout pas. Un contrôle positif vérifie d'abord
+qu'elle est bien injoignable en direct — sans quoi le test passerait sans rien prouver du
+tunnel. Décor monté par `scripts/bastion-test.sh`, le même en local et en CI.
+
+**La politique de clé d'hôte est tranchée et implémentée** : vérification contre
+`~/.ssh/known_hosts`, hôte inconnu refusé, avec un message qui donne la manœuvre. Quatre
+verdicts distincts là où `russh` n'en offre que deux — « hôte inconnu », « clé changée »,
+« algorithme absent » et « clé refusée par le bastion » ne se confondent pas. Reste que
+**l'écran de confiance à la première connexion serait la vraie réponse**, et que le design ne
+l'a pas maquetté : à remonter avant distribution.
 
 La contrainte IPC transverse est désormais portée par un **type** : `RowLimit` est une
 énumération fermée (100/500/1000/5000), donc « demander tout » n'est pas exprimable.
@@ -410,9 +455,9 @@ et aucun plugin de log JS n'est installé, donc `invoke()` depuis le front n'a j
 appelé. L'enregistrement des commandes est garanti par la compilation ; le pont le sera par
 `08`. Ne pas le présenter comme vérifié d'ici là.
 
-**La suite : `06e` (tunnel SSH), puis `08` (modale de connexion).** `08` est le premier écran
-qui crée vraiment une entité, et le premier qui exercera le pont IPC de bout en bout. Il
-faudra y trancher la **politique de clé d'hôte SSH** (voir § 5), que le handoff ne règle pas.
+**La suite : `08` (modale de connexion).** Premier écran qui crée vraiment une entité, et
+premier qui exercera le pont IPC de bout en bout. C'est aussi lui qui devra afficher le port
+local du tunnel (`A2` : « auto (63342) »), que `PostgresAdapter::port_local_tunnel` rend déjà.
 
 À trancher au passage, le moment venu :
 

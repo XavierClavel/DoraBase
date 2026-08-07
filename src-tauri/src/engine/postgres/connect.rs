@@ -11,24 +11,33 @@ use super::error::traduire;
 
 /// Construit la configuration de connexion depuis une variante d'environnement.
 ///
-/// **Une variante déclarant un tunnel est refusée**, pas connectée en direct : se connecter
-/// sans le bastion que l'utilisateur a demandé contournerait sa consigne de sécurité. `06e`
-/// lèvera ce refus en ouvrant réellement le tunnel.
+/// `redirection` porte le point d'entrée du tunnel quand il y en a un : `06e` ouvre le tunnel
+/// puis passe ici l'adresse locale sur laquelle il écoute. **Une variante déclarant un tunnel
+/// mais sans redirection est refusée**, pas connectée en direct — se connecter sans le bastion
+/// que l'utilisateur a demandé contournerait sa consigne de sécurité, et un `None` oublié à
+/// l'appel ne doit pas se traduire par une connexion directe silencieuse.
 pub fn preparer(
     variante: &EnvironmentVariant,
     mot_de_passe: Option<&Secret>,
+    redirection: Option<(&str, u16)>,
 ) -> Result<Config, EngineError> {
-    if variante.tunnel.is_some() {
-        return Err(EngineError::local(
-            "cette base est configurée derrière un tunnel SSH, que cette version ne sait pas \
-             encore ouvrir (spec 06e) — se connecter en direct contournerait la consigne",
-        ));
-    }
+    let (hote, port) = match (&variante.tunnel, redirection) {
+        (Some(_), Some(local)) => local,
+        (Some(_), None) => {
+            return Err(EngineError::local(
+                "cette base est configurée derrière un tunnel SSH, mais aucun tunnel n'a été \
+                 ouvert — se connecter en direct contournerait la consigne",
+            ));
+        }
+        // Une redirection fournie sans tunnel configuré est ignorée plutôt que d'être une
+        // erreur : c'est le cas d'un appelant qui passe la même valeur partout.
+        (None, _) => (variante.host.as_str(), variante.port),
+    };
 
     let mut config = Config::new();
     config
-        .host(&variante.host)
-        .port(variante.port)
+        .host(hote)
+        .port(port)
         .dbname(&variante.default_database)
         .user(&variante.username)
         .ssl_mode(traduire_mode_ssl(variante.ssl_mode));
@@ -102,15 +111,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn une_variante_simple_se_prepare() {
-        assert!(preparer(&variante(), None).is_ok());
-    }
-
-    #[test]
-    fn une_variante_declarant_un_tunnel_est_refusee() {
-        let mut avec_tunnel = variante();
-        avec_tunnel.tunnel = Some(Tunnel {
+    fn avec_tunnel() -> EnvironmentVariant {
+        let mut variante = variante();
+        variante.tunnel = Some(Tunnel {
             kind: TunnelKind::Ssh,
             bastion_host: "bastion.exemple.net".into(),
             bastion_port: 22,
@@ -118,14 +121,62 @@ mod tests {
             private_key_path: "~/.ssh/id_ed25519".into(),
             local_port: None,
         });
+        variante
+    }
 
-        let erreur = preparer(&avec_tunnel, None).expect_err("le tunnel doit être refusé");
-        assert!(
-            erreur.message.contains("tunnel"),
-            "le message doit dire pourquoi : {}",
-            erreur.message
-        );
+    #[test]
+    fn une_variante_simple_se_prepare() {
+        assert!(preparer(&variante(), None, None).is_ok());
+    }
+
+    /// Le garde-fou de `06e` : un tunnel configuré sans tunnel ouvert ne se rabat **pas** sur
+    /// une connexion directe. C'est le défaut le plus tentant de ce branchement — il
+    /// « marcherait » sur un réseau où la base est joignable en direct, et contournerait
+    /// silencieusement la consigne partout ailleurs.
+    #[test]
+    fn un_tunnel_configure_sans_tunnel_ouvert_est_refuse() {
+        let erreur =
+            preparer(&avec_tunnel(), None, None).expect_err("l'absence de tunnel doit être vue");
+        assert!(erreur.message.contains("tunnel"), "{erreur}");
         assert!(erreur.code.is_none(), "échec local, donc sans SQLSTATE");
+    }
+
+    /// Et quand le tunnel est ouvert, c'est **son** point d'entrée qui est visé, pas l'hôte
+    /// de la base — sinon le tunnel serait ouvert pour rien.
+    #[test]
+    fn un_tunnel_ouvert_redirige_la_connexion_vers_le_port_local() {
+        let config = preparer(&avec_tunnel(), None, Some(("127.0.0.1", 63342)))
+            .expect("la redirection doit être acceptée");
+
+        assert_eq!(
+            config.get_ports(),
+            [63342],
+            "le port doit être celui du tunnel"
+        );
+        assert!(
+            !format!("{:?}", config.get_hosts()).contains("localhost"),
+            "l'hôte de la base ne doit plus apparaître : {:?}",
+            config.get_hosts()
+        );
+    }
+
+    /// La base visée reste celle de la configuration : le tunnel change l'adresse, pas la
+    /// cible logique.
+    #[test]
+    fn une_redirection_ne_change_ni_la_base_ni_l_utilisateur() {
+        let config =
+            preparer(&avec_tunnel(), None, Some(("127.0.0.1", 63342))).expect("préparation");
+        assert_eq!(config.get_dbname(), Some("dorabase_test"));
+        assert_eq!(config.get_user(), Some("dorabase"));
+    }
+
+    /// Une redirection passée alors qu'aucun tunnel n'est configuré ne doit pas détourner la
+    /// connexion : sinon un appelant qui transmet la même valeur partout casserait les
+    /// variantes directes.
+    #[test]
+    fn une_redirection_sans_tunnel_configure_est_ignoree() {
+        let config = preparer(&variante(), None, Some(("127.0.0.1", 63342))).expect("préparation");
+        assert_eq!(config.get_ports(), [5432]);
     }
 
     #[test]
@@ -140,7 +191,7 @@ mod tests {
         ] {
             let mut v = variante();
             v.ssl_mode = mode;
-            assert!(preparer(&v, None).is_ok(), "{mode:?} refusé");
+            assert!(preparer(&v, None, None).is_ok(), "{mode:?} refusé");
         }
     }
 
@@ -162,7 +213,7 @@ mod tests {
     #[test]
     fn le_mot_de_passe_n_est_pas_requis() {
         // Une base sans mot de passe existe — SQLite sur fichier, ou une confiance locale.
-        assert!(preparer(&variante(), None).is_ok());
-        assert!(preparer(&variante(), Some(&Secret::new("s3cr3t"))).is_ok());
+        assert!(preparer(&variante(), None, None).is_ok());
+        assert!(preparer(&variante(), Some(&Secret::new("s3cr3t")), None).is_ok());
     }
 }

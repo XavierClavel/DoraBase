@@ -17,6 +17,7 @@ use std::time::Instant;
 use tokio_postgres::Client;
 
 use crate::config::EnvironmentVariant;
+use crate::engine::tunnel::{EtatTunnel, SshTunnel};
 use crate::engine::{
     ConnectionProbe, EngineAdapter, EngineError, RowQuery, RowWindow, SchemaInfo, TableDetail,
     TableSummary,
@@ -25,8 +26,27 @@ use crate::secrets::Secret;
 
 pub use connect::preparer;
 
+/// Le `known_hosts` de l'utilisateur.
+///
+/// `HOME` plutôt qu'une bibliothèque de répertoires : c'est ce que lit `ssh` lui-même, donc
+/// c'est le fichier que l'utilisateur a effectivement peuplé.
+fn known_hosts_utilisateur() -> std::path::PathBuf {
+    std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default()
+        .join(".ssh")
+        .join("known_hosts")
+}
+
 pub struct PostgresAdapter {
     client: Client,
+    /// Le tunnel SSH quand la variante en déclare un.
+    ///
+    /// **Détenu par l'adaptateur** pour que sa durée de vie soit celle de la connexion : un
+    /// tunnel lâché aussitôt après l'ouverture fermerait son écouteur local, et la connexion
+    /// PostgreSQL mourrait à la première requête — panne d'autant plus déroutante que
+    /// l'ouverture, elle, aurait réussi.
+    tunnel: Option<SshTunnel>,
 }
 
 /// `Debug` **à la main**, et non dérivé.
@@ -47,9 +67,49 @@ impl PostgresAdapter {
         variante: &EnvironmentVariant,
         mot_de_passe: Option<&Secret>,
     ) -> Result<Self, EngineError> {
-        let config = connect::preparer(variante, mot_de_passe)?;
-        let client = connect::ouvrir(&config).await?;
-        Ok(Self { client })
+        Self::connect_via(variante, mot_de_passe, &known_hosts_utilisateur()).await
+    }
+
+    /// La même chose, avec le `known_hosts` en paramètre.
+    ///
+    /// Séparée pour que les tests n'aient pas à toucher le `~/.ssh/known_hosts` de la
+    /// machine — ce qu'un test n'a pas le droit de faire.
+    pub async fn connect_via(
+        variante: &EnvironmentVariant,
+        mot_de_passe: Option<&Secret>,
+        known_hosts: &std::path::Path,
+    ) -> Result<Self, EngineError> {
+        let tunnel = match &variante.tunnel {
+            Some(configuration) => Some(
+                SshTunnel::ouvrir(configuration, &variante.host, variante.port, known_hosts)
+                    .await?,
+            ),
+            None => None,
+        };
+
+        let redirection = tunnel.as_ref().map(|t| ("127.0.0.1", t.port_local()));
+        let config = connect::preparer(variante, mot_de_passe, redirection)?;
+
+        match connect::ouvrir(&config).await {
+            Ok(client) => Ok(Self { client, tunnel }),
+            // **Le point de `06e`** : sans cette qualification, un bastion tombé produit un
+            // « connection refused » sur `127.0.0.1`, qui envoie chercher un problème de
+            // PostgreSQL. `A3` distingue les deux lignes ; l'erreur doit les distinguer aussi.
+            Err(erreur) => Err(match &tunnel {
+                Some(t) => t.qualifier(erreur),
+                None => erreur,
+            }),
+        }
+    }
+
+    /// L'état du tunnel, quand il y en a un. `None` pour une connexion directe.
+    pub fn etat_tunnel(&self) -> Option<EtatTunnel> {
+        self.tunnel.as_ref().map(SshTunnel::etat)
+    }
+
+    /// Le port local du tunnel, que `A2` affiche sous « auto (63342) ».
+    pub fn port_local_tunnel(&self) -> Option<u16> {
+        self.tunnel.as_ref().map(SshTunnel::port_local)
     }
 
     /// La version du serveur, telle que `A2` l'affiche (« PostgreSQL 16.2 »).
@@ -369,6 +429,118 @@ mod tests_db {
                 .is_ok(),
             "rows"
         );
+    }
+
+    // --- Tunnel SSH (06e) ---
+
+    /// Le décor SSH n'est monté que par `scripts/bastion-test.sh`. Ces tests sont **sautés**
+    /// quand il manque, plutôt qu'en échec : le job de CI qui n'a pas de bastion n'a pas à
+    /// rougir. Le saut est annoncé, pour qu'un décor oublié se remarque.
+    fn variante_a_tunnel() -> Option<(EnvironmentVariant, Option<Secret>, std::path::PathBuf)> {
+        let hote = std::env::var("DORABASE_TEST_SSH_HOST").ok()?;
+        let (mut variante, secret) = variante_de_test();
+
+        // L'hôte et le port de la **base**, vus depuis le bastion : le nom du conteneur sur le
+        // réseau partagé, pas le port publié sur la machine. C'est justement ce qu'un tunnel
+        // rend joignable et qui ne l'est pas en direct.
+        variante.host = std::env::var("DORABASE_TEST_SSH_TARGET_HOST").ok()?;
+        variante.port = std::env::var("DORABASE_TEST_SSH_TARGET_PORT")
+            .ok()?
+            .parse()
+            .ok()?;
+        variante.tunnel = Some(crate::config::Tunnel {
+            kind: crate::config::TunnelKind::Ssh,
+            bastion_host: hote,
+            bastion_port: std::env::var("DORABASE_TEST_SSH_PORT").ok()?.parse().ok()?,
+            username: std::env::var("DORABASE_TEST_SSH_USER").ok()?,
+            private_key_path: std::env::var("DORABASE_TEST_SSH_KEY").ok()?,
+            local_port: None,
+        });
+
+        let known_hosts =
+            std::path::PathBuf::from(std::env::var("DORABASE_TEST_SSH_KNOWN_HOSTS").ok()?);
+        Some((variante, secret, known_hosts))
+    }
+
+    /// **Le test qui valide `06e`.** Une vraie connexion PostgreSQL à travers un vrai bastion,
+    /// vers une base **injoignable en direct**.
+    ///
+    /// Ce dernier point est ce qui donne sa valeur au test : la cible est le nom du conteneur
+    /// PostgreSQL sur le réseau Docker, que la machine hôte ne résout pas. Si le tunnel
+    /// n'acheminait rien, aucun repli ne pourrait sauver la connexion.
+    #[tokio::test]
+    async fn une_base_injoignable_en_direct_devient_accessible_par_le_tunnel() {
+        let Some((variante, secret, known_hosts)) = variante_a_tunnel() else {
+            eprintln!("décor SSH absent : test sauté (voir scripts/bastion-test.sh)");
+            return;
+        };
+
+        // Contrôle **positif** de la prémisse : sans tunnel, cette base est inaccessible. Sans
+        // cette vérification, le test passerait aussi si la cible était joignable en direct —
+        // et ne prouverait alors rien du tunnel.
+        let sans_tunnel = {
+            let mut directe = variante.clone();
+            directe.tunnel = None;
+            PostgresAdapter::connect(&directe, secret.as_ref()).await
+        };
+        assert!(
+            sans_tunnel.is_err(),
+            "la prémisse est cassée : la base est joignable sans tunnel, ce test ne prouve rien"
+        );
+
+        let adaptateur = PostgresAdapter::connect_via(&variante, secret.as_ref(), &known_hosts)
+            .await
+            .expect("la connexion doit passer par le tunnel");
+
+        // Et la connexion doit **servir** : une sonde, puis une vraie introspection.
+        let sonde = adaptateur.probe().await.expect("sonde");
+        assert!(sonde.server_version.starts_with("PostgreSQL"), "{sonde:?}");
+
+        let objets = adaptateur
+            .objects("introspection")
+            .await
+            .expect("introspection à travers le tunnel");
+        assert_eq!(objets.len(), 5, "4 tables et 1 vue");
+
+        // Le port local doit être **connu** : `A2` l'affiche sous « auto (63342) ».
+        assert!(adaptateur.port_local_tunnel().is_some());
+        assert_eq!(
+            adaptateur.etat_tunnel(),
+            Some(crate::engine::tunnel::EtatTunnel::Vivant)
+        );
+    }
+
+    /// Qu'une lecture paginée passe aussi le tunnel — un canal par connexion, donc plusieurs
+    /// requêtes successives sur la même session SSH.
+    #[tokio::test]
+    async fn une_lecture_paginee_traverse_le_tunnel() {
+        let Some((variante, secret, known_hosts)) = variante_a_tunnel() else {
+            eprintln!("décor SSH absent : test sauté");
+            return;
+        };
+
+        let adaptateur = PostgresAdapter::connect_via(&variante, secret.as_ref(), &known_hosts)
+            .await
+            .expect("connexion");
+
+        let fenetre = adaptateur
+            .rows(&RowQuery::new(
+                "introspection",
+                "grande",
+                crate::engine::RowLimit::FiveHundred,
+            ))
+            .await
+            .expect("lecture à travers le tunnel");
+        assert_eq!(fenetre.rows.len(), 500);
+    }
+
+    /// Une connexion directe ne doit **pas** rapporter d'état de tunnel : `A2` afficherait
+    /// alors un panneau « Proxy / tunnel » actif pour une base qui n'en a pas.
+    #[tokio::test]
+    async fn une_connexion_directe_ne_rapporte_aucun_tunnel() {
+        let adaptateur = adaptateur().await;
+        assert_eq!(adaptateur.etat_tunnel(), None);
+        assert_eq!(adaptateur.port_local_tunnel(), None);
     }
 
     // --- Lecture paginée (06d) ---

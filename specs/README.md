@@ -112,9 +112,9 @@ se pose : ajouter `blob:` à la directive concernée, ou gérer l'écriture côt
 | [`05c`](05c-stockage-identifiants.md) | Stockage des identifiants : interface, Trousseau, fichier chiffré | **fait** (Trousseau non vérifié) |
 | [`06a`](06a-contrat-couche-moteur.md) | Contrat de la couche moteur : trait, modèle d'introspection, fenêtre de lignes | **fait** |
 | [`06b`](06b-connexion-postgresql.md) | Connexion PostgreSQL, modes SSL, test de connexion, infra de test | **fait** (TLS à brancher) |
-| [`06c`](06c-introspection-postgresql.md) | Introspection PostgreSQL : catalogue → modèle, DDL | relue, à faire |
-| [`06d`](06d-lecture-paginee.md) | Lecture paginée des lignes : filtres, tri, contrainte IPC | relue, à faire |
-| [`06e`](06e-tunnel-ssh.md) | Tunnel SSH vers un bastion | relue, à faire |
+| [`06c`](06c-introspection-postgresql.md) | Introspection PostgreSQL : catalogue → modèle, DDL | **fait** |
+| [`06d`](06d-lecture-paginee.md) | Lecture paginée des lignes : filtres, tri, contrainte IPC | **fait** |
+| [`06e`](06e-tunnel-ssh.md) | Tunnel SSH vers un bastion | **fait** (écran de confiance à trancher) |
 
 **Pourquoi `05` a été découpé en trois** (5 août 2026) : le périmètre indexé —
 « modèle de domaine, persistance, Trousseau » — mêlait trois préoccupations
