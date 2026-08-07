@@ -99,7 +99,6 @@ pub enum SortDirection {
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "engine.ts")]
 pub struct SortKey {
-    pub sabotage: bool,
     pub column: String,
     pub direction: SortDirection,
 }

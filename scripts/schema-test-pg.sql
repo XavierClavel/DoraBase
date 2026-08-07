@@ -4,10 +4,11 @@
 -- les comptages sont connus, ce qui permet d'assener des valeurs exactes plutôt que des
 -- « au moins un ». Modifier ce fichier casse des tests par conception — c'est le but.
 --
---   2 tables       dont une avec clé étrangère et contrainte CHECK
+--   4 tables       dont une avec clé étrangère et contrainte CHECK, plus deux de tailles
+--                  très différentes pour la mesure d'empreinte de 06d
 --   1 vue          jamais analysée, donc `reltuples = -1`
 --   2 fonctions    dont une de trigger
---   4 index        deux clés primaires, une unicité, un index secondaire
+--   6 index        quatre clés primaires, une unicité, un index secondaire
 --   1 trigger      non interne
 --   9 colonnes     sur `orders`, couvrant les huit catégories de type
 --   commentaires   de schéma, de table et de colonne
@@ -71,5 +72,28 @@ insert into introspection.orders (user_id, status, total_cents)
 -- `analyze` peuple `reltuples` et `last_analyze` : sans lui, les tests sur l'estimation et
 -- sur la colonne « Dernier ANALYZE » de `A4` n'auraient rien à observer. La vue, elle, reste
 -- volontairement non analysée — c'est le cas `reltuples = -1`.
+-- Deux tables de tailles très différentes, pour la mesure d'empreinte de `06d` : lire une
+-- fenêtre de 500 lignes doit coûter le même ordre de grandeur dans l'une et dans l'autre.
+-- Si l'implémentation ramenait tout avant de découper, le coût suivrait la taille.
+--
+-- 100 000 contre 1 000, soit un facteur cent : assez pour que l'écart se voie, assez peu
+-- pour que le chargement du schéma reste rapide en CI.
+create table introspection.petite (
+  id bigserial primary key,
+  valeur text not null,
+  rang integer not null
+);
+create table introspection.grande (
+  id bigserial primary key,
+  valeur text not null,
+  rang integer not null
+);
+insert into introspection.petite (valeur, rang)
+  select 'v' || g, g % 7 from generate_series(1, 1000) g;
+insert into introspection.grande (valeur, rang)
+  select 'v' || g, g % 7 from generate_series(1, 100000) g;
+
 analyze introspection.users;
 analyze introspection.orders;
+analyze introspection.petite;
+analyze introspection.grande;

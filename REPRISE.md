@@ -4,7 +4,7 @@ Ce document existe pour qu'une session neuve reprenne le travail sans avoir la
 conversation précédente. Il complète les specs et les plans, qui disent *quoi* construire ;
 lui dit **où on en est, ce qui a été décidé, et pourquoi**.
 
-Dernière mise à jour : 5 août 2026, branche `feat/tranche-1-socle-design-a1`.
+Dernière mise à jour : 7 août 2026, branche `main`.
 
 ---
 
@@ -24,7 +24,7 @@ plan par plan.
 | --- | --- |
 | `AGENTS.md` | conventions du projet — langue de travail, taille des specs |
 | `specs/README.md` | index des ~20 specs, contrainte IPC transverse, **acquis techniques**, **décisions à trancher** |
-| `specs/01`–`04`, `07` | les cinq specs écrites, toutes implémentées |
+| `specs/01`–`04`, `05a`–`05c`, `06a`–`06e`, `07` | les treize specs écrites ; toutes implémentées sauf `06e` |
 | `plans/2026-07-31-*`, `plans/2026-08-05-*` | les plans d'implémentation, tâche par tâche, avec les **pièges vérifiés** |
 | `design/handoff/` | le handoff, **source de vérité du design** |
 
@@ -240,6 +240,29 @@ des tests verts au moment où il a été introduit.
 12. **`box-sizing: border-box` n'est pas une entorse à la convention `content-box`.** Celle-ci
    vaut pour les **hauteurs** issues d'un token. Un élément dont la **largeur** est à 100 %
    avec du padding a besoin de `border-box`, sinon les deux s'additionnent.
+13. **Un test qui vérifie le résultat visible ne prouve pas que le chemin est bon.** En
+   `06d`, saboter la pagination — `limit 1000000000` côté SQL, découpe en Rust — laissait
+   *vert* le test « la fenêtre rend exactement 500 lignes ». Ramener cent mille lignes puis
+   n'en garder que cinq cents satisfait la lettre de l'exigence. Seul le test qui compare le
+   **coût** entre une table de mille lignes et une de cent mille a mordu. Quand la contrainte
+   porte sur le chemin et non sur la sortie, il faut mesurer le chemin.
+14. **Un garde-fou écrit contre une famille de fichiers ne couvre pas celle qu'elle
+   engendre.** `verifier-aucun-sabotage.sh`, écrit précisément pour attraper le champ
+   `sabotage` committé par accident, exigeait un préfixe Rust (`pub `, `let `…) et a donc
+   laissé passer `{ sabotage: boolean, … }` dans `src/domain/engine.ts` — le même champ,
+   projeté en TypeScript par `export-types`. C'est `domain:check` qui l'a fini par le voir,
+   un cran plus tard. Le motif accepte désormais les deux formes.
+15. **Un message d'erreur peut faire passer un test pour la mauvaise raison.** Le test
+   « une colonne inconnue est refusée » assertait que le message contient le nom fautif.
+   PostgreSQL renvoie `column "colonne_inventee" does not exist` — donc laisser passer le
+   nom échappé jusqu'au serveur satisfaisait le test, alors que le but était de refuser
+   **avant l'envoi**. Corrigé en assertant aussi `code == None` : une erreur locale n'a pas
+   de `SQLSTATE`, un refus serveur porte `42703`. Trouvé par sabotage.
+16. **Un enchaînement de vérifications à la main peut mentir.** `set -e` puis
+   `cargo clippy … | tail -3` : le statut de sortie d'un pipeline est celui de sa **dernière**
+   commande, donc `tail` réussit toujours. « TOUT VERT » s'est affiché avec trois
+   vérifications rouges. D'où `scripts/verifier-tout.sh`, qui ne tronque rien, enregistre
+   chaque échec et les rappelle à la fin. À utiliser au lieu de rechaîner.
 
 ## 7. Ce qui a marché dans l'orchestration
 
@@ -313,36 +336,57 @@ de couleurs sur une capture Chromium (§ 6, méthode 6) est le substitut qui a f
 
 ## 11. Commandes
 
+**Avant tout commit — la barrière, une seule commande :**
+
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+export DORABASE_TEST_PG="postgres://dorabase:dorabase-test@localhost:55432/dorabase_test"
+./scripts/verifier-tout.sh
+```
+
+Elle lance ce que lance la CI et **échoue vraiment** (voir § 6, point 16). Sans
+`DORABASE_TEST_PG`, les tests sur base réelle sont sautés — et le dit à l'écran plutôt que
+de les taire. Le conteneur local se démarre par :
+
+```bash
+docker run -d --name dorabase-test-pg -e POSTGRES_PASSWORD=dorabase-test \
+  -e POSTGRES_USER=dorabase -e POSTGRES_DB=dorabase_test -p 55432:5432 postgres:17
+docker exec -i dorabase-test-pg psql -U dorabase -d dorabase_test < scripts/schema-test-pg.sql
+```
+
+**Le reste, au cas par cas :**
+
 ```bash
 pnpm dev            # serveur Vite
 pnpm tauri dev      # l'app (bloquant, ouvre une fenêtre) — export PATH d'abord
 pnpm tauri build    # .app et .dmg — export PATH d'abord
-pnpm test           # 62 tests
-pnpm test:e2e       # Playwright — nécessite pnpm dev actif ou webServer auto
+pnpm test           # 112 tests Vitest
+pnpm test:e2e       # Playwright — 4 tests, webServer auto
 pnpm lint           # Biome
 pnpm typecheck      # tsc -b, les deux programmes
-pnpm tokens:build   # régénère tokens.css et tokens.ts
-pnpm tokens:check   # garde-fou : échoue si édités à la main
+pnpm tokens:check   # garde-fou : échoue si tokens.css/ts édités à la main
 pnpm icons:check    # idem pour le sprite
+pnpm domain:check   # idem pour les projections ts-rs (exige un arbre git propre)
+```
+
+```bash
+cd src-tauri && cargo test --features db-tests   # 135 tests, dont 24 sur base réelle
 ```
 
 `?gallery` dans l'URL en développement affiche la galerie des primitives.
 
 ## 12. La suite
 
-Les fondations partagées sont posées (`01`, `02`, `03`, `04`) et un écran réel existe
-(`07`). Aucune spec n'existe encore pour `05` et suivantes.
+**Fait au 7 août 2026 : `05a`, `05b`, `05c`, `06a`, `06b`, `06c`, `06d`.** Reste `06e`
+(tunnel SSH), dont la spec est écrite et relue mais non implémentée.
 
-**`05a` et `05b` sont faits** (5-6 août 2026) : le modèle de configuration existe en Rust,
-projeté en TypeScript par `ts-rs` avec garde-fou `domain:check`, et sa persistance sur
-disque est atomique et non destructive — vérifiée dans l'app réelle, y compris le cas d'un
-fichier corrompu, qui est mis en quarantaine et bloque l'écriture. La CI exécute enfin les
-tests Rust — elle ne le faisait pas, et un test faux la laissait verte. **40 tests Rust.**
-Prochain : `05c` (identifiants).
+Ce que ça représente concrètement : le modèle de configuration existe en Rust et est projeté
+en TypeScript par `ts-rs`, sa persistance sur disque est atomique et non destructive (fichier
+corrompu mis en quarantaine, écriture bloquée), les identifiants ont leur magasin, et la
+couche moteur sait **ouvrir une connexion PostgreSQL, introspecter un schéma et lire une
+fenêtre de lignes**.
 
-**`06a` et `06b` sont faits** (6 août 2026). Le contrat de la couche moteur — trait, modèle
-d'introspection, fenêtre de lignes — et la connexion PostgreSQL avec son test de connexion.
-**87 tests Rust** dont 7 contre un vrai PostgreSQL 17.6.
+**135 tests Rust** dont **24 contre un vrai PostgreSQL 17.6**, 112 Vitest, 4 Playwright.
 
 La contrainte IPC transverse est désormais portée par un **type** : `RowLimit` est une
 énumération fermée (100/500/1000/5000), donc « demander tout » n'est pas exprimable.
@@ -366,20 +410,9 @@ et aucun plugin de log JS n'est installé, donc `invoke()` depuis le front n'a j
 appelé. L'enregistrement des commandes est garanti par la compilation ; le pont le sera par
 `08`. Ne pas le présenter comme vérifié d'ici là.
 
-**Rien ne bloque cette suite** (voir la correction du § 5). Raison de fond :
-tous les écrans restants affichent des **projets, bases, environnements, schémas et objets**.
-Écrire `08` ou `09` d'abord obligerait à inventer la forme de ces données à l'intérieur
-d'une spec d'écran — exactement ce que `04` a refusé de faire en laissant l'état de l'arbre
-ouvert. Le modèle de domaine est la dépendance commune ; le construire ailleurs, c'est le
-construire deux fois.
-
-Ordre proposé : `05` (modèle de domaine et persistance) → `06` (adaptateur PostgreSQL) →
-`08` (modale de connexion, premier écran qui crée vraiment une entité) → `09` (explorateur).
-
-**`05` est probablement trop large pour une seule spec** — modèle de domaine, persistance
-sur disque, et interface de stockage des identifiants sont trois préoccupations séparables,
-la dernière étant sensible en sécurité. `AGENTS.md` demande de proposer le découpage *avant*
-d'écrire. À faire en premier.
+**La suite : `06e` (tunnel SSH), puis `08` (modale de connexion).** `08` est le premier écran
+qui crée vraiment une entité, et le premier qui exercera le pont IPC de bout en bout. Il
+faudra y trancher la **politique de clé d'hôte SSH** (voir § 5), que le handoff ne règle pas.
 
 À trancher au passage, le moment venu :
 

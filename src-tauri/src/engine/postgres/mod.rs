@@ -9,6 +9,7 @@
 mod connect;
 mod error;
 mod introspect;
+mod rows;
 mod types;
 
 use std::time::Instant;
@@ -105,10 +106,12 @@ impl EngineAdapter for PostgresAdapter {
         introspect::table_detail(&self.client, schema, table).await
     }
 
-    async fn rows(&self, _query: &RowQuery) -> Result<RowWindow, EngineError> {
-        Err(EngineError::local(
-            "la lecture paginée arrive avec la spec 06d",
-        ))
+    async fn rows(&self, query: &RowQuery) -> Result<RowWindow, EngineError> {
+        // Les colonnes viennent de l'introspection : c'est ce qui permet de **refuser** un
+        // nom de colonne inconnu au lieu de l'échapper, et de lire chaque valeur dans son
+        // type naturel.
+        let detail = introspect::table_detail(&self.client, &query.schema, &query.table).await?;
+        rows::rows(&self.client, query, &detail.columns).await
     }
 }
 
@@ -336,29 +339,242 @@ mod tests_db {
         );
     }
 
-    /// Ce test est un **fil-piège** : il tombe dès qu'une opération est implémentée, ce qui
-    /// force à le mettre à jour plutôt qu'à laisser traîner un message d'attente périmé. Il
-    /// a déjà joué son rôle à l'arrivée de `06c` — `schemas` et `objects` en sont sortis.
+    /// Ce test était un **fil-piège** : il tombait dès qu'une opération était implémentée,
+    /// forçant sa mise à jour au lieu de laisser traîner un message d'attente périmé. Il a
+    /// joué son rôle trois fois — `schemas`, `table_detail`, puis `rows`. Les quatre
+    /// opérations du contrat étant désormais en place, il vérifie l'inverse : qu'aucune ne
+    /// renvoie plus à une spec à venir.
     #[tokio::test]
-    async fn les_operations_a_venir_disent_quelle_spec_les_apporte() {
+    async fn toutes_les_operations_du_contrat_repondent() {
         let adaptateur = adaptateur().await;
 
-        // Encore en attente : `rows` (06d).
-        assert!(adaptateur
+        assert!(adaptateur.probe().await.is_ok(), "probe");
+        assert!(adaptateur.schemas().await.is_ok(), "schemas");
+        assert!(adaptateur.objects("introspection").await.is_ok(), "objects");
+        assert!(
+            adaptateur
+                .table_detail("introspection", "orders")
+                .await
+                .is_ok(),
+            "table_detail"
+        );
+        assert!(
+            adaptateur
+                .rows(&RowQuery::new(
+                    "introspection",
+                    "petite",
+                    crate::engine::RowLimit::OneHundred
+                ))
+                .await
+                .is_ok(),
+            "rows"
+        );
+    }
+
+    // --- Lecture paginée (06d) ---
+
+    async fn fenetre(table: &str, limite: crate::engine::RowLimit) -> crate::engine::RowWindow {
+        adaptateur()
+            .await
+            .rows(&RowQuery::new("introspection", table, limite))
+            .await
+            .unwrap_or_else(|e| panic!("lecture de {table} : {e}"))
+    }
+
+    #[tokio::test]
+    async fn une_fenetre_rend_exactement_la_limite_demandee() {
+        let f = fenetre("grande", crate::engine::RowLimit::FiveHundred).await;
+        assert_eq!(f.rows.len(), 500, "la table porte cent mille lignes");
+    }
+
+    #[tokio::test]
+    async fn le_sql_rendu_est_celui_reellement_execute() {
+        let f = fenetre("petite", crate::engine::RowLimit::OneHundred).await;
+        // `A5` le montre derrière « Voir le SQL » : montrer une requête différente de celle
+        // qui tourne serait un piège pour qui débogue.
+        assert!(f.sql.contains("limit 100"), "{}", f.sql);
+        assert!(f.sql.contains("offset 0"), "{}", f.sql);
+        assert!(f.sql.contains("introspection"), "{}", f.sql);
+    }
+
+    /// **Le critère central de `06d`.**
+    ///
+    /// La contrainte transverse exige que la récupération soit paginée, *pas seulement le
+    /// rendu* : ramener cent mille lignes puis n'en garder que cinq cents respecterait la
+    /// lettre et manquerait tout. Lire la même fenêtre dans une table cent fois plus grande
+    /// doit donc coûter le même ordre de grandeur.
+    #[tokio::test]
+    async fn lire_une_fenetre_ne_coute_pas_la_taille_de_la_table() {
+        let adaptateur = adaptateur().await;
+
+        async fn lire(adaptateur: &PostgresAdapter, table: &str) -> crate::engine::RowWindow {
+            let requete =
+                RowQuery::new("introspection", table, crate::engine::RowLimit::FiveHundred);
+            adaptateur.rows(&requete).await.unwrap()
+        }
+
+        // Deux lectures à blanc d'abord : le premier accès paie le plan et le cache.
+        let _ = lire(&adaptateur, "petite").await;
+        let _ = lire(&adaptateur, "grande").await;
+
+        let petite = lire(&adaptateur, "petite").await;
+        let grande = lire(&adaptateur, "grande").await;
+
+        // Les deux fenêtres font la même taille : c'est déjà la preuve qu'aucune des deux ne
+        // ramène toute sa table.
+        assert_eq!(petite.rows.len(), 500);
+        assert_eq!(grande.rows.len(), 500);
+
+        // Et le coût ne suit pas la taille. Borne large — la mesure est bruitée sur une
+        // machine partagée — mais un facteur cent en taille produirait bien davantage si la
+        // récupération n'était pas paginée.
+        let plancher = petite.duration_ms.max(1);
+        assert!(
+            grande.duration_ms <= plancher * 20 + 50,
+            "cent fois plus de lignes a coûté {} ms contre {} ms : la récupération est-elle paginée ?",
+            grande.duration_ms,
+            petite.duration_ms
+        );
+    }
+
+    #[tokio::test]
+    async fn un_filtre_restreint_reellement_le_resultat() {
+        let adaptateur = adaptateur().await;
+        let mut requete = RowQuery::new(
+            "introspection",
+            "grande",
+            crate::engine::RowLimit::FiveHundred,
+        );
+        requete.filters = vec![crate::engine::Filter {
+            column: "rang".into(),
+            operator: crate::engine::FilterOperator::Eq,
+            value: Some("3".into()),
+        }];
+
+        let f = adaptateur.rows(&requete).await.unwrap();
+        assert!(!f.rows.is_empty(), "le filtre doit trouver des lignes");
+        // `rang` vaut `g % 7`, donc un septième des lignes environ — la fenêtre reste pleine.
+        assert_eq!(f.rows.len(), 500);
+    }
+
+    #[tokio::test]
+    async fn une_tentative_d_injection_ne_trouve_rien_et_ne_casse_rien() {
+        let adaptateur = adaptateur().await;
+        let mut requete = RowQuery::new(
+            "introspection",
+            "petite",
+            crate::engine::RowLimit::OneHundred,
+        );
+        requete.filters = vec![crate::engine::Filter {
+            column: "valeur".into(),
+            operator: crate::engine::FilterOperator::Eq,
+            value: Some("' or 1=1 --".into()),
+        }];
+
+        // Traitée comme une **donnée** : elle ne trouve rien, et surtout ne fait pas
+        // apparaître toute la table.
+        let f = adaptateur.rows(&requete).await.expect("ne doit pas casser");
+        assert!(
+            f.rows.is_empty(),
+            "l'injection a ramené {} lignes",
+            f.rows.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn une_colonne_inconnue_est_refusee() {
+        let adaptateur = adaptateur().await;
+        let mut requete = RowQuery::new(
+            "introspection",
+            "petite",
+            crate::engine::RowLimit::OneHundred,
+        );
+        requete.filters = vec![crate::engine::Filter {
+            column: "colonne_inventee".into(),
+            operator: crate::engine::FilterOperator::Eq,
+            value: Some("x".into()),
+        }];
+
+        let erreur = adaptateur
+            .rows(&requete)
+            .await
+            .expect_err("doit être refusée");
+        assert!(erreur.message.contains("colonne_inventee"), "{erreur}");
+        // Refusée **ici**, sans aller-retour : `code` est nul pour une erreur locale, et
+        // porterait `42703` si la requête avait été envoyée et que PostgreSQL l'avait
+        // rejetée. Sans cette assertion, laisser passer le nom simplement échappé serait
+        // indétectable — le message de PostgreSQL contient lui aussi le nom de la colonne.
+        assert_eq!(
+            erreur.code, None,
+            "refus attendu avant l'envoi : {erreur:?}"
+        );
+    }
+
+    /// Que paginer sur un tri **non total** ne produise ni doublon ni oubli.
+    ///
+    /// `rang` ne prend que sept valeurs sur cent mille lignes : sans critère stable ajouté,
+    /// l'ordre entre deux lignes de même rang est indéfini d'une page à l'autre.
+    #[tokio::test]
+    async fn paginer_sur_un_tri_non_total_ne_perd_ni_ne_duplique_aucune_ligne() {
+        let adaptateur = adaptateur().await;
+        let mut vues: std::collections::HashSet<i64> = std::collections::HashSet::new();
+
+        for page in 0..4u64 {
+            let mut requete = RowQuery::new(
+                "introspection",
+                "grande",
+                crate::engine::RowLimit::OneHundred,
+            );
+            requete.sort = vec![crate::engine::SortKey {
+                column: "rang".into(),
+                direction: crate::engine::SortDirection::Ascending,
+            }];
+            requete.offset = page * 100;
+
+            let f = adaptateur.rows(&requete).await.unwrap();
+            for ligne in &f.rows {
+                match &ligne[0] {
+                    crate::engine::Value::Int { value } => {
+                        assert!(vues.insert(*value), "ligne {value} vue deux fois");
+                    }
+                    autre => panic!("la première colonne devrait être un entier : {autre:?}"),
+                }
+            }
+        }
+
+        assert_eq!(vues.len(), 400, "quatre pages de cent lignes distinctes");
+    }
+
+    #[tokio::test]
+    async fn les_valeurs_sont_typees_et_null_est_distingue() {
+        let adaptateur = adaptateur().await;
+        let f = adaptateur
             .rows(&RowQuery::new(
-                "public",
-                "t",
-                crate::engine::RowLimit::OneHundred
+                "introspection",
+                "orders",
+                crate::engine::RowLimit::OneHundred,
             ))
             .await
-            .unwrap_err()
-            .message
-            .contains("06d"));
+            .unwrap();
 
-        // Et ce qui est arrivé ne doit plus renvoyer à une spec.
-        assert!(adaptateur.schemas().await.is_ok(), "schémas : 06c");
-        let detail = adaptateur.table_detail("introspection", "orders").await;
-        assert!(detail.is_ok(), "détail de table : {:?}", detail.err());
+        let premiere = &f.rows[0];
+        // `orders` : id bigint, user_id bigint, status text, total_cents int, metadata jsonb
+        // (toujours nul dans le jeu de test), …
+        assert!(
+            matches!(premiere[0], crate::engine::Value::Int { .. }),
+            "{:?}",
+            premiere[0]
+        );
+        assert!(
+            matches!(premiere[2], crate::engine::Value::Text { .. }),
+            "{:?}",
+            premiere[2]
+        );
+        assert!(
+            matches!(premiere[4], crate::engine::Value::Null),
+            "metadata est nul dans le jeu de test : {:?}",
+            premiere[4]
+        );
     }
 
     // --- Introspection (06c) ---
@@ -411,12 +627,12 @@ mod tests_db {
     #[tokio::test]
     async fn les_compteurs_d_objets_sont_justes() {
         let schema = schema_de_test().await;
-        assert_eq!(schema.counts.tables, 2, "{:?}", schema.counts);
+        assert_eq!(schema.counts.tables, 4, "{:?}", schema.counts);
         assert_eq!(schema.counts.views, 1, "{:?}", schema.counts);
         assert_eq!(schema.counts.functions, 2, "{:?}", schema.counts);
-        // Quatre index pour deux tables : chaque clé primaire en crée un, plus l'unicité
+        // Six index pour quatre tables : chaque clé primaire en crée un, plus l'unicité
         // sur `email` et l'index secondaire sur `status`.
-        assert_eq!(schema.counts.indexes, 4, "{:?}", schema.counts);
+        assert_eq!(schema.counts.indexes, 6, "{:?}", schema.counts);
     }
 
     #[tokio::test]

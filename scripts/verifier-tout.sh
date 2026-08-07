@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+#
+# La barrière avant commit : lance localement ce que la CI lancera, et **échoue**.
+#
+# Écrit après avoir constaté deux fois le même défaut : enchaîner les vérifications à la
+# main dans un `bash -c` avec `cmd | tail -3` pour abréger la sortie. Le statut de sortie
+# d'un pipeline est celui de sa **dernière** commande, donc `tail` réussit toujours et
+# `set -e` ne voit rien. Résultat : « tout vert » affiché avec trois vérifications rouges.
+#
+# Ici rien n'est tronqué et chaque échec est enregistré puis rappelé à la fin.
+#
+# Les tests exigeant PostgreSQL ne tournent que si `DORABASE_TEST_PG` est posée — leur
+# absence est signalée, jamais silencieuse.
+
+set -u
+cd "$(dirname "$0")/.."
+
+echecs=()
+
+etape() {
+  local nom="$1"
+  shift
+  printf '\n\033[1m── %s\033[0m\n' "$nom"
+  if "$@"; then
+    printf '\033[32m   ok\033[0m\n'
+  else
+    printf '\033[31m   ÉCHEC\033[0m\n'
+    echecs+=("$nom")
+  fi
+}
+
+etape "aucun sabotage résiduel" ./scripts/verifier-aucun-sabotage.sh
+etape "rust : format" cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check
+
+if [[ -n "${DORABASE_TEST_PG:-}" ]]; then
+  etape "rust : clippy (avec db-tests)" \
+    cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features db-tests -- -D warnings
+  etape "rust : tests (avec base réelle)" \
+    cargo test --manifest-path src-tauri/Cargo.toml --features db-tests
+else
+  printf '\n\033[33m── DORABASE_TEST_PG absente : les tests sur base réelle sont sautés\033[0m\n'
+  etape "rust : clippy" \
+    cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+  etape "rust : tests" cargo test --manifest-path src-tauri/Cargo.toml
+fi
+
+etape "cargo run reste non ambigu" bash -c \
+  'cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 --no-deps | python3 scripts/verifier-default-run.py'
+
+# Les trois `*:check` de `package.json` régénèrent puis exigent un `git diff` vide. C'est le
+# bon test en CI, où l'arbre est propre. En local il échoue sur toute régénération légitime
+# encore non commitée, ce qui pousse à passer outre — donc à ne plus vérifier du tout.
+#
+# L'invariant vraiment intéressant est autre : **le fichier sur disque est-il celui que son
+# producteur émet ?** On photographie, on régénère, on compare. Un écart signifie que la
+# projection était périmée ; elle vient d'être remise à jour et doit entrer dans le commit,
+# d'où l'échec — une seconde exécution passera. La propreté vis-à-vis de git reste le
+# travail de la CI.
+regeneration_sans_effet() {
+  local producteur="$1"
+  shift
+  local avant
+  avant=$(git hash-object "$@" | tr '\n' ' ')
+  pnpm "$producteur" >/dev/null 2>&1 || return 1
+  local apres
+  apres=$(git hash-object "$@" | tr '\n' ' ')
+  if [[ "$avant" == "$apres" ]]; then
+    return 0
+  fi
+  printf '   les fichiers engendrés étaient périmés ; ils viennent d’être régénérés.\n'
+  printf '   Intègre-les au commit, puis relance.\n'
+  return 1
+}
+
+etape "jetons de design à jour" regeneration_sans_effet tokens:build \
+  src/design/tokens.css src/design/tokens.ts
+etape "icônes à jour" regeneration_sans_effet icons:build \
+  src/design/icons/sprite.svg src/design/icons/names.ts
+etape "projections TypeScript à jour" regeneration_sans_effet domain:build \
+  src/domain/config.ts src/domain/engine.ts
+etape "typescript" pnpm typecheck
+etape "biome" pnpm lint
+etape "vitest" pnpm test
+
+# Playwright en dernier : c'est l'étape la plus lente, et la seule qui démarre un serveur.
+# Elle garde les trois faits de mise en page que jsdom ne peut pas voir (`e2e/`).
+if [[ -d node_modules/@playwright ]]; then
+  etape "playwright" pnpm test:e2e
+else
+  printf '\n\033[33m── Playwright absent : `pnpm exec playwright install chromium` pour l’activer\033[0m\n'
+fi
+
+if [[ ${#echecs[@]} -eq 0 ]]; then
+  printf '\n\033[32mTout est vert.\033[0m\n'
+  exit 0
+fi
+
+printf '\n\033[31m%d vérification(s) en échec :\033[0m\n' "${#echecs[@]}"
+printf '  - %s\n' "${echecs[@]}"
+exit 1
