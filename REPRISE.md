@@ -24,7 +24,8 @@ plan par plan.
 | --- | --- |
 | `AGENTS.md` | conventions du projet — langue de travail, taille des specs |
 | `specs/README.md` | index des ~20 specs, contrainte IPC transverse, **acquis techniques**, **décisions à trancher** |
-| `specs/01`–`04`, `05a`–`05c`, `06a`–`06e`, `07` | les treize specs écrites ; toutes implémentées sauf `06e` |
+| `specs/01`–`04`, `05a`–`05c`, `06a`–`06e`, `07` | treize specs, **toutes implémentées** |
+| `specs/08a`–`08e` | cinq specs écrites, **aucune implémentée** — le prochain travail |
 | `plans/2026-07-31-*`, `plans/2026-08-05-*` | les plans d'implémentation, tâche par tâche, avec les **pièges vérifiés** |
 | `design/handoff/` | le handoff, **source de vérité du design** |
 
@@ -455,9 +456,34 @@ et aucun plugin de log JS n'est installé, donc `invoke()` depuis le front n'a j
 appelé. L'enregistrement des commandes est garanti par la compilation ; le pont le sera par
 `08`. Ne pas le présenter comme vérifié d'ici là.
 
-**La suite : `08` (modale de connexion).** Premier écran qui crée vraiment une entité, et
-premier qui exercera le pont IPC de bout en bout. C'est aussi lui qui devra afficher le port
-local du tunnel (`A2` : « auto (63342) »), que `PostgresAdapter::port_local_tunnel` rend déjà.
+**La suite : `08a` → `08e`, specs écrites le 7 août 2026, aucune implémentée.**
+
+| Spec | Ce qu'elle livre |
+| --- | --- |
+| `08a` | `Modal`, `Select`, `CollapsiblePanel`, `RadioGroup` + galerie |
+| `08b` | A2 : coquille, sélecteur de moteur, formulaire — fidélité pure, zéro comportement |
+| `08c` | A2 : panneau proxy / tunnel |
+| `08d` | « Tester la connexion » — **premier passage réel du pont JS → Rust** — et A3 |
+| `08e` | « Enregistrer & ouvrir » : config + secret, première persistance du produit |
+
+`08d` est celle qui compte : le pont n'a jamais été exercé, et **aucun test automatisé ne
+peut le couvrir** puisque Playwright ne pilote pas WKWebView. Décision prise le 7 août :
+brancher la cible *webview* de `tauri-plugin-log` pour voir les appels dans la console Rust,
+lancer l'app, cliquer, et rapporter la sortie. À présenter comme **vérifié par observation,
+non automatisé** — jamais autrement.
+
+**La dette du `Chip` interactif est close** (§ 9) : le sélecteur de moteur de `A2` n'a pas de
+croix de suppression, donc c'est un groupe radio, pas un chip supprimable. `08a` livre
+`RadioGroup` avec de vrais `<button>` frères. La dette reste ouverte pour l'écran qui aura
+vraiment besoin d'une croix.
+
+**Cinq trous du handoff sur `A2`/`A3`** sont consignés au § « À trancher » de
+`specs/README.md`, avec pour chacun le minimum défendable retenu. Aucun ne bloque, mais ce
+sont cinq endroits où le design a le dernier mot : l'état actif de `dev`, l'attente d'un
+test, le refus de saisie, le cas « aucun projet », et le panneau proxy replié.
+
+`PostgresAdapter::port_local_tunnel` rend déjà le port que `A2` affiche sous
+« auto (63342) » : `08c` n'a qu'à le lire.
 
 À trancher au passage, le moment venu :
 

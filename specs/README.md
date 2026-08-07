@@ -88,6 +88,33 @@ une invite de confiance à la première connexion le serait. À trancher avec le
 avant diffusion — un utilisateur dont le bastion n'est pas déjà dans son `known_hosts`
 devra passer par un `ssh` manuel, ce qui est une friction réelle.
 
+**Cinq trous du handoff sur `A2`/`A3`, relevés en écrivant `08a`–`08e`** (7 août 2026).
+Aucun n'est bloquant : chaque spec prend le minimum défendable et le dit. Mais ce sont
+cinq endroits où le mockup ne répond pas, et où la vraie réponse appartient au design.
+
+1. **À quoi ressemble un `dev` actif ?** Le mockup ne montre les trois boutons
+   d'environnement que dans un seul état : `dev` et `staging` inactifs, `prod` actif *et*
+   rouge. Le rouge est une propriété de « prod », pas de « actif » — la prose le confirme.
+   Reste que l'état actif de `dev` et `staging` n'est maquetté nulle part. `08b` applique
+   l'accent, comme le sélecteur de moteur.
+2. **Rien ne maquette l'attente d'un test de connexion.** Un hôte injoignable prend
+   jusqu'à 30 secondes. `08d` désactive le bouton et écrit « Test en cours… », sans
+   inventer d'animation ni d'indicateur de progression — qui serait la vraie réponse.
+3. **Rien ne maquette un refus de saisie.** `A2` n'a aucun message d'erreur de champ.
+   `08e` réemploie le message inline du pied, là où `08d` affiche déjà les échecs. Un
+   affichage par champ serait plus juste.
+4. **Que voit un utilisateur sans aucun projet ?** `A2` a un `Select` de projets
+   existants, sans « Nouveau projet… ». Or `⌘N` y mène directement. `08e` désactive
+   l'enregistrement et l'annonce dans le `Select`, sans inventer de formulaire de création.
+5. **Le panneau proxy replié, et sans tunnel, n'est pas maquetté.** `08c` rend l'en-tête
+   seul et fait disparaître le badge « SSH activé » — la seule lecture cohérente.
+
+**« Connecté » ne dira pas toute la vérité tant que le TLS n'est pas branché.** `06b`
+emploie `NoTls` : un test en `require` ou `verify-full` réussit sans que rien n'ait été
+vérifié. `08d` ajoute donc « · TLS non vérifié » au résultat inline quand le mode demandé
+exigeait une vérification. Mention volontairement laide, à retirer quand `06b` aura son
+TLS — et à ne pas retirer avant.
+
 **`blob:` n'est pas autorisé par la CSP.** `img-src 'self' data:` ne le couvre pas. Un
 export CSV par `URL.createObjectURL`, un aperçu d'image, un téléchargement de résultats —
 tous plausibles pour `10` et `14` — seront bloqués. Deux réponses possibles le jour où ça
@@ -127,6 +154,13 @@ comptages et tailles ne viennent pas de l'utilisateur mais du catalogue de la ba
 et leur forme est dictée par chaque moteur. Ils appartiennent donc à `06a`, pas au
 modèle de configuration — c'est la ligne de faille qui a guidé le découpage.
 
+**Pourquoi `08` a été découpé en cinq** (7 août 2026) : son périmètre indexé — « modale
+nouvelle connexion, et son échec » — recouvrait six préoccupations séparables, dont quatre
+primitives absentes de `02` et le **premier passage réel du pont JavaScript → Rust**. Ce
+dernier n'a jamais été exercé depuis `01` et mérite ses propres critères : c'est le seul
+point du projet qu'aucun test automatisé ne peut couvrir, Playwright ne pilotant pas
+WKWebView.
+
 **Pourquoi `06` a été découpé en cinq** (6 août 2026) : son périmètre indexé mêlait
 le contrat, la connexion, l'introspection, la lecture de lignes et le tunnel SSH —
 cinq préoccupations aux risques distincts. La lecture paginée en particulier porte
@@ -138,7 +172,11 @@ propres critères de vérification.
 | Spec | Écran | Scope | État |
 | --- | --- | --- | --- |
 | [`07`](07-a1-accueil.md) | A1 | Première ouverture, aucun projet | **fait** |
-| `08` | A2 + A3 | Modale nouvelle connexion, et son échec | à écrire |
+| [`08a`](08a-primitives-de-formulaire.md) | — | Primitives : `Modal`, `Select`, `CollapsiblePanel`, `RadioGroup` | écrite |
+| [`08b`](08b-a2-modale-et-formulaire.md) | A2 | Coquille de modale, sélecteur de moteur, formulaire principal | écrite |
+| [`08c`](08c-a2-panneau-proxy-tunnel.md) | A2 | Panneau proxy / tunnel | écrite |
+| [`08d`](08d-tester-la-connexion.md) | A2 + A3 | « Tester la connexion » : pont IPC réel, et sous-modale d'échec | écrite |
+| [`08e`](08e-enregistrer-et-ouvrir.md) | A2 | « Enregistrer & ouvrir » : config + secret | écrite |
 | `09` | A4 | Explorateur : projets → bases → schémas → tables | à écrire |
 | `10` | A5 | Visualiseur de table : grille, filtres par en-tête, tri, LIMIT | à écrire |
 | `11` | A6 | Édition inline, modifications en attente, diff et transaction | à écrire |
