@@ -16,13 +16,26 @@ pub fn run() {
         .manage(config::ConfigState::new())
         .invoke_handler(tauri::generate_handler![
             config::commands::load_config,
-            config::commands::save_config
+            config::commands::save_config,
+            engine::commands::test_connection
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
                         .level(log::LevelFilter::Info)
+                        // **La cible `Webview` est ce qui rend le pont observable.** Sans
+                        // elle, les journaux du JavaScript restent dans la console de la
+                        // webview, invisible depuis le terminal. Avec elle, un appel
+                        // `invoke()` et sa réponse se lisent dans la sortie de
+                        // `pnpm tauri dev` — la seule vérification possible du pont, puisque
+                        // Playwright ne pilote pas WKWebView. Voir `specs/08d`.
+                        .target(tauri_plugin_log::Target::new(
+                            tauri_plugin_log::TargetKind::Webview,
+                        ))
+                        .target(tauri_plugin_log::Target::new(
+                            tauri_plugin_log::TargetKind::Stdout,
+                        ))
                         .build(),
                 )?;
             }

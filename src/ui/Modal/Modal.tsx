@@ -35,6 +35,19 @@ type ModalProps = {
 const FOCALISABLES =
   'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
+/**
+ * La pile des modales ouvertes, de la plus ancienne à la plus récente.
+ *
+ * **Pourquoi une pile plutôt qu'un simple écouteur.** Chaque instance écoute `keydown` sur
+ * `document` : quand `A3` se superpose à `A2`, les deux écouteurs sont armés et un `esc`
+ * fermait donc **les deux**. `stopPropagation` n'y change rien — les deux écouteurs sont sur la
+ * même cible, ils se déclenchent tous les deux. Seule la modale au sommet doit répondre.
+ *
+ * Défaut trouvé par un test e2e de `08d`, pas par les tests unitaires de `08a` : ceux-ci
+ * n'avaient qu'une modale à la fois.
+ */
+const pile: symbol[] = []
+
 function focalisablesDe(racine: HTMLElement): HTMLElement[] {
   return Array.from(racine.querySelectorAll<HTMLElement>(FOCALISABLES)).filter(
     // `offsetParent` nul signale un élément non rendu — le contenu d'un
@@ -55,6 +68,8 @@ export function Modal({
 }: ModalProps) {
   const coquille = useRef<HTMLDivElement>(null)
   const corps = useRef<HTMLDivElement>(null)
+  // Une identité par instance, stable entre les rendus.
+  const identite = useRef(Symbol('modal'))
 
   // `onClose` est lu par les écouteurs ; le garder dans une ref évite de les reposer à
   // chaque rendu, ce qui reviendrait à réarmer `esc` en boucle.
@@ -83,7 +98,16 @@ export function Modal({
 
   // --- Exigence 2 : piéger la tabulation. Et `esc`.
   useEffect(() => {
+    const moi = identite.current
+    pile.push(moi)
+
+    function auSommet() {
+      return pile.at(-1) === moi
+    }
+
     function auClavier(evenement: KeyboardEvent) {
+      // Seule la modale du sommet répond : sinon `esc` sur `A3` fermerait `A2` avec elle.
+      if (!auSommet()) return
       if (evenement.key === 'Escape') {
         evenement.preventDefault()
         fermer.current()
@@ -111,7 +135,11 @@ export function Modal({
     }
 
     document.addEventListener('keydown', auClavier)
-    return () => document.removeEventListener('keydown', auClavier)
+    return () => {
+      document.removeEventListener('keydown', auClavier)
+      const rang = pile.indexOf(moi)
+      if (rang !== -1) pile.splice(rang, 1)
+    }
   }, [])
 
   return (

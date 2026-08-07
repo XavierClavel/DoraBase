@@ -1,14 +1,18 @@
 import { useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
+import type { ConnectionRequest, ConnectionTest } from '../../domain/engine'
 import { Button } from '../../ui/Button/Button'
 import { Modal } from '../../ui/Modal/Modal'
 import { type ConnectionDraft, emptyDraft, emptyTunnel, type TunnelDraft } from './ConnectionDraft'
+import { ConnectionFailure } from './ConnectionFailure'
 import { ConnectionForm } from './ConnectionForm'
+import { draftToRequest } from './draftToRequest'
 import { EngineSelector } from './EngineSelector'
 import { ENGINES, IMPLEMENTED_ENGINES } from './engines'
 import styles from './NewConnection.module.css'
 import { ouvrirSelecteurDeCle } from './ouvrirSelecteurDeCle'
 import { TunnelPanel } from './TunnelPanel'
+import { codeDe, messageDe, testerLaConnexion } from './testerLaConnexion'
 
 type NewConnectionProps = {
   onClose: () => void
@@ -22,7 +26,29 @@ type NewConnectionProps = {
    * c'est l'appel réel.
    */
   onBrowseKey?: () => Promise<string | null>
+  /**
+   * Appelle la commande `test_connection`.
+   *
+   * Injecté pour la même raison que `onBrowseKey` : le pont IPC ne répond pas hors de la
+   * webview. Ce qui est testé ici est le **câblage** — l'état d'attente, l'affichage du
+   * résultat, la sous-modale d'échec. Le pont lui-même s'observe dans l'app réelle, et un test
+   * Vitest qui simulerait `invoke` ne vérifierait que le simulacre.
+   */
+  onTest?: (request: ConnectionRequest) => Promise<ConnectionTest>
 }
+
+/**
+ * L'issue du test de connexion.
+ *
+ * **Quatre états, pas deux.** Le mockup montre le succès (`A2`) et l'échec (`A3`), et il manque
+ * l'attente : un test vers un hôte injoignable prend jusqu'à 30 secondes (`06e` a posé ce
+ * délai). Sans état d'attente, le bouton semble mort et l'utilisateur reclique.
+ */
+type EtatDuTest =
+  | { phase: 'jamais' }
+  | { phase: 'en-cours' }
+  | { phase: 'reussi'; resultat: ConnectionTest }
+  | { phase: 'echoue'; message: string; code: string | null; viaTunnel: boolean }
 
 /**
  * `A2` — la modale de nouvelle connexion.
@@ -36,12 +62,17 @@ export function NewConnection({
   onClose,
   projects = [],
   onBrowseKey = ouvrirSelecteurDeCle,
+  onTest = testerLaConnexion,
 }: NewConnectionProps) {
   const [draft, setDraft] = useState<ConnectionDraft>(emptyDraft)
   // Le panneau proxy est replié à l'ouverture : le mockup le montre déplié, mais il y montre
   // aussi un tunnel configuré. Pour une connexion neuve, déplier un bloc vide de cinq champs
   // pousserait vers le bas ce que l'utilisateur doit remplir d'abord.
   const [tunnelOuvert, setTunnelOuvert] = useState(false)
+  const [test, setTest] = useState<EtatDuTest>({ phase: 'jamais' })
+  // La sous-modale de `A3` se ferme sans effacer l'échec : le pied garde son message et
+  // « Retester », ce que le handoff montre explicitement.
+  const [echecOuvert, setEchecOuvert] = useState(false)
 
   function patch(changes: Partial<ConnectionDraft>) {
     setDraft((previous) => ({ ...previous, ...changes }))
@@ -64,6 +95,23 @@ export function NewConnection({
 
   const engineImplemented = IMPLEMENTED_ENGINES.includes(draft.engine)
 
+  async function lancerLeTest() {
+    setTest({ phase: 'en-cours' })
+    const viaTunnel = draft.tunnel !== null
+    try {
+      const resultat = await onTest(draftToRequest(draft))
+      setTest({ phase: 'reussi', resultat })
+    } catch (cause) {
+      setTest({ phase: 'echoue', message: messageDe(cause), code: codeDe(cause), viaTunnel })
+      setEchecOuvert(true)
+    }
+  }
+
+  // « Enregistrer & ouvrir » est désactivé **après un échec**, et réactivé après un succès.
+  // Pas désactivé avant tout test : rien n'oblige à tester pour enregistrer, et le handoff ne
+  // le demande pas.
+  const enregistrementBloque = test.phase === 'echoue'
+
   return (
     <Modal
       title="Nouvelle connexion"
@@ -71,13 +119,38 @@ export function NewConnection({
       onClose={onClose}
       footer={
         <>
-          {/* `08d` le branchera sur la couche moteur. */}
-          <Button variant="secondary" size="lg">
+          <Button
+            variant="secondary"
+            size="lg"
+            onClick={lancerLeTest}
+            disabled={test.phase === 'en-cours' || !engineImplemented}
+          >
             {/* La fiole est verte dans le mockup, seule icône du pied à ne pas prendre la
                 couleur de son texte. */}
             <Icon name="flask" size={14} strokeWidth={2} className={styles.flask} />
-            Tester la connexion
+            {libelleDuBouton(test.phase)}
           </Button>
+
+          {test.phase === 'reussi' && (
+            <span className={styles.testOk}>
+              <Icon name="check" size={14} strokeWidth={2.4} />
+              Connecté en {test.resultat.latencyMs} ms · {test.resultat.serverVersion}
+              {test.resultat.tunnelLocalPort !== null &&
+                ` · tunnel :${test.resultat.tunnelLocalPort}`}
+            </span>
+          )}
+          {test.phase === 'reussi' && test.resultat.tlsUnverified && (
+            // **Laid et honnête.** `06b` emploie `NoTls` : un test en `verify-ca` ou
+            // `verify-full` réussit sans que l'identité du serveur ait été contrôlée. Afficher
+            // « Connecté » sans plus serait exact et trompeur. À retirer quand le TLS sera
+            // branché — pas avant.
+            <span className={styles.testWarn}>· TLS non vérifié</span>
+          )}
+          {test.phase === 'echoue' && (
+            <button type="button" className={styles.testFail} onClick={() => setEchecOuvert(true)}>
+              {test.message}
+            </button>
+          )}
           {!engineImplemented && (
             // Un moteur sans adaptateur est **sélectionnable et le dit**. Le masquer ferait
             // croire que le produit ne le prévoit pas ; le laisser muet ferait croire que
@@ -91,7 +164,7 @@ export function NewConnection({
             Annuler
           </Button>
           {/* `08e` le branchera, avec son raccourci ⌘↩. */}
-          <Button size="lg" shortcut="⌘↩">
+          <Button size="lg" shortcut="⌘↩" disabled={enregistrementBloque}>
             <Icon name="save" size={14} strokeWidth={2.2} />
             Enregistrer &amp; ouvrir
           </Button>
@@ -107,6 +180,28 @@ export function NewConnection({
         onOpenChange={setTunnelOuvert}
         onBrowse={onBrowseKey}
       />
+
+      {echecOuvert && test.phase === 'echoue' && (
+        <ConnectionFailure
+          message={test.message}
+          code={test.code}
+          viaTunnel={test.viaTunnel}
+          onClose={() => setEchecOuvert(false)}
+        />
+      )}
     </Modal>
   )
+}
+
+/**
+ * Le libellé du bouton de test selon la phase.
+ *
+ * « Retester » après un échec est le mot du handoff (`A3` § pied). L'état d'attente n'est pas
+ * maquetté : « Test en cours… » est le minimum défendable, sans animation inventée. La question
+ * d'un indicateur de progression est consignée au § « À trancher » de `specs/README.md`.
+ */
+function libelleDuBouton(phase: EtatDuTest['phase']): string {
+  if (phase === 'en-cours') return 'Test en cours…'
+  if (phase === 'echoue') return 'Retester'
+  return 'Tester la connexion'
 }

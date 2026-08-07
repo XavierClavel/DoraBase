@@ -25,7 +25,7 @@ plan par plan.
 | `AGENTS.md` | conventions du projet — langue de travail, taille des specs |
 | `specs/README.md` | index des ~20 specs, contrainte IPC transverse, **acquis techniques**, **décisions à trancher** |
 | `specs/01`–`04`, `05a`–`05c`, `06a`–`06e`, `07` | treize specs, **toutes implémentées** |
-| `specs/08a`–`08e` | cinq specs ; `08a`, `08b`, `08c` **faites**, `08d`–`08e` à faire |
+| `specs/08a`–`08e` | cinq specs ; `08a`–`08d` **faites**, `08e` à faire |
 | `plans/2026-07-31-*`, `plans/2026-08-05-*` | les plans d'implémentation, tâche par tâche, avec les **pièges vérifiés** |
 | `design/handoff/` | le handoff, **source de vérité du design** |
 
@@ -280,6 +280,31 @@ des tests verts au moment où il a été introduit.
    du module de test, faute de pouvoir construire un `SshTunnel` sans bastion. C'est le même
    défaut que sur l'atomicité de `05b` (point 5). Corrigé en extrayant `Surveillance`, un
    type que le tunnel **et** le test appellent.
+34. **Deux règles à une classe se départagent par l'ordre du bundle, et cet ordre bouge.**
+   Prévu pour `.envDanger` en `08b`, **constaté** en `08d` pour `.envOption` : `RadioGroup` pose
+   `padding: 0 12px` sur `.option`, `NewConnection` pose `0 10px` sur `.envOption`. Éditer
+   `NewConnection.module.css` a suffi à inverser le gagnant, et les boutons d'environnement ont
+   changé de largeur d'un build à l'autre. Attrapé par une capture de référence, puis nommé par
+   un test dédié — pour que la prochaine fois l'échec dise *quoi* est cassé. Le sélecteur doublé
+   (`.envOption.envOption`) porte la spécificité à (0,2,0) et tranche définitivement.
+35. **Deux modales superposées, deux écouteurs `esc`.** Chaque instance de `Modal` écoute
+   `keydown` sur `document` : un `esc` sur `A3` fermait `A2` avec elle. `stopPropagation` n'y
+   change rien — les deux écouteurs sont sur la même cible. Corrigé par une pile au niveau du
+   module : seule la modale du sommet répond. Les tests unitaires de `08a` ne l'avaient pas vu
+   parce qu'ils n'exerçaient **qu'une modale à la fois**.
+36. **Un journal ne doit pas pouvoir casser ce qu'il observe.** `testerLaConnexion` faisait
+   `await debug(...)` avant l'`invoke`. Or le plugin `log` est derrière une permission
+   (`log:allow-log`, qui **manquait**) et n'est enregistré qu'en développement : en release ou
+   permission absente, ce `await` rejetait et emportait le test de connexion avec lui. Trouvé en
+   **lançant l'app**, pas par un test : sous Vitest comme sous Playwright le plugin n'existe pas
+   et l'appel échoue de toute façon, donc aucun test ne distinguait les deux situations.
+   Journalisation désormais « lance et oublie ».
+37. **Ne pas piloter le bureau de l'utilisateur par frappes synthétiques.** L'observation du pont
+   de `08d` a été tentée en automatisant `⌘N` puis des tabulations via `osascript`. La fenêtre de
+   l'app ne passait pas au premier plan (`set frontmost` sans effet, Finder restait devant) :
+   les frappes pouvaient donc atterrir dans les applications de l'utilisateur. Approche
+   abandonnée — l'observation se demande, elle ne se force pas.
+
 31. **Tauri valide ses permissions à la compilation.** Une permission inexistante fait échouer
    le *build script*, donc n'atteint jamais un test qui lirait `capabilities/default.json`. Le
    sabotage utile est donc une permission **valable mais non justifiée** (`dialog:allow-save`),
@@ -524,10 +549,28 @@ n'existent pas, ce qui garde le compte d'ignorés réservé au Trousseau. En loc
 dédié `dorabase-test-pg` sur le port **55432**, choisi pour ne croiser aucun autre projet de
 la machine.
 
-**Le pont JavaScript → Rust n'est pas encore exercé** : Playwright ne pilote pas WKWebView
-et aucun plugin de log JS n'est installé, donc `invoke()` depuis le front n'a jamais été
-appelé. L'enregistrement des commandes est garanti par la compilation ; le pont le sera par
-`08`. Ne pas le présenter comme vérifié d'ici là.
+**Le pont JavaScript → Rust est branché mais TOUJOURS PAS OBSERVÉ.** `08d` a livré la commande
+`test_connection`, ses journaux d'entrée et de sortie, la permission `log:allow-log` et la cible
+`Webview` de `tauri-plugin-log`. Ce qui manque est l'observation elle-même : Playwright ne pilote
+pas WKWebView, et automatiser le bureau par frappes synthétiques a été tenté puis abandonné (§ 6,
+point 37) — la fenêtre ne passait pas au premier plan, donc les frappes risquaient d'atterrir
+ailleurs.
+
+**Ce qui reste à faire, à la main, en deux minutes :**
+
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+pnpm tauri dev
+# ⌘N → remplir Hôte=localhost, Port=55432, Base=dorabase_test,
+#      Utilisateur=dorabase, Mot de passe=dorabase-test
+# → cliquer « Tester la connexion »
+```
+
+La console de `pnpm tauri dev` doit montrer quatre lignes : `invoke test_connection →` (front),
+`test_connection ←` (Rust), `test_connection →` (Rust), `test_connection ✓` (front). Le pont
+sera alors **observé** — pas automatisé, et à ne jamais présenter autrement.
+
+L'ouverture du sélecteur de fichier de `08c` (« Parcourir… ») attend la même session.
 
 **La suite : `08a` → `08e`, specs écrites le 7 août 2026, aucune implémentée.**
 
@@ -536,7 +579,7 @@ appelé. L'enregistrement des commandes est garanti par la compilation ; le pont
 | `08a` | **fait** — `Modal`, `Select`, `CollapsiblePanel`, `RadioGroup` + galerie |
 | `08b` | **fait** — A2 : coquille, sélecteur de moteur, formulaire (zéro comportement) |
 | `08c` | **fait** — A2 : panneau proxy / tunnel |
-| `08d` | « Tester la connexion » — **premier passage réel du pont JS → Rust** — et A3 |
+| `08d` | **fait** — « Tester la connexion » et A3. **Pont non observé** : voir plus bas |
 | `08e` | « Enregistrer & ouvrir » : config + secret, première persistance du produit |
 
 `08d` est celle qui compte : le pont n'a jamais été exercé, et **aucun test automatisé ne

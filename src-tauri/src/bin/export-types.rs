@@ -16,6 +16,7 @@
 //! Lancé par `pnpm domain:build`, vérifié par `pnpm domain:check`.
 
 use dorabase_lib::config::{ConfigLoad, Project};
+use dorabase_lib::engine::commands::{ConnectionRequest, ConnectionTest};
 use dorabase_lib::engine::{
     ConnectionProbe, EngineError, RowQuery, RowWindow, SchemaInfo, TableDetail, TableSummary,
 };
@@ -52,6 +53,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     TableDetail::export_all(&config)?;
     RowQuery::export_all(&config)?;
     RowWindow::export_all(&config)?;
+
+    // Les deux types du pont IPC de `08d`. `ConnectionRequest` entraîne `EnvironmentVariant`
+    // et `Tunnel` avec lui, donc les nommer ici suffit.
+    ConnectionRequest::export_all(&config)?;
+    ConnectionTest::export_all(&config)?;
 
     println!("projections TypeScript écrites dans {REPERTOIRE_DOMAINE}");
     Ok(())

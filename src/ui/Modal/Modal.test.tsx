@@ -173,3 +173,52 @@ test('sans pied, aucune bande de pied n’est rendue', () => {
   )
   expect(screen.queryByTestId('modal-footer')).not.toBeInTheDocument()
 })
+
+// --- Modales superposées (A3 par-dessus A2) ---
+
+// **Ce test manquait à `08a`**, qui n'exerçait qu'une modale à la fois. Le défaut est apparu en
+// `08d` : chaque instance écoute `keydown` sur `document`, donc un `esc` fermait `A2` et `A3`
+// ensemble. `stopPropagation` n'y aurait rien changé — les deux écouteurs sont sur la même
+// cible. Seule la modale du sommet doit répondre.
+test('esc ne ferme que la modale du dessus', async () => {
+  const fermerDessous = vi.fn()
+  const fermerDessus = vi.fn()
+  render(
+    <>
+      <Modal title="Dessous" icon="db" onClose={fermerDessous}>
+        <button type="button">champ</button>
+      </Modal>
+      <Modal title="Dessus" icon="warn" nested onClose={fermerDessus}>
+        <button type="button">fermer</button>
+      </Modal>
+    </>,
+  )
+
+  await userEvent.keyboard('{Escape}')
+  expect(fermerDessus).toHaveBeenCalledOnce()
+  expect(fermerDessous).not.toHaveBeenCalled()
+})
+
+test('après la fermeture du dessus, esc ferme celle du dessous', async () => {
+  const fermerDessous = vi.fn()
+  function Superposees() {
+    const [dessus, setDessus] = useState(true)
+    return (
+      <>
+        <Modal title="Dessous" icon="db" onClose={fermerDessous}>
+          <button type="button">champ</button>
+        </Modal>
+        {dessus && (
+          <Modal title="Dessus" icon="warn" nested onClose={() => setDessus(false)}>
+            <button type="button">fermer</button>
+          </Modal>
+        )}
+      </>
+    )
+  }
+  render(<Superposees />)
+
+  await userEvent.keyboard('{Escape}') // ferme celle du dessus
+  await userEvent.keyboard('{Escape}') // doit maintenant atteindre celle du dessous
+  expect(fermerDessous).toHaveBeenCalledOnce()
+})
