@@ -1,5 +1,6 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { Sprite } from '../design/icons/Sprite'
+import { NewConnection } from '../screens/NewConnection/NewConnection'
 import { WelcomeScreen } from '../screens/Welcome/WelcomeScreen'
 
 // La galerie (`src/design/gallery/`) ne doit jamais partir dans le bundle livré : elle
@@ -16,12 +17,9 @@ const Gallery = showGallery
   ? lazy(() => import('../design/gallery/Gallery').then((module) => ({ default: module.Gallery })))
   : null
 
-// Pas de projet à ce stade : le modèle de domaine (Projet / Base / Environnement) et sa
-// persistance viennent de la spec 05. `onNewProject` reste vide, la création de projet
-// étant construite en spec 08 — voir specs/07-a1-accueil.md § Hors périmètre.
-function handleNewProject() {}
-
 export function App() {
+  const [connexionOuverte, setConnexionOuverte] = useState(false)
+
   return (
     <>
       <Sprite />
@@ -30,7 +28,21 @@ export function App() {
           <Gallery />
         </Suspense>
       ) : (
-        <WelcomeScreen onNewProject={handleNewProject} projectCount={0} />
+        <>
+          {/* **Le bouton dit « Nouveau projet », la modale « Nouvelle connexion ».**
+              Ce n'est pas une erreur d'assemblage : `A1` n'offre que cette action et `⌘N`,
+              tandis que `A2` déclare une base *dans un projet existant*. Le handoff ne
+              maquette pas le parcours d'un utilisateur sans projet — trou consigné au
+              § « À trancher » de `specs/README.md`. En attendant, `A2` est câblée ici parce
+              que c'est la seule entrée qui existe, et `08e` refusera l'enregistrement tant
+              qu'aucun projet n'existe. */}
+          <WelcomeScreen
+            onNewProject={() => setConnexionOuverte(true)}
+            projectCount={0}
+            dimmed={connexionOuverte}
+          />
+          {connexionOuverte && <NewConnection onClose={() => setConnexionOuverte(false)} />}
+        </>
       )}
     </>
   )

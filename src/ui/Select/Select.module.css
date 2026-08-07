@@ -28,9 +28,9 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  /* Voir `Field.module.css` : `content-box` est imposé pour que les tokens de hauteur
-   * signifient dans le code ce qu'ils signifient dans le mockup. */
-  box-sizing: content-box;
+  /* Voir `Field.module.css` : `border-box` avec la hauteur explicitée, pour que la largeur
+   * ne déborde pas de sa piste de grille. */
+  box-sizing: border-box;
   padding: 0 var(--space-3) 0 var(--space-5);
   border: 1px solid var(--border-field);
   border-radius: var(--radius-field);
@@ -44,11 +44,11 @@
 }
 
 .md {
-  height: var(--h-field);
+  height: calc(var(--h-field) + 2px);
 }
 
 .sm {
-  height: 28px; /* panneau proxy de A2, sans token — métrique interne */
+  height: 30px; /* 28px de contenu, panneau proxy de A2 — métrique interne */
 }
 
 .icon {
@@ -59,6 +59,11 @@
 .select {
   flex: 1;
   min-width: 0;
+  /* **La surface cliquable doit être tout le champ.** Sans cela le `<select>` garde sa
+   * hauteur intrinsèque — 16px mesurés dans une boîte de 32 — et cliquer dans le
+   * remplissage du champ n'ouvre pas la liste. Défaut trouvé à la mesure, invisible en
+   * test unitaire. */
+  align-self: stretch;
   /* Retire le chevron du système : celui du handoff est dessiné à côté. */
   appearance: none;
   padding: 0;

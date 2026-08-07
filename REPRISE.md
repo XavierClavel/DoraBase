@@ -25,7 +25,7 @@ plan par plan.
 | `AGENTS.md` | conventions du projet — langue de travail, taille des specs |
 | `specs/README.md` | index des ~20 specs, contrainte IPC transverse, **acquis techniques**, **décisions à trancher** |
 | `specs/01`–`04`, `05a`–`05c`, `06a`–`06e`, `07` | treize specs, **toutes implémentées** |
-| `specs/08a`–`08e` | cinq specs ; `08a` **faite**, `08b`–`08e` à faire |
+| `specs/08a`–`08e` | cinq specs ; `08a` et `08b` **faites**, `08c`–`08e` à faire |
 | `plans/2026-07-31-*`, `plans/2026-08-05-*` | les plans d'implémentation, tâche par tâche, avec les **pièges vérifiés** |
 | `design/handoff/` | le handoff, **source de vérité du design** |
 
@@ -280,6 +280,36 @@ des tests verts au moment où il a été introduit.
    du module de test, faute de pouvoir construire un `SshTunnel` sans bastion. C'est le même
    défaut que sur l'atomicité de `05b` (point 5). Corrigé en extrayant `Surveillance`, un
    type que le tunnel **et** le test appellent.
+26. **`content-box` corrige la hauteur et casse la largeur.** `02` avait imposé
+   `box-sizing: content-box` sur `Field` pour que `--h-field` signifie la hauteur du contenu,
+   comme dans le mockup — raisonnement juste. Mais en `content-box`, `width: 100%` désigne la
+   largeur du *contenu* : remplissage et bordure s'ajoutent par-dessus, et le champ déborde de
+   sa piste de grille. Mesuré en `A2` : le champ Port rendait **104 px dans une piste de 84**.
+   Le mockup n'a pas ce défaut parce que ses champs sont des `<div>` à largeur `auto`, qui se
+   rétractent ; un `<input>` ne remplit son conteneur que par `width: 100%`. Corrigé en
+   `border-box` avec la hauteur explicitée par un `calc` — l'arithmétique est visible au lieu
+   d'être implicite.
+27. **Un `<select>` garde sa hauteur intrinsèque dans un conteneur flex.** 16 px mesurés dans
+   une boîte de 32 : la boîte avait la bonne taille, l'anneau de focus était au bon endroit,
+   et cliquer dans le remplissage du champ n'ouvrait pas la liste. Invisible en test unitaire
+   **et à l'œil**. `align-self: stretch` le règle. Trouvé parce qu'un test mesurait le mauvais
+   élément et rendait 16.
+28. **Une capture d'écran attrape ce qu'aucune mesure ne cherche** — déjà noté au point 11,
+   confirmé trois fois en une passe sur `A2` : le badge affichait « lockTrousseau » (`Badge.icon`
+   attend un `ReactNode`, pas un nom d'icône), les deux bascules avaient perdu leur libellé
+   visible (`Toggle` ne rend que l'interrupteur, le texte est à l'appelant), et l'œil du champ
+   mot de passe portait la bordure par défaut du navigateur faute de classe CSS. Les 22 tests
+   unitaires de l'écran étaient verts.
+29. **Comparer un pixel isolé ne prouve rien : il faut la couleur dominante d'une zone.** Les
+   premières mesures contre le mockup tombaient sur du texte ou un bord adouci et donnaient des
+   écarts de 42 à 132 sur des couleurs pourtant justes. La dominante d'une boîte est robuste au
+   texte et aux bords. Six zones ressortent alors **identiques octet pour octet**.
+30. **Un voile ne se compare pas d'une capture à l'autre** : le mockup le pose sur le corps de
+   sa fenêtre dessinée, nous sur le vrai canvas. La bonne vérification est le **mélange
+   attendu** — le canvas relevé sur la capture de `A1`, composé à alpha .28, comparé à la même
+   zone sous le voile. Écart de 1/255, l'arrondi du compositeur. Une première tentative
+   échantillonnait le canvas *sous* le voile et raisonnait en rond.
+
 21. **`[href]` dans un sélecteur de focalisables attrape les `<use>` des SVG.** Le sélecteur
    large, qu'on recopie de projet en projet, place alors un élément SVG en tête de liste — et
    `.focus()` sur un `<use>` ne fait rien. Le piège de tabulation de `Modal` était donc muet :
@@ -487,7 +517,7 @@ appelé. L'enregistrement des commandes est garanti par la compilation ; le pont
 | Spec | Ce qu'elle livre |
 | --- | --- |
 | `08a` | **fait** — `Modal`, `Select`, `CollapsiblePanel`, `RadioGroup` + galerie |
-| `08b` | A2 : coquille, sélecteur de moteur, formulaire — fidélité pure, zéro comportement |
+| `08b` | **fait** — A2 : coquille, sélecteur de moteur, formulaire (zéro comportement) |
 | `08c` | A2 : panneau proxy / tunnel |
 | `08d` | « Tester la connexion » — **premier passage réel du pont JS → Rust** — et A3 |
 | `08e` | « Enregistrer & ouvrir » : config + secret, première persistance du produit |

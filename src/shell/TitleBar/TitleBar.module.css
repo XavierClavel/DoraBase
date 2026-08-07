@@ -71,3 +71,17 @@
   outline: none;
   box-shadow: var(--shadow-focus);
 }
+
+/* --- Fenêtre bloquée par une modale (A2, A3) ---
+ *
+ * `filter: saturate(.6)` sur la barre et `opacity .55` sur le wordmark : les deux effets du
+ * mockup qui sont à notre portée. Le troisième — les feux en `#DCD6CB` — ne l'est pas, macOS
+ * les dessinant lui-même sous `titleBarStyle: "Overlay"`. Voir la note du composant.
+ */
+.dimmed {
+  filter: saturate(0.6);
+}
+
+.wordmarkDimmed {
+  opacity: 0.55;
+}

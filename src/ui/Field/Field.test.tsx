@@ -41,3 +41,30 @@ test('désactivé, le champ n’accepte pas de saisie', async () => {
   await userEvent.type(input, 'x')
   expect(input).toHaveValue('auto (63342)')
 })
+
+// --- Variante à suffixe (08b : mot de passe ; 08c : clé privée) ---
+
+test('un suffixe est rendu dans la boîte du champ', () => {
+  render(<Field label="Mot de passe" suffix={<button type="button">œil</button>} />)
+  const champ = screen.getByLabelText('Mot de passe')
+  const suffixe = screen.getByRole('button', { name: 'œil' })
+  // Dans la **même** boîte : le mockup les met sous une seule bordure. À côté du champ, la
+  // largeur de la grille changerait.
+  expect(champ.parentElement).toContainElement(suffixe)
+})
+
+// L'enveloppe s'insère entre l'étiquette et l'`<input>` : sans `htmlFor` correctement
+// propagé, le champ perdrait son nom accessible sans que rien d'autre ne change.
+test('avec un suffixe, l’étiquette nomme toujours le champ', () => {
+  render(<Field label="Mot de passe" type="password" suffix={<span>badge</span>} />)
+  const champ = screen.getByLabelText('Mot de passe')
+  expect(champ.tagName).toBe('INPUT')
+  expect(champ).toHaveAttribute('type', 'password')
+})
+
+test('avec un suffixe, la saisie fonctionne toujours', async () => {
+  render(<Field label="Hôte" mono suffix={<span>x</span>} />)
+  const champ = screen.getByLabelText('Hôte')
+  await userEvent.type(champ, 'db.internal')
+  expect(champ).toHaveValue('db.internal')
+})
