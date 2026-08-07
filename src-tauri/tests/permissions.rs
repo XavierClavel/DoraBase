@@ -28,6 +28,10 @@ const ATTENDUES: &[(&str, &str)] = &[
         "dialog:allow-open",
         "le bouton « Parcourir… » de la clé privée (08c) — ouverture seule",
     ),
+    (
+        "log:allow-log",
+        "les journaux du front, qui rendent le pont IPC observable (08d) — `log` seul",
+    ),
 ];
 
 fn permissions_declarees() -> Vec<String> {

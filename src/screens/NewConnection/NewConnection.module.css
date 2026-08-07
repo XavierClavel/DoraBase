@@ -107,8 +107,15 @@
 /* Le remplissage des variantes d'environnement est de 10px, contre 12px pour le sélecteur de
  * moteur, et leur rayon de 8px contre 9px. Deux écarts d'un ou deux pixels, voulus par le
  * design : la rangée de trois doit tenir à côté de deux autres champs. Les uniformiser
- * effacerait une intention. */
-.envOption {
+ * effacerait une intention.
+ *
+ * **La classe est doublée**, pour la même raison que `.envDanger` plus bas — et cette fois le
+ * défaut a été *constaté*, pas seulement prévu. `RadioGroup.module.css` pose `padding: 0 12px`
+ * et `font-size: 12px` sur `.option` ; deux règles à une classe se départagent par leur ordre
+ * dans la feuille finale, que rien ne garantit entre deux modules. Éditer ce fichier a suffi à
+ * inverser le gagnant : les boutons d'environnement ont changé de largeur d'un build à l'autre,
+ * ce qu'une capture de référence a attrapé. La spécificité (0,2,0) tranche définitivement. */
+.envOption.envOption {
   padding: 0 10px;
   border-radius: var(--radius-field);
   font-size: var(--text-dense);
@@ -250,6 +257,91 @@
 
 .footerSpacer {
   flex: 1;
+}
+
+/* --- Résultat du test de connexion, dans le pied (08d) --- */
+
+/* Succès : coche et texte en vert `--success-ink`, 11.5px/600. */
+.testOk {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-semibold);
+  color: var(--success-ink);
+}
+
+/* Échec : le pied porte un message rouge, **et la modale n'est pas surlignée** — le handoff
+ * insiste, l'erreur ne vit que dans la sous-modale et cette ligne. */
+.testFail:focus-visible {
+  outline: none;
+  border-radius: var(--radius-badge-2);
+  box-shadow: var(--shadow-focus);
+}
+
+.testFail {
+  /* Un `<button>` : le message rouvre la sous-modale, donc il doit être cliquable *et*
+   * atteignable au clavier. D'où la remise à zéro de l'habillage natif. */
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-semibold);
+  color: var(--danger-ink);
+  /* Un message de moteur peut être long ; il ne doit pas pousser « Annuler » hors du pied. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40ch;
+}
+
+/* La mention que rien n'a vérifié le certificat. Encre secondaire et non rouge : ce n'est pas
+ * un échec, c'est une limite de l'implémentation — `06b` emploie encore `NoTls`. Elle
+ * disparaîtra avec le branchement du TLS, pas avant. */
+.testWarn {
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-semibold);
+  color: var(--warn-ink);
+}
+
+/* --- Sous-modale d'échec, A3 --- */
+
+.failureBody {
+  padding: var(--space-1) var(--space-7) var(--space-7) 63px;
+}
+
+.failureText {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-control);
+  line-height: 1.5;
+  color: var(--ink-6);
+}
+
+/* L'encart de log : fond `--bar`, mono 11px, interligne 1.65. */
+.failureLog {
+  margin-top: var(--space-5);
+  padding: var(--space-5) 9px;
+  border: 1px solid var(--divider-2);
+  border-radius: var(--radius-field);
+  background: var(--bar);
+  color: var(--ink-7);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  line-height: 1.65;
+  /* Un message de moteur peut contenir un chemin long ; il doit revenir à la ligne plutôt
+   * que déborder d'une boîte de 436px. */
+  overflow-wrap: anywhere;
+}
+
+/* La ligne de cause, seule à porter cette teinte dans tout le handoff. */
+.failureCause {
+  color: var(--danger-ink-3);
 }
 
 /* Un moteur sans adaptateur : le pied le dit au lieu de laisser « Tester » échouer sans

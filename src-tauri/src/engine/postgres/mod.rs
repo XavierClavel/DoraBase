@@ -112,6 +112,24 @@ impl PostgresAdapter {
         self.tunnel.as_ref().map(SshTunnel::port_local)
     }
 
+    /// Ferme la connexion et **attend** que le port local du tunnel soit rendu.
+    ///
+    /// Consomme l'adaptateur : après cet appel il n'y a plus rien à interroger, et le laisser
+    /// utilisable inviterait à requêter sur un client mort.
+    ///
+    /// **Pourquoi cette méthode plutôt que la seule destruction** : `SshTunnel::fermer` existe
+    /// parce que `JoinHandle::abort` n'est pas synchrone (voir `06e`), et le `Drop` du tunnel
+    /// n'est qu'un filet. Un test de connexion qui rendrait sans attendre laisserait le port
+    /// lié quelques instants — invisible une fois, gênant après vingt essais.
+    pub async fn close(self) {
+        if let Some(tunnel) = self.tunnel {
+            tunnel.fermer().await;
+        }
+        // Le client est lâché ici : sa tâche d'entrées-sorties s'arrête d'elle-même quand plus
+        // personne ne le détient (voir `connect::ouvrir`).
+        drop(self.client);
+    }
+
     /// La version du serveur, telle que `A2` l'affiche (« PostgreSQL 16.2 »).
     async fn version(&self) -> Result<String, EngineError> {
         let ligne = self

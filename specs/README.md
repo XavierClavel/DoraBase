@@ -191,7 +191,7 @@ propres critères de vérification.
 | [`08a`](08a-primitives-de-formulaire.md) | — | Primitives : `Modal`, `Select`, `CollapsiblePanel`, `RadioGroup` | **fait** |
 | [`08b`](08b-a2-modale-et-formulaire.md) | A2 | Coquille de modale, sélecteur de moteur, formulaire principal | **fait** |
 | [`08c`](08c-a2-panneau-proxy-tunnel.md) | A2 | Panneau proxy / tunnel | **fait** (sélecteur de fichier non observé) |
-| [`08d`](08d-tester-la-connexion.md) | A2 + A3 | « Tester la connexion » : pont IPC réel, et sous-modale d'échec | écrite |
+| [`08d`](08d-tester-la-connexion.md) | A2 + A3 | « Tester la connexion » : pont IPC réel, et sous-modale d'échec | **fait** (pont non observé) |
 | [`08e`](08e-enregistrer-et-ouvrir.md) | A2 | « Enregistrer & ouvrir » : config + secret | écrite |
 | `09` | A4 | Explorateur : projets → bases → schémas → tables | à écrire |
 | `10` | A5 | Visualiseur de table : grille, filtres par en-tête, tri, LIMIT | à écrire |

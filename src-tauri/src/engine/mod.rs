@@ -15,6 +15,7 @@
 //! Le trait reste utile — chaque adaptateur est écrit contre lui et testable isolément —
 //! mais il n'est jamais employé en objet.
 
+pub mod commands;
 mod error;
 mod introspection;
 pub mod postgres;

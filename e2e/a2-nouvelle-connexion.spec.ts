@@ -320,3 +320,104 @@ test('la modale reste dans la fenêtre avec le panneau déplié', async ({ page 
   expect(etat.debordeEnLargeur).toBe(false)
   expect(etat.hauteurModale).toBeGreaterThan(500)
 })
+
+// **Ce test existe parce que le défaut s'est produit.** `.envOption` (ce fichier) et `.option`
+// (`RadioGroup.module.css`) sont deux règles à une classe qui posent toutes deux `padding` et
+// `font-size` sur les boutons d'environnement. Leur gagnant dépendait de l'ordre des feuilles
+// dans le bundle : éditer `NewConnection.module.css` a suffi à l'inverser, et les boutons ont
+// changé de largeur d'un build à l'autre. Une capture de référence l'a attrapé ; ce test le
+// nomme, pour que la prochaine fois l'échec dise *quoi* est cassé.
+test('les boutons d’environnement gardent leur remplissage propre, quel que soit l’ordre du CSS', async ({
+  page,
+}) => {
+  const styles = await page.evaluate(() => {
+    const groupe = [...document.querySelectorAll('fieldset')].find((f) =>
+      f.querySelector('input[value=prod]'),
+    )
+    const moteur = [...document.querySelectorAll('fieldset')].find((f) =>
+      f.querySelector('input[value=postgresql]'),
+    )
+    const lire = (el: Element | null | undefined) => {
+      if (!el) return null
+      const s = getComputedStyle(el)
+      return { padding: s.paddingLeft, police: s.fontSize, rayon: s.borderTopLeftRadius }
+    }
+    return {
+      env: lire(groupe?.querySelector('label')),
+      moteur: lire(moteur?.querySelector('label')),
+    }
+  })
+
+  // Les valeurs du mockup : 10px/11.5px/8px pour l'environnement, 12px/12px/9px pour le moteur.
+  // Les uniformiser effacerait une intention du design.
+  expect(styles.env).toEqual({ padding: '10px', police: '11.5px', rayon: '8px' })
+  expect(styles.moteur).toEqual({ padding: '12px', police: '12px', rayon: '9px' })
+})
+
+// --- A3, la sous-modale d'échec (08d) ---------------------------------------------------
+
+// Le pont IPC ne répond pas hors de la webview : dans le navigateur de Playwright, `invoke`
+// rejette. C'est exactement ce qu'il faut pour atteindre `A3` — l'échec est réel, pas simulé,
+// et son message est celui que le pont produit quand il n'existe pas.
+async function provoquerUnEchec(page: import('@playwright/test').Page) {
+  await page.getByRole('button', { name: /Tester la connexion/ }).click()
+  await page.waitForSelector('[role=dialog][aria-label="Connexion impossible"]')
+}
+
+test('la sous-modale de A3 fait 436 px et se centre dans la fenêtre', async ({ page }) => {
+  await provoquerUnEchec(page)
+
+  const mesures = await page.evaluate(() => {
+    const sous = document.querySelector('[role=dialog][aria-label="Connexion impossible"]')
+    if (!sous) return null
+    const r = sous.getBoundingClientRect()
+    return {
+      largeur: Math.round(r.width),
+      // Centrée verticalement, contrairement à `A2` qui est alignée en haut à 34 px.
+      centreeY: Math.abs(r.top + r.height / 2 - window.innerHeight / 2) < 2,
+      centreeX: Math.abs(r.left + r.width / 2 - window.innerWidth / 2) < 2,
+    }
+  })
+
+  expect(mesures?.largeur).toBe(438) // 436 px plus les deux bordures
+  expect(mesures?.centreeY).toBe(true)
+  expect(mesures?.centreeX).toBe(true)
+})
+
+test('la modale A2 n’est pas surlignée en rouge sous la sous-modale', async ({ page }) => {
+  await provoquerUnEchec(page)
+
+  const rouge = await page.evaluate(() => {
+    const a2 = [...document.querySelectorAll('[role=dialog]')].find(
+      (d) => d.getAttribute('aria-label') === 'Nouvelle connexion',
+    )
+    if (!a2) return null
+    // Aucune bordure rouge dans A2 **sauf** celle de `prod`, qui est là de toute façon.
+    return [...a2.querySelectorAll('input, select, [class*=wrap]')].filter((el) => {
+      const c = getComputedStyle(el).borderTopColor
+      return c === 'rgb(217, 67, 47)' || c === 'rgb(176, 51, 31)'
+    }).length
+  })
+
+  // Le handoff insiste : « la modale sous-jacente n'est pas surlignée en rouge ». L'erreur ne
+  // vit que dans la sous-modale et le message du pied.
+  expect(rouge).toBe(0)
+})
+
+// Sans `SQLSTATE` ni tunnel, l'encart n'a rien à ajouter au texte explicatif : le rendre
+// reviendrait à afficher le même paragraphe deux fois, en mono. L'échec du pont dans le
+// navigateur de Playwright est justement de ce genre — local, sans code.
+test('sans code ni tunnel, aucun encart de log dans A3', async ({ page }) => {
+  await provoquerUnEchec(page)
+  await expect(page.locator('[class*=failureLog]')).toHaveCount(0)
+})
+
+test('esc ferme la sous-modale sans fermer A2', async ({ page }) => {
+  await provoquerUnEchec(page)
+  await page.keyboard.press('Escape')
+
+  await expect(page.locator('[role=dialog][aria-label="Connexion impossible"]')).toHaveCount(0)
+  await expect(page.locator('[role=dialog][aria-label="Nouvelle connexion"]')).toHaveCount(1)
+  // Le pied garde son état d'échec : c'est ce que le handoff montre.
+  await expect(page.getByRole('button', { name: 'Retester' })).toHaveCount(1)
+})
