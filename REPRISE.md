@@ -195,6 +195,12 @@ des tests verts au moment où il a été introduit.
 7. **`toHaveTextContent` normalise l'espace insécable du DOM réel, pas la chaîne attendue.**
    Un test conçu pour détecter la perte d'un ` ` doit comparer `.textContent` par
    `.toBe()` — le matcher normalisé masquerait justement la régression qu'il devait révéler.
+8quinquies. **Un script de vérification qu'on ne peut pas lancer soi-même n'est pas un
+   garde-fou.** Le premier garde-fou de `default-run` était du Python embarqué dans le YAML
+   du workflow : son échappement de guillemets produisait un `SyntaxError` impossible à
+   reproduire en local, donc la CI a échoué sur le garde-fou lui-même. Sorti dans
+   `scripts/verifier-default-run.py`, il se lance à la main — et son contrôle négatif aussi.
+
 8quater. **« Ça compile » et « ça démarre » sont deux choses, et la CI ne couvrait que la
    première.** L'ajout d'un second binaire a rendu `cargo run` ambigu, donc cassé
    `tauri dev` — l'app ne démarrait plus du tout, alors que `cargo build`, `cargo test`,

@@ -77,17 +77,12 @@ jobs:
       #
       # La propriété est vérifiée par `cargo metadata`, et non en lançant `cargo run` : l'app
       # ne traite aucun argument, donc elle ouvrirait une fenêtre et bloquerait le runner.
+      # `cargo run` sans `--bin` doit rester non ambigu : c'est ce que `tauri dev` appelle,
+      # et l'ajout du binaire `export-types` l'a cassé sans que la CI le voie — `tauri build`
+      # ne passe pas par ce chemin. Voir l'en-tête du script pour le détail.
       - name: cargo run reste non ambigu (default-run)
         working-directory: src-tauri
-        run: |
-          cargo metadata --format-version 1 --no-deps | python3 -c '
-          import sys, json
-          paquet = next(p for p in json.load(sys.stdin)["packages"] if p["name"] == "dorabase")
-          binaires = [t["name"] for t in paquet["targets"] if "bin" in t["kind"]]
-          if len(binaires) > 1 and not paquet.get("default_run"):
-              sys.exit(f"cargo run serait ambigu entre {binaires} : ajouter default-run")
-          print(f"non ambigu ({len(binaires)} binaire(s), default-run={paquet.get(\"default_run\")})")
-          '
+        run: cargo metadata --format-version 1 --no-deps | python3 ../scripts/verifier-default-run.py
 
       - run: pnpm tauri build
 
