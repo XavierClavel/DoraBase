@@ -26,6 +26,7 @@ plan par plan.
 | `specs/README.md` | index des ~20 specs, contrainte IPC transverse, **acquis techniques**, **décisions à trancher** |
 | `specs/01`–`04`, `05a`–`05c`, `06a`–`06e`, `07` | treize specs, **toutes implémentées** |
 | `specs/08a`–`08e` | cinq specs, **toutes faites**. Deux vérifications à l'œil restent dues |
+| `specs/09a`–`09f` | six specs écrites, **aucune implémentée** — le prochain travail |
 | `plans/2026-07-31-*`, `plans/2026-08-05-*` | les plans d'implémentation, tâche par tâche, avec les **pièges vérifiés** |
 | `design/handoff/` | le handoff, **source de vérité du design** |
 
@@ -632,6 +633,32 @@ test, le refus de saisie, le cas « aucun projet », et le panneau proxy replié
 
 `PostgresAdapter::port_local_tunnel` rend déjà le port que `A2` affiche sous
 « auto (63342) » : `08c` n'a qu'à le lire.
+
+**La suite : `09a` → `09f`, specs écrites le 7 août 2026, aucune implémentée.**
+
+| Spec | Ce qu'elle livre |
+| --- | --- |
+| `09a` | `SegmentedControl`, `StatTile`, `DataTable` + galerie |
+| `09b` | **le câblage** : `load_config` au démarrage, registre de connexions, introspection |
+| `09c` | A4 : barre de titre — pastille projet, fil d'Ariane, sélecteur d'environnement |
+| `09d` | A4 : sidebar 252 px et son arbre à quatre niveaux |
+| `09e` | A4 : centre — onglets, fil d'Ariane, tableau des objets |
+| `09f` | A4 : panneau de détail 300 px |
+
+`09b` est celle qui compte : elle appelle enfin `load_config`, et rend la boucle du produit
+complète — saisir (`08e`), persister, relire, afficher. Placée en **second** pour que les
+quatre specs de fidélité se construisent sur de vraies données.
+
+**Décision prise le 7 août : l'arbre se lit sans réseau.** La configuration ne demande aucune
+connexion, donc l'arbre s'affiche immédiatement et chaque base porte son état. Une base
+injoignable reste **visible et marquée**, pas masquée ni bloquante — attendre les connexions
+bloquerait l'écran jusqu'à 30 secondes sur un seul hôte muet. Conséquence : les états sont
+**quatre**, pas deux, et « jamais tentée » n'est pas « hors ligne ».
+
+**Six trous du handoff sur `A4`** sont consignés au § « À trancher » de `specs/README.md`,
+avec le minimum défendable retenu pour chacun. S'y ajoute une **décision inverse de celle de
+`A1`** sur les boutons inertes, assumée et justifiée : les quatre actions de `09f` sont
+désactivées avec une infobulle, là où `A1` et `08b` ont livré des boutons actifs sans effet.
 
 À trancher au passage, le moment venu :
 

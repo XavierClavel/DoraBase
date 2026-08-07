@@ -109,6 +109,37 @@ cinq endroits où le mockup ne répond pas, et où la vraie réponse appartient 
 5. **Le panneau proxy replié, et sans tunnel, n'est pas maquetté.** `08c` rend l'en-tête
    seul et fait disparaître le badge « SSH activé » — la seule lecture cohérente.
 
+**Six trous du handoff sur `A4`, relevés en écrivant `09a`–`09f`** (7 août 2026). Comme pour
+`A2`, chaque spec prend le minimum défendable et le dit.
+
+1. **Que signifie le point d'état de la pastille projet ?** Un projet n'a pas d'état de
+   connexion — ses bases en ont. `09c` le fait donc refléter la base **ouverte**, et un projet
+   sans base ouverte n'a pas de point plutôt qu'un point gris inventé.
+2. **La barre de filtre promet plus qu'elle ne tient.** Le mockup écrit « Chercher un
+   objet… », mais elle ne peut porter que sur ce qui est **chargé** : une table d'un schéma
+   jamais déplié n'a jamais traversé l'IPC. `09d` change donc le libellé pour dire ce qu'il
+   fait. La vraie réponse est la recherche globale `⌘P`, que rien ne maquette en action.
+3. **Trois des quatre états de connexion ne sont pas maquettés.** Seule la base ouverte l'est.
+   `09d` compose les trois autres avec `Badge` et `Dot`, et impose qu'ils se distinguent
+   **autrement que par la couleur**.
+4. **Le segment « Index » n'est jamais montré actif**, et un index n'a ni « Lignes », ni
+   « Clé primaire », ni « Dernier ANALYZE » — trois des sept colonnes. `09e` y met un tiret
+   cadratin ; un jeu de colonnes par type d'objet serait la vraie réponse.
+5. **La tuile « Lignes » affiche une estimation comme un fait exact.** `reltuples` est une
+   estimation du catalogue, `pg_total_relation_size` est exact : les présenter pareil est un
+   mensonge de précision. `09f` ajoute un `title`, faute de mieux.
+6. **Quelles cinq colonnes, parmi les dix-huit ?** Le mockup en montre cinq puis « + 13
+   autres… » sans dire lesquelles. `09f` prend les cinq premières du catalogue — l'ordre que
+   l'utilisateur connaît de sa table.
+
+**Décision inverse de `A1` sur les boutons inertes, assumée.** `A1` et `08b` ont livré des
+boutons présents et **actifs** mais sans effet, au motif qu'un bouton désactivé sans
+explication fait croire à un bug. `09f` fait l'inverse pour ses quatre actions : elles sont
+désactivées, avec une infobulle nommant l'écran attendu. La raison de l'écart : à `A1` un
+seul bouton était inerte et son écran venait dans la spec suivante ; ici quatre boutons sur
+quatre le sont, et leurs écrans sont à trois specs de distance. Un panneau dont tout est
+cliquable et rien ne répond est pire qu'un panneau qui dit ce qui n'est pas encore là.
+
 **Les feux tricolores ne peuvent pas être grisés derrière une modale** (relevé le 7 août
 2026, en implémentant `08a`). Le mockup les met en `#DCD6CB` pour signaler que la fenêtre
 est bloquée. Or `tauri.conf.json` déclare `titleBarStyle: "Overlay"` avec `hiddenTitle` :
@@ -170,6 +201,14 @@ comptages et tailles ne viennent pas de l'utilisateur mais du catalogue de la ba
 et leur forme est dictée par chaque moteur. Ils appartiennent donc à `06a`, pas au
 modèle de configuration — c'est la ligne de faille qui a guidé le découpage.
 
+**Pourquoi `09` a été découpé en six** (7 août 2026) : `A4` est l'écran le plus dense du
+handoff — barre de titre à pastille, sidebar 252 px à quatre niveaux, centre à onglets et
+tableau de sept colonnes, panneau de détail à quatre blocs — et il porte en plus le
+**câblage des données**, que rien n'avait fait : `load_config` existe depuis `05b` et n'était
+appelée par personne. Ce câblage est placé en **second**, avant les quatre specs de fidélité,
+pour que celles-ci se construisent sur de vraies données plutôt que sur des jeux factices
+qu'il faudrait ensuite défaire.
+
 **Pourquoi `08` a été découpé en cinq** (7 août 2026) : son périmètre indexé — « modale
 nouvelle connexion, et son échec » — recouvrait six préoccupations séparables, dont quatre
 primitives absentes de `02` et le **premier passage réel du pont JavaScript → Rust**. Ce
@@ -193,7 +232,12 @@ propres critères de vérification.
 | [`08c`](08c-a2-panneau-proxy-tunnel.md) | A2 | Panneau proxy / tunnel | **fait** (sélecteur de fichier non observé) |
 | [`08d`](08d-tester-la-connexion.md) | A2 + A3 | « Tester la connexion » : pont IPC réel, et sous-modale d'échec | **fait** (pont non observé) |
 | [`08e`](08e-enregistrer-et-ouvrir.md) | A2 | « Enregistrer & ouvrir » : config + secret | **fait** (relecture au démarrage → `09`) |
-| `09` | A4 | Explorateur : projets → bases → schémas → tables | à écrire |
+| [`09a`](09a-primitives-de-tableau.md) | — | Primitives : `SegmentedControl`, `StatTile`, `DataTable` | écrite |
+| [`09b`](09b-cablage-des-donnees.md) | — | Câblage : `load_config` au démarrage, registre de connexions, introspection | écrite |
+| [`09c`](09c-a4-barre-de-titre.md) | A4 | Barre de titre : pastille projet, fil d'Ariane, sélecteur d'environnement | écrite |
+| [`09d`](09d-a4-sidebar-et-arbre.md) | A4 | Sidebar 252 px et son arbre à quatre niveaux | écrite |
+| [`09e`](09e-a4-liste-des-objets.md) | A4 | Centre : onglets, fil d'Ariane, tableau des objets | écrite |
+| [`09f`](09f-a4-panneau-droit.md) | A4 | Panneau de détail 300 px | écrite |
 | `10` | A5 | Visualiseur de table : grille, filtres par en-tête, tri, LIMIT | à écrire |
 | `11` | A6 | Édition inline, modifications en attente, diff et transaction | à écrire |
 | `12` | A7 | Console SQL : éditeur, autocomplétion, onglets de résultat | à écrire |
