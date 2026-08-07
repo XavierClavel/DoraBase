@@ -25,7 +25,7 @@ plan par plan.
 | `AGENTS.md` | conventions du projet — langue de travail, taille des specs |
 | `specs/README.md` | index des ~20 specs, contrainte IPC transverse, **acquis techniques**, **décisions à trancher** |
 | `specs/01`–`04`, `05a`–`05c`, `06a`–`06e`, `07` | treize specs, **toutes implémentées** |
-| `specs/08a`–`08e` | cinq specs écrites, **aucune implémentée** — le prochain travail |
+| `specs/08a`–`08e` | cinq specs ; `08a` **faite**, `08b`–`08e` à faire |
 | `plans/2026-07-31-*`, `plans/2026-08-05-*` | les plans d'implémentation, tâche par tâche, avec les **pièges vérifiés** |
 | `design/handoff/` | le handoff, **source de vérité du design** |
 
@@ -280,6 +280,32 @@ des tests verts au moment où il a été introduit.
    du module de test, faute de pouvoir construire un `SshTunnel` sans bastion. C'est le même
    défaut que sur l'atomicité de `05b` (point 5). Corrigé en extrayant `Surveillance`, un
    type que le tunnel **et** le test appellent.
+21. **`[href]` dans un sélecteur de focalisables attrape les `<use>` des SVG.** Le sélecteur
+   large, qu'on recopie de projet en projet, place alors un élément SVG en tête de liste — et
+   `.focus()` sur un `<use>` ne fait rien. Le piège de tabulation de `Modal` était donc muet :
+   il appelait bien `focus()`, sur le mauvais élément. Trois tests l'ont attrapé. Il faut
+   `a[href]`.
+22. **Un `<input type="radio">` natif donne les flèches gratuitement.** La première version de
+   `RadioGroup` employait des `<button role="radio">` avec `aria-checked`, `tabIndex` alterné
+   et un gestionnaire de flèches maison — une trentaine de lignes. Un groupe de radios natifs
+   partageant le même `name` fait tout cela, bouclage compris. Les lignes ont été supprimées
+   et **les tests de clavier passent sans elles**, ce qui prouve que le navigateur faisait le
+   travail. Biome l'avait signalé (`useSemanticElements`) ; la règle avait raison sur le fond.
+23. **Un test peut rester vert sous sabotage sans qu'on le remarque.** « Le focus n'échappe
+   pas vers ce qui est derrière » tabulait quatre fois puis vérifiait qu'un bouton extérieur
+   n'avait pas le focus. Piège retiré, il restait vert : l'ordre de tabulation de jsdom ne l'y
+   amenait pas en quatre coups. Le sabotage a révélé le test, pas le code. Réécrit pour
+   vérifier l'invariant après **chaque** tabulation, il mord dès la troisième.
+24. **Le nom accessible se concatène sans espace.** Un monogramme `<span>Pg</span>` suivi du
+   libellé « PostgreSQL » dans le même `<label>` donne le nom accessible « PgPostgreSQL », que
+   le lecteur d'écran annonce tel quel. Le préfixe est décoratif — il abrège un nom déjà
+   présent — donc `aria-hidden="true"`.
+25. **Les feux tricolores de macOS sont hors d'atteinte du CSS.** Le mockup les grise derrière
+   une modale ; `titleBarStyle: "Overlay"` les fait dessiner par le système. Constaté avant
+   d'écrire une ligne, en lisant `tauri.conf.json` — les deux specs concernées ont été
+   corrigées plutôt que l'implémentation détournée. Détail au § « À trancher » de
+   `specs/README.md`.
+
 20. **Un test qui se saute tout seul rend un succès.** Les tests de tunnel s'abstiennent
    quand le décor SSH manque — nécessaire pour le job macOS, mais un bastion qui échoue à
    démarrer les rendrait invisibles sans casser la CI. Une étape dédiée du job Linux relit la
@@ -460,7 +486,7 @@ appelé. L'enregistrement des commandes est garanti par la compilation ; le pont
 
 | Spec | Ce qu'elle livre |
 | --- | --- |
-| `08a` | `Modal`, `Select`, `CollapsiblePanel`, `RadioGroup` + galerie |
+| `08a` | **fait** — `Modal`, `Select`, `CollapsiblePanel`, `RadioGroup` + galerie |
 | `08b` | A2 : coquille, sélecteur de moteur, formulaire — fidélité pure, zéro comportement |
 | `08c` | A2 : panneau proxy / tunnel |
 | `08d` | « Tester la connexion » — **premier passage réel du pont JS → Rust** — et A3 |

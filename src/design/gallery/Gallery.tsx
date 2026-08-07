@@ -2,10 +2,14 @@ import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Badge } from '../../ui/Badge/Badge'
 import { Button } from '../../ui/Button/Button'
 import { Chip } from '../../ui/Chip/Chip'
+import { CollapsiblePanel } from '../../ui/CollapsiblePanel/CollapsiblePanel'
 import { ColumnRow } from '../../ui/ColumnRow/ColumnRow'
 import { ConsoleFooterButton } from '../../ui/ConsoleFooterButton/ConsoleFooterButton'
 import { Dot } from '../../ui/Dot/Dot'
 import { Field } from '../../ui/Field/Field'
+import { Modal } from '../../ui/Modal/Modal'
+import { RadioGroup } from '../../ui/RadioGroup/RadioGroup'
+import { Select } from '../../ui/Select/Select'
 import { Sidebar } from '../../ui/Sidebar/Sidebar'
 import { SidebarFilterBar } from '../../ui/SidebarFilterBar/SidebarFilterBar'
 import { SidebarSectionTitle } from '../../ui/SidebarSectionTitle/SidebarSectionTitle'
@@ -833,6 +837,217 @@ function SidebarGallery() {
   )
 }
 
+// --- Primitives de `08a` -----------------------------------------------------------
+
+const MOTEURS = [
+  {
+    value: 'postgres',
+    label: 'PostgreSQL',
+    prefix: <span style={{ color: 'var(--engine-pg)' }}>Pg</span>,
+  },
+  { value: 'mysql', label: 'MySQL', prefix: <span style={{ color: 'var(--engine-my)' }}>My</span> },
+  {
+    value: 'sqlite',
+    label: 'SQLite',
+    prefix: <span style={{ color: 'var(--engine-sq)' }}>Sq</span>,
+  },
+  {
+    value: 'mongo',
+    label: 'MongoDB',
+    prefix: <span style={{ color: 'var(--engine-mg)' }}>Mg</span>,
+  },
+  { value: 'redis', label: 'Redis', prefix: <span style={{ color: 'var(--engine-rd)' }}>Rd</span> },
+  // Snowflake et BigQuery n'ont **pas** de monogramme dans le mockup. Vérifié.
+  { value: 'snowflake', label: 'Snowflake' },
+  { value: 'bigquery', label: 'BigQuery' },
+] as const
+
+const MODES_SSL = [
+  { value: 'disable', label: 'disable' },
+  { value: 'allow', label: 'allow' },
+  { value: 'prefer', label: 'prefer' },
+  { value: 'require', label: 'require' },
+  { value: 'verify-ca', label: 'verify-ca' },
+  { value: 'verify-full', label: 'verify-full' },
+] as const
+
+function SelectGallery() {
+  const [mode, setMode] = useState<(typeof MODES_SSL)[number]['value']>('require')
+  const [projet, setProjet] = useState('print')
+
+  return (
+    <Section title="Select">
+      <Note>
+        `&lt;select&gt;` natif habillé : le mockup ne montre que l’état fermé, donc rien n’impose
+        une liste maison, et le natif apporte le clavier et la recherche à la frappe.
+      </Note>
+      <Sub title="Tailles (2) et icône">
+        <div className={styles.grid}>
+          <div className={styles.cell}>
+            <Select label="Mode SSL" options={MODES_SSL} value={mode} onValueChange={setMode} />
+            <span className={styles.cellCaption}>md · 30px</span>
+          </div>
+          <div className={styles.cell}>
+            <Select
+              label="Type"
+              size="sm"
+              options={[{ value: 'ssh', label: 'SSH' }]}
+              value="ssh"
+              onValueChange={() => {}}
+            />
+            <span className={styles.cellCaption}>sm · 28px (panneau proxy)</span>
+          </div>
+          <div className={styles.cell}>
+            <Select
+              label="Projet"
+              icon={{ name: 'bag', color: 'var(--accent-deep)' }}
+              options={[
+                { value: 'print', label: 'Atelier Nord' },
+                { value: 'web', label: 'Atelier Sud' },
+              ]}
+              value={projet}
+              onValueChange={setProjet}
+            />
+            <span className={styles.cellCaption}>avec icône</span>
+          </div>
+          <div className={styles.cell}>
+            <Select
+              label="Désactivé"
+              options={[{ value: 'x', label: 'auto' }]}
+              value="x"
+              onValueChange={() => {}}
+              disabled
+            />
+            <span className={styles.cellCaption}>disabled</span>
+          </div>
+        </div>
+      </Sub>
+    </Section>
+  )
+}
+
+function RadioGroupGallery() {
+  const [moteur, setMoteur] = useState<(typeof MOTEURS)[number]['value']>('postgres')
+  const [env, setEnv] = useState('prod')
+
+  return (
+    <Section title="RadioGroup">
+      <Note>
+        De vrais `&lt;button&gt;` frères, pas un `div[role=button]` : le sélecteur de moteur de A2
+        n’a **aucune croix de suppression**, ce qui clôt la dette du Chip interactif. Tab entre et
+        sort du groupe, les flèches naviguent dedans.
+      </Note>
+      <Sub title="Sélecteur de moteur — 7 options, 2 sans monogramme">
+        <RadioGroup label="Moteur" options={MOTEURS} value={moteur} onValueChange={setMoteur} />
+      </Sub>
+      <Sub title="Variante d’environnement — l’habillage prod vient de 08b">
+        <RadioGroup
+          label="Variante d’environnement"
+          options={[
+            { value: 'dev', label: 'dev' },
+            { value: 'staging', label: 'staging' },
+            { value: 'prod', label: 'prod', prefix: <Icon name="warn" size={13} /> },
+          ]}
+          value={env}
+          onValueChange={setEnv}
+        />
+        <Note>
+          Le mockup ne montre que `prod` actif, en rouge. **Rien ne dit à quoi ressemble un `dev`
+          actif** — l’accent générique est appliqué, la question est ouverte.
+        </Note>
+      </Sub>
+    </Section>
+  )
+}
+
+function CollapsiblePanelGallery() {
+  const [ouvert, setOuvert] = useState(true)
+
+  return (
+    <Section title="CollapsiblePanel">
+      <Note>
+        Replié, le contenu est **retiré du DOM** : il sort de l’arbre d’accessibilité et de l’ordre
+        de tabulation, donc le piège de focus de Modal ne le compte plus.
+      </Note>
+      <Sub title="Panneau proxy / tunnel de A2">
+        <CollapsiblePanel
+          title="Proxy / tunnel"
+          icon="shield"
+          badge={ouvert ? <Badge tone="violet">SSH activé</Badge> : undefined}
+          open={ouvert}
+          onOpenChange={setOuvert}
+        >
+          <div className={styles.grid}>
+            <Field label="Hôte du bastion" size="sm" mono defaultValue="bastion.exemple.net" />
+            <Field label="Port" size="sm" mono defaultValue="22" />
+          </div>
+        </CollapsiblePanel>
+      </Sub>
+    </Section>
+  )
+}
+
+function ModalGallery() {
+  const [ouvert, setOuvert] = useState(false)
+  const [imbriquee, setImbriquee] = useState(false)
+
+  return (
+    <Section title="Modal">
+      <Note>
+        Pas de `&lt;dialog&gt;` : il impose son propre backdrop et sa pile de superposition, où les
+        **deux voiles superposés** de A3 ne se composent pas. Le prix est de câbler esc, le piège de
+        focus et aria-modal à la main — un test par exigence.
+      </Note>
+      <Sub title="A2 (820px) et A3 (436px, imbriquée)">
+        <Button onClick={() => setOuvert(true)}>Ouvrir la modale A2</Button>
+        <Note>
+          La sous-modale A3 s’ouvre **depuis** A2, par le bouton « Tester la connexion » — c’est son
+          vrai parcours, et un bouton posé dans la galerie serait de toute façon inatteignable
+          derrière le voile de A2.
+        </Note>
+      </Sub>
+
+      {ouvert && (
+        <Modal
+          title="Nouvelle connexion"
+          icon="db"
+          onClose={() => setOuvert(false)}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setImbriquee(true)}>
+                Tester la connexion
+              </Button>
+              <span style={{ flex: 1 }} />
+              <Button variant="secondary" onClick={() => setOuvert(false)}>
+                Annuler
+              </Button>
+              <Button>Enregistrer &amp; ouvrir</Button>
+            </>
+          }
+        >
+          <div style={{ padding: 16, display: 'grid', gap: 12 }}>
+            <Field label="Nom de la base" defaultValue="analytics" />
+            <Field label="Hôte" mono defaultValue="db-analytics.internal" />
+          </div>
+        </Modal>
+      )}
+
+      {imbriquee && (
+        <Modal title="Connexion impossible" icon="warn" nested onClose={() => setImbriquee(false)}>
+          <div style={{ padding: '9px 16px 16px' }}>
+            <p style={{ margin: 0, color: 'var(--ink-6)' }}>
+              Le bastion a refusé la clé. La base n’a pas été contactée.
+            </p>
+            <Button variant="dark" onClick={() => setImbriquee(false)}>
+              Fermer
+            </Button>
+          </div>
+        </Modal>
+      )}
+    </Section>
+  )
+}
+
 export function Gallery() {
   return (
     <div className={styles.root}>
@@ -842,6 +1057,10 @@ export function Gallery() {
       <ToggleGallery />
       <BadgeGallery />
       <ChipGallery />
+      <RadioGroupGallery />
+      <SelectGallery />
+      <CollapsiblePanelGallery />
+      <ModalGallery />
       <DotGallery />
       <SplitPaneGallery />
       <TabStripGallery />

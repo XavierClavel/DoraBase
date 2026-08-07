@@ -109,6 +109,22 @@ cinq endroits où le mockup ne répond pas, et où la vraie réponse appartient 
 5. **Le panneau proxy replié, et sans tunnel, n'est pas maquetté.** `08c` rend l'en-tête
    seul et fait disparaître le badge « SSH activé » — la seule lecture cohérente.
 
+**Les feux tricolores ne peuvent pas être grisés derrière une modale** (relevé le 7 août
+2026, en implémentant `08a`). Le mockup les met en `#DCD6CB` pour signaler que la fenêtre
+est bloquée. Or `tauri.conf.json` déclare `titleBarStyle: "Overlay"` avec `hiddenTitle` :
+ce sont les vrais boutons de macOS, dessinés par le système par-dessus notre fenêtre, hors
+d'atteinte du CSS. macOS ne les ternit que si la fenêtre perd le focus, ce qu'une modale
+**interne** ne provoque pas.
+
+Trois moyens envisagés, tous refusés : dessiner nos propres feux (il faudrait réimplémenter
+leur comportement, leur survol et leurs trois icônes, pour un gain purement esthétique) ;
+passer en `decorations: false` (même travail, en pire) ; désactiver la fenêtre le temps de
+la modale (elle cesserait d'être déplaçable et fermable — hostile).
+
+`08b` implémente donc les deux autres effets du mockup, qui portent la même intention :
+`opacity .55` sur le wordmark et `filter: saturate(.6)` sur la barre entière. L'écart tient
+à trois pastilles de 11 px. À confirmer avec le design, ou à assumer.
+
 **« Connecté » ne dira pas toute la vérité tant que le TLS n'est pas branché.** `06b`
 emploie `NoTls` : un test en `require` ou `verify-full` réussit sans que rien n'ait été
 vérifié. `08d` ajoute donc « · TLS non vérifié » au résultat inline quand le mode demandé

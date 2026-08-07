@@ -6,6 +6,7 @@
   --accent-deeper: #A83F19;
   --bar: #F5F0E6;
   --border: rgba(35,32,28,.14);
+  --border-dashed: rgba(35,32,28,.2);
   --border-field: rgba(35,32,28,.16);
   --canvas: #EFEAE0;
   --danger: #D9432F;
@@ -13,6 +14,7 @@
   --danger-bg-2: #FCEAE5;
   --danger-ink: #B0331F;
   --danger-ink-2: #8E2A19;
+  --danger-ink-3: #C6321E;
   --dark: #23201C;
   --dark-2: #2E2A25;
   --divider: rgba(35,32,28,.10);
@@ -90,6 +92,7 @@
   --rowh-max: 36px;
   --rowh-min: 20px;
   --shadow-accent: 0 5px 12px -5px color-mix(in oklab, var(--accent) 70%, transparent);
+  --shadow-accent-2: 0 4px 10px -4px color-mix(in oklab, var(--accent) 70%, transparent);
   --shadow-cell: 0 6px 16px -6px rgba(35,32,28,.40);
   --shadow-focus: 0 0 0 2px color-mix(in oklab, var(--accent) 45%, transparent);
   --shadow-modal: 0 30px 70px -18px rgba(35,32,28,.55);
@@ -125,6 +128,8 @@
   --track-off: rgba(35,32,28,.18);
   --tracking-caps: .7px;
   --tracking-caps-sm: .6px;
+  --veil: rgba(35,32,28,.28);
+  --veil-2: rgba(35,32,28,.45);
   --violet: #7C5CD6;
   --violet-bg: #EEEAFA;
   --violet-ink: #5B47AE;

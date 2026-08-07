@@ -12,7 +12,7 @@ les options des sélecteurs viennent du modèle, pas d'une liste recopiée dans 
 
 ## Périmètre
 
-- La modale au-dessus de la coquille de `03`, avec les feux grisés derrière.
+- La modale au-dessus de la coquille de `03`, la barre de titre ternie derrière.
 - Le sélecteur de moteur : sept boutons, monogrammes colorés, ordre du handoff.
 - Le formulaire : nom, projet, variante d'environnement, hôte, port, base par défaut,
   utilisateur, mot de passe, mode SSL, deux bascules.
@@ -81,17 +81,33 @@ graisse 700 au lieu de 600. La bordure de 1.5 px change la boîte : sans
 Le mockup ne montrant pas de `dev` actif (voir `08a`), l'implémentation applique l'état
 accent générique et la question reste ouverte au § « À trancher » de `specs/README.md`.
 
-### Les feux passent au gris
+### La barre de titre se ternit, mais les feux ne peuvent pas
 
-La barre de titre derrière la modale a ses trois feux en `#DCD6CB` et son wordmark à
-`opacity .55`, avec `filter: saturate(.6)` sur la barre entière. C'est ce qui signale
-visuellement que la fenêtre est bloquée. Détail du mockup, pas de la prose.
+Le mockup grise les trois feux en `#DCD6CB`, met le wordmark à `opacity .55` et applique
+`filter: saturate(.6)` à la barre entière.
+
+**Les feux sont hors de portée.** `tauri.conf.json` déclare
+`titleBarStyle: "Overlay"` avec `hiddenTitle` : ce sont les vrais boutons de macOS, dessinés
+par le système par-dessus notre fenêtre, et aucun CSS ne les atteint. macOS les ternit
+lui-même quand la fenêtre perd le focus — ce qu'une modale **interne** ne provoque pas.
+
+Trois façons de les griser, toutes refusées : dessiner nos propres feux (il faudrait alors
+réimplémenter leur comportement, leur survol et leurs trois icônes, pour un gain
+esthétique) ; passer la fenêtre en `decorations: false` (même problème, en pire) ;
+désactiver la fenêtre le temps de la modale (elle cesserait d'être déplaçable et
+fermable, ce qui est franchement hostile).
+
+Ce qui est donc implémenté : `opacity .55` sur le wordmark et `saturate(.6)` sur la barre.
+L'intention du mockup — « la fenêtre est bloquée » — passe par ces deux effets, qui
+couvrent toute la barre sauf trois pastilles de 11 px. Écart consigné au § « À trancher »
+de `specs/README.md`, avec les moyens envisagés et leur coût.
 
 ## Terminé quand
 
 - Comparaison visuelle complète contre `A2` du mockup, sans écart relevé.
 - Comparaison au pixel des fonds, du voile et du bouton accent, identique octet pour
-  octet — la méthode de `07`.
+  octet — la méthode de `07`. **Les trois feux sont exclus de la comparaison**, et la
+  raison est écrite dans le test plutôt que déduite d'un masque muet.
 - Les sept moteurs sont là, dans l'ordre du handoff, deux sans monogramme.
 - La grille tient à 960×600 (minimum) et à 1600×900 : la modale de 820 px doit rester
   entièrement visible au minimum, ce qui est **à vérifier et non à supposer**.

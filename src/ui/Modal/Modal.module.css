@@ -1,0 +1,155 @@
+/*
+ * Modale, relevée sur A2 (nouvelle connexion) et A3 (sous-modale d'échec).
+ *
+ *   variante  | largeur | radius            | voile        | en-tête
+ *   ----------|---------|-------------------|--------------|------------------
+ *   base (A2) | 820px   | --radius-window   | --veil (.28) | 44px, croix
+ *   nested(A3)| 436px   | --radius-panel-3  | --veil-2(.45)| pas de croix
+ *
+ * La sous-modale de A3 n'a **pas** de croix : son pied porte un unique bouton
+ * « Fermer » avec le rappel `esc`. Vérifié sur le mockup.
+ *
+ * `<dialog>` n'est pas employé, et c'est un choix : il impose son propre `::backdrop`
+ * et sa propre pile de superposition (top layer), où deux voiles superposés — ce que A3
+ * exige — ne se composent pas. Le prix est de câbler `esc`, le piège de focus et
+ * `aria-modal` à la main, ce que fait `Modal.tsx` avec un test par exigence.
+ */
+
+.veil {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  /* A2 aligne la modale en haut, à 34px — **pas** centrée verticalement. Relevé sur le
+   * mockup, où `padding-top:34px` accompagne `align-items:flex-start`. */
+  padding-top: 34px;
+  background: var(--veil);
+}
+
+/* Le second voile de A3 se superpose au premier. Plus opaque, et sans le décalage haut :
+ * la sous-modale est centrée dans la fenêtre, pas alignée sur la modale du dessous. */
+.veilNested {
+  z-index: 200;
+  align-items: center;
+  padding-top: 0;
+  background: var(--veil-2);
+}
+
+.shell {
+  position: relative;
+  width: 820px;
+  /* La fenêtre descend à 960px de large (minWidth de tauri.conf.json). 820px y tient,
+   * mais sans marge : `max-width` évite que la modale déborde si la contrainte bouge. */
+  max-width: calc(100% - 2 * var(--space-6));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-window);
+  background: var(--paper);
+  box-shadow: var(--shadow-modal);
+}
+
+.shellNested {
+  width: 436px;
+  border-radius: var(--radius-panel-3);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 44px;
+  padding: 0 var(--space-7);
+  border-bottom: 1px solid var(--divider);
+  background: var(--field);
+}
+
+/* A3 n'a pas de bande d'en-tête séparée : la pastille et le titre vivent dans le corps,
+ * sans filet ni fond blanc. Le sélecteur reste sur `.header` pour garder un seul
+ * squelette, en neutralisant ce qui ne s'applique pas. */
+.shellNested .header {
+  height: auto;
+  padding: var(--space-7) var(--space-7) 0;
+  border-bottom: none;
+  background: transparent;
+}
+
+.badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-field);
+  background: var(--engine-pg-bg);
+  color: var(--engine-pg);
+}
+
+.badgeNested {
+  width: 30px;
+  height: 30px;
+  background: var(--danger);
+  color: var(--ink-on-accent);
+}
+
+.title {
+  font-family: var(--font-title);
+  font-size: var(--text-title);
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+}
+
+.titleNested {
+  font-family: var(--font-ui);
+  /* 14px, pas les 14.5px de A2 : relevé sur le mockup. `--text-wordmark` porte déjà cette
+   * valeur — la réemployer plutôt que d'ajouter un jeton à 0.5px d'un existant, ce que
+   * `Field` a déjà tranché pour l'encre secondaire. */
+  font-size: var(--text-wordmark);
+  font-weight: var(--weight-bold);
+  color: var(--danger-ink-2);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink-4);
+  cursor: pointer;
+}
+
+.close:focus-visible {
+  outline: none;
+  border-radius: var(--radius-badge-2);
+  box-shadow: var(--shadow-focus);
+}
+
+.body {
+  /* Aucun remplissage ici : A2 pose des marges différentes par bloc (14/16px pour le
+   * sélecteur de moteur, 16px pour la grille, 0 16px pour le panneau proxy). Un padding
+   * commun forcerait chaque bloc à le compenser. */
+  padding: 0;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 56px;
+  padding: 0 var(--space-7);
+  border-top: 1px solid var(--divider);
+  background: var(--field);
+}
+
+.shellNested .footer {
+  height: 46px;
+  justify-content: flex-end;
+}

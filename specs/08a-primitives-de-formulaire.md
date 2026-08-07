@@ -18,8 +18,9 @@ modale se superpose à la coquille).
 - **`Select`** : le champ à chevron de `A2` — mode SSL, projet.
 - **`CollapsiblePanel`** : l'encadré à chevron du panneau proxy de `A2`.
 - **`RadioGroup`** : le groupe de boutons exclusifs — moteur, variante d'environnement.
-- Les deux couleurs manquantes du handoff : `#C6321E` (ligne d'échec du log de `A3`) et
-  `#DCD6CB` (feux grisés quand une modale est ouverte).
+- Les jetons manquants : `--veil` et `--veil-2` (les deux voiles superposés de `A2` et
+  `A3`), `--danger-ink-3` (`#C6321E`, la ligne de cause du log de `A3`), et
+  `--border-dashed` (le seul pointillé du handoff, sur le port local de `08c`).
 
 ## Hors périmètre
 
@@ -104,5 +105,6 @@ est consignée dans `specs/README.md` § « À trancher » plutôt que tranchée
 - `RadioGroup` expose `role="radiogroup"` et `aria-checked`, et se pilote aux flèches.
 - `CollapsiblePanel` replié n'a pas son contenu dans l'arbre d'accessibilité.
 - Aucune couleur littérale hors `tokens.json`, garde-fou `tokens:check` vert.
+- **`#DCD6CB` n'est pas ajouté** : voir la note de `08b` sur les feux.
 - Les trois faits de mise en page que jsdom ne voit pas sont dans `e2e/`.
 - Un sabotage de chacune des trois exigences de focus fait échouer un test distinct.
