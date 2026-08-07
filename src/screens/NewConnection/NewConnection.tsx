@@ -2,16 +2,26 @@ import { useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import { Button } from '../../ui/Button/Button'
 import { Modal } from '../../ui/Modal/Modal'
-import { type ConnectionDraft, emptyDraft } from './ConnectionDraft'
+import { type ConnectionDraft, emptyDraft, emptyTunnel, type TunnelDraft } from './ConnectionDraft'
 import { ConnectionForm } from './ConnectionForm'
 import { EngineSelector } from './EngineSelector'
 import { ENGINES, IMPLEMENTED_ENGINES } from './engines'
 import styles from './NewConnection.module.css'
+import { ouvrirSelecteurDeCle } from './ouvrirSelecteurDeCle'
+import { TunnelPanel } from './TunnelPanel'
 
 type NewConnectionProps = {
   onClose: () => void
   /** Les projets existants. Vide, l'enregistrement sera refusé par `08e`. */
   projects?: readonly { id: string; name: string }[]
+  /**
+   * Ouvre le sélecteur de fichier de la clé privée.
+   *
+   * Injecté pour que le câblage du bouton « Parcourir… » soit testable : le plugin `dialog`
+   * ne répond pas hors de la webview, donc sous Vitest l'appel réel rejetterait. Par défaut,
+   * c'est l'appel réel.
+   */
+  onBrowseKey?: () => Promise<string | null>
 }
 
 /**
@@ -22,11 +32,34 @@ type NewConnectionProps = {
  * boutons du pied sont présents et inertes, comme ceux de `A1` l'ont été jusqu'ici — un
  * bouton absent ferait croire que la fonction n'est pas prévue.
  */
-export function NewConnection({ onClose, projects = [] }: NewConnectionProps) {
+export function NewConnection({
+  onClose,
+  projects = [],
+  onBrowseKey = ouvrirSelecteurDeCle,
+}: NewConnectionProps) {
   const [draft, setDraft] = useState<ConnectionDraft>(emptyDraft)
+  // Le panneau proxy est replié à l'ouverture : le mockup le montre déplié, mais il y montre
+  // aussi un tunnel configuré. Pour une connexion neuve, déplier un bloc vide de cinq champs
+  // pousserait vers le bas ce que l'utilisateur doit remplir d'abord.
+  const [tunnelOuvert, setTunnelOuvert] = useState(false)
 
   function patch(changes: Partial<ConnectionDraft>) {
     setDraft((previous) => ({ ...previous, ...changes }))
+  }
+
+  /**
+   * Toucher un champ du panneau **crée** le tunnel s'il n'existe pas.
+   *
+   * L'utilisateur qui saisit un bastion déclare par là qu'il en veut un ; lui demander de
+   * cocher une case en plus serait une étape que le handoff ne maquette pas. `05a` garde
+   * l'absence représentable (`Option<Tunnel>`), et c'est ce qui compte : `06b` refuse une
+   * variante déclarant un tunnel qu'on n'a pas ouvert.
+   */
+  function patchTunnel(changes: Partial<TunnelDraft>) {
+    setDraft((previous) => ({
+      ...previous,
+      tunnel: { ...(previous.tunnel ?? emptyTunnel()), ...changes },
+    }))
   }
 
   const engineImplemented = IMPLEMENTED_ENGINES.includes(draft.engine)
@@ -67,6 +100,13 @@ export function NewConnection({ onClose, projects = [] }: NewConnectionProps) {
     >
       <EngineSelector value={draft.engine} onValueChange={(engine) => patch({ engine })} />
       <ConnectionForm draft={draft} onChange={patch} projects={projects} />
+      <TunnelPanel
+        tunnel={draft.tunnel}
+        onChange={patchTunnel}
+        open={tunnelOuvert}
+        onOpenChange={setTunnelOuvert}
+        onBrowse={onBrowseKey}
+      />
     </Modal>
   )
 }

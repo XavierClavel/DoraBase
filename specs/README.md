@@ -188,9 +188,9 @@ propres critères de vérification.
 | Spec | Écran | Scope | État |
 | --- | --- | --- | --- |
 | [`07`](07-a1-accueil.md) | A1 | Première ouverture, aucun projet | **fait** |
-| [`08a`](08a-primitives-de-formulaire.md) | — | Primitives : `Modal`, `Select`, `CollapsiblePanel`, `RadioGroup` | écrite |
-| [`08b`](08b-a2-modale-et-formulaire.md) | A2 | Coquille de modale, sélecteur de moteur, formulaire principal | écrite |
-| [`08c`](08c-a2-panneau-proxy-tunnel.md) | A2 | Panneau proxy / tunnel | écrite |
+| [`08a`](08a-primitives-de-formulaire.md) | — | Primitives : `Modal`, `Select`, `CollapsiblePanel`, `RadioGroup` | **fait** |
+| [`08b`](08b-a2-modale-et-formulaire.md) | A2 | Coquille de modale, sélecteur de moteur, formulaire principal | **fait** |
+| [`08c`](08c-a2-panneau-proxy-tunnel.md) | A2 | Panneau proxy / tunnel | **fait** (sélecteur de fichier non observé) |
 | [`08d`](08d-tester-la-connexion.md) | A2 + A3 | « Tester la connexion » : pont IPC réel, et sous-modale d'échec | écrite |
 | [`08e`](08e-enregistrer-et-ouvrir.md) | A2 | « Enregistrer & ouvrir » : config + secret | écrite |
 | `09` | A4 | Explorateur : projets → bases → schémas → tables | à écrire |

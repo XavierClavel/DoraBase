@@ -25,7 +25,7 @@ plan par plan.
 | `AGENTS.md` | conventions du projet — langue de travail, taille des specs |
 | `specs/README.md` | index des ~20 specs, contrainte IPC transverse, **acquis techniques**, **décisions à trancher** |
 | `specs/01`–`04`, `05a`–`05c`, `06a`–`06e`, `07` | treize specs, **toutes implémentées** |
-| `specs/08a`–`08e` | cinq specs ; `08a` et `08b` **faites**, `08c`–`08e` à faire |
+| `specs/08a`–`08e` | cinq specs ; `08a`, `08b`, `08c` **faites**, `08d`–`08e` à faire |
 | `plans/2026-07-31-*`, `plans/2026-08-05-*` | les plans d'implémentation, tâche par tâche, avec les **pièges vérifiés** |
 | `design/handoff/` | le handoff, **source de vérité du design** |
 
@@ -280,6 +280,23 @@ des tests verts au moment où il a été introduit.
    du module de test, faute de pouvoir construire un `SshTunnel` sans bastion. C'est le même
    défaut que sur l'atomicité de `05b` (point 5). Corrigé en extrayant `Surveillance`, un
    type que le tunnel **et** le test appellent.
+31. **Tauri valide ses permissions à la compilation.** Une permission inexistante fait échouer
+   le *build script*, donc n'atteint jamais un test qui lirait `capabilities/default.json`. Le
+   sabotage utile est donc une permission **valable mais non justifiée** (`dialog:allow-save`),
+   pas une inventée. `src-tauri/tests/permissions.rs` garde la liste et refuse tout
+   `<plugin>:default` — `dialog:default` accordait `ask`, `confirm`, `message`, `open` et
+   `save`, vérifié dans la sortie du build script.
+32. **`aria-label` sur un élément sans rôle est ignoré.** Le port local mappé était un
+   `<div aria-label="Port local mappé">` : `getByLabelText` le trouvait en test, un lecteur
+   d'écran n'aurait rien annoncé. Biome l'a signalé (`useAriaPropsSupportedByRole`) et avait
+   raison. L'élément juste est `<output>` — « le résultat d'un calcul de l'application », ce
+   qu'est exactement ce port — qui est *labelable*, donc nommé par un vrai `<label for>`, et
+   n'est éditable ni focalisable par nature : plus solide qu'un `aria-disabled` qui l'affirme.
+33. **Un `<label>` est inline, un `<div>` est bloc.** Remplacer l'un par l'autre pour la même
+   classe CSS a décalé de deux pixels tout ce qui suivait, et fait échouer la capture de
+   référence. `display: block` posé explicitement sur la classe — après quoi la référence passe
+   **sans régénération**, ce qui prouve que le changement de sémantique est pixel-identique.
+
 26. **`content-box` corrige la hauteur et casse la largeur.** `02` avait imposé
    `box-sizing: content-box` sur `Field` pour que `--h-field` signifie la hauteur du contenu,
    comme dans le mockup — raisonnement juste. Mais en `content-box`, `width: 100%` désigne la
@@ -518,7 +535,7 @@ appelé. L'enregistrement des commandes est garanti par la compilation ; le pont
 | --- | --- |
 | `08a` | **fait** — `Modal`, `Select`, `CollapsiblePanel`, `RadioGroup` + galerie |
 | `08b` | **fait** — A2 : coquille, sélecteur de moteur, formulaire (zéro comportement) |
-| `08c` | A2 : panneau proxy / tunnel |
+| `08c` | **fait** — A2 : panneau proxy / tunnel |
 | `08d` | « Tester la connexion » — **premier passage réel du pont JS → Rust** — et A3 |
 | `08e` | « Enregistrer & ouvrir » : config + secret, première persistance du produit |
 

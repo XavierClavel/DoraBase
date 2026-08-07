@@ -218,3 +218,105 @@ test('à 960 px la modale reste entièrement visible et la grille tient', async 
   expect(etat?.droite).toBeGreaterThanOrEqual(0)
   expect(etat?.debordeEnLargeur).toBe(false)
 })
+
+// --- Panneau proxy / tunnel (08c) -------------------------------------------------------
+
+async function deplierTunnel(page: import('@playwright/test').Page) {
+  await page.getByRole('button', { name: /Proxy \/ tunnel/ }).click()
+  await page.waitForSelector('input[inputmode=numeric] >> nth=1')
+}
+
+test('les champs du panneau font 28 px, contre 30 pour le formulaire', async ({ page }) => {
+  await deplierTunnel(page)
+
+  const mesures = await page.evaluate(() => {
+    const panneau = [...document.querySelectorAll('section')].find((s) =>
+      s.textContent?.includes('Proxy / tunnel'),
+    )
+    if (!panneau) return null
+    const hauteur = (el: Element | null) =>
+      el ? Math.round(el.getBoundingClientRect().height) : null
+    return {
+      champs: [...panneau.querySelectorAll('input')].map((i) =>
+        hauteur(i.parentElement?.className.includes('wrap') ? i.parentElement : i),
+      ),
+      select: hauteur(panneau.querySelector('select')?.parentElement ?? null),
+      portLocal: hauteur(panneau.querySelector('output')),
+    }
+  })
+
+  // 28 px de contenu plus les 2 px de bordure. Deux pixels de moins que le formulaire
+  // principal : c'est ce qui donne au panneau son aspect de bloc secondaire, et l'aligner
+  // sur 30 l'effacerait.
+  expect(new Set(mesures?.champs)).toHaveProperty('size', 1)
+  expect(mesures?.champs[0]).toBe(30)
+  expect(mesures?.select).toBe(30)
+  expect(mesures?.portLocal).toBe(30)
+})
+
+test('la grille du panneau suit 130px 1fr 84px 1fr', async ({ page }) => {
+  await deplierTunnel(page)
+
+  const largeurs = await page.evaluate(() => {
+    const grille = document.querySelector('[class*=tunnelGrid]')
+    if (!grille) return null
+    return getComputedStyle(grille)
+      .gridTemplateColumns.split(' ')
+      .map((v) => Math.round(Number.parseFloat(v)))
+  })
+
+  // Rien de commun avec le `1fr 1fr` du formulaire principal : les factoriser serait une
+  // abstraction fausse. Les deux `1fr` se partagent ce qui reste des 788 px intérieurs.
+  expect(largeurs?.[0]).toBe(130)
+  expect(largeurs?.[2]).toBe(84)
+  expect(largeurs?.[1]).toBe(largeurs?.[3])
+})
+
+test('le port local mappé est en pointillés, seul du formulaire', async ({ page }) => {
+  await deplierTunnel(page)
+
+  const styles = await page.evaluate(() => {
+    const local = document.querySelector('output')
+    if (!local) return null
+    const s = getComputedStyle(local)
+    // Combien d'autres éléments du formulaire ont une bordure en pointillés ?
+    const pointilles = [...document.querySelectorAll('[role=dialog] *')].filter(
+      (el) => getComputedStyle(el).borderTopStyle === 'dashed',
+    ).length
+    return {
+      style: s.borderTopStyle,
+      largeur: Math.round(local.getBoundingClientRect().width),
+      pointilles,
+    }
+  })
+
+  expect(styles?.style).toBe('dashed')
+  expect(styles?.largeur).toBe(220)
+  // Le seul pointillé du handoff : s'il en apparaissait un second, c'est que quelqu'un a
+  // réemployé la classe pour autre chose que « affiché, pas saisissable ».
+  expect(styles?.pointilles).toBe(1)
+})
+
+test('le badge « SSH activé » apparaît quand un bastion est saisi', async ({ page }) => {
+  await deplierTunnel(page)
+  await expect(page.getByText('SSH activé')).toHaveCount(0)
+
+  await page.getByLabel('Hôte du bastion').fill('bastion.example')
+  await expect(page.getByText('SSH activé')).toHaveCount(1)
+})
+
+test('la modale reste dans la fenêtre avec le panneau déplié', async ({ page }) => {
+  await deplierTunnel(page)
+
+  const etat = await page.evaluate(() => ({
+    debordeEnLargeur: document.documentElement.scrollWidth > window.innerWidth,
+    hauteurModale: Math.round(
+      document.querySelector('[role=dialog]')?.getBoundingClientRect().height ?? 0,
+    ),
+  }))
+
+  // La hauteur peut dépasser la fenêtre à 600 px — c'est attendu et le mockup lui-même fait
+  // 748 px de corps. La largeur, elle, ne doit jamais déborder.
+  expect(etat.debordeEnLargeur).toBe(false)
+  expect(etat.hauteurModale).toBeGreaterThan(500)
+})

@@ -28,8 +28,14 @@
 }
 
 /* Même style que l'étiquette de `Field` : la variante d'environnement est un `RadioGroup`,
- * qui n'a pas d'étiquette visible à lui, mais doit s'aligner sur ses voisins de rangée. */
+ * qui n'a pas d'étiquette visible à lui, mais doit s'aligner sur ses voisins de rangée.
+ *
+ * `display: block` est **explicite** parce que cette classe habille tantôt un `<div>` (la
+ * variante d'environnement), tantôt un `<label>` (le port local mappé). Un `<label>` est
+ * inline par défaut : sa boîte de ligne diffère de celle d'un bloc, ce qui décalait tout ce
+ * qui suit de deux pixels et a fait échouer la capture de référence. */
 .label {
+  display: block;
   margin-bottom: var(--space-1);
   font-family: var(--font-ui);
   font-size: var(--text-label);
@@ -169,6 +175,73 @@
 
 .toggleLabelOff {
   color: var(--ink-2);
+}
+
+/* --- Panneau proxy / tunnel (08c) ---
+ *
+ * Marge latérale seule, 16px : le mockup ne pose ni marge haute ni marge basse sur ce bloc,
+ * l'espacement venant du remplissage du formulaire au-dessus et du pied en dessous.
+ */
+.tunnelBlock {
+  padding: 0 var(--space-8);
+}
+
+/* Grille propre au panneau : `130px 1fr 84px 1fr`, rien de commun avec le `1fr 1fr` du
+ * formulaire principal. Les factoriser serait une abstraction fausse. */
+.tunnelGrid {
+  display: grid;
+  grid-template-columns: 130px 1fr 84px 1fr;
+  gap: 10px;
+}
+
+/* Rangée pleine largeur : clé privée puis port local mappé. */
+.tunnelKeyRow {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 1fr 220px;
+  gap: 10px;
+}
+
+/* Le bouton « Parcourir… » vit **dans** la boîte du champ, sous la même bordure. Fond
+ * `--muted`, 20px de haut, radius 6px — relevé sur le mockup. */
+.browse {
+  display: flex;
+  align-items: center;
+  flex: none;
+  height: 20px;
+  padding: 0 var(--space-5);
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--muted);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+
+.browse:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* Le port local : **le seul champ en pointillés du handoff**, et le seul non saisissable.
+ * Ce n'est pas un `<input disabled>` mais un `<div>` : il n'y a rien à saisir, et un input
+ * désactivé resterait dans le DOM comme un contrôle — trompeur pour qui lit le formulaire à
+ * la voix. `aria-disabled` porte l'état. */
+.localPort {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 30px;
+  padding: 0 var(--space-5);
+  border: 1px dashed var(--border-dashed);
+  border-radius: var(--radius-field);
+  background: var(--muted);
+  color: var(--ink-8);
+  font-family: var(--font-mono);
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
 }
 
 .flask {

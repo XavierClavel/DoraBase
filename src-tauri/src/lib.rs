@@ -9,6 +9,10 @@ pub mod secrets;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // **Ouverture seule.** `capabilities/default.json` n'accorde que `dialog:allow-open`,
+        // pas `dialog:default` — celui-ci ajouterait la sauvegarde, les messages et la
+        // confirmation, dont rien n'a besoin. Gardé par `tests/permissions.rs`.
+        .plugin(tauri_plugin_dialog::init())
         .manage(config::ConfigState::new())
         .invoke_handler(tauri::generate_handler![
             config::commands::load_config,

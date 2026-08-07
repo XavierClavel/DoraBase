@@ -27,6 +27,44 @@ export type ConnectionDraft = {
   sslMode: SslMode
   readOnly: boolean
   reconnectOnStartup: boolean
+  /**
+   * Le tunnel SSH, quand la connexion passe par un bastion. `null` sinon.
+   *
+   * **`null` et non un objet à champs vides** : `EnvironmentVariant.tunnel` de `05a` est
+   * `Option<Tunnel>`, et `06b` refuse une variante déclarant un tunnel qu'on n'a pas ouvert.
+   * Un objet vide se convertirait en `Some(Tunnel { host: "" })`, donc en tentative de
+   * connexion vers un bastion sans nom. L'absence doit rester représentable.
+   */
+  tunnel: TunnelDraft | null
+}
+
+/**
+ * Le panneau « Proxy / tunnel » de `A2`, tel qu'il est saisi.
+ *
+ * `kind` est absent : `05a` modélise `TunnelKind` en énumération d'un seul membre (`ssh`), et
+ * le mockup ne montre que « SSH » dans son sélecteur. Le champ existe à l'écran — le mockup le
+ * montre — mais sa valeur est constante, donc la garder ici serait un état qui ne varie pas.
+ * `08e` la posera à la conversion. Le jour où un second type apparaît, il entrera ici.
+ */
+export type TunnelDraft = {
+  bastionHost: string
+  /** Chaîne, même raison que `port` : un champ de saisie passe par des états invalides. */
+  bastionPort: string
+  username: string
+  privateKeyPath: string
+  /**
+   * Le port local **choisi par l'app**, pas saisi. `null` tant qu'aucun tunnel n'est ouvert.
+   *
+   * `A2` affiche « auto (63342) » : le nombre est le port réellement retenu, que
+   * `SshTunnel::port_local` rend déjà (`06e`). Inventer un numéro avant l'ouverture serait un
+   * mensonge, et « auto (0) » serait pire — d'où `null`, qui n'affiche que « auto ».
+   */
+  localPort: number | null
+}
+
+/** Un tunnel neuf : le port 22 est celui de SSH, le reste est à saisir. */
+export function emptyTunnel(): TunnelDraft {
+  return { bastionHost: '', bastionPort: '22', username: '', privateKeyPath: '', localPort: null }
 }
 
 /**
@@ -56,5 +94,7 @@ export function emptyDraft(): ConnectionDraft {
     sslMode: 'prefer',
     readOnly: true,
     reconnectOnStartup: false,
+    // Pas de tunnel par défaut : le panneau de `A2` s'ouvre replié et sans badge.
+    tunnel: null,
   }
 }
