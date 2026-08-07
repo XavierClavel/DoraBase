@@ -176,12 +176,23 @@ test('les trois boutons du pied sont présents', () => {
   expect(screen.getByRole('button', { name: /Enregistrer & ouvrir/ })).toBeInTheDocument()
 })
 
-// « Tester » et « Enregistrer » sont inertes dans ce scope (`08d` et `08e` les branchent),
-// mais **présents et actifs** : un bouton désactivé sans explication ferait croire à un bug.
-test('« Tester » et « Enregistrer » sont présents et non désactivés', () => {
-  monter()
+// Un bouton désactivé sans explication ferait croire à un bug : les deux sont donc actifs dès
+// qu'il y a un projet où enregistrer.
+test('« Tester » et « Enregistrer » sont actifs quand un projet existe', () => {
+  monter([{ id: 'print', name: 'Atelier Nord' }])
   expect(screen.getByRole('button', { name: /Tester la connexion/ })).toBeEnabled()
   expect(screen.getByRole('button', { name: /Enregistrer & ouvrir/ })).toBeEnabled()
+})
+
+// Le trou n°4 du handoff : `A2` déclare une base *dans un projet existant*, et `⌘N` y mène
+// directement. Le bouton est donc désactivé, et le sélecteur le dit — plutôt que d'inventer un
+// formulaire de création de projet que le mockup ne montre pas.
+test('sans aucun projet, « Enregistrer » est désactivé mais « Tester » reste actif', () => {
+  monter()
+  expect(screen.getByRole('button', { name: /Enregistrer & ouvrir/ })).toBeDisabled()
+  // Tester une connexion n'exige aucun projet : c'est justement ce qu'on veut pouvoir faire
+  // avant de s'engager.
+  expect(screen.getByRole('button', { name: /Tester la connexion/ })).toBeEnabled()
 })
 
 test('« Annuler » ferme la modale', async () => {

@@ -59,6 +59,15 @@ export type Project = { name: string,
 activeEnvironment: Environment, databases: Array<Database>, };
 
 /**
+ * Ce que `A2` envoie en cliquant « Enregistrer & ouvrir ».
+ *
+ * Le mot de passe est **en clair et séparé**, comme dans `ConnectionRequest` de `08d` : aucune
+ * `SecretRef` n'existe avant que le secret soit rangé, et c'est justement le travail de cette
+ * commande. La variante reçue porte donc `password: null`, que `enregistrer` remplace.
+ */
+export type SaveDatabaseRequest = { project: string, database: string, engine: Engine, variant: EnvironmentVariant, password: string | null, };
+
+/**
  * Le mécanisme réellement employé, tel que le front l'apprend.
  *
  * Le badge vert « Trousseau » de `A2` serait un mensonge en développement : l'écran doit

@@ -12,11 +12,20 @@ const REUSSI: ConnectionTest = {
   tlsUnverified: false,
 }
 
+// Un projet par défaut : sans aucun projet, « Enregistrer & ouvrir » est désactivé (`08e`),
+// ce qui masquerait l'effet du test de connexion sur ce bouton.
+const PROJETS = [{ id: 'print', name: 'Atelier Nord' }]
+
 function monter(onTest: (request: ConnectionRequest) => Promise<ConnectionTest>) {
   return render(
     <>
       <Sprite />
-      <NewConnection onClose={() => {}} onBrowseKey={async () => null} onTest={onTest} />
+      <NewConnection
+        onClose={() => {}}
+        projects={PROJETS}
+        onBrowseKey={async () => null}
+        onTest={onTest}
+      />
     </>,
   )
 }
@@ -185,17 +194,20 @@ test('« Enregistrer & ouvrir » est désactivé après un échec, réactivé ap
     return REUSSI
   })
 
-  const enregistrer = screen.getByRole('button', { name: /Enregistrer & ouvrir/ })
-  expect(enregistrer).toBeEnabled()
+  // Requêté à chaque étape plutôt que gardé dans une variable : `Button` reçoit un `disabled`
+  // qui change, et un nœud gardé pourrait être détaché par un rendu — le test échouerait alors
+  // pour une raison qui n'a rien à voir avec le sujet.
+  const enregistrer = () => screen.getByRole('button', { name: /Enregistrer & ouvrir/ })
+  expect(enregistrer()).toBeEnabled()
 
   await tester()
   const sous = await sousModale()
-  expect(enregistrer).toBeDisabled()
+  expect(enregistrer()).toBeDisabled()
 
   await userEvent.click(sous.getByRole('button', { name: /Fermer/ }))
   echoue = false
   await userEvent.click(screen.getByRole('button', { name: 'Retester' }))
-  await waitFor(() => expect(enregistrer).toBeEnabled())
+  await waitFor(() => expect(enregistrer()).toBeEnabled())
 })
 
 // Le handoff insiste : « La modale sous-jacente n'est pas surlignée en rouge ». L'erreur ne vit

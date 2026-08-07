@@ -17,6 +17,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             config::commands::load_config,
             config::commands::save_config,
+            config::commands::save_database,
             engine::commands::test_connection
         ])
         .setup(|app| {

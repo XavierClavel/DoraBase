@@ -8,11 +8,15 @@
 // `#[tauri::command]` génère à côté de chaque fonction, et qu'un `pub use` ne réexporte
 // pas. Les commandes se réfèrent donc par `config::commands::…` dans `lib.rs`.
 pub mod commands;
+mod enregistrer;
 mod model;
 mod query;
 mod store;
 
-pub use commands::{load_config, save_config, ConfigLoad, ConfigState};
+pub use commands::{
+    load_config, save_config, save_database, ConfigLoad, ConfigState, SaveDatabaseRequest,
+};
+pub use enregistrer::{enregistrer, reference_de, NouvelleBase, SaveError};
 pub use model::{
     Database, Engine, Environment, EnvironmentVariant, ModelError, Project, SecretRef, SslMode,
     Tunnel, TunnelKind,

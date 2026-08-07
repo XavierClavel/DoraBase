@@ -421,3 +421,36 @@ test('esc ferme la sous-modale sans fermer A2', async ({ page }) => {
   // Le pied garde son état d'échec : c'est ce que le handoff montre.
   await expect(page.getByRole('button', { name: 'Retester' })).toHaveCount(1)
 })
+
+// --- Enregistrement (08e) ---------------------------------------------------------------
+
+// Sans aucun projet, `A2` ne peut rien enregistrer : elle déclare une base *dans un projet
+// existant*, et le handoff ne maquette pas le parcours d'un utilisateur qui n'en a aucun.
+// Trou n°4, consigné au § « À trancher » de `specs/README.md`.
+test('sans projet, « Enregistrer » est désactivé et le sélecteur le dit', async ({ page }) => {
+  await expect(page.getByRole('button', { name: /Enregistrer & ouvrir/ })).toBeDisabled()
+  await expect(page.getByRole('combobox', { name: 'Projet' })).toContainText(/Aucun projet/)
+  // Tester une connexion, en revanche, n'exige aucun projet : c'est justement ce qu'on veut
+  // pouvoir faire avant de s'engager.
+  await expect(page.getByRole('button', { name: /Tester la connexion/ })).toBeEnabled()
+})
+
+test('le bouton désactivé porte l’habillage du handoff, pas seulement l’attribut', async ({
+  page,
+}) => {
+  const styles = await page.evaluate(() => {
+    const bouton = [...document.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('Enregistrer'),
+    )
+    if (!bouton) return null
+    const s = getComputedStyle(bouton)
+    return { fond: s.backgroundColor, texte: s.color, curseur: s.cursor }
+  })
+
+  // Le handoff donne `rgba(35,32,28,.14)` de fond et `rgba(35,32,28,.4)` de texte pour l'état
+  // désactivé de ce bouton (`A3` § pied). Un `disabled` sans habillage laisserait un bouton
+  // accent qui a l'air cliquable.
+  expect(styles?.fond).toBe('rgba(35, 32, 28, 0.14)')
+  expect(styles?.texte).toBe('rgba(35, 32, 28, 0.4)')
+  expect(styles?.curseur).toBe('not-allowed')
+})
