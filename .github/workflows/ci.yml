@@ -148,7 +148,39 @@ jobs:
         env:
           DORABASE_TEST_PG: postgres://dorabase:dorabase-test@localhost:5432/dorabase_test
 
-      - run: cargo test --features db-tests
+      # Le bastion SSH de `06e`, monté par le **même script** qu'en local. Le conteneur
+      # PostgreSQL est ici le *service container* de GitHub, dont le nom est engendré : le
+      # script le retrouve par son image. Une seule définition de décor pour les deux
+      # environnements, plutôt qu'une variante CI qu'on ne peut pas essayer localement — le
+      # défaut qui a fait échouer le garde `default-run` (voir `REPRISE.md` § 6).
+      - name: monter le bastion SSH
+        run: ./scripts/bastion-test.sh demarrer "$RUNNER_TEMP/bastion"
+
+      - name: tests, avec base et bastion
         working-directory: src-tauri
+        run: |
+          set -a
+          . "$RUNNER_TEMP/bastion/bastion.env"
+          set +a
+          cargo test --features db-tests
+        env:
+          DORABASE_TEST_PG: postgres://dorabase:dorabase-test@localhost:5432/dorabase_test
+
+      # Les tests SSH se **sautent** quand le décor manque, ce qui les rendrait invisibles si
+      # le bastion échouait à démarrer sans casser le job. Cette étape refuse ce silence.
+      - name: vérifier que les tests SSH ont bien tourné
+        working-directory: src-tauri
+        run: |
+          set -a
+          . "$RUNNER_TEMP/bastion/bastion.env"
+          set +a
+          sortie=$(cargo test --features db-tests tunnel -- --nocapture 2>&1)
+          if echo "$sortie" | grep -q "décor SSH absent"; then
+            echo "$sortie" | grep "décor SSH absent"
+            echo "::error::des tests SSH ont été sautés alors que le bastion est censé tourner"
+            exit 1
+          fi
+          echo "$sortie" | grep -c "^test engine::tunnel::tests_ssh" \
+            | xargs -I{} echo "{} tests SSH exécutés"
         env:
           DORABASE_TEST_PG: postgres://dorabase:dorabase-test@localhost:5432/dorabase_test

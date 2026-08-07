@@ -19,6 +19,7 @@ mod error;
 mod introspection;
 pub mod postgres;
 mod rows;
+pub mod tunnel;
 
 use std::future::Future;
 

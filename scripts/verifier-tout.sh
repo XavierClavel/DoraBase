@@ -32,6 +32,11 @@ etape() {
 etape "aucun sabotage résiduel" ./scripts/verifier-aucun-sabotage.sh
 etape "rust : format" cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check
 
+if [[ -n "${DORABASE_TEST_PG:-}" && -z "${DORABASE_TEST_SSH_HOST:-}" ]]; then
+  printf '\n\033[33m── Bastion SSH absent : les tests de tunnel (06e) seront sautés.\033[0m\n'
+  printf '\033[33m   ./scripts/bastion-test.sh demarrer /tmp/bastion && . /tmp/bastion/bastion.env\033[0m\n'
+fi
+
 if [[ -n "${DORABASE_TEST_PG:-}" ]]; then
   etape "rust : clippy (avec db-tests)" \
     cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features db-tests -- -D warnings
