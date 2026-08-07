@@ -36,6 +36,22 @@ pub enum Environment {
     Prod,
 }
 
+impl Environment {
+    /// La forme textuelle stable de l'environnement.
+    ///
+    /// Identique à ce que `serde` écrit dans la configuration, et employée par `08e` pour
+    /// dériver la référence d'un secret. **Ne pas la dériver de `Debug`** : celui-ci n'a
+    /// aucune garantie de stabilité, et une référence de secret qui change au fil des versions
+    /// rendrait des mots de passe introuvables.
+    pub fn slug(self) -> &'static str {
+        match self {
+            Self::Dev => "dev",
+            Self::Staging => "staging",
+            Self::Prod => "prod",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export_to = "config.ts")]
 #[serde(rename_all = "kebab-case")]

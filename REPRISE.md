@@ -25,7 +25,7 @@ plan par plan.
 | `AGENTS.md` | conventions du projet — langue de travail, taille des specs |
 | `specs/README.md` | index des ~20 specs, contrainte IPC transverse, **acquis techniques**, **décisions à trancher** |
 | `specs/01`–`04`, `05a`–`05c`, `06a`–`06e`, `07` | treize specs, **toutes implémentées** |
-| `specs/08a`–`08e` | cinq specs ; `08a`–`08d` **faites**, `08e` à faire |
+| `specs/08a`–`08e` | cinq specs, **toutes faites**. Deux vérifications à l'œil restent dues |
 | `plans/2026-07-31-*`, `plans/2026-08-05-*` | les plans d'implémentation, tâche par tâche, avec les **pièges vérifiés** |
 | `design/handoff/` | le handoff, **source de vérité du design** |
 
@@ -280,6 +280,27 @@ des tests verts au moment où il a été introduit.
    du module de test, faute de pouvoir construire un `SshTunnel` sans bastion. C'est le même
    défaut que sur l'atomicité de `05b` (point 5). Corrigé en extrayant `Surveillance`, un
    type que le tunnel **et** le test appellent.
+38. **Un `<select>` contrôlé dont la valeur n'est dans aucune option affiche la première, sans
+   le dire.** `A2` montrait « Atelier Nord » sélectionné alors que le brouillon portait encore
+   la chaîne vide : l'enregistrement visait donc un projet inexistant. **À l'écran, tout allait
+   bien** — c'est un test qui vérifiait le `project` de la requête qui l'a trouvé. Corrigé par un
+   effet qui aligne le brouillon sur ce que le select affiche, et qui couvre aussi le cas d'une
+   sélection devenue invalide.
+39. **Le handoff distingue « champ désactivé » et « bouton désactivé ».** `02` avait donné à
+   `Button:disabled` le `#F1ECE2` que la table des jetons attribue à un *champ* désactivé. Or la
+   prose du handoff nomme séparément l'état désactivé d'un **bouton** : `rgba(35,32,28,.14)` de
+   fond, `rgba(35,32,28,.4)` de texte. C'est sensiblement plus sombre — l'un est opaque, l'autre
+   est un voile d'encre — et un bouton trop clair a l'air cliquable. Relevé en construisant `08e`,
+   seul écran à montrer un bouton désactivé. D'où `--disabled`, qui a la même valeur que
+   `--border` et coexiste avec lui délibérément : le handoff les nomme séparément, et rien ne lie
+   un fond de bouton à une couleur de bordure.
+40. **Huit paramètres positionnels dont quatre chaînes, c'est une invitation à l'erreur.** Clippy
+   l'a signalé sur `enregistrer` ; rien n'empêchait d'échanger le nom du projet et celui de la
+   base. Regroupés en `NouvelleBase`, dont les champs sont nommés à l'appel.
+41. **Une dépendance de `useEffect` recréée à chaque rendu boucle.** Biome signalait `patch`
+   manquant dans les dépendances ; l'y déclarer relancerait l'effet indéfiniment. Le poseur d'état
+   de React (`setDraft`) est stable — c'est lui qu'il faut employer dans un effet.
+
 34. **Deux règles à une classe se départagent par l'ordre du bundle, et cet ordre bouge.**
    Prévu pour `.envDanger` en `08b`, **constaté** en `08d` pour `.envOption` : `RadioGroup` pose
    `padding: 0 12px` sur `.option`, `NewConnection` pose `0 10px` sur `.envOption`. Éditer
@@ -572,6 +593,17 @@ sera alors **observé** — pas automatisé, et à ne jamais présenter autremen
 
 L'ouverture du sélecteur de fichier de `08c` (« Parcourir… ») attend la même session.
 
+**La persistance de `08e` fonctionne, mais rien ne relit la configuration au démarrage.**
+`load_config` existe depuis `05b` et n'est appelée par personne, faute d'écran qui affiche des
+projets — c'est `09` (l'explorateur `A4`) qui la branchera. Conséquence exacte, à ne pas arrondir :
+une base enregistrée est **bien écrite sur le disque** (les tests Rust le prouvent, et le compteur
+de `A1` se met à jour pendant la session), mais elle **n'est pas relue au lancement suivant**.
+C'est une limite de câblage, pas d'écriture — dite dans `App.tsx` pour qu'un lecteur ne cherche
+pas le bug ailleurs.
+
+Corollaire : `A2` s'ouvre toujours sans aucun projet, donc « Enregistrer & ouvrir » y est
+désactivé. Le chemin complet ne sera exerçable qu'après `09`.
+
 **La suite : `08a` → `08e`, specs écrites le 7 août 2026, aucune implémentée.**
 
 | Spec | Ce qu'elle livre |
@@ -580,7 +612,7 @@ L'ouverture du sélecteur de fichier de `08c` (« Parcourir… ») attend la mê
 | `08b` | **fait** — A2 : coquille, sélecteur de moteur, formulaire (zéro comportement) |
 | `08c` | **fait** — A2 : panneau proxy / tunnel |
 | `08d` | **fait** — « Tester la connexion » et A3. **Pont non observé** : voir plus bas |
-| `08e` | « Enregistrer & ouvrir » : config + secret, première persistance du produit |
+| `08e` | **fait** — « Enregistrer & ouvrir » : config + secret. **Pas de relecture au démarrage** : voir plus bas |
 
 `08d` est celle qui compte : le pont n'a jamais été exercé, et **aucun test automatisé ne
 peut le couvrir** puisque Playwright ne pilote pas WKWebView. Décision prise le 7 août :

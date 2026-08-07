@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
+import type { Project } from '../../domain/config'
 import type { ConnectionRequest, ConnectionTest } from '../../domain/engine'
 import { Button } from '../../ui/Button/Button'
 import { Modal } from '../../ui/Modal/Modal'
@@ -9,6 +10,7 @@ import { ConnectionForm } from './ConnectionForm'
 import { draftToRequest } from './draftToRequest'
 import { EngineSelector } from './EngineSelector'
 import { ENGINES, IMPLEMENTED_ENGINES } from './engines'
+import { draftToSaveRequest, enregistrerLaBase } from './enregistrerLaBase'
 import styles from './NewConnection.module.css'
 import { ouvrirSelecteurDeCle } from './ouvrirSelecteurDeCle'
 import { TunnelPanel } from './TunnelPanel'
@@ -35,6 +37,10 @@ type NewConnectionProps = {
    * Vitest qui simulerait `invoke` ne vérifierait que le simulacre.
    */
   onTest?: (request: ConnectionRequest) => Promise<ConnectionTest>
+  /** Appelle la commande `save_database`. Injectée pour la même raison que `onTest`. */
+  onSave?: (request: ReturnType<typeof draftToSaveRequest>) => Promise<Project[]>
+  /** Appelé après un enregistrement réussi, avec les projets à jour. */
+  onSaved?: (projects: Project[]) => void
 }
 
 /**
@@ -63,6 +69,8 @@ export function NewConnection({
   projects = [],
   onBrowseKey = ouvrirSelecteurDeCle,
   onTest = testerLaConnexion,
+  onSave = enregistrerLaBase,
+  onSaved,
 }: NewConnectionProps) {
   const [draft, setDraft] = useState<ConnectionDraft>(emptyDraft)
   // Le panneau proxy est replié à l'ouverture : le mockup le montre déplié, mais il y montre
@@ -73,10 +81,34 @@ export function NewConnection({
   // La sous-modale de `A3` se ferme sans effacer l'échec : le pied garde son message et
   // « Retester », ce que le handoff montre explicitement.
   const [echecOuvert, setEchecOuvert] = useState(false)
+  const [enregistrement, setEnregistrement] = useState<
+    { phase: 'jamais' } | { phase: 'en-cours' } | { phase: 'refuse'; message: string }
+  >({ phase: 'jamais' })
 
   function patch(changes: Partial<ConnectionDraft>) {
     setDraft((previous) => ({ ...previous, ...changes }))
   }
+
+  /**
+   * Aligne le projet du brouillon sur ce que le `Select` **affiche**.
+   *
+   * **Le piège du select contrôlé.** Un `<select>` dont la `value` ne correspond à aucune de ses
+   * options affiche la première, sans que l'état en soit averti : l'écran montrait
+   * « Atelier Nord » tandis que le brouillon portait encore la chaîne vide, et
+   * l'enregistrement visait donc un projet inexistant. Trouvé par un test qui vérifiait le
+   * `project` de la requête, pas par l'œil — à l'écran, tout allait bien.
+   *
+   * Le même effet couvre le cas d'une sélection devenue invalide, si la liste des projets
+   * change sous les pieds de l'utilisateur.
+   */
+  useEffect(() => {
+    const premier = projects.at(0)
+    if (!premier) return
+    const valide = projects.some((projet) => projet.id === draft.project)
+    // `setDraft` et non `patch` : `patch` est recréé à chaque rendu, donc le déclarer en
+    // dépendance relancerait l'effet en boucle. Le poseur d'état de React, lui, est stable.
+    if (!valide) setDraft((precedent) => ({ ...precedent, project: premier.id }))
+  }, [projects, draft.project])
 
   /**
    * Toucher un champ du panneau **crée** le tunnel s'il n'existe pas.
@@ -107,10 +139,46 @@ export function NewConnection({
     }
   }
 
-  // « Enregistrer & ouvrir » est désactivé **après un échec**, et réactivé après un succès.
-  // Pas désactivé avant tout test : rien n'oblige à tester pour enregistrer, et le handoff ne
-  // le demande pas.
-  const enregistrementBloque = test.phase === 'echoue'
+  // « Enregistrer & ouvrir » est désactivé **après un échec de test**, et réactivé après un
+  // succès. Pas désactivé avant tout test : rien n'oblige à tester pour enregistrer, et le
+  // handoff ne le demande pas.
+  //
+  // Il est aussi désactivé **sans aucun projet** : `A2` déclare une base *dans un projet
+  // existant*, et le handoff ne maquette pas le parcours d'un utilisateur qui n'en a aucun.
+  // Voir le § « À trancher » de `specs/README.md`, trou n°4.
+  const enregistrementBloque =
+    test.phase === 'echoue' || projects.length === 0 || enregistrement.phase === 'en-cours'
+
+  async function enregistrer() {
+    if (enregistrementBloque) return
+    setEnregistrement({ phase: 'en-cours' })
+    try {
+      const projets = await onSave(draftToSaveRequest(draft))
+      onSaved?.(projets)
+      // La modale se ferme : `08e` § Hors périmètre — « ouvrir » veut dire aller vers `A4`,
+      // qui n'existe pas avant `09`. Ce scope enregistre et ferme ; `09` branchera la
+      // navigation. Dit ici pour qu'un lecteur ne cherche pas le bug.
+      onClose()
+    } catch (cause) {
+      // Le refus s'affiche là où `08d` affiche déjà les échecs : le message inline du pied.
+      // `A2` ne maquette aucun message d'erreur de champ — réemploi plutôt qu'invention, et la
+      // question d'un affichage par champ est consignée au § « À trancher ».
+      setEnregistrement({ phase: 'refuse', message: messageDe(cause) })
+    }
+  }
+
+  // `⌘↩`, tel que le pied l'affiche. Inopérant quand le bouton est désactivé : un raccourci
+  // qui contourne l'état d'un bouton est un piège.
+  useEffect(() => {
+    function auClavier(evenement: KeyboardEvent) {
+      if (evenement.metaKey && evenement.key === 'Enter') {
+        evenement.preventDefault()
+        void enregistrer()
+      }
+    }
+    window.addEventListener('keydown', auClavier)
+    return () => window.removeEventListener('keydown', auClavier)
+  })
 
   return (
     <Modal
@@ -151,6 +219,9 @@ export function NewConnection({
               {test.message}
             </button>
           )}
+          {enregistrement.phase === 'refuse' && (
+            <span className={styles.testFail}>{enregistrement.message}</span>
+          )}
           {!engineImplemented && (
             // Un moteur sans adaptateur est **sélectionnable et le dit**. Le masquer ferait
             // croire que le produit ne le prévoit pas ; le laisser muet ferait croire que
@@ -164,7 +235,12 @@ export function NewConnection({
             Annuler
           </Button>
           {/* `08e` le branchera, avec son raccourci ⌘↩. */}
-          <Button size="lg" shortcut="⌘↩" disabled={enregistrementBloque}>
+          <Button
+            size="lg"
+            shortcut="⌘↩"
+            disabled={enregistrementBloque}
+            onClick={() => void enregistrer()}
+          >
             <Icon name="save" size={14} strokeWidth={2.2} />
             Enregistrer &amp; ouvrir
           </Button>

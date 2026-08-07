@@ -127,3 +127,78 @@ pub fn save_config(projects: Vec<Project>, state: State<'_, ConfigState>) -> Res
 
     store.save(&projects).map_err(|erreur| erreur.to_string())
 }
+
+/// Ce que `A2` envoie en cliquant « Enregistrer & ouvrir ».
+///
+/// Le mot de passe est **en clair et séparé**, comme dans `ConnectionRequest` de `08d` : aucune
+/// `SecretRef` n'existe avant que le secret soit rangé, et c'est justement le travail de cette
+/// commande. La variante reçue porte donc `password: null`, que `enregistrer` remplace.
+#[derive(Debug, serde::Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct SaveDatabaseRequest {
+    pub project: String,
+    pub database: String,
+    pub engine: super::model::Engine,
+    pub variant: super::model::EnvironmentVariant,
+    pub password: Option<String>,
+}
+
+/// Ajoute une base et sa variante à un projet, et range son mot de passe.
+///
+/// **Rend les projets à jour**, et pas seulement `Ok(())` : sans cela l'écran devrait relire la
+/// configuration pour afficher le nouveau compte, ce qui ferait deux allers-retours et laisserait
+/// une fenêtre où l'écran et le disque divergent. C'est aussi ce qui rend le compteur de `A1`
+/// enfin vrai — il était figé à zéro depuis `07`.
+#[tauri::command]
+pub fn save_database(
+    app: AppHandle,
+    request: SaveDatabaseRequest,
+    state: State<'_, ConfigState>,
+) -> Result<Vec<Project>, String> {
+    let garde = state
+        .0
+        .lock()
+        .map_err(|_| "état de configuration corrompu".to_owned())?;
+    let store = garde
+        .as_ref()
+        .ok_or_else(|| "la configuration doit être lue avant d'être écrite".to_owned())?;
+
+    // Les projets viennent du disque, pas du front : envoyer la liste entière depuis l'écran
+    // ouvrirait la porte à un écrasement par un état périmé, et `05b` a déjà tranché que
+    // l'écriture se fait sur ce qui a été lu.
+    let mut projects: Vec<Project> = store.load_projects()?;
+
+    let repertoire = store
+        .path()
+        .parent()
+        .ok_or_else(|| "le fichier de configuration n'a pas de répertoire parent".to_owned())?
+        .to_path_buf();
+    let magasin = crate::secrets::selectionner(&repertoire).map_err(|e| e.to_string())?;
+
+    let secret = request.password.as_deref().map(crate::secrets::Secret::new);
+
+    super::enregistrer::enregistrer(
+        &mut projects,
+        super::enregistrer::NouvelleBase {
+            project: &request.project,
+            database: &request.database,
+            engine: request.engine,
+            variant: request.variant,
+            password: secret.as_ref(),
+        },
+        magasin.store.as_ref(),
+        &mut |projets| store.save(projets).map_err(|erreur| erreur.to_string()),
+    )
+    .map_err(|erreur| erreur.to_string())?;
+
+    log::info!(
+        "save_database ← {} / {} ({}) → {} projet(s)",
+        request.project,
+        request.database,
+        app.package_info().name,
+        projects.len()
+    );
+
+    Ok(projects)
+}

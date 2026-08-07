@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from 'react'
 import { Sprite } from '../design/icons/Sprite'
+import type { Project } from '../domain/config'
 import { NewConnection } from '../screens/NewConnection/NewConnection'
 import { WelcomeScreen } from '../screens/Welcome/WelcomeScreen'
 
@@ -19,6 +20,19 @@ const Gallery = showGallery
 
 export function App() {
   const [connexionOuverte, setConnexionOuverte] = useState(false)
+  /**
+   * Les projets connus.
+   *
+   * **Encore vides au démarrage**, et c'est une limite assumée de `08e` : la commande
+   * `load_config` existe depuis `05b` mais rien ne l'appelle, faute d'un écran qui affiche des
+   * projets. `09` (l'explorateur `A4`) est celui qui la branchera. En attendant, un
+   * enregistrement met bien la liste à jour — donc le compteur de `A1` cesse de mentir *pendant
+   * la session*, mais repart à zéro au lancement suivant.
+   *
+   * Dit ici pour qu'un lecteur ne cherche pas le bug : la persistance fonctionne, c'est la
+   * **relecture au démarrage** qui manque.
+   */
+  const [projects, setProjects] = useState<Project[]>([])
 
   return (
     <>
@@ -38,10 +52,16 @@ export function App() {
               qu'aucun projet n'existe. */}
           <WelcomeScreen
             onNewProject={() => setConnexionOuverte(true)}
-            projectCount={0}
+            projectCount={projects.length}
             dimmed={connexionOuverte}
           />
-          {connexionOuverte && <NewConnection onClose={() => setConnexionOuverte(false)} />}
+          {connexionOuverte && (
+            <NewConnection
+              onClose={() => setConnexionOuverte(false)}
+              projects={projects.map((projet) => ({ id: projet.name, name: projet.name }))}
+              onSaved={setProjects}
+            />
+          )}
         </>
       )}
     </>

@@ -41,11 +41,22 @@
   cursor: pointer;
 }
 
+/* Fond `--disabled` et non `--muted`.
+ *
+ * `02` avait pris `#F1ECE2`, que la table des jetons du handoff donne pour un « champ
+ * désactivé, pastille neutre ». Mais le handoff nomme séparément l'état désactivé d'un
+ * **bouton** : `rgba(35,32,28,.14)` de fond, `rgba(35,32,28,.4)` de texte (prose § A3, et le
+ * mockup le confirme). C'est sensiblement plus sombre — `#F1ECE2` est opaque, l'autre est un
+ * voile d'encre — et un bouton trop clair a l'air cliquable.
+ *
+ * `--disabled` a la même valeur que `--border` ; les deux coexistent délibérément, parce que le
+ * handoff les nomme séparément et que rien ne lie un fond de bouton à une couleur de bordure.
+ * Relevé en construisant `08e`, seul écran à montrer un bouton désactivé. */
 .root:disabled {
   cursor: not-allowed;
-  background: var(--muted);
+  background: var(--disabled);
   border-color: transparent;
-  color: var(--ink-3);
+  color: var(--ink-4);
   box-shadow: none;
 }
 

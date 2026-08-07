@@ -17,6 +17,7 @@ export type TokenName =
   | 'danger-ink-3'
   | 'dark'
   | 'dark-2'
+  | 'disabled'
   | 'divider'
   | 'divider-2'
   | 'engine-bq'
@@ -160,6 +161,7 @@ export const tokens: Record<TokenName, string> = {
   'danger-ink-3': 'var(--danger-ink-3)',
   'dark': 'var(--dark)',
   'dark-2': 'var(--dark-2)',
+  'disabled': 'var(--disabled)',
   'divider': 'var(--divider)',
   'divider-2': 'var(--divider-2)',
   'engine-bq': 'var(--engine-bq)',

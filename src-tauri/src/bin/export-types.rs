@@ -15,7 +15,7 @@
 //!
 //! Lancé par `pnpm domain:build`, vérifié par `pnpm domain:check`.
 
-use dorabase_lib::config::{ConfigLoad, Project};
+use dorabase_lib::config::{ConfigLoad, Project, SaveDatabaseRequest};
 use dorabase_lib::engine::commands::{ConnectionRequest, ConnectionTest};
 use dorabase_lib::engine::{
     ConnectionProbe, EngineError, RowQuery, RowWindow, SchemaInfo, TableDetail, TableSummary,
@@ -44,6 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // traverse pas l'IPC.
     Project::export_all(&config)?;
     ConfigLoad::export_all(&config)?;
+    SaveDatabaseRequest::export_all(&config)?;
     SecretMechanism::export_all(&config)?;
 
     ConnectionProbe::export_all(&config)?;

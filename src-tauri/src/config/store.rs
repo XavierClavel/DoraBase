@@ -298,6 +298,29 @@ impl ConfigStore {
         save(&self.chemin, projects)
     }
 
+    /// Relit les projets du disque.
+    ///
+    /// **Nécessaire à `08e`** : l'écriture se fait sur ce qui a été lu (`05b`), et une commande
+    /// qui recevrait la liste entière depuis le front ouvrirait la porte à un écrasement par un
+    /// état périmé — deux onglets, ou un écran qui n'a pas rafraîchi.
+    ///
+    /// Refuse quand l'ouverture a refusé : un fichier en quarantaine ou d'une version trop
+    /// récente ne doit pas être lu comme s'il était vide, ce qui reviendrait à proposer d'écrire
+    /// par-dessus.
+    pub fn load_projects(&self) -> Result<Vec<Project>, String> {
+        if let Some(raison) = &self.refus {
+            return Err(raison.clone());
+        }
+        match load(&self.chemin) {
+            LoadOutcome::Fresh => Ok(Vec::new()),
+            LoadOutcome::Loaded(projects) => Ok(projects),
+            LoadOutcome::Unreadable { reason, .. } => Err(reason),
+            LoadOutcome::TooNew { found, supported } => Err(format!(
+                "le fichier est en version {found}, cette application comprend la version {supported}"
+            )),
+        }
+    }
+
     pub fn path(&self) -> &Path {
         &self.chemin
     }
