@@ -28,6 +28,10 @@ jobs:
           workspaces: src-tauri
 
       - run: pnpm install --frozen-lockfile
+      # Un marqueur de sabotage laissé par un contrôle négatif ne casse rien — c'est
+      # justement le problème. Voir l'en-tête du script.
+      - run: ./scripts/verifier-aucun-sabotage.sh
+
       - run: pnpm typecheck
       - run: pnpm lint
 

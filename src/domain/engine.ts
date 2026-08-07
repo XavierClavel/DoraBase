@@ -151,7 +151,7 @@ export type SortDirection = "ascending" | "descending";
  * Un critère de tri. `A5` en accepte plusieurs, numérotés — leur ordre dans le vecteur
  * **est** leur rang.
  */
-export type SortKey = { sabotage: boolean, column: string, direction: SortDirection, };
+export type SortKey = { column: string, direction: SortDirection, };
 
 /**
  * Tout ce que `A9` affiche d'une table, DDL compris.
