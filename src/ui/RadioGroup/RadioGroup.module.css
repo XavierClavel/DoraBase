@@ -1,0 +1,98 @@
+/*
+ * Groupe de boutons exclusifs, relevé sur A2.
+ *
+ *   usage              | hauteur | radius | gap | actif
+ *   -------------------|---------|--------|-----|-------------------------------
+ *   moteur             | 30px    | 9px    | 6px | fond accent, texte blanc, ombre
+ *   variante d'env     | 30px    | 8px    | 5px | idem, sauf `prod` (voir 08b)
+ *
+ * Les deux rayons diffèrent d'un pixel (9 contre 8) et les deux gaps aussi (6 contre 5).
+ * Les valeurs par défaut sont celles du sélecteur de moteur ; `08b` surcharge pour les
+ * variantes d'environnement. Les uniformiser effacerait un écart voulu par le design.
+ */
+
+.root {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  /* `<fieldset>` arrive avec une bordure, une marge et un remplissage du navigateur. */
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+/* La légende nomme le groupe pour l'accessibilité sans occuper de place : `A2` affiche le
+ * nom du groupe dans sa propre étiquette, au-dessus. `display: none` la retirerait du nom
+ * accessible ; ce découpage la garde lisible par un lecteur d'écran. */
+.legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  /* `border-box` ici, et non `content-box` comme `Field` : l'habillage `prod` de `08b`
+   * porte une bordure de 1.5px là où les autres en ont 1. En `content-box`, le bouton
+   * `prod` serait plus large de 1px que ses voisins — écart visible dans une rangée de
+   * trois boutons collés. */
+  box-sizing: border-box;
+  height: var(--h-field);
+  /* 12px : le padding du sélecteur de moteur. Absent de l'échelle d'espacement, qui va de
+   * 11 à 14 — comme la hauteur de 28px de `Field`, c'est une métrique interne au composant
+   * et non une valeur des tables du handoff. `08b` surcharge à 10px pour les variantes
+   * d'environnement. */
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field-2);
+  background: var(--field);
+  color: var(--ink-7);
+  font-family: var(--font-ui);
+  font-size: var(--text-control);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+/* L'`<input>` est masqué mais focalisable ; l'anneau de focus est donc porté par le
+ * `<label>` qui l'englobe. `:has()` est le seul moyen de le remonter. */
+.option:has(.input:focus-visible) {
+  box-shadow: var(--shadow-focus);
+}
+
+/* Visuellement absent, mais **pas** `display: none` ni `visibility: hidden`, qui le
+ * retireraient de l'ordre de tabulation et casseraient la navigation aux flèches. */
+.input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.active {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--ink-on-accent);
+  font-weight: var(--weight-bold);
+  box-shadow: var(--shadow-accent-2);
+}
+
+/* Le monogramme d'un moteur : sa couleur propre quand le bouton est inactif, blanc
+ * translucide quand il est actif — relevé sur le mockup, où `Pg` passe de `#31648F` à
+ * `opacity:.85` sur fond accent. La couleur inactive est posée par l'appelant. */
+.prefix {
+  display: flex;
+  align-items: center;
+  font-size: var(--text-caps);
+  font-weight: var(--weight-black);
+}
+
+.active .prefix {
+  color: inherit;
+  opacity: 0.85;
+}

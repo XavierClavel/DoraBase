@@ -1,0 +1,80 @@
+/*
+ * Panneau repliable, relevé sur le bloc « Proxy / tunnel » de A2.
+ *
+ *   encadré  radius --radius-panel-2 (11px), fond --paper-alt, bordure 1px .13
+ *   en-tête  34px, remplissage 0 11px, filet bas 1px .10
+ *   corps    remplissage 11px
+ *
+ * La bordure de l'encadré est à .13 dans le mockup, entre `--border` (.14) et
+ * `--divider` (.10). On prend `--border` : l'écart de .01 est invisible, et ajouter un
+ * token pour ça serait de l'inflation — même arbitrage que `Field` sur l'encre.
+ */
+
+.root {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel-2);
+  background: var(--paper-alt);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  box-sizing: content-box;
+  width: 100%;
+  height: var(--h-bar);
+  padding: 0 11px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  /* Le bouton fait toute la largeur : son contenu doit rester aligné à gauche, ce qu'un
+   * `<button>` ne fait pas par défaut (il centre). */
+  text-align: left;
+}
+
+/* Le filet ne sépare l'en-tête du corps que s'il y a un corps. Replié, il ne séparerait de
+ * rien — le mockup ne montre pas cet état, et un trait suspendu sous un en-tête seul est un
+ * artefact, pas une intention. */
+.headerOpen {
+  border-bottom: 1px solid var(--divider);
+}
+
+.header:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.chevron {
+  display: flex;
+  flex: none;
+  color: var(--ink-8);
+}
+
+/* Le mockup ne montre que l'état déplié, chevron vers le bas. Replié, il pointe donc vers
+ * la droite — la convention, et cohérente avec `TreeRow` de `04`. */
+.chevron:not(.chevronOpen) {
+  transform: rotate(-90deg);
+}
+
+.icon {
+  display: flex;
+  flex: none;
+  color: var(--violet-ink);
+}
+
+.title {
+  font-family: var(--font-ui);
+  font-size: var(--text-control);
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+}
+
+.badge {
+  display: flex;
+  flex: none;
+}
+
+.body {
+  padding: 11px;
+}

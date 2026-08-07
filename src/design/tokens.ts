@@ -6,6 +6,7 @@ export type TokenName =
   | 'accent-deeper'
   | 'bar'
   | 'border'
+  | 'border-dashed'
   | 'border-field'
   | 'canvas'
   | 'danger'
@@ -13,6 +14,7 @@ export type TokenName =
   | 'danger-bg-2'
   | 'danger-ink'
   | 'danger-ink-2'
+  | 'danger-ink-3'
   | 'dark'
   | 'dark-2'
   | 'divider'
@@ -90,6 +92,7 @@ export type TokenName =
   | 'rowh-max'
   | 'rowh-min'
   | 'shadow-accent'
+  | 'shadow-accent-2'
   | 'shadow-cell'
   | 'shadow-focus'
   | 'shadow-modal'
@@ -125,6 +128,8 @@ export type TokenName =
   | 'track-off'
   | 'tracking-caps'
   | 'tracking-caps-sm'
+  | 'veil'
+  | 'veil-2'
   | 'violet'
   | 'violet-bg'
   | 'violet-ink'
@@ -144,6 +149,7 @@ export const tokens: Record<TokenName, string> = {
   'accent-deeper': 'var(--accent-deeper)',
   'bar': 'var(--bar)',
   'border': 'var(--border)',
+  'border-dashed': 'var(--border-dashed)',
   'border-field': 'var(--border-field)',
   'canvas': 'var(--canvas)',
   'danger': 'var(--danger)',
@@ -151,6 +157,7 @@ export const tokens: Record<TokenName, string> = {
   'danger-bg-2': 'var(--danger-bg-2)',
   'danger-ink': 'var(--danger-ink)',
   'danger-ink-2': 'var(--danger-ink-2)',
+  'danger-ink-3': 'var(--danger-ink-3)',
   'dark': 'var(--dark)',
   'dark-2': 'var(--dark-2)',
   'divider': 'var(--divider)',
@@ -228,6 +235,7 @@ export const tokens: Record<TokenName, string> = {
   'rowh-max': 'var(--rowh-max)',
   'rowh-min': 'var(--rowh-min)',
   'shadow-accent': 'var(--shadow-accent)',
+  'shadow-accent-2': 'var(--shadow-accent-2)',
   'shadow-cell': 'var(--shadow-cell)',
   'shadow-focus': 'var(--shadow-focus)',
   'shadow-modal': 'var(--shadow-modal)',
@@ -263,6 +271,8 @@ export const tokens: Record<TokenName, string> = {
   'track-off': 'var(--track-off)',
   'tracking-caps': 'var(--tracking-caps)',
   'tracking-caps-sm': 'var(--tracking-caps-sm)',
+  'veil': 'var(--veil)',
+  'veil-2': 'var(--veil-2)',
   'violet': 'var(--violet)',
   'violet-bg': 'var(--violet-bg)',
   'violet-ink': 'var(--violet-ink)',
