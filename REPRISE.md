@@ -195,6 +195,14 @@ des tests verts au moment où il a été introduit.
 7. **`toHaveTextContent` normalise l'espace insécable du DOM réel, pas la chaîne attendue.**
    Un test conçu pour détecter la perte d'un ` ` doit comparer `.textContent` par
    `.toBe()` — le matcher normalisé masquerait justement la régression qu'il devait révéler.
+8quater. **« Ça compile » et « ça démarre » sont deux choses, et la CI ne couvrait que la
+   première.** L'ajout d'un second binaire a rendu `cargo run` ambigu, donc cassé
+   `tauri dev` — l'app ne démarrait plus du tout, alors que `cargo build`, `cargo test`,
+   `clippy` et `pnpm tauri build` étaient tous verts. `tauri build` ne passe pas par
+   `cargo run`. Signalé par l'utilisateur, pas par nous. Depuis, un garde-fou vérifie la
+   propriété par `cargo metadata` — pas en lançant `cargo run`, l'app ouvrant une fenêtre
+   qui bloquerait le runner.
+
 8bis. **« ÉCHEC à l'étape X » ne dit pas que X a échoué pour la raison qu'on croit.** Le job
    Linux a signalé un échec sur `cargo test --features db-tests` : en réalité la crate ne
    **compilait pas**, `tauri` exigeant la pile GTK/WebKit absente du runner. La commande
