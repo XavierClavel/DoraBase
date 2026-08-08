@@ -38,6 +38,25 @@ latencyMs: number, serverVersion: string, };
 export type ConnectionRequest = { variant: EnvironmentVariant, password: string | null, };
 
 /**
+ * L'état d'une base, tel que l'arbre de `09d` l'affiche.
+ *
+ * **Quatre états, pas deux.** « Jamais tentée » n'est pas « hors ligne » : les confondre
+ * afficherait en rouge une base qu'on n'a simplement pas ouverte. Et l'arbre se lit sans
+ * réseau — décision du 7 août 2026 — donc l'état par défaut d'une base est `Jamais`, pas un
+ * échec.
+ */
+export type ConnectionState = { "kind": "never" } | { "kind": "connecting" } | { "kind": "connected", serverVersion: string, 
+/**
+ * Le port local du tunnel, quand la variante en déclare un.
+ */
+tunnelLocalPort: number | null, } | { "kind": "offline", reason: string, };
+
+/**
+ * Un état de connexion, avec la base qu'il concerne.
+ */
+export type ConnectionStateEntry = { key: DatabaseKey, state: ConnectionState, };
+
+/**
  * Ce que `A2` affiche après un test réussi.
  *
  * Distinct de `ConnectionProbe` : il porte en plus l'avertissement TLS, qui n'est pas une
@@ -61,6 +80,15 @@ tunnelLocalPort: number | null,
 tlsUnverified: boolean, };
 
 export type ConstraintInfo = { name: string, definition: string, };
+
+/**
+ * Désigne une base dans un projet, pour un environnement.
+ *
+ * **Trois chaînes plutôt qu'une clé préformée.** Envoyer `"Print/analytics/dev"` depuis le
+ * front demanderait au JavaScript de connaître la convention de composition, donc de la
+ * dupliquer — le même piège que la référence de secret de `08e`, tranché de la même façon.
+ */
+export type DatabaseKey = { project: string, database: string, environment: string, };
 
 /**
  * Un échec côté moteur.

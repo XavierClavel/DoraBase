@@ -14,11 +14,20 @@ pub fn run() {
         // confirmation, dont rien n'a besoin. Gardé par `tests/permissions.rs`.
         .plugin(tauri_plugin_dialog::init())
         .manage(config::ConfigState::new())
+        // Le registre des connexions ouvertes (`09b`) : une base ouverte le reste, et le
+        // recréer à chaque commande rouvrirait un tunnel SSH par requête.
+        .manage(engine::registry::ConnectionRegistry::new())
         .invoke_handler(tauri::generate_handler![
             config::commands::load_config,
             config::commands::save_config,
             config::commands::save_database,
-            engine::commands::test_connection
+            engine::commands::test_connection,
+            engine::commands::open_database,
+            engine::commands::close_database,
+            engine::commands::connection_states,
+            engine::commands::list_schemas,
+            engine::commands::list_objects,
+            engine::commands::describe_table
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

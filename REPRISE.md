@@ -26,7 +26,7 @@ plan par plan.
 | `specs/README.md` | index des ~20 specs, contrainte IPC transverse, **acquis techniques**, **décisions à trancher** |
 | `specs/01`–`04`, `05a`–`05c`, `06a`–`06e`, `07` | treize specs, **toutes implémentées** |
 | `specs/08a`–`08e` | cinq specs, **toutes faites**. Deux vérifications à l'œil restent dues |
-| `specs/09a`–`09f` | six specs ; `09a` **faite**, `09b`–`09f` à faire |
+| `specs/09a`–`09f` | six specs ; `09a` et `09b` **faites**, `09c`–`09f` à faire |
 | `plans/2026-07-31-*`, `plans/2026-08-05-*` | les plans d'implémentation, tâche par tâche, avec les **pièges vérifiés** |
 | `design/handoff/` | le handoff, **source de vérité du design** |
 
@@ -281,6 +281,18 @@ des tests verts au moment où il a été introduit.
    du module de test, faute de pouvoir construire un `SshTunnel` sans bastion. C'est le même
    défaut que sur l'atomicité de `05b` (point 5). Corrigé en extrayant `Surveillance`, un
    type que le tunnel **et** le test appellent.
+45. **Un test qui compte les entrées d'une table ne prouve pas le réemploi.** Le test du
+   registre ouvrait deux fois la même base et attendait une seule entrée — mais sans la garde de
+   réemploi, la seconde ouverture *remplace* l'entrée et le compte reste 1 de toute façon.
+   Retirer la garde laissait le test vert, alors que la première connexion était lâchée sans
+   `close` et fuyait son tunnel. La version qui mord emploie une variante **cassée** à la seconde
+   ouverture : avec la garde elle rend sans rien tenter, sans elle l'état bascule en `Offline`.
+46. **Un test qui devait vérifier l'accord de deux implémentations a montré qu'il fallait n'en
+   avoir qu'une.** `connection_states` rendait une table indexée par `projet/base/environnement`,
+   ce qui obligeait le front à savoir recomposer cette clé. En écrivant le test qui aurait
+   comparé les deux compositions, il est devenu clair que la commande devait rendre des
+   **triplets** — la convention n'existe alors plus qu'à un endroit, côté Rust.
+
 42. **La feuille de style du mockup dit ce que sa prose ne dit pas.** Le handoff décrit le
    tableau de `A4` en une phrase ; son `<style>` porte l'essentiel, et trois points s'y jouaient à
    l'inverse de ce que j'avais écrit : les en-têtes **ne sont pas** en capitales (700 11px, casse
@@ -613,16 +625,13 @@ sera alors **observé** — pas automatisé, et à ne jamais présenter autremen
 
 L'ouverture du sélecteur de fichier de `08c` (« Parcourir… ») attend la même session.
 
-**La persistance de `08e` fonctionne, mais rien ne relit la configuration au démarrage.**
-`load_config` existe depuis `05b` et n'est appelée par personne, faute d'écran qui affiche des
-projets — c'est `09` (l'explorateur `A4`) qui la branchera. Conséquence exacte, à ne pas arrondir :
-une base enregistrée est **bien écrite sur le disque** (les tests Rust le prouvent, et le compteur
-de `A1` se met à jour pendant la session), mais elle **n'est pas relue au lancement suivant**.
-C'est une limite de câblage, pas d'écriture — dite dans `App.tsx` pour qu'un lecteur ne cherche
-pas le bug ailleurs.
+**La boucle du produit est complète depuis `09b`** : saisir (`08e`), persister, relire,
+afficher. `load_config` est appelée au démarrage, ses quatre issues sont traitées — dont les deux
+bloquantes, qu'il ne faut pas confondre avec « aucun projet » sous peine d'inviter à écrire
+par-dessus un fichier qu'on vient de refuser d'ouvrir.
 
-Corollaire : `A2` s'ouvre toujours sans aucun projet, donc « Enregistrer & ouvrir » y est
-désactivé. Le chemin complet ne sera exerçable qu'après `09`.
+**Reste à observer dans l'app réelle** : qu'une base enregistrée réapparaisse après un
+redémarrage. Les tests Rust prouvent l'écriture et la relecture ; le parcours complet, non.
 
 **La suite : `08a` → `08e`, specs écrites le 7 août 2026, aucune implémentée.**
 
@@ -658,7 +667,7 @@ test, le refus de saisie, le cas « aucun projet », et le panneau proxy replié
 | Spec | Ce qu'elle livre |
 | --- | --- |
 | `09a` | **fait** — `SegmentedControl`, `StatTile`, `DataTable`, `format.ts` |
-| `09b` | **le câblage** : `load_config` au démarrage, registre de connexions, introspection |
+| `09b` | **fait** — `load_config` au démarrage, registre de connexions, introspection |
 | `09c` | A4 : barre de titre — pastille projet, fil d'Ariane, sélecteur d'environnement |
 | `09d` | A4 : sidebar 252 px et son arbre à quatre niveaux |
 | `09e` | A4 : centre — onglets, fil d'Ariane, tableau des objets |
