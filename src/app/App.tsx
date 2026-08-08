@@ -1,4 +1,5 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { useConfiguration } from '../data/useConfiguration'
 import { Sprite } from '../design/icons/Sprite'
 import type { Project } from '../domain/config'
 import { NewConnection } from '../screens/NewConnection/NewConnection'
@@ -21,18 +22,22 @@ const Gallery = showGallery
 export function App() {
   const [connexionOuverte, setConnexionOuverte] = useState(false)
   /**
-   * Les projets connus.
+   * Les projets connus, **relus au démarrage** depuis `09b`.
    *
-   * **Encore vides au démarrage**, et c'est une limite assumée de `08e` : la commande
-   * `load_config` existe depuis `05b` mais rien ne l'appelle, faute d'un écran qui affiche des
-   * projets. `09` (l'explorateur `A4`) est celui qui la branchera. En attendant, un
-   * enregistrement met bien la liste à jour — donc le compteur de `A1` cesse de mentir *pendant
-   * la session*, mais repart à zéro au lancement suivant.
-   *
-   * Dit ici pour qu'un lecteur ne cherche pas le bug : la persistance fonctionne, c'est la
-   * **relecture au démarrage** qui manque.
+   * La boucle du produit est désormais complète : saisir (`08e`), persister, relire, afficher.
+   * `load_config` existait depuis `05b` et n'était appelée par personne — une base enregistrée
+   * était bien écrite sur le disque mais jamais retrouvée au lancement suivant.
    */
+  const configuration = useConfiguration()
   const [projects, setProjects] = useState<Project[]>([])
+
+  // Les projets lus alimentent l'état local, que `08e` met ensuite à jour après chaque
+  // enregistrement. Deux sources pour une même liste, mais dans le temps : le disque au
+  // démarrage, la commande ensuite — et c'est la commande qui rend la liste à jour, donc les
+  // deux ne peuvent pas diverger.
+  useEffect(() => {
+    if (configuration.kind !== 'chargement') setProjects(configuration.projects)
+  }, [configuration])
 
   return (
     <>
@@ -41,7 +46,11 @@ export function App() {
         <Suspense fallback={null}>
           <Gallery />
         </Suspense>
-      ) : (
+      ) : configuration.kind ===
+        'chargement' ? // Rien pendant la lecture : afficher `A1` (« aucun projet ») ferait clignoter l'écran
+      // d'accueil devant un utilisateur qui en a dix. La lecture d'un fichier local est
+      // immédiate ; un état de chargement visible serait un scintillement de plus.
+      null : (
         <>
           {/* **Le bouton dit « Nouveau projet », la modale « Nouvelle connexion ».**
               Ce n'est pas une erreur d'assemblage : `A1` n'offre que cette action et `⌘N`,

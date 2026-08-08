@@ -228,3 +228,185 @@ mod tests {
         );
     }
 }
+
+// --- Le câblage de `09b` : ouverture et introspection ------------------------------------
+
+use crate::engine::registry::{cle, ConnectionRegistry, ConnectionState};
+use crate::engine::{SchemaInfo, TableDetail, TableSummary};
+
+/// Désigne une base dans un projet, pour un environnement.
+///
+/// **Trois chaînes plutôt qu'une clé préformée.** Envoyer `"Print/analytics/dev"` depuis le
+/// front demanderait au JavaScript de connaître la convention de composition, donc de la
+/// dupliquer — le même piège que la référence de secret de `08e`, tranché de la même façon.
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub struct DatabaseKey {
+    pub project: String,
+    pub database: String,
+    pub environment: String,
+}
+
+impl DatabaseKey {
+    fn cle(&self) -> String {
+        cle(&self.project, &self.database, &self.environment)
+    }
+}
+
+/// Ouvre une connexion, en relisant le mot de passe depuis le magasin.
+///
+/// **Le mot de passe se relit, il ne se redemande pas.** La variante porte une `SecretRef`
+/// (`08e`) ; `retrieve` rend `Ok(None)` pour « aucun secret sous cette référence », qui est un
+/// état normal — une base sans mot de passe. Une panne de magasin, elle, est une erreur : les
+/// confondre ferait tenter une connexion sans mot de passe et afficher « authentification
+/// refusée » là où le vrai problème est le Trousseau.
+#[tauri::command]
+pub async fn open_database(
+    app: tauri::AppHandle,
+    key: DatabaseKey,
+    variant: EnvironmentVariant,
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<ConnectionState, EngineError> {
+    let identite = key.cle();
+    log::info!("open_database ← {identite}");
+
+    let secret = match &variant.password {
+        Some(reference) => {
+            let repertoire = repertoire_de_configuration(&app)?;
+            let magasin = crate::secrets::selectionner(&repertoire).map_err(|e| {
+                EngineError::local(format!("magasin de secrets indisponible : {e}"))
+            })?;
+            magasin.store.retrieve(reference).map_err(|e| {
+                // Distinct d'un secret absent : le dire évite de chercher une erreur
+                // d'authentification là où le magasin est en cause.
+                EngineError::local(format!("le mot de passe n'a pas pu être relu : {e}"))
+            })?
+        }
+        None => None,
+    };
+
+    registry
+        .ouvrir(
+            &identite,
+            &variant,
+            secret.as_ref(),
+            &known_hosts_utilisateur(),
+        )
+        .await?;
+
+    let etat = registry.etat(&identite).await;
+    log::info!("open_database → {identite} : {etat:?}");
+    Ok(etat)
+}
+
+/// Ferme une connexion et rend son port de tunnel.
+#[tauri::command]
+pub async fn close_database(
+    key: DatabaseKey,
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<(), EngineError> {
+    registry.fermer(&key.cle()).await;
+    Ok(())
+}
+
+/// Un état de connexion, avec la base qu'il concerne.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub struct ConnectionStateEntry {
+    pub key: DatabaseKey,
+    pub state: ConnectionState,
+}
+
+/// Les états de toutes les connexions connues, pour peupler l'arbre en une fois.
+///
+/// **Une liste de triplets, et non une table indexée par la clé composée.** Le registre
+/// s'indexe bien par `projet/base/environnement`, mais rendre cette chaîne au front l'obligerait
+/// à savoir la recomposer pour s'y retrouver — donc à dupliquer la convention, et une convention
+/// dupliquée diverge. Une première version le faisait ; le test qui devait vérifier l'accord des
+/// deux implémentations a montré qu'il valait mieux n'en avoir qu'une.
+///
+/// Une base absente de la liste est `Never` — l'état de départ, que `09d` doit distinguer de
+/// `Offline`.
+#[tauri::command]
+pub async fn connection_states(
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<Vec<ConnectionStateEntry>, EngineError> {
+    Ok(registry
+        .etats()
+        .await
+        .into_iter()
+        .filter_map(|(identite, state)| {
+            // La clé est décomposée ici : le registre la garde composée pour son propre index,
+            // et c'est la seule frontière où elle se défait.
+            let mut morceaux = identite.splitn(3, '/');
+            let key = DatabaseKey {
+                project: morceaux.next()?.to_owned(),
+                database: morceaux.next()?.to_owned(),
+                environment: morceaux.next()?.to_owned(),
+            };
+            Some(ConnectionStateEntry { key, state })
+        })
+        .collect())
+}
+
+/// Les schémas d'une base ouverte.
+#[tauri::command]
+pub async fn list_schemas(
+    key: DatabaseKey,
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<Vec<SchemaInfo>, EngineError> {
+    registry
+        .avec(&key.cle(), |adaptateur| Box::pin(adaptateur.schemas()))
+        .await
+}
+
+/// Les objets d'**un** schéma.
+///
+/// Un schéma à la fois, jamais tout le catalogue : c'est le découpage de `06c`, et il
+/// correspond au dépliage de l'arbre. Une commande « tout l'arbre » serait plus simple à
+/// appeler et ramènerait des milliers d'objets pour en afficher douze.
+#[tauri::command]
+pub async fn list_objects(
+    key: DatabaseKey,
+    schema: String,
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<Vec<TableSummary>, EngineError> {
+    registry
+        .avec(&key.cle(), move |adaptateur| {
+            Box::pin(async move { adaptateur.objects(&schema).await })
+        })
+        .await
+}
+
+/// Le détail d'**une** table : colonnes, index, contraintes, DDL.
+#[tauri::command]
+pub async fn describe_table(
+    key: DatabaseKey,
+    schema: String,
+    table: String,
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<TableDetail, EngineError> {
+    registry
+        .avec(&key.cle(), move |adaptateur| {
+            Box::pin(async move { adaptateur.table_detail(&schema, &table).await })
+        })
+        .await
+}
+
+fn repertoire_de_configuration(app: &tauri::AppHandle) -> Result<std::path::PathBuf, EngineError> {
+    use tauri::Manager;
+    app.path()
+        .app_config_dir()
+        .map_err(|e| EngineError::local(format!("répertoire de configuration introuvable : {e}")))
+}
+
+/// Le `known_hosts` de l'utilisateur — celui que `ssh` lit lui-même.
+fn known_hosts_utilisateur() -> std::path::PathBuf {
+    std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default()
+        .join(".ssh")
+        .join("known_hosts")
+}

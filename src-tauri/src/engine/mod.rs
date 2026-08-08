@@ -19,6 +19,7 @@ pub mod commands;
 mod error;
 mod introspection;
 pub mod postgres;
+pub mod registry;
 mod rows;
 pub mod tunnel;
 

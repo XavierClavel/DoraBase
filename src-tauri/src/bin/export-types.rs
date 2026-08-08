@@ -16,7 +16,10 @@
 //! Lancé par `pnpm domain:build`, vérifié par `pnpm domain:check`.
 
 use dorabase_lib::config::{ConfigLoad, Project, SaveDatabaseRequest};
-use dorabase_lib::engine::commands::{ConnectionRequest, ConnectionTest};
+use dorabase_lib::engine::commands::{
+    ConnectionRequest, ConnectionStateEntry, ConnectionTest, DatabaseKey,
+};
+use dorabase_lib::engine::registry::ConnectionState;
 use dorabase_lib::engine::{
     ConnectionProbe, EngineError, RowQuery, RowWindow, SchemaInfo, TableDetail, TableSummary,
 };
@@ -59,6 +62,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // et `Tunnel` avec lui, donc les nommer ici suffit.
     ConnectionRequest::export_all(&config)?;
     ConnectionTest::export_all(&config)?;
+
+    // Le câblage de `09b`.
+    DatabaseKey::export_all(&config)?;
+    ConnectionStateEntry::export_all(&config)?;
+    ConnectionState::export_all(&config)?;
 
     println!("projections TypeScript écrites dans {REPERTOIRE_DOMAINE}");
     Ok(())
