@@ -1,0 +1,215 @@
+import { Icon } from '../../design/icons/Icon'
+import type { IconName } from '../../design/icons/names'
+import type { TableDetail } from '../../domain/engine'
+import { ABSENT, formatBytes, formatCount } from '../../ui/format'
+import { StatTile } from '../../ui/StatTile/StatTile'
+import { Tooltip } from '../../ui/Tooltip/Tooltip'
+import styles from './DetailPanel.module.css'
+
+type DetailPanelProps = {
+  /** `null` quand aucune ligne n'est sélectionnée. */
+  detail: TableDetail | null
+  schema: string
+  loading?: boolean
+  error?: string | null
+  pinned?: boolean
+  onTogglePin?: () => void
+}
+
+/** Les cinq premières colonnes du catalogue, et le compte de celles qui restent. */
+const APERCU = 5
+
+/**
+ * Les quatre actions du panneau, et **l'écran qui les apportera**.
+ *
+ * **Désactivées avec une infobulle, à l'inverse de `A1` et `08b`** — qui ont livré des boutons
+ * présents et actifs mais sans effet, au motif qu'un bouton désactivé sans explication fait
+ * croire à un bug. L'écart est assumé : à `A1` un seul bouton était inerte et son écran venait
+ * dans la spec suivante ; ici quatre sur quatre le sont, et leurs écrans sont à trois specs de
+ * distance. Un panneau dont tout est cliquable et rien ne répond est pire qu'un panneau qui dit
+ * ce qui n'est pas encore là.
+ *
+ * `aria-disabled` et non `disabled` : un bouton désactivé ne reçoit ni focus ni survol, donc son
+ * infobulle serait inatteignable — exactement là où elle est le plus utile.
+ */
+const ACTIONS: { key: string; label: string; icon: IconName; accent?: boolean; ecran: string }[] = [
+  { key: 'open', label: 'Ouvrir les données', icon: 'table', accent: true, ecran: 'A5' },
+  { key: 'structure', label: 'Structure', icon: 'cols', ecran: 'A9' },
+  { key: 'select', label: 'SELECT dans console', icon: 'term', ecran: 'A7' },
+  { key: 'export', label: 'Exporter CSV', icon: 'dl', ecran: 'un écran d’export' },
+]
+
+/**
+ * Le panneau de détail de `A4`, à droite.
+ *
+ * **Sans sélection, il le dit** plutôt que de laisser 300 px blancs — ou de sélectionner d'office
+ * la première ligne, ce qui déclencherait une requête `table_detail` que l'utilisateur n'a pas
+ * demandée.
+ */
+export function DetailPanel({
+  detail,
+  schema,
+  loading = false,
+  error = null,
+  pinned = false,
+  onTogglePin,
+}: DetailPanelProps) {
+  if (error)
+    return (
+      <aside className={styles.root}>
+        <p className={styles.vide}>{error}</p>
+      </aside>
+    )
+  if (loading)
+    return (
+      <aside className={styles.root}>
+        <p className={styles.vide}>Chargement du détail…</p>
+      </aside>
+    )
+  if (!detail)
+    return (
+      <aside className={styles.root} aria-label="Détail de l’objet">
+        <p className={styles.vide}>Sélectionnez un objet pour en voir le détail.</p>
+      </aside>
+    )
+
+  const colonnes = detail.columns.slice(0, APERCU)
+  const restantes = detail.columns.length - colonnes.length
+
+  return (
+    <aside className={styles.root} aria-label={`Détail de ${schema}.${detail.name}`}>
+      <header className={styles.header}>
+        <span className={styles.title}>
+          {schema}.{detail.name}
+        </span>
+        <span className={styles.spacer} />
+        <button
+          type="button"
+          className={styles.pin}
+          onClick={onTogglePin}
+          aria-pressed={pinned}
+          aria-label={pinned ? 'Détacher le panneau' : 'Épingler le panneau'}
+        >
+          <Icon name="pin" size={13} strokeWidth={1.9} />
+        </button>
+      </header>
+
+      <div className={styles.body}>
+        <div className={styles.tiles}>
+          {/* **Le compte de lignes est une estimation, la taille est exacte.** `RowCount` le dit
+              au niveau du type (`06c`) : le drapeau se **dérive** au lieu d'être supposé. Les
+              présenter à l'identique serait un mensonge de précision, que le handoff commet. */}
+          <StatTile
+            label="Lignes"
+            value={detail.rows.value < 0 ? ABSENT : formatCount(detail.rows.value)}
+            approximate={detail.rows.kind === 'estimated'}
+          />
+          <StatTile
+            label="Taille"
+            value={detail.sizeBytes === null ? ABSENT : formatBytes(detail.sizeBytes)}
+          />
+        </div>
+
+        <section className={styles.bloc}>
+          <h3 className={styles.blocTitre}>Colonnes · {detail.columns.length}</h3>
+          <div className={styles.encadre}>
+            {colonnes.map((colonne) => (
+              <div key={colonne.name} className={styles.colonne}>
+                <span className={styles.marque} aria-hidden="true">
+                  {marqueDe(colonne)}
+                </span>
+                <span className={styles.colonneNom}>{colonne.name}</span>
+                <span className={styles.colonneType}>{colonne.typeName}</span>
+              </div>
+            ))}
+            {/* **Les cinq premières du catalogue**, et non « les cinq plus significatives » :
+                c'est l'ordre que l'utilisateur connaît de sa table, et « significatif »
+                demanderait une règle que personne n'a écrite. La liste complète appartient à
+                `A9` (`14`), qui est faite pour ça. */}
+            {restantes > 0 && (
+              <div className={styles.colonne}>
+                <span className={styles.reste}>+ {restantes} autres…</span>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className={styles.bloc}>
+          <h3 className={styles.blocTitre}>Actions</h3>
+          <div className={styles.actions}>
+            {ACTIONS.map((action) => (
+              <Tooltip key={action.key} label={`Viendra avec ${action.ecran}`}>
+                <button
+                  type="button"
+                  className={action.accent ? styles.actionAccent : styles.action}
+                  aria-disabled="true"
+                >
+                  <Icon name={action.icon} size={13} strokeWidth={2} />
+                  {action.label}
+                </button>
+              </Tooltip>
+            ))}
+          </div>
+        </section>
+
+        <section className={styles.bloc}>
+          <h3 className={styles.blocTitre}>Relations</h3>
+          <div className={styles.encadre}>
+            {detail.relations.length === 0 ? (
+              <div className={styles.colonne}>
+                <span className={styles.reste}>Aucune clé étrangère</span>
+              </div>
+            ) : (
+              detail.relations.map((relation) => (
+                <div
+                  key={relation.constraintName}
+                  className={
+                    relation.direction === 'incoming' ? styles.relationEntrante : styles.relation
+                  }
+                >
+                  {/* **La direction n'est pas décorative.** `06c` la porte dans le type, et le
+                      mockup grise sa troisième ligne : une relation *sortante* dit de quoi cette
+                      table dépend, une *entrante* dit qui dépend d'elle. Les afficher pareil
+                      ferait lire « orders → users » et « invoices → orders » comme deux faits de
+                      même nature, alors que l'un se lit dans l'autre sens. */}
+                  <Icon
+                    name="fk"
+                    size={12}
+                    strokeWidth={2}
+                    className={relation.direction === 'incoming' ? styles.fkEntrante : styles.fk}
+                  />
+                  {relation.direction === 'outgoing'
+                    ? `${relation.columns.join(', ')} → ${relation.targetTable}.${relation.targetColumns.join(', ')}`
+                    : `${relation.targetTable}.${relation.targetColumns.join(', ')} → ${relation.columns.join(', ')}`}
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      </div>
+    </aside>
+  )
+}
+
+/**
+ * La marque d'une colonne, en tête de ligne.
+ *
+ * Le mockup montre `#` pour un entier et `T` pour du texte, plus des icônes clé et FK. La
+ * catégorie de `06c` porte déjà l'information — c'est elle qui décide du glyphe dans `A5` — donc
+ * on la réemploie plutôt que d'analyser le nom du type.
+ */
+function marqueDe(colonne: TableDetail['columns'][number]): string {
+  if (colonne.key === 'primary') return '⚿'
+  if (colonne.key === 'foreign') return '↗'
+  const glyphes: Record<string, string> = {
+    number: '#',
+    text: 'T',
+    boolean: '☑',
+    timestamp: '◷',
+    json: '{}',
+    uuid: 'ID',
+    binary: '▤',
+    other: '·',
+  }
+  return glyphes[colonne.category] ?? '·'
+}

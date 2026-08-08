@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { type Charge, idBase, idProjet, idSchema } from '../../screens/Explorer/arbre'
 import { BreadcrumbBar, type TypeObjet } from '../../screens/Explorer/BreadcrumbBar'
+import { DetailPanel } from '../../screens/Explorer/DetailPanel'
 import { ExplorerSidebar } from '../../screens/Explorer/ExplorerSidebar'
 import { ObjectTable } from '../../screens/Explorer/ObjectTable'
 import { EnvironmentPicker } from '../../shell/EnvironmentPicker/EnvironmentPicker'
@@ -1466,6 +1467,142 @@ function CentreGallery() {
   )
 }
 
+// --- Panneau de détail de A4 (`09f`) ----------------------------------------------
+
+const DETAIL_DEMO = {
+  schema: 'public',
+  name: 'orders',
+  rows: { kind: 'estimated' as const, value: 1_900_000 },
+  sizeBytes: 2.1 * 1024 ** 3,
+  comment: null,
+  columns: [
+    {
+      position: 1,
+      name: 'id',
+      typeName: 'bigint',
+      category: 'number' as const,
+      nullable: false,
+      default: null,
+      key: 'primary' as const,
+      comment: null,
+    },
+    {
+      position: 2,
+      name: 'user_id',
+      typeName: 'bigint',
+      category: 'number' as const,
+      nullable: false,
+      default: null,
+      key: 'foreign' as const,
+      comment: null,
+    },
+    {
+      position: 3,
+      name: 'status',
+      typeName: 'text',
+      category: 'text' as const,
+      nullable: false,
+      default: null,
+      key: null,
+      comment: null,
+    },
+    {
+      position: 4,
+      name: 'total_cents',
+      typeName: 'integer',
+      category: 'number' as const,
+      nullable: true,
+      default: null,
+      key: null,
+      comment: null,
+    },
+    {
+      position: 5,
+      name: 'currency',
+      typeName: 'char(3)',
+      category: 'text' as const,
+      nullable: true,
+      default: null,
+      key: null,
+      comment: null,
+    },
+    ...Array.from({ length: 13 }, (_, i) => ({
+      position: 6 + i,
+      name: `extra_${i}`,
+      typeName: 'text',
+      category: 'text' as const,
+      nullable: true,
+      default: null,
+      key: null,
+      comment: null,
+    })),
+  ],
+  indexes: [],
+  constraints: [],
+  triggers: [],
+  relations: [
+    {
+      constraintName: 'fk_user',
+      direction: 'outgoing' as const,
+      columns: ['user_id'],
+      targetSchema: 'public',
+      targetTable: 'users',
+      targetColumns: ['id'],
+    },
+    {
+      constraintName: 'fk_coupon',
+      direction: 'outgoing' as const,
+      columns: ['coupon_code'],
+      targetSchema: 'public',
+      targetTable: 'coupons',
+      targetColumns: ['code'],
+    },
+    {
+      constraintName: 'fk_invoice',
+      direction: 'incoming' as const,
+      columns: ['id'],
+      targetSchema: 'public',
+      targetTable: 'invoices',
+      targetColumns: ['order_id'],
+    },
+  ],
+  ddl: '',
+}
+
+function DetailPanelGallery() {
+  const [epingle, setEpingle] = useState(false)
+
+  return (
+    <Section title="Panneau de détail (A4)">
+      <Note>
+        **Les quatre actions sont désactivées, avec une infobulle nommant l’écran attendu** — à
+        l’inverse de A1 et 08b, qui livrent des boutons actifs mais sans effet. Là un seul bouton
+        était inerte et son écran venait dans la spec suivante ; ici quatre sur quatre le sont, à
+        trois specs de distance.
+      </Note>
+      <Note>
+        `aria-disabled` et non `disabled` : un bouton désactivé ne reçoit ni focus ni survol, donc
+        son infobulle serait inatteignable — exactement là où elle est le plus utile.
+      </Note>
+      <Sub title="Table sélectionnée">
+        <div data-testid="detail-a4" style={{ display: 'flex', height: 520 }}>
+          <DetailPanel
+            detail={DETAIL_DEMO}
+            schema="public"
+            pinned={epingle}
+            onTogglePin={() => setEpingle((e) => !e)}
+          />
+        </div>
+      </Sub>
+      <Sub title="Sans sélection">
+        <div style={{ display: 'flex', height: 120 }}>
+          <DetailPanel detail={null} schema="public" />
+        </div>
+      </Sub>
+    </Section>
+  )
+}
+
 export function Gallery() {
   return (
     <div className={styles.root}>
@@ -1485,6 +1622,7 @@ export function Gallery() {
       <TitleBarGallery />
       <ExplorerSidebarGallery />
       <CentreGallery />
+      <DetailPanelGallery />
       <DotGallery />
       <SplitPaneGallery />
       <TabStripGallery />
