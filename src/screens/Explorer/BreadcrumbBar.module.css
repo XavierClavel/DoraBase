@@ -1,0 +1,93 @@
+/*
+ * Barre de fil d'Ariane du centre de A4.
+ *
+ *   34px · gap 8px · remplissage 0 12px · filet bas 1px --divider
+ *   fil      gap 5px, 500 12px Nunito, encre .5 ; dernier segment 700 encre pleine
+ *   icône    13px --engine-pg ; séparateur chevron-droite 11px encre .3
+ *   filtre   25px × 210px, radius 8, blanc, bordure 1px .14, gap 6, remplissage 0 8
+ */
+
+.root {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  box-sizing: border-box;
+  height: var(--h-bar);
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--divider);
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
+  color: var(--ink-8);
+  white-space: nowrap;
+}
+
+.dbIcon {
+  flex: none;
+  color: var(--engine-pg);
+}
+
+.separator {
+  flex: none;
+  color: var(--ink-5);
+}
+
+/* Le dernier segment est celui qu'on regarde : encre pleine et graisse 700, quand le reste du
+ * chemin reste en encre secondaire. */
+.current {
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  height: var(--h-btn-sm);
+  width: 210px;
+  flex: none;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--field);
+}
+
+.search:focus-within {
+  box-shadow: var(--shadow-focus);
+}
+
+.searchIcon {
+  flex: none;
+  color: var(--ink-4);
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-medium);
+}
+
+.searchInput:focus-visible {
+  outline: none;
+}
+
+.searchInput::placeholder {
+  color: var(--ink-3);
+}

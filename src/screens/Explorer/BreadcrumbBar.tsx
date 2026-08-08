@@ -1,0 +1,89 @@
+import { Icon } from '../../design/icons/Icon'
+import { type Segment, SegmentedControl } from '../../ui/SegmentedControl/SegmentedControl'
+import styles from './BreadcrumbBar.module.css'
+
+export type TypeObjet = 'tables' | 'views' | 'functions' | 'indexes'
+
+type BreadcrumbBarProps = {
+  database: string
+  schema: string
+  /** Les quatre comptes, **issus des données** — jamais de constantes. */
+  counts: Record<TypeObjet, number>
+  type: TypeObjet
+  onTypeChange: (type: TypeObjet) => void
+  filter: string
+  onFilterChange: (filter: string) => void
+}
+
+const LIBELLES: Record<TypeObjet, string> = {
+  tables: 'Tables',
+  views: 'Vues',
+  functions: 'Fonctions',
+  indexes: 'Index',
+}
+
+const ORDRE: readonly TypeObjet[] = ['tables', 'views', 'functions', 'indexes']
+
+/**
+ * La barre de fil d'Ariane du centre de `A4` : chemin, filtre, contrôle segmenté.
+ *
+ * **Le fil d'Ariane double celui de la barre de titre, et ce n'est pas une redondance.** Celui
+ * de la barre de titre suit la base **ouverte** ; celui-ci suit l'**onglet actif**. Avec
+ * plusieurs onglets, ils diffèrent. À écrire, parce qu'un relecteur y verra un doublon.
+ */
+export function BreadcrumbBar({
+  database,
+  schema,
+  counts,
+  type,
+  onTypeChange,
+  filter,
+  onFilterChange,
+}: BreadcrumbBarProps) {
+  const segments: Segment<TypeObjet>[] = ORDRE.map((t) => ({
+    value: t,
+    label: LIBELLES[t],
+    // **Issus des données.** Les coder en dur les rendrait faux dès la première base réelle, et
+    // c'est le genre de valeur qu'on oublie de brancher parce qu'elle *ressemble* à du bon.
+    count: counts[t],
+  }))
+
+  return (
+    <div className={styles.root}>
+      <nav className={styles.breadcrumb} aria-label="Chemin de l’objet affiché">
+        <Icon name="db" size={13} strokeWidth={1.8} className={styles.dbIcon} />
+        {database}
+        <Icon name="chevr" size={11} strokeWidth={2.4} className={styles.separator} />
+        <span className={styles.current}>{schema}</span>
+      </nav>
+
+      <span className={styles.spacer} />
+
+      {/* **Le champ ne promet plus une recherche globale.**
+          Le mockup écrit « Chercher un objet… » avec un rappel `⌘P`, ce qui annonce deux choses
+          qui n'existent pas : une recherche traversant tous les schémas et tous les projets, et
+          un raccourci pour l'ouvrir. Ce champ filtre la liste affichée — celle du schéma
+          courant — et le dit. Le rappel `⌘P` est retiré plutôt que de désigner un raccourci
+          mort : un raccourci affiché qui ne répond pas est pire qu'un raccourci absent.
+          La recherche globale reste à faire, et sa spec dira ce que devient ce champ. */}
+      <label className={styles.search}>
+        <Icon name="search" size={12} strokeWidth={2} className={styles.searchIcon} />
+        <input
+          type="text"
+          className={styles.searchInput}
+          value={filter}
+          placeholder={`Filtrer les objets de ${schema}…`}
+          aria-label={`Filtrer les objets de ${schema}`}
+          onChange={(evenement) => onFilterChange(evenement.target.value)}
+        />
+      </label>
+
+      <SegmentedControl
+        label="Type d’objet"
+        segments={segments}
+        value={type}
+        onValueChange={onTypeChange}
+      />
+    </div>
+  )
+}
