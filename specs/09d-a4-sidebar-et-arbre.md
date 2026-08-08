@@ -12,7 +12,7 @@ données et les états de connexion).
 
 ## Périmètre
 
-- La sidebar à **252 px**, distincte des 300 px de `04`.
+- La sidebar à **252 px**, contre les 212 px de `04`.
 - L'arbre à quatre niveaux, avec le projet actif déplié et les voisins repliés.
 - Le dépliage paresseux : les objets d'un schéma sont demandés au dépliage, pas avant.
 - L'état de connexion de chaque base, visible.
@@ -21,8 +21,10 @@ données et les états de connexion).
 
 ## Hors périmètre
 
-- **La sidebar 300 px de `04`** : c'est un composant différent, pas une variante. `04` l'a
-  déjà tranché.
+- **Un second composant de sidebar.** Correction d'une erreur de cette spec : `Sidebar` de `04`
+  fait **212 px** (partagée par `A5` → `A9`), non 300, et l'écart avec les 252 px de `A4` tient à
+  une seule propriété. C'est donc une **variante de largeur**, pas un composant différent — deux
+  composants pour un pixel de structure identique seraient une duplication.
 - **Le glisser-déposer, le renommage, la suppression.** Rien de tout cela n'est maquetté.
 - **La recherche globale `⌘P`** que la barre de filtre affiche en rappel → un scope à part,
   puisqu'elle traverse tous les projets et n'est maquettée nulle part en action.
@@ -44,11 +46,15 @@ autres.
 `SidebarFilterBar` filtre les lignes visibles. Il ne peut pas trouver une table d'un
 schéma jamais déplié : elle n'a jamais traversé l'IPC.
 
-**C'est un piège d'interface**, pas un détail d'implémentation : l'utilisateur qui tape
-« orders » et ne voit rien conclut que la table n'existe pas. Le champ doit donc dire sur
-quoi il porte — « filtrer ce qui est chargé » plutôt que « chercher un objet ». Le mockup
-écrit « Chercher un objet… », qui promet plus. Écart consigné au § « À trancher », et la
-vraie réponse est la recherche globale `⌘P`, hors périmètre.
+**Correction d'une erreur de cette spec** : le mockup écrit « Filtrer l'arborescence… » dans la
+sidebar, ce qui est exact et ne promet rien de trop — `SidebarFilterBar` porte déjà ce
+placeholder depuis `04`. Le « Chercher un objet… ⌘P » que cette spec lui attribuait est en
+réalité dans la **barre du centre**, où il promet bien une recherche globale : c'est donc `09e`
+que le point concerne, pas `09d`.
+
+Reste que l'utilisateur qui tape « orders » sans avoir déplié le schéma ne verra rien. Le mot
+« arborescence » le dit implicitement — on filtre ce qui est affiché — et c'est le mieux que
+puisse faire un libellé. La vraie réponse est la recherche globale `⌘P`, hors périmètre.
 
 ### Quatre états de connexion, quatre rendus distincts
 

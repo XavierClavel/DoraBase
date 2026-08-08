@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type { IconName } from '../../design/icons/names'
 import { cx } from '../cx'
@@ -32,8 +32,17 @@ type TreeRowProps = {
   /** Projet voisin replié : icônes ramenées à la teinte de métadonnée. */
   muted?: boolean
   onClick?: () => void
-}
+} & Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  'onClick' | 'className' | 'style' | 'type' | 'children'
+>
 
+// Les attributs HTML restants sont transmis à la racine. C'est ce qui permet à `A4` (`09d`) de
+// poser `role="treeitem"`, `aria-level` et `aria-expanded` **sur l'élément interactif** : une
+// enveloppe portant le rôle mettrait le `<button>` *à l'intérieur* du nœud d'arbre, où ni le clic
+// ni le focus ne le désignent. `04` avait différé la forme d'arbre « tant qu'aucun écran n'en
+// impose la forme » ; A4 l'impose.
+//
 // Ligne d'arbre purement présentationnelle : elle ne connaît ni ses enfants, ni son état
 // d'ouverture, ni le modèle de données. L'écran consommateur aplatit son arbre et fournit
 // une liste de `TreeRow` déjà positionnées — voir `specs/04-menu-lateral-standard.md`, qui
@@ -51,6 +60,7 @@ export function TreeRow({
   strong,
   muted,
   onClick,
+  ...rest
 }: TreeRowProps) {
   const contenu = (
     <>
@@ -74,6 +84,13 @@ export function TreeRow({
         />
       )}
       <span className={styles.label}>{label}</span>
+      {/* **Les espaces sont explicites, et c'est structurel.** JSX supprime l'espace entre deux
+          éléments, et le calcul du nom accessible concatène les nœuds de texte sans rien ajouter :
+          sans eux, une ligne d'arbre s'annonce « orders1.9 M » ou « Atelier NordPROD ».
+          Le piège s'est présenté quatre fois — `08a` (monogramme), `09a` (compte de segment),
+          `09c` (état de connexion), et ici — d'où la correction dans la primitive plutôt que chez
+          chaque appelant. */}
+      {meta !== undefined && ' '}
       {meta !== undefined && (
         <span
           data-meta={metaVariant}
@@ -82,6 +99,7 @@ export function TreeRow({
           {meta}
         </span>
       )}
+      {trailing !== undefined && ' '}
       {trailing}
     </>
   )
@@ -97,7 +115,15 @@ export function TreeRow({
   // `<div>` — c'est du contenu, elle n'a pas à entrer dans le parcours clavier.
   if (onClick === undefined) {
     return (
-      <div className={className} style={{ paddingLeft: INDENT[depth] }} data-depth={depth}>
+      // Les attributs restants sont typés pour un `<button>` ; sur cette branche ils sont
+      // rétrécis à ce qu'un `<div>` accepte. Les seuls employés par `A4` — `role` et les
+      // `aria-*` — sont communs aux deux, et cette branche n'est pas interactive de toute façon.
+      <div
+        className={className}
+        style={{ paddingLeft: INDENT[depth] }}
+        data-depth={depth}
+        {...(rest as HTMLAttributes<HTMLDivElement>)}
+      >
         {contenu}
       </div>
     )
@@ -110,6 +136,7 @@ export function TreeRow({
       style={{ paddingLeft: INDENT[depth] }}
       data-depth={depth}
       onClick={onClick}
+      {...rest}
     >
       {contenu}
     </button>

@@ -115,10 +115,11 @@ cinq endroits où le mockup ne répond pas, et où la vraie réponse appartient 
 1. **Que signifie le point d'état de la pastille projet ?** Un projet n'a pas d'état de
    connexion — ses bases en ont. `09c` le fait donc refléter la base **ouverte**, et un projet
    sans base ouverte n'a pas de point plutôt qu'un point gris inventé.
-2. **La barre de filtre promet plus qu'elle ne tient.** Le mockup écrit « Chercher un
-   objet… », mais elle ne peut porter que sur ce qui est **chargé** : une table d'un schéma
-   jamais déplié n'a jamais traversé l'IPC. `09d` change donc le libellé pour dire ce qu'il
-   fait. La vraie réponse est la recherche globale `⌘P`, que rien ne maquette en action.
+2. **Le champ de recherche du centre promet une recherche globale.** ~~La barre de filtre de la
+   sidebar~~ — **corrigé le 8 août 2026** : la sidebar écrit « Filtrer l'arborescence… », ce qui
+   est exact. C'est le champ de la **barre du centre** qui écrit « Chercher un objet… ⌘P », et
+   celui-là promet de traverser tous les schémas et tous les projets. `09e` doit donc soit le
+   restreindre honnêtement, soit livrer la recherche globale — que rien ne maquette en action.
 3. **Trois des quatre états de connexion ne sont pas maquettés.** Seule la base ouverte l'est.
    `09d` compose les trois autres avec `Badge` et `Dot`, et impose qu'ils se distinguent
    **autrement que par la couleur**.
@@ -235,7 +236,7 @@ propres critères de vérification.
 | [`09a`](09a-primitives-de-tableau.md) | — | Primitives : `SegmentedControl`, `StatTile`, `DataTable` | **fait** |
 | [`09b`](09b-cablage-des-donnees.md) | — | Câblage : `load_config` au démarrage, registre de connexions, introspection | **fait** (redémarrage non observé) |
 | [`09c`](09c-a4-barre-de-titre.md) | A4 | Barre de titre : pastille projet, fil d'Ariane, sélecteur d'environnement | **fait** (clic vs glissement non observé) |
-| [`09d`](09d-a4-sidebar-et-arbre.md) | A4 | Sidebar 252 px et son arbre à quatre niveaux | écrite |
+| [`09d`](09d-a4-sidebar-et-arbre.md) | A4 | Sidebar 252 px et son arbre à quatre niveaux | **fait** |
 | [`09e`](09e-a4-liste-des-objets.md) | A4 | Centre : onglets, fil d'Ariane, tableau des objets | écrite |
 | [`09f`](09f-a4-panneau-droit.md) | A4 | Panneau de détail 300 px | écrite |
 | `10` | A5 | Visualiseur de table : grille, filtres par en-tête, tri, LIMIT | à écrire |

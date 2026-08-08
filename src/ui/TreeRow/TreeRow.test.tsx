@@ -82,3 +82,36 @@ test('sans chevron, aucun chevron n’est rendu', () => {
   const { container } = render(<TreeRow depth={3} label="orders" />)
   expect(container.querySelector('[data-chevron]')).toBeNull()
 })
+
+// --- Le nom accessible (correction de `09d`) ---
+
+// **Quatrième occurrence du même piège** : JSX supprime l'espace entre deux éléments, et le
+// calcul du nom accessible concatène les nœuds de texte sans rien ajouter. Après `08a`
+// (monogramme), `09a` (compte de segment) et `09c` (état de connexion), la correction est passée
+// dans la primitive — sans quoi une ligne d'arbre s'annonce « orders1.9 M ».
+test('la métadonnée est séparée du libellé dans le nom accessible', () => {
+  render(<TreeRow depth={3} label="orders" meta="1.9 M" metaVariant="mono" onClick={() => {}} />)
+  expect(screen.getByRole('button', { name: 'orders 1.9 M' })).toBeInTheDocument()
+})
+
+test('le contenu de fin est séparé lui aussi', () => {
+  render(
+    <TreeRow depth={0} label="Atelier Nord" trailing={<span>PROD</span>} onClick={() => {}} />,
+  )
+  expect(screen.getByRole('button', { name: 'Atelier Nord PROD' })).toBeInTheDocument()
+})
+
+test('sans métadonnée ni contenu de fin, le nom reste le libellé seul', () => {
+  render(<TreeRow depth={2} label="public" onClick={() => {}} />)
+  expect(screen.getByRole('button', { name: 'public' })).toBeInTheDocument()
+})
+
+// Les attributs restants sont transmis à la racine : c'est ce qui permet à `A4` de poser
+// `role="treeitem"` **sur l'élément interactif**. Une enveloppe portant le rôle mettrait le
+// `<button>` à l'intérieur du nœud d'arbre, où ni le clic ni le focus ne le désignent.
+test('les attributs sont transmis à l’élément interactif', () => {
+  render(<TreeRow depth={1} label="analytics" role="treeitem" aria-level={2} onClick={() => {}} />)
+  const ligne = screen.getByRole('treeitem', { name: 'analytics' })
+  expect(ligne.tagName).toBe('BUTTON')
+  expect(ligne).toHaveAttribute('aria-level', '2')
+})

@@ -1,4 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type Charge, idBase, idProjet, idSchema } from '../../screens/Explorer/arbre'
+import { ExplorerSidebar } from '../../screens/Explorer/ExplorerSidebar'
 import { EnvironmentPicker } from '../../shell/EnvironmentPicker/EnvironmentPicker'
 import { ProjectPill } from '../../shell/ProjectPill/ProjectPill'
 import { TitleBar } from '../../shell/TitleBar/TitleBar'
@@ -1274,6 +1276,125 @@ function TitleBarGallery() {
   )
 }
 
+// --- Sidebar de A4 (`09d`) --------------------------------------------------------
+
+const PROJETS_DEMO = [
+  {
+    name: 'Atelier Nord',
+    activeEnvironment: 'prod' as const,
+    databases: [
+      { name: 'analytics', engine: 'postgresql' as const, variants: [] },
+      { name: 'shop', engine: 'mysql' as const, variants: [] },
+      { name: 'cache', engine: 'redis' as const, variants: [] },
+    ],
+  },
+  {
+    name: 'Atelier Sud',
+    activeEnvironment: 'dev' as const,
+    databases: [{ name: 'tracking', engine: 'mongodb' as const, variants: [] }],
+  },
+]
+
+const ID_BASE = idBase('Atelier Nord', 'analytics')
+const ID_SCHEMA = idSchema('Atelier Nord', 'analytics', 'public')
+
+const CHARGE_DEMO: Charge = {
+  schemas: {
+    [ID_BASE]: [
+      { name: 'public', counts: { tables: 4, views: 1, functions: 2, indexes: 6 } },
+      { name: 'introspection', counts: { tables: 4, views: 1, functions: 2, indexes: 6 } },
+    ],
+  },
+  objets: {
+    [ID_SCHEMA]: [
+      {
+        name: 'orders',
+        kind: 'table',
+        rows: { kind: 'estimated', value: 1_900_000 },
+        sizeBytes: 2.1 * 1024 ** 3,
+        columnCount: 18,
+        primaryKey: 'id',
+        lastAnalyze: null,
+        comment: null,
+      },
+      {
+        name: 'users',
+        kind: 'table',
+        rows: { kind: 'estimated', value: 128_000 },
+        sizeBytes: 96 * 1024 ** 2,
+        columnCount: 12,
+        primaryKey: 'id',
+        lastAnalyze: null,
+        comment: null,
+      },
+      {
+        name: 'orders_by_day',
+        kind: 'view',
+        rows: { kind: 'estimated', value: 0 },
+        sizeBytes: null,
+        columnCount: 3,
+        primaryKey: null,
+        lastAnalyze: null,
+        comment: null,
+      },
+    ],
+  },
+  enCours: new Set([idBase('Atelier Nord', 'shop')]),
+  echecs: { [idBase('Atelier Nord', 'cache')]: 'hôte injoignable' },
+}
+
+function ExplorerSidebarGallery() {
+  const [deplies, setDeplies] = useState<Set<string>>(
+    new Set([
+      idProjet('Atelier Nord'),
+      ID_BASE,
+      ID_SCHEMA,
+      idBase('Atelier Nord', 'shop'),
+      idBase('Atelier Nord', 'cache'),
+    ]),
+  )
+  const [choisi, setChoisi] = useState<string | null>(ID_SCHEMA)
+
+  return (
+    <Section title="Sidebar de A4">
+      <Note>
+        **Le dépliage est paresseux** : un schéma replié ne produit aucun nœud enfant, donc l’écran
+        n’a rien à demander. C’est la contrainte transverse appliquée à l’arbre.
+      </Note>
+      <Note>
+        Un dépliage qui échoue le dit **sur sa ligne** et ne vide pas l’arbre — voir `cache`
+        ci-dessous, hors ligne, tandis que `analytics` reste dépliée.
+      </Note>
+      <Sub title="Quatre niveaux, trois états de chargement">
+        <div data-testid="sidebar-a4" style={{ display: 'flex', height: 420 }}>
+          <ExplorerSidebar
+            projects={PROJETS_DEMO}
+            deplies={deplies}
+            charge={CHARGE_DEMO}
+            etatDe={(_p, base) =>
+              base === 'analytics'
+                ? { kind: 'connected', serverVersion: 'PostgreSQL 17.6', tunnelLocalPort: null }
+                : base === 'cache'
+                  ? { kind: 'offline', reason: 'hôte injoignable' }
+                  : { kind: 'never' }
+            }
+            selectedId={choisi}
+            onSelect={(n) => setChoisi(n.id)}
+            onToggle={(n) =>
+              setDeplies((precedent) => {
+                const suivant = new Set(precedent)
+                if (suivant.has(n.id)) suivant.delete(n.id)
+                else suivant.add(n.id)
+                return suivant
+              })
+            }
+          />
+        </div>
+      </Sub>
+    </Section>
+  )
+}
+
 export function Gallery() {
   return (
     <div className={styles.root}>
@@ -1291,6 +1412,7 @@ export function Gallery() {
       <StatTileGallery />
       <DataTableGallery />
       <TitleBarGallery />
+      <ExplorerSidebarGallery />
       <DotGallery />
       <SplitPaneGallery />
       <TabStripGallery />
