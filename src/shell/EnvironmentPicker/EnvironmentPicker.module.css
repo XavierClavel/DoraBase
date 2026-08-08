@@ -1,0 +1,101 @@
+/*
+ * Sélecteur d'environnement de la barre de titre de A4, **seconde boîte**.
+ *
+ *   boîte    24px · gap 7px · remplissage 0 8px · radius 8px · blanc · bordure 1px .13
+ *            margin-left 8px — la séparation d'avec la pastille projet
+ *   « ENV »  700 9px Nunito, capitales, interlettrage .6px, encre .38
+ *   champ    19px · remplissage 0 5px 0 7px · radius 6px · --paper-alt · bordure 1px .14
+ *            700 10.5px Nunito, encre pleine
+ *   point    7px, couleur de l'environnement
+ *   chevron  11px, .45, trait 2.6
+ *
+ * Les 9px de « ENV » et les .38 d'encre n'ont pas de jeton : on prend `--text-caps-sm` (9.5px)
+ * et `--ink-4` (.4). Un demi-pixel et deux centièmes d'opacité, invisibles — même arbitrage
+ * que `Field` en `02`.
+ */
+
+.root {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  box-sizing: border-box;
+  height: 24px;
+  /* La séparation d'avec la pastille projet. Le handoff la nomme explicitement : sans elle, les
+   * deux boîtes se lisent comme une seule.
+   *
+   * 8px, absent de l'échelle d'espacement qui va de 7 à 9 — comme le remplissage du `DataTable`
+   * de `09a`. Une première version employait `--space-3` (6px), et la mesure a montré l'écart. */
+  margin-left: 8px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--field);
+}
+
+.legend {
+  font-family: var(--font-ui);
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  height: 19px;
+  padding: 0 var(--space-2) 0 var(--space-4);
+  border: 1px solid var(--border-field);
+  border-radius: var(--radius-control);
+  background: var(--paper-alt);
+}
+
+.field:focus-within {
+  box-shadow: var(--shadow-focus);
+}
+
+.dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+}
+
+/* Le rouge de `prod` : la même teinte que son bouton dans `A2` (`08b`). Un environnement de
+ * production doit se reconnaître d'un écran à l'autre. */
+.dot[data-environment="prod"] {
+  background: var(--danger);
+}
+
+.dot[data-environment="staging"] {
+  background: var(--warn);
+}
+
+.select {
+  /* Retire le chevron du système : celui du handoff est dessiné à côté. */
+  appearance: none;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-caps);
+  font-weight: var(--weight-bold);
+  /* La surface cliquable doit être tout le champ — défaut trouvé en `08b` sur `Select`. */
+  align-self: stretch;
+}
+
+.select:focus-visible {
+  outline: none;
+}
+
+.chevron {
+  flex: none;
+  color: var(--ink-meta);
+  /* Le chevron n'intercepte pas le clic : il doit ouvrir la liste, comme le reste du champ. */
+  pointer-events: none;
+}

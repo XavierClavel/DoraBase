@@ -234,7 +234,7 @@ propres critères de vérification.
 | [`08e`](08e-enregistrer-et-ouvrir.md) | A2 | « Enregistrer & ouvrir » : config + secret | **fait** (relecture au démarrage → `09`) |
 | [`09a`](09a-primitives-de-tableau.md) | — | Primitives : `SegmentedControl`, `StatTile`, `DataTable` | **fait** |
 | [`09b`](09b-cablage-des-donnees.md) | — | Câblage : `load_config` au démarrage, registre de connexions, introspection | **fait** (redémarrage non observé) |
-| [`09c`](09c-a4-barre-de-titre.md) | A4 | Barre de titre : pastille projet, fil d'Ariane, sélecteur d'environnement | écrite |
+| [`09c`](09c-a4-barre-de-titre.md) | A4 | Barre de titre : pastille projet, fil d'Ariane, sélecteur d'environnement | **fait** (clic vs glissement non observé) |
 | [`09d`](09d-a4-sidebar-et-arbre.md) | A4 | Sidebar 252 px et son arbre à quatre niveaux | écrite |
 | [`09e`](09e-a4-liste-des-objets.md) | A4 | Centre : onglets, fil d'Ariane, tableau des objets | écrite |
 | [`09f`](09f-a4-panneau-droit.md) | A4 | Panneau de détail 300 px | écrite |

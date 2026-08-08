@@ -1,0 +1,97 @@
+/*
+ * Pastille projet de la barre de titre de A4.
+ *
+ *   24px · gap 7px · remplissage 0 10px · radius 8px · fond blanc · bordure 1px .13
+ *   point       6px, --success quand connectée
+ *   sac à dos   12px, --accent-deep, trait 2
+ *   nom         700 11.5px Nunito
+ *   chevron     11px, --ink-4, trait 2.4
+ *   fil         500 11px JetBrains Mono, --ink-meta (.45)
+ *
+ * La bordure est à .13 dans le mockup, entre `--divider` (.10) et `--border` (.14). On prend
+ * `--border` : l'écart de .01 est invisible, et ajouter un jeton pour ça serait de l'inflation —
+ * même arbitrage que `Field` en `02` et `CollapsiblePanel` en `08a`.
+ */
+
+.root {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  box-sizing: border-box;
+  height: 24px;
+  padding: 0 var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--field);
+  cursor: pointer;
+  /* La barre de titre porte `data-tauri-drag-region` : sans cette exclusion, un clic sur la
+   * pastille déplacerait la fenêtre au lieu de l'activer. Tauri respecte l'attribut posé à
+   * `false` sur un descendant. */
+  white-space: nowrap;
+}
+
+.root:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-5);
+}
+
+/* Les quatre états. La couleur **renforce** le libellé accessible, elle ne le remplace pas. */
+.dot[data-state="connected"] {
+  background: var(--success);
+}
+
+.dot[data-state="connecting"] {
+  background: var(--warn);
+}
+
+.dot[data-state="offline"] {
+  background: var(--danger);
+}
+
+.bag {
+  flex: none;
+  color: var(--accent-deep);
+}
+
+.name {
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+}
+
+.chevron {
+  flex: none;
+  color: var(--ink-4);
+}
+
+/* Le fil d'Ariane est en mono : un nom de schéma est une valeur technique, et c'est la règle du
+ * produit depuis `08b` — ce que l'utilisateur transcrit littéralement est en mono. */
+.breadcrumb {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  color: var(--ink-meta);
+}
+
+/* Visible pour un lecteur d'écran, absent à l'œil.
+ *
+ * `clip-path` et non `display: none` : celui-ci le retirerait de l'arbre d'accessibilité, ce
+ * qui est exactement l'inverse du but. Même dispositif que la légende de `RadioGroup` (`08a`).
+ */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

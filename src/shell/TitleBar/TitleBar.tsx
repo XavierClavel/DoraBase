@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import { cx } from '../../ui/cx'
 import styles from './TitleBar.module.css'
@@ -19,13 +20,21 @@ type TitleBarProps = {
    * `opacity .55` sur le wordmark. Écart consigné au § « À trancher » de `specs/README.md`.
    */
   dimmed?: boolean
+  /**
+   * Le centre de la barre : pastille projet et sélecteur d'environnement (`A4` → `A9`).
+   *
+   * Passé en contenu plutôt qu'en propriétés : `A1` n'en a aucun, `A4` en a deux, et les écrans
+   * suivants ajouteront un fil d'Ariane plus long. Une liste de propriétés grandirait à chaque
+   * écran là où un contenu s'assemble chez l'appelant.
+   */
+  center?: ReactNode
 }
 
 // `data-tauri-drag-region` rend la fenêtre déplaçable : sous `titleBarStyle: Overlay`
 // (spec 01), macOS ne fournit plus de zone de glissement native. Tauri ne rend
 // glissables que les éléments qui portent l'attribut ; les boutons enfants restent
 // cliquables sans traitement particulier.
-export function TitleBar({ showConsole = false, dimmed = false }: TitleBarProps) {
+export function TitleBar({ showConsole = false, dimmed = false, center }: TitleBarProps) {
   return (
     <div className={cx(styles.root, dimmed && styles.dimmed)} data-tauri-drag-region>
       <div className={cx(styles.wordmark, dimmed && styles.wordmarkDimmed)}>
@@ -34,7 +43,10 @@ export function TitleBar({ showConsole = false, dimmed = false }: TitleBarProps)
         </svg>
         <span className={styles.name}>DoraBase</span>
       </div>
-      <div className={styles.spacer} />
+      {/* Le centre est **centré dans la barre**, pas simplement placé après le wordmark : le
+          mockup l'enveloppe dans un `flex:1; justify-content:center`. Sans cela, la pastille
+          collerait au logo et se déplacerait avec la longueur du fil d'Ariane. */}
+      <div className={styles.center}>{center}</div>
       <div className={styles.actions}>
         {showConsole && (
           <button type="button" className={styles.action} aria-label="Console">

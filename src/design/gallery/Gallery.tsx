@@ -1,4 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { EnvironmentPicker } from '../../shell/EnvironmentPicker/EnvironmentPicker'
+import { ProjectPill } from '../../shell/ProjectPill/ProjectPill'
+import { TitleBar } from '../../shell/TitleBar/TitleBar'
 import { Badge } from '../../ui/Badge/Badge'
 import { Button } from '../../ui/Button/Button'
 import { Chip } from '../../ui/Chip/Chip'
@@ -1215,6 +1218,62 @@ function DataTableGallery() {
   )
 }
 
+// --- Barre de titre de A4 (`09c`) --------------------------------------------------
+
+function TitleBarGallery() {
+  const [env, setEnv] = useState<'dev' | 'staging' | 'prod'>('prod')
+
+  return (
+    <Section title="Barre de titre (A4)">
+      <Note>
+        **Deux boîtes, pas une.** Le handoff insiste : la pastille projet, puis « dans une seconde
+        boîte blanche séparée (margin-left 8 px) » le sélecteur d’environnement. Les fondre ferait
+        lire l’environnement comme une propriété du fil d’Ariane plutôt que comme un commutateur.
+      </Note>
+      <Note>
+        Le point d’état est celui de la base **ouverte** : un projet n’a pas d’état de connexion,
+        ses bases en ont. Sans base ouverte, **aucun point** plutôt qu’un point gris inventé.
+      </Note>
+      <Sub title="A4 — projet, fil d’Ariane, lecture seule, environnement">
+        <div data-testid="titlebar-a4">
+          <TitleBar
+            showConsole
+            center={
+              <>
+                <ProjectPill
+                  projectName="Atelier Nord"
+                  breadcrumb="analytics · public"
+                  connection={{
+                    kind: 'connected',
+                    serverVersion: 'PostgreSQL 17.6',
+                    tunnelLocalPort: null,
+                  }}
+                  readOnly
+                />
+                <EnvironmentPicker value={env} onValueChange={setEnv} />
+              </>
+            }
+          />
+        </div>
+      </Sub>
+      <Sub title="Sans base ouverte — ni point, ni fil d’Ariane">
+        <TitleBar center={<ProjectPill projectName="Atelier Nord" />} />
+      </Sub>
+      <Sub title="Base hors ligne">
+        <TitleBar
+          center={
+            <ProjectPill
+              projectName="Atelier Nord"
+              breadcrumb="shop · public"
+              connection={{ kind: 'offline', reason: 'hôte injoignable' }}
+            />
+          }
+        />
+      </Sub>
+    </Section>
+  )
+}
+
 export function Gallery() {
   return (
     <div className={styles.root}>
@@ -1231,6 +1290,7 @@ export function Gallery() {
       <SegmentedControlGallery />
       <StatTileGallery />
       <DataTableGallery />
+      <TitleBarGallery />
       <DotGallery />
       <SplitPaneGallery />
       <TabStripGallery />
