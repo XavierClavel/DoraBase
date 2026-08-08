@@ -44,8 +44,19 @@
   letter-spacing: 0.1px; /* hors échelle --tracking-*, mesuré ligne 121 */
 }
 
-.spacer {
+/* Le centre occupe tout l'espace disponible et centre son contenu. C'est ce qui tient la
+ * pastille projet au milieu de la fenêtre quel que soit le fil d'Ariane, et qui remplace le
+ * `spacer` de `A1` — lequel poussait simplement les actions à droite, ce que `.center` fait
+ * aussi quand il est vide. La règle `.spacer` a donc été retirée plutôt que laissée morte. */
+.center {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Le contenu ne doit pas pousser les actions hors de la barre : un nom de projet long ou un
+   * fil d'Ariane profond rétrécissent plutôt que de déborder. */
+  min-width: 0;
+  overflow: hidden;
 }
 
 .actions {

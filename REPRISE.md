@@ -26,7 +26,7 @@ plan par plan.
 | `specs/README.md` | index des ~20 specs, contrainte IPC transverse, **acquis techniques**, **décisions à trancher** |
 | `specs/01`–`04`, `05a`–`05c`, `06a`–`06e`, `07` | treize specs, **toutes implémentées** |
 | `specs/08a`–`08e` | cinq specs, **toutes faites**. Deux vérifications à l'œil restent dues |
-| `specs/09a`–`09f` | six specs ; `09a` et `09b` **faites**, `09c`–`09f` à faire |
+| `specs/09a`–`09f` | six specs ; `09a`–`09c` **faites**, `09d`–`09f` à faire |
 | `plans/2026-07-31-*`, `plans/2026-08-05-*` | les plans d'implémentation, tâche par tâche, avec les **pièges vérifiés** |
 | `design/handoff/` | le handoff, **source de vérité du design** |
 
@@ -281,6 +281,26 @@ des tests verts au moment où il a été introduit.
    du module de test, faute de pouvoir construire un `SshTunnel` sans bastion. C'est le même
    défaut que sur l'atomicité de `05b` (point 5). Corrigé en extrayant `Surveillance`, un
    type que le tunnel **et** le test appellent.
+47. **`aria-label` sur un élément sans rôle est ignoré — troisième occurrence.** Après le port
+   local mappé de `08c`, c'est le point d'état de la pastille projet. Biome le signale à chaque
+   fois (`useAriaPropsSupportedByRole`) et a raison à chaque fois. **La règle générale** : quand
+   l'élément est une décoration d'un contrôle, l'information n'a pas à porter un `aria-label` —
+   elle a sa place dans le **nom du contrôle**, par du texte masqué visuellement
+   (`clip-path`, jamais `display: none`, qui le retirerait de l'arbre d'accessibilité).
+48. **L'ordre du texte masqué décide de l'ordre de lecture.** Placé en tête, il donnait
+   « connectée · PostgreSQL 17.6Atelier Nord » — l'état avant l'identité, et sans espace.
+   Placé en dernier avec un espace explicite : « Atelier Nord … connectée ». Troisième
+   rencontre du collage des nœuds de texte, après `08a` et `09a`.
+49. **`--space-3` vaut 6 px, pas 8.** L'échelle d'espacement va de 3, 5, 6, 7, 9, 11, 14, 16 :
+   il n'y a **pas** de 8. Employer le jeton le plus proche « parce que ça se ressemble » a produit
+   un écart de 2 px sur la séparation des deux boîtes de la barre de titre, que la mesure a
+   attrapé. Un littéral commenté vaut mieux qu'un jeton approximatif — c'est déjà l'arbitrage du
+   remplissage de `DataTable`.
+50. **Un test de centrage doit nommer *dans quoi* il centre.** Ma première version comparait le
+   centre du contenu à la demi-largeur de la barre — une chose que ni le mockup ni notre barre ne
+   font, celle-ci réservant 78 px à gauche pour les feux de macOS. Le mockup centre dans
+   l'**espace restant**, ce qui est structurel et se vérifie contre la zone elle-même.
+
 45. **Un test qui compte les entrées d'une table ne prouve pas le réemploi.** Le test du
    registre ouvrait deux fois la même base et attendait une seule entrée — mais sans la garde de
    réemploi, la seconde ouverture *remplace* l'entrée et le compte reste 1 de toute façon.
@@ -668,7 +688,7 @@ test, le refus de saisie, le cas « aucun projet », et le panneau proxy replié
 | --- | --- |
 | `09a` | **fait** — `SegmentedControl`, `StatTile`, `DataTable`, `format.ts` |
 | `09b` | **fait** — `load_config` au démarrage, registre de connexions, introspection |
-| `09c` | A4 : barre de titre — pastille projet, fil d'Ariane, sélecteur d'environnement |
+| `09c` | **fait** — A4 : barre de titre, pastille projet, sélecteur d'environnement |
 | `09d` | A4 : sidebar 252 px et son arbre à quatre niveaux |
 | `09e` | A4 : centre — onglets, fil d'Ariane, tableau des objets |
 | `09f` | A4 : panneau de détail 300 px |
