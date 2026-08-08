@@ -1,7 +1,17 @@
+/* Deux largeurs relevées sur le handoff : 212 px pour A5 → A9, 252 px pour A4 — dont l'arbre a
+ * un niveau de plus (projet → base → schéma → table) pour la même profondeur d'indentation. */
+.standard {
+  width: 212px;
+}
+
+.wide {
+  width: 252px;
+}
+
 .root {
   display: flex;
   flex-direction: column;
-  width: 212px;
+
   height: 100%;
   flex: none;
   border-right: 1px solid var(--divider);

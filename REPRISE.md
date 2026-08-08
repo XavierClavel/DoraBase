@@ -26,7 +26,7 @@ plan par plan.
 | `specs/README.md` | index des ~20 specs, contrainte IPC transverse, **acquis techniques**, **décisions à trancher** |
 | `specs/01`–`04`, `05a`–`05c`, `06a`–`06e`, `07` | treize specs, **toutes implémentées** |
 | `specs/08a`–`08e` | cinq specs, **toutes faites**. Deux vérifications à l'œil restent dues |
-| `specs/09a`–`09f` | six specs ; `09a`–`09c` **faites**, `09d`–`09f` à faire |
+| `specs/09a`–`09f` | six specs ; `09a`–`09d` **faites**, `09e` et `09f` à faire |
 | `plans/2026-07-31-*`, `plans/2026-08-05-*` | les plans d'implémentation, tâche par tâche, avec les **pièges vérifiés** |
 | `design/handoff/` | le handoff, **source de vérité du design** |
 
@@ -281,6 +281,24 @@ des tests verts au moment où il a été introduit.
    du module de test, faute de pouvoir construire un `SshTunnel` sans bastion. C'est le même
    défaut que sur l'atomicité de `05b` (point 5). Corrigé en extrayant `Surveillance`, un
    type que le tunnel **et** le test appellent.
+51. **Le collage des nœuds de texte dans le nom accessible : quatrième occurrence, corrigée dans
+   la primitive.** Après `08a` (monogramme), `09a` (compte de segment) et `09c` (état de
+   connexion), c'est `TreeRow` : une ligne s'annonçait « orders1.9 M » et « Atelier NordPROD ».
+   Les trois premières fois, la correction était chez l'appelant ; la quatrième a montré que la
+   place était **dans le composant**. JSX supprime l'espace entre deux éléments, et le calcul du
+   nom accessible concatène sans rien ajouter — la règle à retenir : dès qu'un composant place
+   deux contenus côte à côte, l'espace doit être explicite.
+52. **Un `role` sur une enveloppe met l'élément interactif à l'intérieur du nœud.** `TreeRow`
+   rend un `<button>` ; poser `role="treeitem"` sur un `<div>` autour plaçait le bouton *dans* le
+   nœud d'arbre, où ni le clic ni le focus ne le désignent — les tests de clic échouaient sans que
+   la cause soit évidente. `TreeRow` transmet désormais ses attributs restants à sa racine, ce que
+   `04` avait différé « tant qu'aucun écran n'en impose la forme ». `A4` l'impose.
+53. **Un motif de nom accessible doit être ancré.** `getByRole('treeitem', { name: /orders/ })`
+   comptait aussi `orders_by_day`. Un motif non ancré compte les lignes voisines, et le test
+   échoue en annonçant un nombre au lieu de nommer le doublon.
+54. **La largeur du mockup n'est pas la largeur rendue.** `width: 252px` avec un `border-right`
+   et sans `box-sizing` rend **253**. Attendre 252 était attendre autre chose que le mockup.
+
 47. **`aria-label` sur un élément sans rôle est ignoré — troisième occurrence.** Après le port
    local mappé de `08c`, c'est le point d'état de la pastille projet. Biome le signale à chaque
    fois (`useAriaPropsSupportedByRole`) et a raison à chaque fois. **La règle générale** : quand
@@ -689,7 +707,7 @@ test, le refus de saisie, le cas « aucun projet », et le panneau proxy replié
 | `09a` | **fait** — `SegmentedControl`, `StatTile`, `DataTable`, `format.ts` |
 | `09b` | **fait** — `load_config` au démarrage, registre de connexions, introspection |
 | `09c` | **fait** — A4 : barre de titre, pastille projet, sélecteur d'environnement |
-| `09d` | A4 : sidebar 252 px et son arbre à quatre niveaux |
+| `09d` | **fait** — A4 : sidebar 252 px et son arbre à quatre niveaux |
 | `09e` | A4 : centre — onglets, fil d'Ariane, tableau des objets |
 | `09f` | A4 : panneau de détail 300 px |
 

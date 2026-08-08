@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { cx } from '../cx'
 import styles from './Sidebar.module.css'
 
 type SidebarProps = {
@@ -6,8 +7,19 @@ type SidebarProps = {
   filter: ReactNode
   /** L'arbre et sa section contextuelle, dans une zone défilante. */
   children: ReactNode
-  /** Pied optionnel — les sidebars de console (A7, A8) seules en ont un. */
+  /** Pied optionnel — les sidebars de console (A7, A8) et celle de `A4` en ont un. */
   footer?: ReactNode
+  /**
+   * Largeur de la colonne.
+   *
+   * **Deux valeurs, relevées sur le handoff** : 212 px pour `A5` → `A9`, 252 px pour `A4`.
+   * L'arbre de `A4` a un niveau de plus — projet → base → schéma → table — donc quarante pixels
+   * de plus pour la même profondeur d'indentation.
+   *
+   * Une variante de largeur, et non un second composant : la structure est identique, seule
+   * cette propriété change.
+   */
+  width?: 'standard' | 'wide'
 }
 
 // Colonne de 212 px partagée par A5 → A9. Purement structurelle : elle ne connaît ni
@@ -15,9 +27,9 @@ type SidebarProps = {
 // modèle et place lui-même ses `TreeRow`, son `SidebarSectionTitle` et ses `ColumnRow` —
 // voir `specs/04-menu-lateral-standard.md`, qui écarte toute récursion tant qu'aucun écran
 // n'en impose la forme.
-export function Sidebar({ filter, children, footer }: SidebarProps) {
+export function Sidebar({ filter, children, footer, width = 'standard' }: SidebarProps) {
   return (
-    <div className={styles.root}>
+    <div className={cx(styles.root, styles[width])}>
       {filter}
       <div className={styles.body}>{children}</div>
       {footer}
