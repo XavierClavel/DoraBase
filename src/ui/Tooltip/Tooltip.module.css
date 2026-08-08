@@ -1,0 +1,45 @@
+/*
+ * Infobulle. Le handoff n'en maquette aucune — `09f` est le premier écran à en réclamer une.
+ *
+ * Faute de valeurs relevées, l'habillage réemploie ce qui existe : fond `--dark`, encre
+ * `--paper`, rayon et ombre de popover. C'est le parti le plus sobre — inventer une teinte
+ * serait ajouter une valeur qui n'est ni dans les tables ni dans le mockup.
+ */
+
+.root {
+  position: relative;
+  display: inline-flex;
+}
+
+.top,
+.bottom {
+  position: absolute;
+  left: 50%;
+  z-index: 300;
+  transform: translateX(-50%);
+  /* Une infobulle ne doit jamais intercepter le pointeur : elle disparaîtrait au moment où le
+   * curseur l'atteint, et le survol clignoterait. */
+  pointer-events: none;
+  max-width: 220px;
+  padding: var(--space-1) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--dark);
+  color: var(--paper);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  line-height: 1.4;
+  box-shadow: var(--shadow-popover);
+  /* Un texte d'infobulle peut être long ; il revient à la ligne plutôt que de sortir de la
+   * fenêtre. */
+  white-space: normal;
+  text-align: center;
+}
+
+.top {
+  bottom: calc(100% + var(--space-2));
+}
+
+.bottom {
+  top: calc(100% + var(--space-2));
+}

@@ -26,7 +26,7 @@ plan par plan.
 | `specs/README.md` | index des ~20 specs, contrainte IPC transverse, **acquis techniques**, **décisions à trancher** |
 | `specs/01`–`04`, `05a`–`05c`, `06a`–`06e`, `07` | treize specs, **toutes implémentées** |
 | `specs/08a`–`08e` | cinq specs, **toutes faites**. Deux vérifications à l'œil restent dues |
-| `specs/09a`–`09f` | six specs ; `09a`–`09e` **faites**, `09f` à faire |
+| `specs/09a`–`09f` | six specs, **toutes faites**. `A4` est assemblé sauf sa bande d'onglets (→ `10`) |
 | `plans/2026-07-31-*`, `plans/2026-08-05-*` | les plans d'implémentation, tâche par tâche, avec les **pièges vérifiés** |
 | `design/handoff/` | le handoff, **source de vérité du design** |
 
@@ -281,6 +281,22 @@ des tests verts au moment où il a été introduit.
    du module de test, faute de pouvoir construire un `SshTunnel` sans bastion. C'est le même
    défaut que sur l'atomicité de `05b` (point 5). Corrigé en extrayant `Surveillance`, un
    type que le tunnel **et** le test appellent.
+55. **`aria-disabled` plutôt que `disabled`, quand un bouton porte une explication.** Un
+   `<button disabled>` ne reçoit ni focus ni survol dans la plupart des navigateurs : son
+   infobulle serait inatteignable — exactement là où elle est le plus utile. `aria-disabled` le
+   garde focalisable et annoncé comme indisponible, et le sabotage qui les échange fait tomber
+   deux tests.
+56. **Une infobulle *décrit*, elle ne *nomme* pas.** `aria-describedby` et non `aria-label` :
+   celui-ci remplacerait le nom du bouton par son explication, et le contrôle s'annoncerait par sa
+   limite plutôt que par sa fonction. Le sabotage fait tomber cinq tests, dont trois qui ne
+   parlaient pas d'infobulle.
+57. **Le `biome-ignore` doit être la *dernière* ligne de commentaire avant le nœud** — deuxième
+   occurrence, après le voile de `08a`. Écrire la directive en tête d'un commentaire de trois
+   lignes la rend inopérante, et l'avertissement revient sans qu'on comprenne pourquoi.
+58. **Lire le DOM dans le même `evaluate` que le `focus()` lit un DOM d'avant le rendu.** React
+   ne commet qu'après le gestionnaire : la mesure de l'infobulle rendait `null`. Focus et lecture
+   doivent être deux étapes, avec un `waitForSelector` entre les deux.
+
 51. **Le collage des nœuds de texte dans le nom accessible : quatrième occurrence, corrigée dans
    la primitive.** Après `08a` (monogramme), `09a` (compte de segment) et `09c` (état de
    connexion), c'est `TreeRow` : une ligne s'annonçait « orders1.9 M » et « Atelier NordPROD ».
@@ -709,7 +725,7 @@ test, le refus de saisie, le cas « aucun projet », et le panneau proxy replié
 | `09c` | **fait** — A4 : barre de titre, pastille projet, sélecteur d'environnement |
 | `09d` | **fait** — A4 : sidebar 252 px et son arbre à quatre niveaux |
 | `09e` | **fait** — A4 : fil d'Ariane, filtre, contrôle segmenté, tableau des objets |
-| `09f` | A4 : panneau de détail 300 px |
+| `09f` | **fait** — A4 : panneau de détail 300 px, et `Tooltip` |
 
 `09b` est celle qui compte : elle appelle enfin `load_config`, et rend la boucle du produit
 complète — saisir (`08e`), persister, relire, afficher. Placée en **second** pour que les

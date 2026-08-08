@@ -1,0 +1,231 @@
+/*
+ * Panneau de détail de A4, à droite.
+ *
+ *   colonne   300px, filet gauche 1px --divider
+ *   en-tête   34px, remplissage 0 11px, filet bas 1px --divider
+ *   corps     remplissage 11px, gap 11px
+ *   titre     700 10px Nunito capitales, interlettrage .6px, encre .4
+ *   encadré   radius 9px, blanc, bordure 1px .10, cellules 23px
+ *   action    28px, radius 8px ; accent pour « Ouvrir les données »
+ */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 300px;
+  flex: none;
+  border-left: 1px solid var(--divider);
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  height: var(--h-bar);
+  padding: 0 11px;
+  border-bottom: 1px solid var(--divider);
+  flex: none;
+}
+
+.title {
+  font-family: var(--font-mono);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.pin {
+  display: flex;
+  align-items: center;
+  flex: none;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink-4);
+  cursor: pointer;
+}
+
+.pin[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+.pin:focus-visible {
+  outline: none;
+  border-radius: var(--radius-badge-2);
+  box-shadow: var(--shadow-focus);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 11px;
+  overflow-y: auto;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.bloc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.blocTitre {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+.encadre {
+  overflow: hidden;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-field-2);
+  background: var(--field);
+  font-family: var(--font-mono);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-medium);
+}
+
+.colonne {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  height: 23px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--gridline);
+}
+
+.colonne:last-child {
+  border-bottom: none;
+}
+
+/* La marque de type, en tête de ligne : largeur fixe pour que les noms s'alignent. */
+.marque {
+  width: 12px;
+  flex: none;
+  text-align: center;
+  color: var(--ink-5);
+}
+
+.colonneNom {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.colonneType {
+  flex: none;
+  color: var(--ink-meta);
+}
+
+.reste {
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-meta);
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.action,
+.actionAccent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  height: var(--h-btn-md);
+  width: 100%;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--field);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.actionAccent {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--ink-on-accent);
+  font-weight: var(--weight-bold);
+}
+
+/* **`aria-disabled` et non `disabled`** : un bouton désactivé ne reçoit ni focus ni survol, donc
+ * son infobulle serait inatteignable — exactement là où elle est le plus utile. L'habillage suit
+ * l'état déclaré, et le curseur dit que rien ne se passera. */
+.action[aria-disabled="true"],
+.actionAccent[aria-disabled="true"] {
+  border-color: transparent;
+  background: var(--disabled);
+  color: var(--ink-4);
+  cursor: not-allowed;
+}
+
+.action:focus-visible,
+.actionAccent:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.relation,
+.relationEntrante {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 8px;
+}
+
+/* Une relation **entrante** dit qui dépend de cette table — le mockup la grise, et c'est juste :
+ * elle se lit dans l'autre sens. */
+.relationEntrante {
+  color: var(--ink-2);
+}
+
+.fk {
+  flex: none;
+  color: var(--info);
+}
+
+.fkEntrante {
+  flex: none;
+  color: var(--ink-4);
+}
+
+.vide {
+  margin: 0;
+  padding: 11px;
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  color: var(--ink-2);
+}

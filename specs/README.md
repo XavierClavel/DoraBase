@@ -242,7 +242,7 @@ propres critères de vérification.
 | [`09c`](09c-a4-barre-de-titre.md) | A4 | Barre de titre : pastille projet, fil d'Ariane, sélecteur d'environnement | **fait** (clic vs glissement non observé) |
 | [`09d`](09d-a4-sidebar-et-arbre.md) | A4 | Sidebar 252 px et son arbre à quatre niveaux | **fait** |
 | [`09e`](09e-a4-liste-des-objets.md) | A4 | Centre : fil d'Ariane, tableau des objets | **fait** (bande d'onglets → `10`) |
-| [`09f`](09f-a4-panneau-droit.md) | A4 | Panneau de détail 300 px | écrite |
+| [`09f`](09f-a4-panneau-droit.md) | A4 | Panneau de détail 300 px | **fait** |
 | `10` | A5 | Visualiseur de table : grille, filtres par en-tête, tri, LIMIT | à écrire |
 | `11` | A6 | Édition inline, modifications en attente, diff et transaction | à écrire |
 | `12` | A7 | Console SQL : éditeur, autocomplétion, onglets de résultat | à écrire |
