@@ -115,11 +115,15 @@ cinq endroits où le mockup ne répond pas, et où la vraie réponse appartient 
 1. **Que signifie le point d'état de la pastille projet ?** Un projet n'a pas d'état de
    connexion — ses bases en ont. `09c` le fait donc refléter la base **ouverte**, et un projet
    sans base ouverte n'a pas de point plutôt qu'un point gris inventé.
-2. **Le champ de recherche du centre promet une recherche globale.** ~~La barre de filtre de la
-   sidebar~~ — **corrigé le 8 août 2026** : la sidebar écrit « Filtrer l'arborescence… », ce qui
-   est exact. C'est le champ de la **barre du centre** qui écrit « Chercher un objet… ⌘P », et
-   celui-là promet de traverser tous les schémas et tous les projets. `09e` doit donc soit le
-   restreindre honnêtement, soit livrer la recherche globale — que rien ne maquette en action.
+2. **Le champ de recherche du centre promettait une recherche globale — tranché le 8 août 2026.**
+   Le mockup écrit « Chercher un objet… ⌘P », ce qui annonce deux choses qui n'existent pas : une
+   recherche traversant tous les schémas et tous les projets, et un raccourci pour l'ouvrir.
+   `09e` a retenu le minimum honnête — le champ filtre la liste affichée et le **dit**
+   (« Filtrer les objets de public… »), et le rappel `⌘P` est **retiré** : un raccourci affiché
+   qui ne répond pas est pire qu'un raccourci absent. La recherche globale reste à faire, et sa
+   spec dira ce que devient ce champ.
+   *(La barre de filtre de la **sidebar**, elle, écrit « Filtrer l'arborescence… » depuis `04` et
+   n'a jamais rien promis de trop — erreur de la première rédaction, corrigée.)*
 3. **Trois des quatre états de connexion ne sont pas maquettés.** Seule la base ouverte l'est.
    `09d` compose les trois autres avec `Badge` et `Dot`, et impose qu'ils se distinguent
    **autrement que par la couleur**.
@@ -237,7 +241,7 @@ propres critères de vérification.
 | [`09b`](09b-cablage-des-donnees.md) | — | Câblage : `load_config` au démarrage, registre de connexions, introspection | **fait** (redémarrage non observé) |
 | [`09c`](09c-a4-barre-de-titre.md) | A4 | Barre de titre : pastille projet, fil d'Ariane, sélecteur d'environnement | **fait** (clic vs glissement non observé) |
 | [`09d`](09d-a4-sidebar-et-arbre.md) | A4 | Sidebar 252 px et son arbre à quatre niveaux | **fait** |
-| [`09e`](09e-a4-liste-des-objets.md) | A4 | Centre : onglets, fil d'Ariane, tableau des objets | écrite |
+| [`09e`](09e-a4-liste-des-objets.md) | A4 | Centre : fil d'Ariane, tableau des objets | **fait** (bande d'onglets → `10`) |
 | [`09f`](09f-a4-panneau-droit.md) | A4 | Panneau de détail 300 px | écrite |
 | `10` | A5 | Visualiseur de table : grille, filtres par en-tête, tri, LIMIT | à écrire |
 | `11` | A6 | Édition inline, modifications en attente, diff et transaction | à écrire |

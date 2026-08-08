@@ -1,6 +1,8 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { type Charge, idBase, idProjet, idSchema } from '../../screens/Explorer/arbre'
+import { BreadcrumbBar, type TypeObjet } from '../../screens/Explorer/BreadcrumbBar'
 import { ExplorerSidebar } from '../../screens/Explorer/ExplorerSidebar'
+import { ObjectTable } from '../../screens/Explorer/ObjectTable'
 import { EnvironmentPicker } from '../../shell/EnvironmentPicker/EnvironmentPicker'
 import { ProjectPill } from '../../shell/ProjectPill/ProjectPill'
 import { TitleBar } from '../../shell/TitleBar/TitleBar'
@@ -1395,6 +1397,75 @@ function ExplorerSidebarGallery() {
   )
 }
 
+// --- Centre de A4 (`09e`) ---------------------------------------------------------
+
+function CentreGallery() {
+  const [type, setType] = useState<TypeObjet>('tables')
+  const [filtre, setFiltre] = useState('')
+  const [choisi, setChoisi] = useState<string | null>('orders')
+
+  const objets = (CHARGE_DEMO.objets[ID_SCHEMA] ?? []).filter((o) =>
+    o.name.toLowerCase().includes(filtre.trim().toLowerCase()),
+  )
+
+  return (
+    <Section title="Centre de A4">
+      <Note>
+        Les quatre comptes du contrôle segmenté viennent des **données**, jamais de constantes : les
+        coder en dur les rendrait faux dès la première base réelle.
+      </Note>
+      <Note>
+        Le mockup écrit « Chercher un objet… ⌘P », ce qui promet une recherche traversant tous les
+        schémas et un raccourci pour l’ouvrir. Ni l’un ni l’autre n’existe : le champ dit donc ce
+        qu’il fait, et le rappel `⌘P` est retiré — un raccourci affiché qui ne répond pas est pire
+        qu’un raccourci absent.
+      </Note>
+      <Sub title="Fil d’Ariane, filtre, contrôle segmenté et tableau">
+        <div data-testid="centre-a4" style={{ border: '1px solid var(--divider)' }}>
+          <BreadcrumbBar
+            database="analytics"
+            schema="public"
+            counts={{ tables: 4, views: 1, functions: 2, indexes: 6 }}
+            type={type}
+            onTypeChange={setType}
+            filter={filtre}
+            onFilterChange={setFiltre}
+          />
+          <ObjectTable
+            schema="public"
+            objects={objets}
+            type={type}
+            selectedName={choisi}
+            onSelect={(o) => setChoisi(o.name)}
+          />
+        </div>
+      </Sub>
+      <Sub title="Les trois états vides, qui ne se ressemblent pas">
+        <div className={styles.grid}>
+          <div className={styles.cell}>
+            <ObjectTable schema="public" objects={[]} type="views" onSelect={() => {}} />
+            <span className={styles.cellCaption}>vide</span>
+          </div>
+          <div className={styles.cell}>
+            <ObjectTable schema="public" objects={[]} type="tables" loading onSelect={() => {}} />
+            <span className={styles.cellCaption}>chargement</span>
+          </div>
+          <div className={styles.cell}>
+            <ObjectTable
+              schema="public"
+              objects={[]}
+              type="tables"
+              error="hôte injoignable"
+              onSelect={() => {}}
+            />
+            <span className={styles.cellCaption}>échec</span>
+          </div>
+        </div>
+      </Sub>
+    </Section>
+  )
+}
+
 export function Gallery() {
   return (
     <div className={styles.root}>
@@ -1413,6 +1484,7 @@ export function Gallery() {
       <DataTableGallery />
       <TitleBarGallery />
       <ExplorerSidebarGallery />
+      <CentreGallery />
       <DotGallery />
       <SplitPaneGallery />
       <TabStripGallery />

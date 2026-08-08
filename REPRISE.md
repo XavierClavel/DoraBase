@@ -26,7 +26,7 @@ plan par plan.
 | `specs/README.md` | index des ~20 specs, contrainte IPC transverse, **acquis techniques**, **décisions à trancher** |
 | `specs/01`–`04`, `05a`–`05c`, `06a`–`06e`, `07` | treize specs, **toutes implémentées** |
 | `specs/08a`–`08e` | cinq specs, **toutes faites**. Deux vérifications à l'œil restent dues |
-| `specs/09a`–`09f` | six specs ; `09a`–`09d` **faites**, `09e` et `09f` à faire |
+| `specs/09a`–`09f` | six specs ; `09a`–`09e` **faites**, `09f` à faire |
 | `plans/2026-07-31-*`, `plans/2026-08-05-*` | les plans d'implémentation, tâche par tâche, avec les **pièges vérifiés** |
 | `design/handoff/` | le handoff, **source de vérité du design** |
 
@@ -708,7 +708,7 @@ test, le refus de saisie, le cas « aucun projet », et le panneau proxy replié
 | `09b` | **fait** — `load_config` au démarrage, registre de connexions, introspection |
 | `09c` | **fait** — A4 : barre de titre, pastille projet, sélecteur d'environnement |
 | `09d` | **fait** — A4 : sidebar 252 px et son arbre à quatre niveaux |
-| `09e` | A4 : centre — onglets, fil d'Ariane, tableau des objets |
+| `09e` | **fait** — A4 : fil d'Ariane, filtre, contrôle segmenté, tableau des objets |
 | `09f` | A4 : panneau de détail 300 px |
 
 `09b` est celle qui compte : elle appelle enfin `load_config`, et rend la boucle du produit
