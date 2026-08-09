@@ -1,0 +1,134 @@
+/*
+ * La grille de données de A5, relevée sur le mockup — feuille de style comprise :
+ *
+ *   en-tête    26px, fond --bar, encre .55, 700 11px Nunito
+ *   filtres    seconde ligne d'en-tête, fond --paper, filet bas 1px rgba(35,32,28,.14)
+ *   lignes     var(--rowh, 26px), séparateur bas 1px --gridline
+ *   cellules   500 11.5px JetBrains Mono, padding 0 8px
+ *   sélection  fond --info-bg + inset 2px 0 0 --info  (bleu, et non l'accent : dans A5 la
+ *              sélection de ligne est bleue, là où A4 emploie l'accent pour la sélection d'arbre)
+ *
+ * 8px de padding : absent de l'échelle d'espacement (7 puis 9), c'est une métrique de tableau,
+ * comme dans DataTable.
+ */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  font-family: var(--font-ui);
+  color: var(--ink);
+}
+
+.root:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.head {
+  flex: none;
+}
+
+.row {
+  display: grid;
+  align-items: center;
+}
+
+.th {
+  height: var(--rowh);
+  padding: 0 8px;
+  background: var(--bar);
+  border-bottom: 1px solid var(--gridline-2);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.2px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.filterRow {
+  background: var(--paper);
+  border-bottom: 1px solid var(--border);
+}
+
+.tf {
+  padding: 0 4px;
+  min-width: 0;
+}
+
+/* Pas de `flex: 1` ici : la hauteur vient d'une prop, et `flex-basis` l'emporterait sur elle
+ * dans l'axe principal — le conteneur prendrait alors la hauteur de son contenu, soit 2,6
+ * millions de pixels pour cent mille lignes, et plus rien ne défilerait. Mesuré, pas supposé. */
+.viewport {
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+
+/* Porte la hauteur totale : c'est elle qui donne à la barre de défilement sa course réelle,
+ * alors que seules les lignes visibles sont montées. */
+.canvas {
+  position: relative;
+}
+
+.tr {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* `border-box` : sans lui, le filet ajouterait un pixel à la boîte et la ligne ferait 27px
+   * là où le positionnement des lignes en avance de 26. L'écart se cumulerait à chaque ligne,
+   * et le contenu se décalerait de sa case. */
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--gridline);
+}
+
+.tr:hover:not(.selected) {
+  background: var(--hover-row);
+}
+
+.selected {
+  background: var(--info-bg);
+  /* Liseré intérieur, et non une bordure : une bordure ajouterait 2px à la boîte et décalerait
+   * le contenu de la ligne sélectionnée par rapport aux autres. */
+  box-shadow: inset 2px 0 0 var(--info);
+}
+
+.td {
+  padding: 0 8px;
+  font-family: var(--font-mono);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-grid);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.numeric {
+  text-align: right;
+  justify-content: flex-end;
+  /* Sans `tabular-nums`, la largeur variable des glyphes fait onduler une colonne de nombres. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Teintes des colonnes filtrées et triées — 10 % et 6 % d'accent, valeurs du mockup. */
+.filtered {
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
+}
+
+.sorted {
+  background: color-mix(in oklab, var(--accent) 6%, transparent);
+}
+
+.empty {
+  padding: var(--space-8);
+  font-size: var(--text-dense);
+  color: var(--ink-2);
+}

@@ -1,0 +1,117 @@
+import {
+  cloneElement,
+  type ReactElement,
+  type ReactNode,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react'
+import styles from './Popover.module.css'
+
+type PopoverProps = {
+  /** Titre en capitales de l'en-tête, ex. « Opérateur · status ». Absent, pas d'en-tête. */
+  title?: string
+  /** Le déclencheur. Il reçoit `aria-expanded`, `aria-haspopup` et l'ouverture au clic. */
+  children: ReactElement<Record<string, unknown>>
+  /** Le contenu, ou une fonction qui reçoit de quoi refermer. */
+  content: ReactNode | ((fermer: () => void) => ReactNode)
+  /** Alignement par rapport au déclencheur. Le panneau bascule seul s'il déborde. */
+  align?: 'start' | 'end'
+}
+
+/**
+ * Un panneau flottant ancré à son déclencheur — le popover d'opérateur de `A5`, et le
+ * sélecteur de colonnes de sa toolbar.
+ *
+ * **Trois fermetures, et les trois comptent.** `Échap` seul laisse un panneau ouvert derrière
+ * un clic ailleurs ; le clic extérieur seul le laisse ouvert au clavier ; et la perte de focus
+ * est celle qu'on oublie — sans elle, tabuler hors du panneau laisse visible un panneau que
+ * plus rien ne concerne.
+ *
+ * **Pas de portail.** Un portail vers `document.body` simplifierait le débordement, mais
+ * placerait le panneau en fin de document : `Tab` sauterait tout l'écran pour l'atteindre.
+ * Rendu sur place, l'ordre de tabulation est le bon sans code de rattrapage. Contrepartie
+ * assumée : le panneau se replace lui-même quand il déborde à droite.
+ */
+export function Popover({ title, children, content, align = 'start' }: PopoverProps) {
+  const id = useId()
+  const [ouvert, setOuvert] = useState(false)
+  const [alignement, setAlignement] = useState(align)
+  const racine = useRef<HTMLSpanElement>(null)
+  const panneau = useRef<HTMLDivElement>(null)
+
+  function fermer(rendreLeFocus = true) {
+    setOuvert(false)
+    if (rendreLeFocus) {
+      const declencheur = racine.current?.querySelector<HTMLElement>('[aria-haspopup]')
+      declencheur?.focus()
+    }
+  }
+
+  // Clic extérieur. `pointerdown` et non `click` : un clic qui commence dans le panneau et
+  // finit dehors ne doit pas le fermer, et l'inverse doit le fermer avant que la cible ne
+  // reçoive son événement.
+  useEffect(() => {
+    if (!ouvert) return
+    function surPointeur(evenement: PointerEvent) {
+      if (!racine.current?.contains(evenement.target as Node)) setOuvert(false)
+    }
+    document.addEventListener('pointerdown', surPointeur)
+    return () => document.removeEventListener('pointerdown', surPointeur)
+  }, [ouvert])
+
+  // Bascule d'alignement quand le panneau déborderait à droite. `getBoundingClientRect` rend
+  // des zéros sous jsdom, où la condition est donc toujours fausse — c'est Playwright qui
+  // vérifie ce comportement, comme pour toute exigence de mise en page.
+  useEffect(() => {
+    if (!ouvert || !panneau.current) return
+    const boite = panneau.current.getBoundingClientRect()
+    if (boite.right > window.innerWidth && boite.width > 0) setAlignement('end')
+    else setAlignement(align)
+  }, [ouvert, align])
+
+  const declencheur = cloneElement(children, {
+    'aria-haspopup': 'dialog',
+    'aria-expanded': ouvert,
+    'aria-controls': ouvert ? id : undefined,
+    onClick: () => setOuvert((etait) => !etait),
+  })
+
+  return (
+    // L'enveloppe ne fait que capter `Échap` et la sortie de focus pour le compte de ses deux
+    // enfants ; les contrôles restent le déclencheur et le contenu.
+    // biome-ignore lint/a11y/noStaticElementInteractions: voir ci-dessus
+    <span
+      ref={racine}
+      className={styles.root}
+      onKeyDown={(evenement) => {
+        if (evenement.key === 'Escape' && ouvert) {
+          evenement.stopPropagation()
+          fermer()
+        }
+      }}
+      onBlur={(evenement) => {
+        // Le focus quitte l'ensemble déclencheur + panneau : `relatedTarget` est l'élément qui
+        // le reçoit, et `null` quand la fenêtre elle-même le perd — auquel cas on ne ferme pas,
+        // sinon revenir à l'application refermerait le panneau qu'on avait laissé ouvert.
+        const suivant = evenement.relatedTarget as Node | null
+        if (suivant && !racine.current?.contains(suivant)) setOuvert(false)
+      }}
+    >
+      {declencheur}
+      {ouvert && (
+        <div
+          ref={panneau}
+          id={id}
+          role="dialog"
+          aria-label={title}
+          className={alignement === 'end' ? styles.panelEnd : styles.panel}
+        >
+          {title !== undefined && <div className={styles.title}>{title}</div>}
+          {typeof content === 'function' ? content(() => fermer()) : content}
+        </div>
+      )}
+    </span>
+  )
+}

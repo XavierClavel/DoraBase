@@ -18,6 +18,7 @@ import { Dot } from '../../ui/Dot/Dot'
 import { Field } from '../../ui/Field/Field'
 import { ABSENT, formatBytes, formatCount } from '../../ui/format'
 import { Modal } from '../../ui/Modal/Modal'
+import { Popover } from '../../ui/Popover/Popover'
 import { RadioGroup } from '../../ui/RadioGroup/RadioGroup'
 import { SegmentedControl } from '../../ui/SegmentedControl/SegmentedControl'
 import { Select } from '../../ui/Select/Select'
@@ -29,6 +30,7 @@ import { StatTile } from '../../ui/StatTile/StatTile'
 import { type Tab, TabStrip } from '../../ui/TabStrip/TabStrip'
 import { Toggle } from '../../ui/Toggle/Toggle'
 import { TreeRow } from '../../ui/TreeRow/TreeRow'
+import { type GridColumn, VirtualGrid } from '../../ui/VirtualGrid/VirtualGrid'
 import { Icon } from '../icons/Icon'
 import { tokens } from '../tokens'
 import styles from './Gallery.module.css'
@@ -1467,6 +1469,132 @@ function CentreGallery() {
   )
 }
 
+// --- VirtualGrid et Popover (`10a`) -----------------------------------------------
+
+type LigneDemo = { rang: number; id: number; statut: string }
+
+const LIGNES_DEMO: LigneDemo[] = Array.from({ length: 100_000 }, (_, i) => ({
+  rang: i + 1,
+  id: 184_220 - i,
+  statut: ['paid', 'pending', 'refunded', 'cancelled'][i % 4] ?? 'paid',
+}))
+
+function VirtualGridGallery() {
+  const [choisie, setChoisie] = useState<string | null>(null)
+
+  const colonnes: GridColumn<LigneDemo>[] = [
+    { key: '#', header: '#', width: 30, numeric: true, cell: (l) => l.rang },
+    { key: 'id', header: 'id', width: 90, numeric: true, cell: (l) => formatCount(l.id) },
+    {
+      key: 'statut',
+      header: 'statut',
+      width: 120,
+      tint: 'filtered',
+      cell: (l) => l.statut,
+      // Un `<input>` nu : `Field` impose une étiquette visible, ce qu'une cellule d'en-tête de
+      // 20 px ne peut pas porter. `10d` livrera le champ de filtre propre à `A5`.
+      filter: (
+        <input className={styles.gridFilter} defaultValue="paid" aria-label="filtre statut" />
+      ),
+    },
+  ]
+
+  return (
+    <Section title="VirtualGrid (10a)">
+      <Note>
+        Cent mille lignes, une dizaine de nœuds montés. `aria-rowcount` porte le **total** et
+        `aria-rowindex` l’indice réel : sans eux, la virtualisation mentirait à l’arbre
+        d’accessibilité au lieu de mentir seulement au navigateur.
+      </Note>
+      <Note>
+        La hauteur du conteneur est une **prop**, pas une mesure : jsdom ne calcule aucune mise en
+        page, et une virtualisation qui lit `clientHeight` rendrait zéro ligne sous Vitest.
+      </Note>
+      <Sub title="Cent mille lignes, en-tête de filtres, sélection">
+        <div data-testid="virtual-grid" style={{ border: '1px solid var(--divider)', width: 340 }}>
+          <VirtualGrid
+            label="Lignes de public.orders"
+            columns={colonnes}
+            rows={LIGNES_DEMO}
+            rowId={(l) => String(l.id)}
+            viewportHeight={208}
+            filterRow
+            selectedId={choisie}
+            onSelect={(l) => setChoisie(String(l.id))}
+          />
+        </div>
+      </Sub>
+      <Sub title="Vide">
+        <div style={{ border: '1px solid var(--divider)', width: 340 }}>
+          <VirtualGrid
+            label="Lignes"
+            columns={colonnes}
+            rows={[]}
+            rowId={(l) => String(l.id)}
+            viewportHeight={80}
+            empty="Aucune ligne ne correspond aux filtres."
+          />
+        </div>
+      </Sub>
+    </Section>
+  )
+}
+
+function PopoverGallery() {
+  const operateurs = [
+    { signe: '=', mot: 'égal' },
+    { signe: '≠', mot: 'différent' },
+    { signe: 'in', mot: 'dans la liste…' },
+    { signe: '~', mot: 'contient' },
+    { signe: '∅', mot: 'is null' },
+  ]
+
+  const contenu = (
+    <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+      {operateurs.map((o) => (
+        <li key={o.signe}>
+          <button type="button" className={styles.popoverItem}>
+            <span className={styles.popoverSign}>{o.signe}</span>
+            {o.mot}
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
+
+  return (
+    <Section title="Popover (10a)">
+      <Note>
+        Trois fermetures, et les trois comptent : `Échap`, clic extérieur, perte de focus. La
+        dernière est celle qu’on oublie — sans elle, tabuler hors du panneau laisse visible un
+        panneau que plus rien ne concerne.
+      </Note>
+      <Note>
+        Pas de portail : un portail placerait le panneau en fin de document et `Tab` sauterait tout
+        l’écran pour l’atteindre. Contrepartie assumée — près du bord droit, le panneau bascule son
+        alignement lui-même. La seconde carte le montre.
+      </Note>
+      <Sub title="Ancré à gauche, et rattrapé au bord droit">
+        <div
+          data-testid="popover-bord"
+          style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}
+        >
+          <Popover title="Opérateur · status" content={contenu}>
+            <Button variant="secondary" size="sm">
+              status
+            </Button>
+          </Popover>
+          <Popover title="Opérateur · total_cents" content={contenu}>
+            <Button variant="secondary" size="sm">
+              total_cents
+            </Button>
+          </Popover>
+        </div>
+      </Sub>
+    </Section>
+  )
+}
+
 // --- Panneau de détail de A4 (`09f`) ----------------------------------------------
 
 const DETAIL_DEMO = {
@@ -1622,6 +1750,8 @@ export function Gallery() {
       <TitleBarGallery />
       <ExplorerSidebarGallery />
       <CentreGallery />
+      <VirtualGridGallery />
+      <PopoverGallery />
       <DetailPanelGallery />
       <DotGallery />
       <SplitPaneGallery />
