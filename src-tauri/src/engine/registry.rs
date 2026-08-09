@@ -325,6 +325,59 @@ mod tests_db {
     /// La version qui mord : la seconde ouverture emploie une variante **cassée**. Avec la
     /// garde, elle rend sans rien tenter et la connexion reste vivante ; sans elle, la tentative
     /// échoue et l'état bascule en `Offline`.
+    /// **Le chemin exact que prend `read_rows` (`10c`)** : ouvrir, puis lire une fenêtre par
+    /// `avec`. `06d` a testé l'adaptateur ; ce test-ci vérifie que la commande a bien un chemin
+    /// jusqu'à lui, ce qu'aucun test ne faisait — la couche était complète et personne ne la
+    /// franchissait.
+    #[tokio::test]
+    async fn lire_une_fenetre_par_le_registre_rend_la_limite_demandee() {
+        let registre = ConnectionRegistry::new();
+        let cle = "Print/analytics/dev";
+        registre
+            .ouvrir(cle, &variante(), secret().as_ref(), &known_hosts())
+            .await
+            .expect("ouverture");
+
+        let requete = crate::engine::RowQuery::new(
+            "introspection",
+            "grande",
+            crate::engine::RowLimit::FiveHundred,
+        );
+        let fenetre = registre
+            .avec(cle, move |adaptateur| {
+                Box::pin(async move { adaptateur.rows(&requete).await })
+            })
+            .await
+            .expect("lecture");
+
+        assert_eq!(fenetre.rows.len(), 500, "la table porte cent mille lignes");
+        assert!(fenetre.sql.contains("limit 500"), "{}", fenetre.sql);
+
+        registre.fermer(cle).await;
+    }
+
+    /// Lire une base **non ouverte** doit dire pourquoi, et non rendre une fenêtre vide.
+    ///
+    /// Une fenêtre vide se confondrait avec une table sans ligne, et `A5` afficherait « aucune
+    /// ligne » sur une base parfaitement peuplée mais fermée.
+    #[tokio::test]
+    async fn lire_une_base_non_ouverte_echoue_avec_un_message_qui_le_dit() {
+        let registre = ConnectionRegistry::new();
+        let requete = crate::engine::RowQuery::new(
+            "introspection",
+            "petite",
+            crate::engine::RowLimit::OneHundred,
+        );
+        let erreur = registre
+            .avec("Print/jamais/dev", move |adaptateur| {
+                Box::pin(async move { adaptateur.rows(&requete).await })
+            })
+            .await
+            .expect_err("une base fermée ne peut pas être lue");
+
+        assert!(erreur.message.contains("ouverte"), "{}", erreur.message);
+    }
+
     #[tokio::test]
     async fn ouvrir_deux_fois_la_meme_base_ne_retente_rien() {
         let registre = ConnectionRegistry::new();

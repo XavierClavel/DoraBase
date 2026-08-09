@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { Project } from '../../domain/config'
 import type { SchemaInfo, TableDetail, TableSummary } from '../../domain/engine'
+import type { PasserelleLignes } from '../TableView/useLignes'
 import type { PasserelleArbre } from './useArbre'
 import type { PasserelleDetail } from './useDetailTable'
 import { Workbench } from './Workbench'
@@ -95,7 +96,16 @@ function passerelles() {
     listObjects: vi.fn(async () => [objet('orders'), objet('order_items')]),
   }
   const detail: PasserelleDetail = { describeTable: vi.fn(async () => DETAIL) }
-  return { passerelle, detail }
+  const lignes: PasserelleLignes = {
+    readRows: vi.fn(async () => ({
+      offset: 0,
+      rows: [[{ kind: 'int' as const, value: 184_220 }, { kind: 'null' as const }]],
+      total: null,
+      sql: 'select * from public.orders limit 500 offset 0',
+      durationMs: 41,
+    })),
+  }
+  return { passerelle, detail, lignes }
 }
 
 async function ouvrirLArbreJusquAuSchema(utilisateur: ReturnType<typeof userEvent.setup>) {
@@ -105,14 +115,20 @@ async function ouvrirLArbreJusquAuSchema(utilisateur: ReturnType<typeof userEven
 }
 
 function monter(over: Partial<Parameters<typeof Workbench>[0]> = {}) {
-  const { passerelle, detail } = passerelles()
+  const { passerelle, detail, lignes } = passerelles()
   render(
     <>
       <Sprite />
-      <Workbench projects={PROJETS} passerelle={passerelle} passerelleDetail={detail} {...over} />
+      <Workbench
+        projects={PROJETS}
+        passerelle={passerelle}
+        passerelleDetail={detail}
+        passerelleLignes={lignes}
+        {...over}
+      />
     </>,
   )
-  return { passerelle, detail }
+  return { passerelle, detail, lignes }
 }
 
 describe('Workbench', () => {
@@ -152,7 +168,7 @@ describe('Workbench', () => {
     await utilisateur.dblClick(within(table).getByText('orders'))
 
     expect(screen.getByRole('tab', { name: /orders/ })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('emplacement-a5')).toHaveTextContent('public.orders')
+    expect(screen.getByRole('grid', { name: 'Lignes de public.orders' })).toBeInTheDocument()
   })
 
   it('rouvrir la même table active l’onglet existant sans le dupliquer', async () => {
@@ -182,7 +198,7 @@ describe('Workbench', () => {
     await utilisateur.click(screen.getByRole('button', { name: 'Fermer orders' }))
 
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('emplacement-a5')).not.toBeInTheDocument()
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument()
     // La liste des objets revient, et l'écran de travail est toujours là.
     expect(screen.getByRole('table')).toBeInTheDocument()
     expect(screen.getByRole('tree', { name: 'Projets et bases' })).toBeInTheDocument()
@@ -198,7 +214,10 @@ describe('Workbench', () => {
     await utilisateur.dblClick(within(table).getByText('orders'))
 
     expect(await screen.findByText('Colonnes de orders')).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByText('created_at')).toBeInTheDocument())
+    // `created_at` apparaît deux fois une fois la table ouverte — dans la sidebar et dans
+    // l'en-tête de la grille. C'est celle de la sidebar qui est en cause ici.
+    const section = screen.getByText('Colonnes de orders').parentElement as HTMLElement
+    await waitFor(() => expect(within(section).getByText('created_at')).toBeInTheDocument())
   })
 
   it('« Ouvrir les données » du panneau droit ouvre l’onglet, et n’annonce plus A5', async () => {

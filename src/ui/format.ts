@@ -62,6 +62,21 @@ export function formatBytes(value: number): string {
 }
 
 /**
+ * Un entier **écrit en entier**, groupé par milliers — « 184 220 », comme les cellules de `A5`.
+ *
+ * Distinct de `formatCount`, qui abrège : « 1.9 M » convient à un ordre de grandeur dans un
+ * arbre ou une tuile, et serait faux dans une cellule, où l'utilisateur lit une valeur exacte
+ * de sa base. Les confondre afficherait « 184 k » à la place d'un identifiant.
+ *
+ * L'espace est une **espace fine insécable** (U+202F), celle du mockup : une espace ordinaire
+ * autoriserait un retour à la ligne au milieu d'un nombre.
+ */
+export function formatInteger(value: number): string {
+  if (!Number.isFinite(value)) return ABSENT
+  return new Intl.NumberFormat('fr-FR').format(value).replace(/\u00A0/g, '\u202F')
+}
+
+/**
  * Le tiret cadratin des colonnes sans objet.
  *
  * **Un tiret, pas zéro ni du vide.** « 0 ligne » sur un index serait un mensonge ; du vide

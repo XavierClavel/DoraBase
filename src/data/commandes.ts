@@ -4,6 +4,8 @@ import type {
   ConnectionState,
   ConnectionStateEntry,
   DatabaseKey,
+  RowQuery,
+  RowWindow,
   SchemaInfo,
   TableDetail,
   TableSummary,
@@ -62,6 +64,17 @@ export async function describeTable(
   table: string,
 ): Promise<TableDetail> {
   return invoke<TableDetail>('describe_table', { key, schema, table })
+}
+
+/**
+ * Une **fenêtre** de lignes — jamais un jeu complet.
+ *
+ * `RowQuery.limit` est une énumération fermée (`RowLimit`) : « demander tout » n'est pas
+ * exprimable, et la contrainte IPC transverse tient donc par le type. `06d` avait livré la
+ * lecture ; `10c` a ajouté la commande, qui manquait.
+ */
+export async function readRows(key: DatabaseKey, query: RowQuery): Promise<RowWindow> {
+  return invoke<RowWindow>('read_rows', { key, query })
 }
 
 /**

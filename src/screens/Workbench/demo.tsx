@@ -1,5 +1,6 @@
 import type { Project } from '../../domain/config'
 import type { SchemaInfo, TableDetail, TableSummary } from '../../domain/engine'
+import type { PasserelleLignes } from '../TableView/useLignes'
 import type { PasserelleArbre } from './useArbre'
 import type { PasserelleDetail } from './useDetailTable'
 import { Workbench } from './Workbench'
@@ -191,8 +192,41 @@ const PASSERELLE: PasserelleArbre = {
 
 const PASSERELLE_DETAIL: PasserelleDetail = { describeTable: async () => DETAIL }
 
+/**
+ * Cinq cents lignes — le palier par défaut de `RowLimit`, et ce que la barre d'état de `A5`
+ * affiche dans le mockup. La table prétendue en compte 1,9 million : la fenêtre est justement
+ * ce qui les sépare.
+ */
+const LIGNES = Array.from({ length: 500 }, (_, i) => [
+  { kind: 'int' as const, value: 184_220 - i },
+  { kind: 'int' as const, value: 44_019 + i * 7 },
+  { kind: 'text' as const, value: ['paid', 'pending', 'refunded', 'cancelled'][i % 4] ?? 'paid' },
+  { kind: 'int' as const, value: 12_900 - i * 3 },
+  { kind: 'text' as const, value: 'EUR' },
+  { kind: 'timestamp' as const, value: '2026-07-31 09:41:02' },
+  i % 3 === 0
+    ? { kind: 'null' as const }
+    : { kind: 'timestamp' as const, value: '2026-07-31 11:02:10' },
+  i % 2 === 0 ? { kind: 'null' as const } : { kind: 'text' as const, value: 'SUMMER26' },
+])
+
+const PASSERELLE_LIGNES: PasserelleLignes = {
+  readRows: async (_cle, requete) => ({
+    offset: 0,
+    rows: LIGNES,
+    total: { kind: 'estimated', value: 1_904_220 },
+    sql: `select * from ${requete.schema}.${requete.table} limit 500 offset 0`,
+    durationMs: 41,
+  }),
+}
+
 export function WorkbenchDemo() {
   return (
-    <Workbench projects={PROJETS} passerelle={PASSERELLE} passerelleDetail={PASSERELLE_DETAIL} />
+    <Workbench
+      projects={PROJETS}
+      passerelle={PASSERELLE}
+      passerelleDetail={PASSERELLE_DETAIL}
+      passerelleLignes={PASSERELLE_LIGNES}
+    />
   )
 }

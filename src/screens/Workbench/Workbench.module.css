@@ -27,16 +27,3 @@
   height: 100%;
   background: var(--paper);
 }
-
-/* L'emplacement du contenu d'onglet, tant que 10c ne l'a pas rempli. Une zone qui dit ce
-   qu'elle attend, plutôt qu'un blanc qui ressemble à un écran cassé. */
-.emplacement {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-8);
-  font-family: var(--font-ui);
-  font-size: var(--text-dense);
-  color: var(--ink-2);
-}

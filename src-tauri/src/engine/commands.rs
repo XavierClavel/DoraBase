@@ -232,7 +232,7 @@ mod tests {
 // --- Le câblage de `09b` : ouverture et introspection ------------------------------------
 
 use crate::engine::registry::{cle, ConnectionRegistry, ConnectionState};
-use crate::engine::{SchemaInfo, TableDetail, TableSummary};
+use crate::engine::{RowQuery, RowWindow, SchemaInfo, TableDetail, TableSummary};
 
 /// Désigne une base dans un projet, pour un environnement.
 ///
@@ -391,6 +391,31 @@ pub async fn describe_table(
     registry
         .avec(&key.cle(), move |adaptateur| {
             Box::pin(async move { adaptateur.table_detail(&schema, &table).await })
+        })
+        .await
+}
+
+/// Une **fenêtre** de lignes d'une table. Jamais un jeu complet.
+///
+/// **La commande manquait, et son absence était invisible.** `06d` a livré `rows` sur
+/// l'adaptateur et sur le registre, testés contre une vraie base — dont un test qui mesure le
+/// *coût* du chemin, parce qu'une fenêtre rendue ne prouve pas que la base n'a pas tout
+/// renvoyé. Mais rien n'était exposé au front : la couche était complète et personne ne la
+/// franchissait. Troisième occurrence du motif après `load_config` (`09b`) et l'assemblage de
+/// `A4` (`10b`).
+///
+/// `RowQuery` porte sa `limit` dans une énumération fermée (`RowLimit`) : « demander tout »
+/// n'est pas exprimable, et la contrainte IPC transverse tient par le type plutôt que par la
+/// discipline de l'appelant.
+#[tauri::command]
+pub async fn read_rows(
+    key: DatabaseKey,
+    query: RowQuery,
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<RowWindow, EngineError> {
+    registry
+        .avec(&key.cle(), move |adaptateur| {
+            Box::pin(async move { adaptateur.rows(&query).await })
         })
         .await
 }

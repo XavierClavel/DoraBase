@@ -27,7 +27,8 @@ pub fn run() {
             engine::commands::connection_states,
             engine::commands::list_schemas,
             engine::commands::list_objects,
-            engine::commands::describe_table
+            engine::commands::describe_table,
+            engine::commands::read_rows
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
