@@ -1,0 +1,75 @@
+/*
+ * A5 : la grille de données et sa barre d'état, relevées sur le mockup.
+ *
+ *   gouttière #   30px, encre .3, 10px
+ *   NULL          rgba(35,32,28,.35)
+ *   barre d'état  26px, fond --bar, filet haut 1px --divider,
+ *                 500 11px JetBrains Mono, encre .5 ; le compte en --success-ink 700
+ *
+ * La grille elle-même est habillée par `VirtualGrid` (10a) : hauteurs, filets et sélection y
+ * vivent, pour que A6 et A7 en héritent sans les recopier.
+ */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.grille {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.gouttiere {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: var(--text-meta);
+  color: var(--ink-5);
+}
+
+/* `NULL` écrit et atténué — jamais du vide, qui se confondrait avec la chaîne vide. */
+.nul {
+  color: var(--ink-3);
+}
+
+.nombre {
+  font-variant-numeric: tabular-nums;
+}
+
+.statut {
+  flex: none;
+  height: var(--h-statusbar);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-6);
+  background: var(--bar);
+  border-top: 1px solid var(--divider);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  color: var(--ink-8);
+}
+
+.compte {
+  color: var(--success-ink);
+  font-weight: var(--weight-bold);
+}
+
+.echec {
+  color: var(--danger-ink);
+}
+
+.espace {
+  flex: 1;
+}
+
+.lecture {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}

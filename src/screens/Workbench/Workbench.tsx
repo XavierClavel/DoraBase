@@ -10,6 +10,8 @@ import { BreadcrumbBar, type TypeObjet } from '../Explorer/BreadcrumbBar'
 import { DetailPanel } from '../Explorer/DetailPanel'
 import { ExplorerSidebar } from '../Explorer/ExplorerSidebar'
 import { ObjectTable } from '../Explorer/ObjectTable'
+import { TableView } from '../TableView/TableView'
+import type { PasserelleLignes } from '../TableView/useLignes'
 import { AUCUN_ONGLET, fermer, ongletActif, ouvrir, reordonner } from './onglets'
 import { PASSERELLE_TAURI, type PasserelleArbre, useArbre } from './useArbre'
 import { PASSERELLE_DETAIL, type PasserelleDetail, useDetailTable } from './useDetailTable'
@@ -20,6 +22,7 @@ type WorkbenchProps = {
   projects: readonly Project[]
   passerelle?: PasserelleArbre
   passerelleDetail?: PasserelleDetail
+  passerelleLignes?: PasserelleLignes
   onNewDatabase?: () => void
 }
 
@@ -36,6 +39,7 @@ export function Workbench({
   projects,
   passerelle = PASSERELLE_TAURI,
   passerelleDetail = PASSERELLE_DETAIL,
+  passerelleLignes,
   onNewDatabase,
 }: WorkbenchProps) {
   const { deplies, charge, etatDeBase, basculer, rafraichir } = useArbre(projects, passerelle)
@@ -186,13 +190,16 @@ export function Workbench({
                     onClose={(id) => setEtatOnglets((etat) => fermer(etat, id))}
                     onReorder={(ids) => setEtatOnglets((etat) => reordonner(etat, ids))}
                   />
-                  {actif ? (
-                    // Le contenu de l'onglet — grille, toolbar, panneau de ligne — arrive avec
-                    // `10c` à `10f`. Un emplacement nommé plutôt qu'une zone muette : le lecteur
-                    // doit savoir que la place est réservée, pas que l'onglet est cassé.
-                    <div className={styles.emplacement} data-testid="emplacement-a5">
-                      Les données de {actif.schema}.{actif.table} arrivent avec la spec 10c.
-                    </div>
+                  {actif && cle ? (
+                    // Les lignes de la table ouverte (`10c`). La toolbar (`10e`) et le panneau
+                    // de ligne (`10f`) viendront l'entourer.
+                    <TableView
+                      cle={cle}
+                      schema={actif.schema}
+                      table={actif.table}
+                      columns={detail?.columns ?? []}
+                      passerelle={passerelleLignes}
+                    />
                   ) : (
                     <>
                       <BreadcrumbBar

@@ -51,7 +51,8 @@ test('ouvrir une table depuis l’arbre ouvre un onglet, et la sidebar liste ses
 
   await expect(page.getByRole('tab', { name: /orders/ })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByText('Colonnes de orders')).toBeVisible()
-  await expect(page.getByText('total_cents')).toBeVisible()
+  // Dans la **sidebar** : depuis `10c`, le même nom apparaît aussi en en-tête de la grille.
+  await expect(page.locator('section').getByText('total_cents')).toBeVisible()
 })
 
 test('fermer le dernier onglet laisse l’écran de travail debout', async ({ page }) => {

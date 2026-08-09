@@ -15,8 +15,8 @@ Afficher les lignes d'une table. C'est le premier écran qui emploie la lecture 
 - **Une commande Tauri `read_rows`**, qui n'existe pas : l'adaptateur sait lire une fenêtre,
   aucune commande ne l'expose.
 - La grille : gouttière `#` de 30 px, en-tête 26 px, lignes 26 px, sélection à filet bleu.
-- Le rendu d'une `Value` selon son genre : `NULL` distinct, nombres et dates en mono,
-  nombres alignés à droite, texte en Nunito.
+- Le rendu d'une `Value` selon son genre : `NULL` distinct, tout en mono, nombres alignés à
+  droite et groupés par milliers.
 - La barre d'état 26 px : nombre de lignes, durée, résumé de la requête.
 - Les états vide, en cours et en échec.
 
@@ -61,25 +61,36 @@ connaît la densité et la locale. Ce qui donne, d'après la feuille de style du
 | `null` | `NULL`, en `rgba(35,32,28,.35)` — jamais du vide, qui se confondrait avec `''` |
 | `int`, `float` | mono, aligné à droite, séparateur de milliers fine espace |
 | `timestamp` | mono, tel que le moteur le rend — pas de reformatage local |
-| `text` | Nunito quand c'est de la prose, mono sinon — voir ci-dessous |
+| `text` | mono, tel quel — voir ci-dessous |
 | `json` | mono, sur une ligne, tronqué |
 | `binary` | `\x…` avec la taille, jamais le contenu |
 
-Le mockup rend `note` — la dernière colonne — en Nunito 11.5 px et tout le reste en mono. La
-règle lisible : **le mono est la valeur par défaut, Nunito est l'exception**, comme `09a`
-l'avait déjà tranché à l'envers de l'intuition pour `DataTable`.
-
-### La pastille de `status` : la forme oui, les couleurs non
+### La pastille de `status` n'est pas rendue, et le mockup se contredit lui-même
 
 Le mockup rend `status` en pastille verte, et son popover annonce quatre couleurs — `paid`
 vert, `pending` ambre, `refunded` rouge, `cancelled` neutre. Ce sont des mots d'une table
 fictive, pas une règle : rien ne dit à `A5` que `refunded` est un mauvais état, et une base
 réelle aura `active`, `draft`, `archived`.
 
-Décision : la pastille est rendue pour les colonnes dont le **catalogue** dit qu'elles sont
-énumérées — un fait, pas une devinette — et dans le style neutre. Aucune couleur sémantique
-n'est inventée à partir du vocabulaire. Le point est consigné au § « À trancher » de
-`specs/README.md` : associer un sens à des valeurs métier est du design, ou une préférence.
+Restait à savoir quelles colonnes reçoivent la **forme** de pastille, à défaut de ses
+couleurs. Aucun signal ne le dit : `TypeCategory` (`06a`) n'a pas de catégorie « énumération »,
+et — c'est le point qui tranche — **la sidebar du même mockup donne à `status` le glyphe `T`
+du texte**. Le handoff se contredit d'un panneau à l'autre.
+
+Décision : aucune pastille. Les valeurs de texte sont rendues comme du texte. La vraie réponse
+est une annotation de colonne, donc `A10` ; l'ajouter maintenant demanderait d'inventer à la
+fois le signal et la palette. Consigné au § « À trancher » de `specs/README.md`.
+
+### Le mono est la règle, sans exception
+
+La feuille de style du mockup pose `td { font: 500 11.5px JetBrains Mono }` pour toutes les
+cellules, et une seule colonne y échappe : `note`, en Nunito. Or `note` et `coupon_code` sont
+tous deux du texte, et rien dans le catalogue ne les distingue — la choisir demanderait une
+règle que personne n'a écrite (« la dernière colonne » ? « la plus longue » ?).
+
+Toutes les cellules sont donc en mono. C'est l'inverse de `DataTable` (`09a`), où le mono est
+aussi la règle mais où l'exception — la colonne du nom — est **désignée par l'écran** et non
+devinée d'un type.
 
 ### « ⌘E pour éditer » n'est pas affiché
 
@@ -94,7 +105,8 @@ pas : **un raccourci affiché qui ne répond pas est pire qu'un raccourci absent
   séparateurs, ligne sélectionnée.
 - `read_rows` est testée contre PostgreSQL réel, et un test mesure que la base ne renvoie
   que la fenêtre — il tombe si la pagination est sabotée.
-- Les huit genres de `Value` ont chacun un rendu vérifié, `NULL` compris.
+- Les huit genres de `Value` ont chacun un rendu vérifié, `NULL` compris — et `NULL` ne se
+  confond pas avec la chaîne vide.
 - Une table de 100 000 lignes affiche le palier demandé, et le nombre de nœuds montés reste
   borné.
 - La barre d'état donne le compte de la fenêtre et la durée rendus par `RowWindow`, jamais

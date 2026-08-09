@@ -140,12 +140,13 @@ cinq endroits où le mockup ne répond pas, et où la vraie réponse appartient 
 **Quatre trous du handoff sur `A5`, relevés en écrivant `10a`–`10f`** (9 août 2026). Comme
 pour `A2` et `A4`, chaque spec prend le minimum défendable et le dit.
 
-1. **La pastille de `status` a une forme, pas une sémantique.** Le mockup colore `paid` en
-   vert, `pending` en ambre, `refunded` en rouge, `cancelled` en neutre — le vocabulaire d'une
-   table fictive, pas une règle. Une base réelle aura `active`, `draft`, `archived`. `10c`
-   rend la pastille pour les colonnes que le **catalogue** déclare énumérées, dans le style
-   neutre, et n'invente aucune couleur sémantique. Associer un sens à des valeurs métier est
-   du design, ou une préférence de `A10`.
+1. **La pastille de `status` n'a ni sémantique ni signal, et le mockup se contredit.** Il
+   colore `paid` en vert, `pending` en ambre, `refunded` en rouge — le vocabulaire d'une table
+   fictive, pas une règle ; une base réelle aura `active`, `draft`, `archived`. Restait la
+   *forme* : quelles colonnes deviennent des pastilles ? `TypeCategory` (`06a`) n'a pas de
+   catégorie « énumération », et **la sidebar du même écran donne à `status` le glyphe `T` du
+   texte**. `10c` ne rend donc aucune pastille. La vraie réponse est une annotation de colonne,
+   donc `A10` — l'ajouter maintenant demanderait d'inventer à la fois le signal et la palette.
 2. **« Valeurs fréquentes » coûte un parcours complet.** Le popover d'opérateur annonce
    `paid 72% · pending 14% · …`, soit un `GROUP BY` sur 1,9 million de lignes déclenché par
    l'ouverture d'un menu. Trois réponses possibles — échantillonner et le dire, lire
