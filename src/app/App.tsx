@@ -4,6 +4,7 @@ import { Sprite } from '../design/icons/Sprite'
 import type { Project } from '../domain/config'
 import { NewConnection } from '../screens/NewConnection/NewConnection'
 import { WelcomeScreen } from '../screens/Welcome/WelcomeScreen'
+import { Workbench } from '../screens/Workbench/Workbench'
 
 // La galerie (`src/design/gallery/`) ne doit jamais partir dans le bundle livré : elle
 // est montée derrière deux conditions, `import.meta.env.DEV` ET `?gallery` dans l'URL.
@@ -17,6 +18,17 @@ const showGallery =
 
 const Gallery = showGallery
   ? lazy(() => import('../design/gallery/Gallery').then((module) => ({ default: module.Gallery })))
+  : null
+
+// L'écran de travail sur données figées, monté aux mêmes deux conditions que la galerie et
+// pour une raison analogue : Playwright pilote Chromium, où le pont Tauri ne répond pas, et
+// `10b` exige qu'au moins un test parte de `/` plutôt que de `?gallery`.
+const showDemo = import.meta.env.DEV && new URLSearchParams(window.location.search).has('demo')
+
+const WorkbenchDemo = showDemo
+  ? lazy(() =>
+      import('../screens/Workbench/demo').then((module) => ({ default: module.WorkbenchDemo })),
+    )
   : null
 
 export function App() {
@@ -50,7 +62,26 @@ export function App() {
         'chargement' ? // Rien pendant la lecture : afficher `A1` (« aucun projet ») ferait clignoter l'écran
       // d'accueil devant un utilisateur qui en a dix. La lecture d'un fichier local est
       // immédiate ; un état de chargement visible serait un scintillement de plus.
-      null : (
+      null : WorkbenchDemo ? (
+        <Suspense fallback={null}>
+          <WorkbenchDemo />
+        </Suspense>
+      ) : projects.length > 0 ? (
+        // **Un projet existe : l'écran de travail est le bon écran.** `A1` est l'écran des
+        // débuts — `07` le décrit comme « première ouverture, aucun projet » — et le laisser
+        // devant un utilisateur qui a dix bases ferait de l'accueil une impasse. C'est aussi ce
+        // qui rend `A4` atteignable : jusqu'ici, rien ne le montait.
+        <>
+          <Workbench projects={projects} onNewDatabase={() => setConnexionOuverte(true)} />
+          {connexionOuverte && (
+            <NewConnection
+              onClose={() => setConnexionOuverte(false)}
+              projects={projects.map((projet) => ({ id: projet.name, name: projet.name }))}
+              onSaved={setProjects}
+            />
+          )}
+        </>
+      ) : (
         <>
           {/* **Le bouton dit « Nouveau projet », la modale « Nouvelle connexion ».**
               Ce n'est pas une erreur d'assemblage : `A1` n'offre que cette action et `⌘N`,

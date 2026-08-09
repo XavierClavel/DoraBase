@@ -9,6 +9,8 @@ type ObjectTableProps = {
   type: TypeObjet
   selectedName?: string | null
   onSelect: (objet: TableSummary) => void
+  /** Ouvre l'objet dans un onglet — double-clic ou `Entrée`. Voir `10b`. */
+  onOpen?: (objet: TableSummary) => void
   /** Vrai pendant le chargement des objets du schéma. */
   loading?: boolean
   /** Le message d'échec, quand le chargement a échoué. */
@@ -30,6 +32,7 @@ export function ObjectTable({
   type,
   selectedName = null,
   onSelect,
+  onOpen,
   loading = false,
   error = null,
 }: ObjectTableProps) {
@@ -41,6 +44,7 @@ export function ObjectTable({
       rowId={(objet) => objet.name}
       selectedId={selectedName}
       onSelect={onSelect}
+      onOpen={onOpen}
       // **Vide, chargement et échec se distinguent, et aucun ne ressemble aux deux autres.** Le
       // handoff n'en maquette aucun des trois ; le minimum défendable est une ligne de texte,
       // sans illustration inventée.

@@ -8,6 +8,12 @@
   width: 252px;
 }
 
+/* La largeur vient du conteneur — le `SplitPane` de l'écran de travail (10b). Sans elle, la
+   poignée déplacerait un panneau dont le contenu garderait sa largeur fixe. */
+.fill {
+  width: 100%;
+}
+
 .root {
   display: flex;
   flex-direction: column;

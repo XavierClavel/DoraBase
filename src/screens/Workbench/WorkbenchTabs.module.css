@@ -1,0 +1,51 @@
+/*
+ * La bande d'onglets de A5, relevée sur le mockup :
+ *   hauteur 34px, fond --bar, filet bas 1px --divider
+ *   à droite, « Données » et « Structure » en 600 11px Nunito, encre .45, padding 0 11px
+ */
+
+.root {
+  display: flex;
+  align-items: stretch;
+  height: var(--h-bar);
+  flex: none;
+  background: var(--bar);
+  border-bottom: 1px solid var(--divider);
+}
+
+/* La bande occupe la place restante ; les deux vues restent collées à droite. */
+.strip {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.vues {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-6);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-meta);
+}
+
+.vue,
+.vueActive {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+}
+
+.vue[aria-disabled="true"] {
+  color: var(--ink-3);
+}
+
+.vueActive {
+  color: var(--ink);
+}

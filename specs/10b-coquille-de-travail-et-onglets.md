@@ -18,6 +18,9 @@ introspection), `09d` (l'arbre), `09f` (le panneau de détail de `A4`).
   débuts.
 - La bande d'onglets 34 px câblée : ouvrir une table depuis l'arbre ou depuis « Ouvrir les
   données » de `09f`, activer, fermer, réordonner.
+- Le **chargement de l'arbre** — ouvrir une base, lister ses schémas, lister les objets d'un
+  schéma — que `09b` n'avait pas câblé faute d'écran, et le détail d'une table (`describe_table`,
+  écrite en `06c` et jamais appelée).
 - La section « Colonnes de *table* » de la sidebar : nom, glyphe de catégorie, type.
 - Le couple « Données / Structure » à droite de la bande, `Données` actif.
 
@@ -59,6 +62,17 @@ L'état des onglets appartient à l'écran de travail, pas au centre : le fil d'
 barre de titre suit la base **ouverte**, celui du centre suit l'**onglet actif** — distinction
 déjà posée par `09e`, et qui n'a de sens que si quelqu'un tient les deux.
 
+### La sidebar est à 212 px, y compris quand le centre montre `A4`
+
+Le handoff donne **deux** largeurs : 252 px à `A4`, 212 px aux écrans de travail `A5` → `A9`
+(`04` a livré les deux variantes). Dans une coquille unique, ce ne peut pas être les deux :
+la colonne sauterait de quarante pixels à l'ouverture d'un premier onglet.
+
+Décision : la largeur standard, 212 px. Et surtout, la sidebar prend la largeur de son
+`SplitPane` au lieu de l'imposer — sans quoi la poignée déplacerait un panneau dont le contenu
+garderait sa largeur fixe. Un mockup montre des écrans figés ; il ne peut pas exprimer un
+panneau que l'utilisateur déplace, et `03` a livré cette poignée avec sa persistance.
+
 ### Fermer le dernier onglet ne ferme pas l'écran
 
 Le mockup ne montre jamais zéro onglet. Le minimum défendable : la bande reste, le centre
@@ -76,7 +90,8 @@ donnée. Aucun éditeur ne fait ça par défaut, et le mockup ne montre pas de d
 - Depuis `/` (pas `?gallery`), ouvrir une base mène à l'écran de travail, et la comparaison
   visuelle avec `A5` ne montre aucun écart sur la coquille — sidebar 212 px, bande 34 px,
   poignées de 5 px, panneau droit 296 px.
-- Double-cliquer une table de l'arbre ouvre un onglet ; le rouvrir active l'existant.
+- Cliquer une **feuille** de l'arbre ouvre un onglet ; dans la liste du centre, où sélectionner
+  remplit le panneau de détail, il faut un double-clic. Rouvrir la même table active l'existant.
 - Fermer un onglet active un voisin ; fermer le dernier laisse l'écran debout.
 - Deux tables de même nom dans deux bases donnent deux onglets distincts.
 - La section « Colonnes de *table* » suit la table de l'onglet actif, et son titre porte son
