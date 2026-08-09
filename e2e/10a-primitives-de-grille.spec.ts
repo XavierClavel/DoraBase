@@ -66,8 +66,14 @@ test('le popover reste visible même ancré au bord droit', async ({ page }) => 
 
   // Celui de droite est à une trentaine de pixels du bord : aligné à gauche, le panneau
   // sortirait de la fenêtre. C'est là que la bascule d'alignement se voit.
+  //
+  // `toPass` plutôt qu'une mesure unique : la position est une propriété de la mise en page
+  // **stabilisée**, et une assertion sur un instant est intermittente par construction — celle-ci
+  // l'a été avant d'être écrite ainsi.
   await zone.getByRole('button', { name: 'total_cents' }).click()
-  const droite = await zone.locator('[role=dialog]').boundingBox()
-  expect(droite?.x).toBeGreaterThanOrEqual(0)
-  expect((droite?.x ?? 0) + (droite?.width ?? 0)).toBeLessThanOrEqual(fenetre)
+  await expect(async () => {
+    const droite = await zone.locator('[role=dialog]').boundingBox()
+    expect(droite?.x).toBeGreaterThanOrEqual(0)
+    expect((droite?.x ?? 0) + (droite?.width ?? 0)).toBeLessThanOrEqual(fenetre)
+  }).toPass({ timeout: 2000 })
 })

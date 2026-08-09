@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Environment, Project } from '../../domain/config'
-import type { DatabaseKey, TableSummary } from '../../domain/engine'
+import type { DatabaseKey, Filter, SortKey, TableSummary } from '../../domain/engine'
 import { EnvironmentPicker } from '../../shell/EnvironmentPicker/EnvironmentPicker'
 import { ProjectPill } from '../../shell/ProjectPill/ProjectPill'
 import { TitleBar } from '../../shell/TitleBar/TitleBar'
@@ -48,6 +48,12 @@ export function Workbench({
   const [type, setType] = useState<TypeObjet>('tables')
   const [filtre, setFiltre] = useState('')
   const [objetChoisi, setObjetChoisi] = useState<string | null>(null)
+  // Les filtres et le tri de la table ouverte, publiés par `TableView` (`10d`) : la sidebar les
+  // annote, sans en tenir de copie.
+  const [etatRequete, setEtatRequete] = useState<{
+    filters: readonly Filter[]
+    sort: readonly SortKey[]
+  }>({ filters: [], sort: [] })
 
   const actif = ongletActif(etatOnglets)
 
@@ -171,7 +177,14 @@ export function Workbench({
               onAddDatabase={onNewDatabase}
               onRefresh={rafraichir}
               columns={
-                actif ? { table: actif.table, columns: detail?.columns ?? [], loading } : undefined
+                actif
+                  ? {
+                      table: actif.table,
+                      columns: detail?.columns ?? [],
+                      loading,
+                      annotations: annotationsDe(etatRequete),
+                    }
+                  : undefined
               }
             />
           }
@@ -194,11 +207,15 @@ export function Workbench({
                     // Les lignes de la table ouverte (`10c`). La toolbar (`10e`) et le panneau
                     // de ligne (`10f`) viendront l'entourer.
                     <TableView
+                      // Une instance par onglet : changer de table remonte la vue, donc remet
+                      // filtres et tri à zéro sans effet de nettoyage.
+                      key={`${actif.key.project}/${actif.key.database}/${actif.schema}.${actif.table}`}
                       cle={cle}
                       schema={actif.schema}
                       table={actif.table}
                       columns={detail?.columns ?? []}
                       passerelle={passerelleLignes}
+                      onEtatChange={setEtatRequete}
                     />
                   ) : (
                     <>
@@ -241,6 +258,28 @@ export function Workbench({
       </div>
     </div>
   )
+}
+
+/**
+ * Ce que la sidebar écrit à droite d'une colonne : « filtré », « tri ↓ », « tri ↑ ».
+ *
+ * Les mots viennent du mockup, la flèche du sens. Une colonne à la fois filtrée et triée porte
+ * les deux — le mockup n'en montre pas d'exemple, et taire l'un des deux états serait pire que
+ * les écrire ensemble.
+ */
+function annotationsDe(etat: {
+  filters: readonly Filter[]
+  sort: readonly SortKey[]
+}): Record<string, string> {
+  const annotations: Record<string, string> = {}
+  for (const filtre of etat.filters) annotations[filtre.column] = 'filtré'
+  for (const critere of etat.sort) {
+    const fleche = critere.direction === 'ascending' ? '↑' : '↓'
+    annotations[critere.column] = annotations[critere.column]
+      ? `filtré · tri ${fleche}`
+      : `tri ${fleche}`
+  }
+  return annotations
 }
 
 function correspond(objet: TableSummary, type: TypeObjet): boolean {

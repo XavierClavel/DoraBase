@@ -15,9 +15,10 @@ test.beforeEach(async ({ page }) => {
 test('cinq cents lignes, une poignée de nœuds montés', async ({ page }) => {
   const grille = page.getByRole('grid', { name: 'Lignes de public.orders' })
 
-  // Le total est annoncé — 500 lignes plus l'en-tête — alors que le DOM n'en porte qu'une
-  // dizaine. Sans `aria-rowcount`, la virtualisation mentirait à l'arbre d'accessibilité.
-  await expect(grille).toHaveAttribute('aria-rowcount', '501')
+  // Le total est annoncé — 500 lignes plus les **deux** lignes d'en-tête, celle des noms et
+  // celle des filtres (`10d`) — alors que le DOM n'en porte qu'une dizaine. Sans
+  // `aria-rowcount`, la virtualisation mentirait à l'arbre d'accessibilité.
+  await expect(grille).toHaveAttribute('aria-rowcount', '502')
   const montees = await grille.getByRole('row').count()
   expect(montees).toBeLessThan(40)
   expect(montees).toBeGreaterThan(3)
@@ -36,6 +37,7 @@ test('la barre d’état porte les chiffres de la fenêtre', async ({ page }) =>
 test('les lignes font 26 px et la gouttière 30', async ({ page }) => {
   const mesures = await page.evaluate(() => {
     const grille = document.querySelector('[role=grid]')
+    // La première ligne de données : deux en-têtes, donc l'indice 3.
     const ligne = grille?.querySelector('[role=row][aria-rowindex="3"]')
     const gouttiere = ligne?.querySelector('[role=gridcell]')
     if (!ligne || !gouttiere) return null

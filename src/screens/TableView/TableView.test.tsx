@@ -86,8 +86,9 @@ describe('TableView', () => {
     )
 
     const grille = await screen.findByRole('grid', { name: 'Lignes de public.orders' })
-    // Deux lignes de données, plus l'en-tête.
-    await waitFor(() => expect(within(grille).getAllByRole('row')).toHaveLength(3))
+    // Deux lignes de données, plus les **deux** lignes d'en-tête : celle des noms de colonnes et
+    // celle des filtres (`10d`).
+    await waitFor(() => expect(within(grille).getAllByRole('row')).toHaveLength(4))
     expect(within(grille).getByText('184 220')).toBeInTheDocument()
     expect(within(grille).getAllByText('NULL')).toHaveLength(2)
   })

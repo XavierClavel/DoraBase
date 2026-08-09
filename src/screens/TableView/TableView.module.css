@@ -73,3 +73,33 @@
   align-items: center;
   gap: var(--space-2);
 }
+
+/* L'en-tête cliquable d'une colonne : le tri se déclenche dessus, le `⌘`-clic l'empile. */
+.entete {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Le rang de tri, en pastille — visible seulement à partir de deux critères. */
+.rang {
+  flex: none;
+  padding: 0 3px;
+  border-radius: var(--radius-badge);
+  background: var(--accent-deeper);
+  color: var(--ink-on-accent);
+  font-family: var(--font-ui);
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-bold);
+}
