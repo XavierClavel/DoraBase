@@ -4,6 +4,7 @@ import {
   type ReactNode,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react'
@@ -64,11 +65,37 @@ export function Popover({ title, children, content, align = 'start' }: PopoverPr
   // Bascule d'alignement quand le panneau déborderait à droite. `getBoundingClientRect` rend
   // des zéros sous jsdom, où la condition est donc toujours fausse — c'est Playwright qui
   // vérifie ce comportement, comme pour toute exigence de mise en page.
-  useEffect(() => {
-    if (!ouvert || !panneau.current) return
-    const boite = panneau.current.getBoundingClientRect()
-    if (boite.right > window.innerWidth && boite.width > 0) setAlignement('end')
-    else setAlignement(align)
+  //
+  // **Une seule mesure ne suffit pas.** Le panneau s'ouvre avant que la page ait fini de se
+  // poser — polices, images, contenu asynchrone — et une position mesurée trop tôt laisse un
+  // panneau qui déborde une fois la mise en page stabilisée. Le test Playwright a d'abord été
+  // vert pour cette raison, puis rouge une fois la page alourdie : il mesurait un instant, pas
+  // un état. D'où la ré-évaluation à chaque changement de géométrie.
+  //
+  // **`useLayoutEffect` et non `useEffect`** : la bascule a lieu avant la peinture, sinon le
+  // panneau apparaît un instant à cheval sur le bord avant de se replacer. Scintillement bref
+  // mais réel — et c'est lui qui rendait le test de position intermittent.
+  useLayoutEffect(() => {
+    if (!ouvert) return
+    function recadrer() {
+      const boite = panneau.current?.getBoundingClientRect()
+      const ancre = racine.current?.getBoundingClientRect()
+      if (!boite || !ancre || boite.width === 0) return
+      // **Mesuré depuis l'ancre, pas depuis le panneau.** Une condition portant sur la position
+      // *courante* du panneau oscillerait : basculé, il tient ; tenant, on le remet à gauche ; à
+      // gauche, il déborde à nouveau. La question est « où serait-il aligné à gauche ? », et
+      // seule l'ancre y répond quelle que soit sa position actuelle.
+      const deborderait = ancre.left + boite.width > window.innerWidth
+      setAlignement(deborderait ? 'end' : align)
+    }
+    recadrer()
+    const observateur = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(recadrer)
+    observateur?.observe(document.documentElement)
+    window.addEventListener('resize', recadrer)
+    return () => {
+      observateur?.disconnect()
+      window.removeEventListener('resize', recadrer)
+    }
   }, [ouvert, align])
 
   const declencheur = cloneElement(children, {

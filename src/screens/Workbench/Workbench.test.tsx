@@ -235,6 +235,22 @@ describe('Workbench', () => {
     expect(screen.getByRole('tab', { name: /orders/ })).toBeInTheDocument()
   })
 
+  it('la sidebar annote la colonne triée, d’après l’état de la vue de table', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
+
+    const section = (await screen.findByText('Colonnes de orders')).parentElement as HTMLElement
+    await waitFor(() => expect(within(section).getByText('created_at')).toBeInTheDocument())
+    expect(within(section).queryByText(/tri/)).not.toBeInTheDocument()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Trier par created_at' }))
+
+    // L'annotation reflète l'état de la grille — un seul état, deux lecteurs.
+    await waitFor(() => expect(within(section).getByText('tri ↑')).toBeInTheDocument())
+  })
+
   it('« Structure » reste désactivé et nomme son écran', () => {
     monter()
     expect(screen.getByRole('button', { name: 'Structure' })).toHaveAttribute(

@@ -36,6 +36,12 @@ type ExplorerSidebarProps = {
     table: string
     columns: readonly ColumnInfo[]
     loading?: boolean
+    /**
+     * Ce que `A5` annote sur une colonne : « filtré », « tri ↓ ». Rendu en accent, à la place du
+     * type. **L'état vient de la vue de table** (`10d`) : une copie ici divergerait au premier
+     * filtre modifié.
+     */
+    annotations?: Readonly<Record<string, string>>
   }
   /** Voir `Sidebar` : `fill` dans l'écran de travail, où un `SplitPane` porte la largeur. */
   width?: 'standard' | 'wide' | 'fill'
@@ -178,7 +184,8 @@ export function ExplorerSidebar({
                   typeIcon={colonne.key === 'primary' ? 'key' : colonne.key ? 'fk' : undefined}
                   typeIconColor={colonne.key === 'primary' ? 'var(--gold)' : 'var(--info)'}
                   typeGlyph={colonne.key ? undefined : glypheDe(colonne.category)}
-                  meta={colonne.typeName}
+                  meta={columns.annotations?.[colonne.name] ?? colonne.typeName}
+                  metaActive={columns.annotations?.[colonne.name] !== undefined}
                 />
               ))}
               {columns.columns.length > APERCU_COLONNES && (

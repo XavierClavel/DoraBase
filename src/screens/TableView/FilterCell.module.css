@@ -1,0 +1,108 @@
+/*
+ * La cellule de filtre de la seconde ligne d'en-tête de A5, relevée sur le mockup :
+ *
+ *   boîte      20px, radius 5px, fond blanc, bordure 1px rgba(35,32,28,.12)
+ *   appliqué   bordure 1px rgba(242,101,58,.5)
+ *   en saisie  bordure 1.5px accent          ← les deux états que le mockup montre
+ *   opérateur  700 10.5px JetBrains Mono, --accent-deeper quand le filtre est actif
+ *   texte      500 10.5px JetBrains Mono
+ */
+
+.root {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: var(--radius-badge-2);
+  background: var(--field);
+  border: 1px solid var(--gridline-2);
+  box-sizing: border-box;
+}
+
+/* Filtre appliqué : bordure d'accent à 50 %. */
+.actif {
+  border-color: color-mix(in oklab, var(--accent) 50%, transparent);
+}
+
+/* Saisie non appliquée : bordure pleine de 1.5 px. La distinguer de l'état appliqué est ce qui
+   évite de croire qu'un filtre tapé mais non validé agit déjà. */
+.modifie {
+  border: 1.5px solid var(--accent);
+}
+
+.operateur {
+  flex: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-caps);
+  font-weight: var(--weight-bold);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.actif .operateur {
+  color: var(--accent-deeper);
+}
+
+.saisie {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-caps);
+  font-weight: var(--weight-medium);
+  color: var(--ink);
+}
+
+.saisie:focus {
+  outline: none;
+}
+
+.liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  height: 24px;
+  padding: 0 var(--space-5);
+  border: 0;
+  background: none;
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-6);
+  cursor: pointer;
+}
+
+.option:hover {
+  background: var(--hover-row);
+}
+
+/* L'opérateur courant, sur fond d'accent à 12 % — la ligne surlignée du popover du mockup. */
+.choisi {
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+  color: var(--accent-deeper);
+}
+
+.signe {
+  width: 14px;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  color: var(--ink-meta);
+}
+
+.choisi .signe {
+  color: var(--accent-deeper);
+}

@@ -1,10 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
-import type { ColumnInfo, DatabaseKey, RowWindow, Value } from '../../domain/engine'
+import type {
+  ColumnInfo,
+  DatabaseKey,
+  Filter,
+  FilterOperator,
+  RowQuery,
+  RowWindow,
+  SortKey,
+  Value,
+} from '../../domain/engine'
 import { formatInteger } from '../../ui/format'
 import { type GridColumn, VirtualGrid } from '../../ui/VirtualGrid/VirtualGrid'
 import { estNumerique, rendreValeur } from './cellule'
+import { FilterCell } from './FilterCell'
 import styles from './TableView.module.css'
+import { basculerTri, filtreDe, poserFiltre, rangDeTri } from './tri'
 import { LIMITE_PAR_DEFAUT, type PasserelleLignes, useLignes } from './useLignes'
 
 type TableViewProps = {
@@ -14,6 +25,12 @@ type TableViewProps = {
   /** Les colonnes du catalogue — elles nomment les en-têtes et donnent l'ordre. */
   columns: readonly ColumnInfo[]
   passerelle?: PasserelleLignes
+  /**
+   * Publie filtres et tri vers l'écran de travail, qui en annote la liste de colonnes de la
+   * sidebar. **Un seul état, deux lecteurs** : une copie dans la sidebar divergerait à la
+   * première modification.
+   */
+  onEtatChange?: (etat: { filters: readonly Filter[]; sort: readonly SortKey[] }) => void
 }
 
 /** Une ligne de la fenêtre, avec son rang — la gouttière `#` du mockup. */
@@ -29,11 +46,55 @@ const LARGEUR_GOUTTIERE = 30
  *
  * **Le premier écran qui emploie la lecture paginée de `06d`**, écrite et testée le 6 août et
  * appelée par personne jusqu'ici.
+ *
+ * **Changer de table doit remonter ce composant** — l'appelant lui donne une `key` par onglet.
+ * Garder l'état ferait appliquer `status = paid` à une table qui n'a pas cette colonne, et la
+ * lecture échouerait sans que rien ne l'explique. Le faire par un effet de remise à zéro coûtait
+ * une seconde requête à chaque montage : mesuré, pas supposé.
  */
-export function TableView({ cle, schema, table, columns, passerelle }: TableViewProps) {
-  const { fenetre, loading, error } = useLignes(cle, schema, table, LIMITE_PAR_DEFAUT, passerelle)
+export function TableView({
+  cle,
+  schema,
+  table,
+  columns,
+  passerelle,
+  onEtatChange,
+}: TableViewProps) {
+  const [filters, setFilters] = useState<readonly Filter[]>([])
+  const [sort, setSort] = useState<readonly SortKey[]>([])
+  // L'opérateur choisi par colonne, y compris pour un filtre pas encore appliqué. Séparé des
+  // filtres : `= ` sur une colonne vide n'est pas un filtre, c'est un champ prêt à recevoir.
+  const [operateurs, setOperateurs] = useState<Record<string, FilterOperator>>({})
   const [choisie, setChoisie] = useState<string | null>(null)
   const hauteur = useHauteurDisponible()
+
+  // Mémoïsée : `useLignes` relance sa lecture quand la requête change, et une requête
+  // reconstruite à chaque rendu la relancerait indéfiniment.
+  const query: RowQuery = useMemo(
+    () => ({
+      schema,
+      table,
+      filters: [...filters],
+      sort: [...sort],
+      offset: 0,
+      limit: LIMITE_PAR_DEFAUT,
+    }),
+    [schema, table, filters, sort],
+  )
+
+  const { fenetre, loading, error } = useLignes(cle, query, passerelle)
+
+  useEffect(() => onEtatChange?.({ filters, sort }), [filters, sort, onEtatChange])
+
+  // `useCallback` : la fonction entre dans le `useMemo` des colonnes, qu'une nouvelle identité à
+  // chaque rendu recalculerait pour rien.
+  const appliquerFiltre = useCallback(
+    (column: string, operator: FilterOperator, saisie: string) => {
+      setOperateurs((precedent) => ({ ...precedent, [column]: operator }))
+      setFilters((precedent) => poserFiltre(precedent, column, filtreDe(column, operator, saisie)))
+    },
+    [],
+  )
 
   const lignes: Ligne[] = useMemo(
     () => (fenetre?.rows ?? []).map((valeurs, rang) => ({ rang: rang + 1, valeurs })),
@@ -48,25 +109,67 @@ export function TableView({ cle, schema, table, columns, passerelle }: TableView
         width: LARGEUR_GOUTTIERE,
         cell: (ligne) => <span className={styles.gouttiere}>{ligne.rang}</span>,
       },
-      ...columns.map((colonne, rang) => ({
-        key: colonne.name,
-        header: colonne.name,
-        width: LARGEUR_COLONNE,
-        // L'alignement suit la **valeur**, pas le nom de la colonne : une colonne numérique
-        // dont une cellule est `NULL` garde son `NULL` à gauche, comme le mockup le montre.
-        numeric: colonne.category === 'number',
-        cell: (ligne: Ligne) => {
-          const valeur = ligne.valeurs[rang]
-          if (valeur === undefined) return null
-          return (
-            <span className={estNumerique(valeur) ? styles.nombre : undefined}>
-              {rendreValeur(valeur)}
-            </span>
-          )
-        },
-      })),
+      ...columns.map((colonne, rang) => {
+        const filtre = filters.find((f) => f.column === colonne.name)
+        const critere = sort.find((c) => c.column === colonne.name)
+        const rangDuTri = rangDeTri(sort, colonne.name)
+        return {
+          key: colonne.name,
+          header: (
+            <button
+              type="button"
+              className={styles.entete}
+              // Le `⌘`-clic empile un second critère : la convention de tous les tableurs et de
+              // tous les clients SQL, que le handoff ne dit pas et qu'inventer autrement serait
+              // gratuit. `aria-sort` porte l'état pour qui n'en voit pas la flèche.
+              onClick={(evenement) =>
+                setSort((precedent) =>
+                  basculerTri(precedent, colonne.name, evenement.metaKey || evenement.ctrlKey),
+                )
+              }
+              aria-label={`Trier par ${colonne.name}`}
+            >
+              {colonne.name}
+              {critere && (
+                <Icon
+                  name={critere.direction === 'ascending' ? 'asc' : 'desc'}
+                  size={11}
+                  strokeWidth={2.4}
+                />
+              )}
+              {/* La pastille de rang n'apparaît qu'à partir de **deux** critères : un « 1 »
+                  solitaire sur la seule colonne triée serait du bruit. */}
+              {rangDuTri !== null && sort.length > 1 && (
+                <span className={styles.rang}>{rangDuTri}</span>
+              )}
+            </button>
+          ),
+          width: LARGEUR_COLONNE,
+          // L'alignement suit la **valeur**, pas le nom de la colonne : une colonne numérique
+          // dont une cellule est `NULL` garde son `NULL` à gauche, comme le mockup le montre.
+          numeric: colonne.category === 'number',
+          tint: filtre ? ('filtered' as const) : critere ? ('sorted' as const) : undefined,
+          filter: (
+            <FilterCell
+              column={colonne.name}
+              operator={operateurs[colonne.name] ?? 'eq'}
+              value={filtre?.value ?? ''}
+              onApply={(operator, saisie) => appliquerFiltre(colonne.name, operator, saisie)}
+            />
+          ),
+          cell: (ligne: Ligne) => {
+            const valeur = ligne.valeurs[rang]
+            if (valeur === undefined) return null
+            return (
+              <span className={estNumerique(valeur) ? styles.nombre : undefined}>
+                {rendreValeur(valeur)}
+              </span>
+            )
+          },
+        }
+      }),
     ],
-    [columns],
+    [columns, filters, sort, operateurs, appliquerFiltre],
   )
 
   return (
@@ -78,6 +181,7 @@ export function TableView({ cle, schema, table, columns, passerelle }: TableView
           rows={lignes}
           rowId={(ligne) => String(ligne.rang)}
           viewportHeight={hauteur.valeur}
+          filterRow
           selectedId={choisie}
           onSelect={(ligne) => setChoisie(String(ligne.rang))}
           empty={<span>{messageVide(loading, error, schema, table)}</span>}

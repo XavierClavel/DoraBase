@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { readRows } from '../../data/commandes'
-import type { DatabaseKey, RowLimit, RowQuery, RowWindow } from '../../domain/engine'
+import type { DatabaseKey, RowQuery, RowWindow } from '../../domain/engine'
 
 export type PasserelleLignes = { readRows: typeof readRows }
 
 export const PASSERELLE_LIGNES: PasserelleLignes = { readRows }
 
 /** Le palier de départ du stepper de `A5`. `10e` le rendra réglable. */
-export const LIMITE_PAR_DEFAUT: RowLimit = 'fiveHundred'
+export const LIMITE_PAR_DEFAUT = 'fiveHundred' as const
 
 export type EtatLignes = {
   fenetre: RowWindow | null
@@ -30,9 +30,7 @@ export type EtatLignes = {
  */
 export function useLignes(
   key: DatabaseKey | null,
-  schema: string | null,
-  table: string | null,
-  limite: RowLimit = LIMITE_PAR_DEFAUT,
+  query: RowQuery | null,
   passerelle: PasserelleLignes = PASSERELLE_LIGNES,
 ): EtatLignes {
   const [fenetre, setFenetre] = useState<RowWindow | null>(null)
@@ -40,31 +38,25 @@ export function useLignes(
   const [error, setError] = useState<string | null>(null)
 
   // Les trois chaînes plutôt que l'objet : une `DatabaseKey` reconstruite à chaque rendu
-  // relancerait la lecture indéfiniment — le même piège qu'en `useDetailTable`.
+  // relancerait la lecture indéfiniment — le même piège qu'en `useDetailTable`. La requête, elle,
+  // est mémoïsée par l'appelant : c'est **son** changement qui relance la lecture, filtre et tri
+  // compris. Filtrer la fenêtre déjà reçue serait immédiat et faux.
   const project = key?.project ?? null
   const database = key?.database ?? null
   const environment = key?.environment ?? null
 
   useEffect(() => {
-    if (!project || !database || !environment || !schema || !table) {
+    if (!project || !database || !environment || !query) {
       setFenetre(null)
       setLoading(false)
       setError(null)
       return
     }
     let vivant = true
-    const requete: RowQuery = {
-      schema,
-      table,
-      filters: [],
-      sort: [],
-      offset: 0,
-      limit: limite,
-    }
     setLoading(true)
     setError(null)
     passerelle
-      .readRows({ project, database, environment }, requete)
+      .readRows({ project, database, environment }, query)
       .then((resultat) => {
         if (vivant) {
           setFenetre(resultat)
@@ -81,7 +73,7 @@ export function useLignes(
     return () => {
       vivant = false
     }
-  }, [project, database, environment, schema, table, limite, passerelle])
+  }, [project, database, environment, query, passerelle])
 
   return { fenetre, loading, error }
 }
