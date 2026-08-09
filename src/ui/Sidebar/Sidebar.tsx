@@ -18,8 +18,13 @@ type SidebarProps = {
    *
    * Une variante de largeur, et non un second composant : la structure est identique, seule
    * cette propriété change.
+   *
+   * **`fill` est la troisième, et elle n'est pas dans le handoff** : elle laisse la largeur au
+   * conteneur. L'écran de travail de `10b` place la sidebar dans un `SplitPane` redimensionnable
+   * — une largeur fixe y rendrait la poignée sans effet, et le mockup, qui montre des écrans
+   * figés, ne peut pas exprimer un panneau que l'utilisateur déplace.
    */
-  width?: 'standard' | 'wide'
+  width?: 'standard' | 'wide' | 'fill'
 }
 
 // Colonne de 212 px partagée par A5 → A9. Purement structurelle : elle ne connaît ni

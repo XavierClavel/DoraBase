@@ -14,6 +14,14 @@ type DetailPanelProps = {
   error?: string | null
   pinned?: boolean
   onTogglePin?: () => void
+  /**
+   * Ouvre les données de l'objet — l'action que `09f` avait livrée désactivée.
+   *
+   * Absente, l'action reste désactivée avec son infobulle « Viendra avec A5 ». Fournie, elle
+   * s'active et perd son infobulle : dire qu'un écran est à venir alors qu'il répond serait
+   * pire que ne rien dire.
+   */
+  onOpenData?: () => void
 }
 
 /** Les cinq premières colonnes du catalogue, et le compte de celles qui restent. */
@@ -53,6 +61,7 @@ export function DetailPanel({
   error = null,
   pinned = false,
   onTogglePin,
+  onOpenData,
 }: DetailPanelProps) {
   if (error)
     return (
@@ -137,17 +146,16 @@ export function DetailPanel({
         <section className={styles.bloc}>
           <h3 className={styles.blocTitre}>Actions</h3>
           <div className={styles.actions}>
+            {/* « Ouvrir les données » a son écran depuis `10b` : elle s'active dès qu'un
+                gestionnaire est fourni, et perd l'infobulle qui annonçait `A5`. Les trois autres
+                restent désactivées avec la leur — la règle de `09f` tient tant que l'écran nommé
+                n'existe pas. */}
             {ACTIONS.map((action) => (
-              <Tooltip key={action.key} label={`Viendra avec ${action.ecran}`}>
-                <button
-                  type="button"
-                  className={action.accent ? styles.actionAccent : styles.action}
-                  aria-disabled="true"
-                >
-                  <Icon name={action.icon} size={13} strokeWidth={2} />
-                  {action.label}
-                </button>
-              </Tooltip>
+              <ActionDeDetail
+                key={action.key}
+                action={action}
+                onActivate={action.key === 'open' ? onOpenData : undefined}
+              />
             ))}
           </div>
         </section>
@@ -189,6 +197,35 @@ export function DetailPanel({
       </div>
     </aside>
   )
+}
+
+/**
+ * Une action du panneau : active si elle a un gestionnaire, sinon désactivée sous l'infobulle
+ * qui nomme l'écran attendu.
+ *
+ * Un composant plutôt qu'un ternaire dans la boucle : l'enveloppe `Tooltip` n'existe que dans un
+ * cas sur deux, et l'alternance des deux formes rendait la clé de liste invisible au linter.
+ */
+function ActionDeDetail({
+  action,
+  onActivate,
+}: {
+  action: (typeof ACTIONS)[number]
+  onActivate?: () => void
+}) {
+  const bouton = (
+    <button
+      type="button"
+      className={action.accent ? styles.actionAccent : styles.action}
+      aria-disabled={onActivate ? undefined : 'true'}
+      onClick={onActivate}
+    >
+      <Icon name={action.icon} size={13} strokeWidth={2} />
+      {action.label}
+    </button>
+  )
+  if (onActivate) return bouton
+  return <Tooltip label={`Viendra avec ${action.ecran}`}>{bouton}</Tooltip>
 }
 
 /**

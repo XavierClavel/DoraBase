@@ -1,0 +1,42 @@
+/*
+ * La coquille des écrans de travail (A4 → A9) : barre de titre 40px, corps, et rien d'autre.
+ * Les trois zones du corps viennent de deux `SplitPane` imbriqués — `03` a écarté un composant
+ * à N zones tant qu'aucun écran n'en réclamait un, et deux suffisent toujours.
+ */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--paper);
+}
+
+/* `min-height: 0` : sans lui, un enfant qui déborde pousse le conteneur au lieu de défiler, et
+   la grille de A5 étirerait la fenêtre au lieu de faire défiler ses lignes. */
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.centre {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  background: var(--paper);
+}
+
+/* L'emplacement du contenu d'onglet, tant que 10c ne l'a pas rempli. Une zone qui dit ce
+   qu'elle attend, plutôt qu'un blanc qui ressemble à un écran cassé. */
+.emplacement {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  color: var(--ink-2);
+}

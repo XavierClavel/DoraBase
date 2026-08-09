@@ -38,6 +38,13 @@ type DataTableProps<Row> = {
   rowId: (row: Row) => string
   selectedId?: string | null
   onSelect?: (row: Row) => void
+  /**
+   * Ouvre la ligne — double-clic, et `Entrée` quand elle a le focus.
+   *
+   * Distinct de `onSelect` : sélectionner remplit le panneau de détail, ouvrir change d'écran.
+   * Les confondre ouvrirait un onglet à chaque parcours de la liste au clavier.
+   */
+  onOpen?: (row: Row) => void
   /** Rendu quand `rows` est vide. Absent, aucune ligne n'est rendue. */
   empty?: ReactNode
 }
@@ -62,6 +69,7 @@ export function DataTable<Row>({
   rowId,
   selectedId = null,
   onSelect,
+  onOpen,
   empty,
 }: DataTableProps<Row>) {
   if (rows.length === 0 && empty) {
@@ -103,6 +111,17 @@ export function DataTable<Row>({
               aria-selected={onSelect ? selectionnee : undefined}
               className={cx(styles.tr, selectionnee && styles.selected)}
               onClick={onSelect ? () => onSelect(row) : undefined}
+              onDoubleClick={onOpen ? () => onOpen(row) : undefined}
+              // Le clavier ouvre par `Entrée` sur la ligne sélectionnée. Sans cela, l'ouverture
+              // n'existerait qu'à la souris — et le double-clic n'a aucun équivalent clavier.
+              onKeyDown={
+                onOpen
+                  ? (evenement) => {
+                      if (evenement.key === 'Enter') onOpen(row)
+                    }
+                  : undefined
+              }
+              tabIndex={onOpen ? 0 : undefined}
             >
               {columns.map((colonne, rang) => {
                 const contenu = colonne.cell(row)

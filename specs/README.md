@@ -251,6 +251,13 @@ l'écran. `10b` construit la coquille une fois et la monte depuis `/`. Troisièm
 même motif après `load_config` (`09b`) et `read_rows` (`10c`) : une couche complète et testée
 qu'aucun appelant ne franchit.
 
+**La sidebar de l'écran de travail est à 212 px, y compris devant `A4`** (tranché le 9 août
+2026, en écrivant `10b`). Le handoff donne 252 px à `A4` et 212 aux écrans `A5` → `A9` ; une
+coquille unique ne peut pas être les deux, et la colonne sauterait de quarante pixels à
+l'ouverture d'un premier onglet. Elle prend en outre la largeur de son `SplitPane` au lieu de
+l'imposer — sans quoi la poignée livrée par `03` déplacerait un panneau dont le contenu garderait
+sa largeur fixe. Un mockup figé ne peut pas exprimer un panneau que l'utilisateur déplace.
+
 **Pourquoi `09` a été découpé en six** (7 août 2026) : `A4` est l'écran le plus dense du
 handoff — barre de titre à pastille, sidebar 252 px à quatre niveaux, centre à onglets et
 tableau de sept colonnes, panneau de détail à quatre blocs — et il porte en plus le

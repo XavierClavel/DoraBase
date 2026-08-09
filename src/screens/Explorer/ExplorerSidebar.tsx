@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type { Project } from '../../domain/config'
-import type { ConnectionState } from '../../domain/engine'
+import type { ColumnInfo, ConnectionState } from '../../domain/engine'
 import { Badge } from '../../ui/Badge/Badge'
+import { ColumnRow } from '../../ui/ColumnRow/ColumnRow'
 import { Sidebar } from '../../ui/Sidebar/Sidebar'
 import { SidebarFilterBar } from '../../ui/SidebarFilterBar/SidebarFilterBar'
+import { SidebarSectionTitle } from '../../ui/SidebarSectionTitle/SidebarSectionTitle'
 import { TreeRow } from '../../ui/TreeRow/TreeRow'
 import { aplatir, type Charge, type Deplies, type Noeud } from './arbre'
 import styles from './ExplorerSidebar.module.css'
@@ -23,7 +25,24 @@ type ExplorerSidebarProps = {
   onSelect: (noeud: Noeud) => void
   onAddDatabase?: () => void
   onRefresh?: () => void
+  /**
+   * La section contextuelle « Colonnes de *table* » des écrans de travail (`A5` → `A9`).
+   *
+   * Absente dans `A4`, où aucune table n'est ouverte : le handoff ne la montre que sous un
+   * onglet actif. Les annotations « filtré » et « tri ↓ » du mockup viendront avec `10d`, qui
+   * crée l'état qu'elles reflètent — les inventer ici afficherait un état que rien ne produit.
+   */
+  columns?: {
+    table: string
+    columns: readonly ColumnInfo[]
+    loading?: boolean
+  }
+  /** Voir `Sidebar` : `fill` dans l'écran de travail, où un `SplitPane` porte la largeur. */
+  width?: 'standard' | 'wide' | 'fill'
 }
+
+/** Au-delà, la liste se résume — le mockup montre sept colonnes puis « + 11 autres ». */
+const APERCU_COLONNES = 7
 
 /**
  * La sidebar de `A4` : filtre, arbre à quatre niveaux, pied.
@@ -43,6 +62,8 @@ export function ExplorerSidebar({
   onSelect,
   onAddDatabase,
   onRefresh,
+  columns,
+  width = 'wide',
 }: ExplorerSidebarProps) {
   const [filtre, setFiltre] = useState('')
 
@@ -55,7 +76,7 @@ export function ExplorerSidebar({
 
   return (
     <Sidebar
-      width="wide"
+      width={width}
       filter={
         // Le compteur `n/m` de `04` sert ici : il dit combien de lignes **affichées** le filtre
         // retient, ce qui rappelle implicitement qu'il ne cherche pas au-delà.
@@ -141,8 +162,55 @@ export function ExplorerSidebar({
           ),
         )}
       </div>
+      {columns && (
+        <section className={styles.colonnes}>
+          <SidebarSectionTitle>Colonnes de {columns.table}</SidebarSectionTitle>
+          {columns.loading ? (
+            <p className={styles.message}>Chargement des colonnes…</p>
+          ) : (
+            <>
+              {columns.columns.slice(0, APERCU_COLONNES).map((colonne) => (
+                <ColumnRow
+                  key={colonne.name}
+                  label={colonne.name}
+                  // La clé prime sur la catégorie : le mockup montre une icône de clé pour `id`
+                  // et de clé étrangère pour `user_id`, et un glyphe de type pour les autres.
+                  typeIcon={colonne.key === 'primary' ? 'key' : colonne.key ? 'fk' : undefined}
+                  typeIconColor={colonne.key === 'primary' ? 'var(--gold)' : 'var(--info)'}
+                  typeGlyph={colonne.key ? undefined : glypheDe(colonne.category)}
+                  meta={colonne.typeName}
+                />
+              ))}
+              {columns.columns.length > APERCU_COLONNES && (
+                <ColumnRow label={`+ ${columns.columns.length - APERCU_COLONNES} autres`} summary />
+              )}
+            </>
+          )}
+        </section>
+      )}
     </Sidebar>
   )
+}
+
+/**
+ * Le glyphe de catégorie du mockup : `T` pour du texte, `#` pour un nombre, `⏱` pour une date.
+ *
+ * La catégorie vient de l'adaptateur (`06a`) et non d'une analyse du nom de type : dériver
+ * « int8 » ou « bpchar » dans l'écran l'obligerait à connaître les types de sept moteurs.
+ */
+function glypheDe(category: ColumnInfo['category']): string {
+  switch (category) {
+    case 'number':
+      return '#'
+    case 'timestamp':
+      return '⏱'
+    case 'json':
+      return '{}'
+    case 'uuid':
+      return 'ID'
+    default:
+      return 'T'
+  }
 }
 
 /**
