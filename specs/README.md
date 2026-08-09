@@ -137,6 +137,36 @@ cinq endroits où le mockup ne répond pas, et où la vraie réponse appartient 
    autres… » sans dire lesquelles. `09f` prend les cinq premières du catalogue — l'ordre que
    l'utilisateur connaît de sa table.
 
+**Quatre trous du handoff sur `A5`, relevés en écrivant `10a`–`10f`** (9 août 2026). Comme
+pour `A2` et `A4`, chaque spec prend le minimum défendable et le dit.
+
+1. **La pastille de `status` a une forme, pas une sémantique.** Le mockup colore `paid` en
+   vert, `pending` en ambre, `refunded` en rouge, `cancelled` en neutre — le vocabulaire d'une
+   table fictive, pas une règle. Une base réelle aura `active`, `draft`, `archived`. `10c`
+   rend la pastille pour les colonnes que le **catalogue** déclare énumérées, dans le style
+   neutre, et n'invente aucune couleur sémantique. Associer un sens à des valeurs métier est
+   du design, ou une préférence de `A10`.
+2. **« Valeurs fréquentes » coûte un parcours complet.** Le popover d'opérateur annonce
+   `paid 72% · pending 14% · …`, soit un `GROUP BY` sur 1,9 million de lignes déclenché par
+   l'ouverture d'un menu. Trois réponses possibles — échantillonner et le dire, lire
+   `pg_stats.most_common_vals` (gratuit, mais limité aux colonnes analysées et propre à
+   PostgreSQL), ou l'assumer coûteux et explicite. `10d` ne rend pas le bloc. La piste
+   `pg_stats` est la plus prometteuse : c'est déjà là que `06c` prend ses estimations.
+3. **`280,00 €` suppose un lien entre deux colonnes que rien ne déclare.** Le panneau de ligne
+   affiche `28000` puis le montant formaté, ce qui exige de savoir que `total_cents` est en
+   centimes et que la devise se lit dans `currency`. Le déduire d'un suffixe marcherait ici et
+   afficherait un montant faux ailleurs, en silence. `10f` ne rend pas le bloc ; la vraie
+   réponse est une annotation de colonne, donc `A10`.
+4. **L'opérateur `in` annonce un panneau qui n'est pas maquetté.** « dans la liste… » et ses
+   points de suspension. `10d` saisit les valeurs dans le même champ, séparées par des
+   virgules, avec un texte d'aide qui le dit.
+
+**L'export de `A5` est un sujet, pas un bouton.** Outre la CSP (`blob:`, voir plus bas), il
+faut trancher : la fenêtre affichée ou le résultat complet ? Quel encodage, quel séparateur,
+quel traitement des `NULL` et des sauts de ligne ? Sur 1,9 million de lignes, l'écriture doit
+être en flux, donc entièrement côté Rust. `10e` livre le bouton **désactivé**, avec l'infobulle
+qui nomme sa spec — la règle de `09f`.
+
 **Décision inverse de `A1` sur les boutons inertes, assumée.** `A1` et `08b` ont livré des
 boutons présents et **actifs** mais sans effet, au motif qu'un bouton désactivé sans
 explication fait croire à un bug. `09f` fait l'inverse pour ses quatre actions : elles sont
@@ -206,6 +236,21 @@ comptages et tailles ne viennent pas de l'utilisateur mais du catalogue de la ba
 et leur forme est dictée par chaque moteur. Ils appartiennent donc à `06a`, pas au
 modèle de configuration — c'est la ligne de faille qui a guidé le découpage.
 
+**Pourquoi `10` a été découpé en six** (9 août 2026) : `A5` porte trois choses qu'aucune spec
+n'a livrées — la grille **virtualisée**, que `09a` a explicitement séparée de `DataTable` ; le
+branchement de la lecture paginée de `06d`, écrite et testée mais appelée par personne ; et la
+bande d'onglets, reportée de `09e`. S'y ajoutent les filtres par en-tête, le tri multiple, la
+toolbar et le panneau de ligne, chacun avec ses propres critères de vérification. L'ordre suit
+la dépendance : primitives → coquille → données → interactions.
+
+**`A4` n'était assemblé que dans la galerie** (constaté le 9 août 2026, en préparant `10`).
+Ses quatre composants existent, sont testés et sont fidèles, mais rien ne les réunit et `App`
+ne les monte pas : les tests Playwright de `A4` visent tous `/?gallery`. Trou d'assemblage,
+pas trou de fidélité — invisible précisément parce que la galerie donne la même image que
+l'écran. `10b` construit la coquille une fois et la monte depuis `/`. Troisième occurrence du
+même motif après `load_config` (`09b`) et `read_rows` (`10c`) : une couche complète et testée
+qu'aucun appelant ne franchit.
+
 **Pourquoi `09` a été découpé en six** (7 août 2026) : `A4` est l'écran le plus dense du
 handoff — barre de titre à pastille, sidebar 252 px à quatre niveaux, centre à onglets et
 tableau de sept colonnes, panneau de détail à quatre blocs — et il porte en plus le
@@ -243,7 +288,12 @@ propres critères de vérification.
 | [`09d`](09d-a4-sidebar-et-arbre.md) | A4 | Sidebar 252 px et son arbre à quatre niveaux | **fait** |
 | [`09e`](09e-a4-liste-des-objets.md) | A4 | Centre : fil d'Ariane, tableau des objets | **fait** (bande d'onglets → `10`) |
 | [`09f`](09f-a4-panneau-droit.md) | A4 | Panneau de détail 300 px | **fait** |
-| `10` | A5 | Visualiseur de table : grille, filtres par en-tête, tri, LIMIT | à écrire |
+| [`10a`](10a-primitives-de-grille.md) | — | Primitives : `VirtualGrid`, `Popover` | à faire |
+| [`10b`](10b-coquille-de-travail-et-onglets.md) | A5 | Coquille d'écran de travail et bande d'onglets câblée | à faire |
+| [`10c`](10c-grille-de-donnees.md) | A5 | Grille de données : `read_rows`, rendu des valeurs, barre d'état | à faire |
+| [`10d`](10d-filtres-et-tri.md) | A5 | Filtres par en-tête, popover d'opérateur, tri multiple | à faire |
+| [`10e`](10e-toolbar.md) | A5 | Toolbar : `LIMIT`, chips, « Voir le SQL », colonnes | à faire |
+| [`10f`](10f-panneau-de-ligne.md) | A5 | Panneau droit : détail d'une ligne, ligne liée, INSERT | à faire |
 | `11` | A6 | Édition inline, modifications en attente, diff et transaction | à écrire |
 | `12` | A7 | Console SQL : éditeur, autocomplétion, onglets de résultat | à écrire |
 | `13` | A8 | Console MongoDB et vue JSON | à écrire |

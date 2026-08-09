@@ -1,0 +1,54 @@
+/*
+ * Panneau flottant, relevé sur le popover d'opérateur de A5 :
+ *   198px de large, radius 10px, fond blanc, bordure 1px --border,
+ *   ombre 0 16px 34px -12px rgba(35,32,28,.4)  → --shadow-popover
+ *   en-tête 26px en capitales 9.5px, filet bas 1px --divider-2
+ *
+ * La largeur de 198px est celle de ce popover-là ; elle est donc posée en `min-width` pour
+ * que le sélecteur de colonnes de la toolbar puisse être plus large sans redéfinir le style.
+ */
+
+.root {
+  position: relative;
+  display: inline-flex;
+}
+
+.panel,
+.panelEnd {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  z-index: 10;
+  min-width: 198px;
+  border-radius: var(--radius-panel);
+  background: var(--field);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-popover);
+  overflow: hidden;
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+}
+
+.panel {
+  left: 0;
+}
+
+/* Bascule quand le panneau déborderait à droite : il s'aligne alors sur le bord droit du
+ * déclencheur. Pas de portail, donc c'est ici que le débordement se règle. */
+.panelEnd {
+  right: 0;
+}
+
+.title {
+  height: var(--rowh);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-5);
+  border-bottom: 1px solid var(--divider-2);
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps-sm);
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
