@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { readRows } from '../../data/commandes'
 import type { DatabaseKey, RowQuery, RowWindow } from '../../domain/engine'
 
@@ -13,10 +13,9 @@ export type EtatLignes = {
   fenetre: RowWindow | null
   loading: boolean
   error: string | null
+  /** Relance la requête **courante** — le bouton « Rafraîchir » de la toolbar (`10e`). */
+  relire: () => void
 }
-
-// Pas de `relire()` ici : le bouton « Rafraîchir » appartient à la toolbar, donc à `10e`. Une
-// API livrée en avance de son appelant est du code que rien n'exerce.
 
 /**
  * La fenêtre de lignes d'une table.
@@ -36,6 +35,9 @@ export function useLignes(
   const [fenetre, setFenetre] = useState<RowWindow | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Un compteur, et non un drapeau : rafraîchir deux fois de suite doit relire deux fois, ce
+  // qu'un booléen remis à zéro ne permettrait pas.
+  const [tour, setTour] = useState(0)
 
   // Les trois chaînes plutôt que l'objet : une `DatabaseKey` reconstruite à chaque rendu
   // relancerait la lecture indéfiniment — le même piège qu'en `useDetailTable`. La requête, elle,
@@ -45,6 +47,10 @@ export function useLignes(
   const database = key?.database ?? null
   const environment = key?.environment ?? null
 
+  // `tour` ne sert qu'à relancer cet effet : le lire dedans n'aurait aucun sens, mais il **doit**
+  // figurer dans les dépendances, sans quoi « Rafraîchir » ne rafraîchirait rien. Le suppresseur
+  // est la dernière ligne de commentaire avant le nœud — `DEFAUTS.md`, règle 6.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: voir ci-dessus
   useEffect(() => {
     if (!project || !database || !environment || !query) {
       setFenetre(null)
@@ -73,9 +79,11 @@ export function useLignes(
     return () => {
       vivant = false
     }
-  }, [project, database, environment, query, passerelle])
+  }, [project, database, environment, query, passerelle, tour])
 
-  return { fenetre, loading, error }
+  const relire = useCallback(() => setTour((precedent) => precedent + 1), [])
+
+  return { fenetre, loading, error, relire }
 }
 
 function message(cause: unknown): string {

@@ -1,0 +1,164 @@
+/*
+ * La toolbar de A5, relevée sur le mockup :
+ *
+ *   barre        36px, fond --paper, filet bas 1px --divider, padding 0 10px, gap 7px
+ *   boutons      25px de haut, radius 7px, fond blanc, bordure 1px --border
+ *   stepper      LIMIT en 600 11.5px Nunito encre .45, la valeur en mono, deux flèches sur 15px
+ *   chips        portés par `Chip` (08a) en variante accent
+ */
+
+.root {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: 36px;
+  padding: 0 var(--space-6);
+  background: var(--paper);
+  border-bottom: 1px solid var(--divider);
+}
+
+.carre,
+.bouton {
+  /* `content-box`, comme `Button` (02) : le mockup ne déclare aucun `box-sizing`, donc ses
+     éléments sont en content-box et un contrôle de 25px y rend 27 avec son filet. Les `<button>`
+     étant en `border-box` par défaut dans les navigateurs, l'omettre rendrait 25 — deux pixels
+     de moins que le mockup, sur chaque contrôle de la barre. */
+  box-sizing: content-box;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--h-btn-sm);
+  border-radius: var(--radius-control-2);
+  background: var(--field);
+  border: 1px solid var(--border);
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.carre {
+  width: var(--h-btn-sm);
+  justify-content: center;
+  padding: 0;
+}
+
+.bouton {
+  padding: 0 8px;
+}
+
+.carre[aria-disabled="true"] {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.stepper {
+  box-sizing: content-box;
+  display: flex;
+  align-items: stretch;
+  height: var(--h-btn-sm);
+  border-radius: var(--radius-control-2);
+  background: var(--field);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-semibold);
+}
+
+.stepperLabel {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-4);
+  color: var(--ink-meta);
+}
+
+.stepperValeur {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-4);
+  border-left: 1px solid var(--gridline-2);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.fleches {
+  display: flex;
+  flex-direction: column;
+  width: 15px;
+  border-left: 1px solid var(--gridline-2);
+}
+
+.fleche {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--ink-8);
+  cursor: pointer;
+}
+
+.fleche:first-child {
+  border-bottom: 1px solid var(--gridline-2);
+}
+
+.fleche:disabled {
+  color: var(--disabled);
+  cursor: default;
+}
+
+/* La flèche du haut est celle du bas retournée — le sprite n'en porte qu'une. */
+.haut {
+  transform: rotate(180deg);
+}
+
+.espace {
+  flex: 1;
+}
+
+.sql {
+  margin: 0;
+  padding: var(--space-5);
+  max-width: 420px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  color: var(--ink);
+}
+
+.colonnes {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.colonne {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 24px;
+  padding: 0 var(--space-5);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  color: var(--ink-6);
+  cursor: pointer;
+}
+
+.colonne:hover {
+  background: var(--hover-row);
+}
+
+.type {
+  margin-left: auto;
+  color: var(--ink-3);
+}

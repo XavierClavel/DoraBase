@@ -5,6 +5,7 @@ import type {
   DatabaseKey,
   Filter,
   FilterOperator,
+  RowLimit,
   RowQuery,
   RowWindow,
   SortKey,
@@ -15,6 +16,7 @@ import { type GridColumn, VirtualGrid } from '../../ui/VirtualGrid/VirtualGrid'
 import { estNumerique, rendreValeur } from './cellule'
 import { FilterCell } from './FilterCell'
 import styles from './TableView.module.css'
+import { Toolbar } from './Toolbar'
 import { basculerTri, filtreDe, poserFiltre, rangDeTri } from './tri'
 import { LIMITE_PAR_DEFAUT, type PasserelleLignes, useLignes } from './useLignes'
 
@@ -65,6 +67,10 @@ export function TableView({
   // L'opérateur choisi par colonne, y compris pour un filtre pas encore appliqué. Séparé des
   // filtres : `= ` sur une colonne vide n'est pas un filtre, c'est un champ prêt à recevoir.
   const [operateurs, setOperateurs] = useState<Record<string, FilterOperator>>({})
+  const [limite, setLimite] = useState<RowLimit>(LIMITE_PAR_DEFAUT)
+  // Les colonnes **masquées**, et non les visibles : une table dont on n'a rien masqué a un
+  // ensemble vide, quel que soit le nombre de colonnes qu'elle finira par avoir.
+  const [masquees, setMasquees] = useState<ReadonlySet<string>>(new Set())
   const [choisie, setChoisie] = useState<string | null>(null)
   const hauteur = useHauteurDisponible()
 
@@ -77,12 +83,12 @@ export function TableView({
       filters: [...filters],
       sort: [...sort],
       offset: 0,
-      limit: LIMITE_PAR_DEFAUT,
+      limit: limite,
     }),
-    [schema, table, filters, sort],
+    [schema, table, filters, sort, limite],
   )
 
-  const { fenetre, loading, error } = useLignes(cle, query, passerelle)
+  const { fenetre, loading, error, relire } = useLignes(cle, query, passerelle)
 
   useEffect(() => onEtatChange?.({ filters, sort }), [filters, sort, onEtatChange])
 
@@ -109,71 +115,99 @@ export function TableView({
         width: LARGEUR_GOUTTIERE,
         cell: (ligne) => <span className={styles.gouttiere}>{ligne.rang}</span>,
       },
-      ...columns.map((colonne, rang) => {
-        const filtre = filters.find((f) => f.column === colonne.name)
-        const critere = sort.find((c) => c.column === colonne.name)
-        const rangDuTri = rangDeTri(sort, colonne.name)
-        return {
-          key: colonne.name,
-          header: (
-            <button
-              type="button"
-              className={styles.entete}
-              // Le `⌘`-clic empile un second critère : la convention de tous les tableurs et de
-              // tous les clients SQL, que le handoff ne dit pas et qu'inventer autrement serait
-              // gratuit. `aria-sort` porte l'état pour qui n'en voit pas la flèche.
-              onClick={(evenement) =>
-                setSort((precedent) =>
-                  basculerTri(precedent, colonne.name, evenement.metaKey || evenement.ctrlKey),
-                )
-              }
-              aria-label={`Trier par ${colonne.name}`}
-            >
-              {colonne.name}
-              {critere && (
-                <Icon
-                  name={critere.direction === 'ascending' ? 'asc' : 'desc'}
-                  size={11}
-                  strokeWidth={2.4}
-                />
-              )}
-              {/* La pastille de rang n'apparaît qu'à partir de **deux** critères : un « 1 »
+      // Masquer une colonne ne change pas la requête : `SELECT *` reste, et la colonne est
+      // retirée du **rendu**. Restreindre la projection rendrait le SQL affiché dépendant d'un
+      // réglage d'affichage, ce qui est déroutant dans un client de bases. Le rang, lui, reste
+      // celui du catalogue — c'est l'indice de la valeur dans la ligne reçue.
+      ...columns
+        .map((colonne, rang) => ({ colonne, rang }))
+        .filter(({ colonne }) => !masquees.has(colonne.name))
+        .map(({ colonne, rang }) => {
+          const filtre = filters.find((f) => f.column === colonne.name)
+          const critere = sort.find((c) => c.column === colonne.name)
+          const rangDuTri = rangDeTri(sort, colonne.name)
+          return {
+            key: colonne.name,
+            header: (
+              <button
+                type="button"
+                className={styles.entete}
+                // Le `⌘`-clic empile un second critère : la convention de tous les tableurs et de
+                // tous les clients SQL, que le handoff ne dit pas et qu'inventer autrement serait
+                // gratuit. `aria-sort` porte l'état pour qui n'en voit pas la flèche.
+                onClick={(evenement) =>
+                  setSort((precedent) =>
+                    basculerTri(precedent, colonne.name, evenement.metaKey || evenement.ctrlKey),
+                  )
+                }
+                aria-label={`Trier par ${colonne.name}`}
+              >
+                {colonne.name}
+                {critere && (
+                  <Icon
+                    name={critere.direction === 'ascending' ? 'asc' : 'desc'}
+                    size={11}
+                    strokeWidth={2.4}
+                  />
+                )}
+                {/* La pastille de rang n'apparaît qu'à partir de **deux** critères : un « 1 »
                   solitaire sur la seule colonne triée serait du bruit. */}
-              {rangDuTri !== null && sort.length > 1 && (
-                <span className={styles.rang}>{rangDuTri}</span>
-              )}
-            </button>
-          ),
-          width: LARGEUR_COLONNE,
-          // L'alignement suit la **valeur**, pas le nom de la colonne : une colonne numérique
-          // dont une cellule est `NULL` garde son `NULL` à gauche, comme le mockup le montre.
-          numeric: colonne.category === 'number',
-          tint: filtre ? ('filtered' as const) : critere ? ('sorted' as const) : undefined,
-          filter: (
-            <FilterCell
-              column={colonne.name}
-              operator={operateurs[colonne.name] ?? 'eq'}
-              value={filtre?.value ?? ''}
-              onApply={(operator, saisie) => appliquerFiltre(colonne.name, operator, saisie)}
-            />
-          ),
-          cell: (ligne: Ligne) => {
-            const valeur = ligne.valeurs[rang]
-            if (valeur === undefined) return null
-            return (
-              <span className={estNumerique(valeur) ? styles.nombre : undefined}>
-                {rendreValeur(valeur)}
-              </span>
-            )
-          },
-        }
-      }),
+                {rangDuTri !== null && sort.length > 1 && (
+                  <span className={styles.rang}>{rangDuTri}</span>
+                )}
+              </button>
+            ),
+            width: LARGEUR_COLONNE,
+            // L'alignement suit la **valeur**, pas le nom de la colonne : une colonne numérique
+            // dont une cellule est `NULL` garde son `NULL` à gauche, comme le mockup le montre.
+            numeric: colonne.category === 'number',
+            tint: filtre ? ('filtered' as const) : critere ? ('sorted' as const) : undefined,
+            filter: (
+              <FilterCell
+                column={colonne.name}
+                operator={operateurs[colonne.name] ?? 'eq'}
+                value={filtre?.value ?? ''}
+                onApply={(operator, saisie) => appliquerFiltre(colonne.name, operator, saisie)}
+              />
+            ),
+            cell: (ligne: Ligne) => {
+              const valeur = ligne.valeurs[rang]
+              if (valeur === undefined) return null
+              return (
+                <span className={estNumerique(valeur) ? styles.nombre : undefined}>
+                  {rendreValeur(valeur)}
+                </span>
+              )
+            },
+          }
+        }),
     ],
-    [columns, filters, sort, operateurs, appliquerFiltre],
+    [columns, filters, sort, operateurs, appliquerFiltre, masquees],
   )
 
   return (
     <div className={styles.root} ref={hauteur.ref}>
+      <Toolbar
+        limite={limite}
+        onLimiteChange={setLimite}
+        filters={filters}
+        // La croix d'un chip et le vidage du champ correspondant font exactement la même chose :
+        // un seul état, deux commandes.
+        onRemoveFilter={(column) => setFilters((precedent) => poserFiltre(precedent, column, null))}
+        sort={sort}
+        columns={columns}
+        masquees={masquees}
+        onToggleColonne={(name) =>
+          setMasquees((precedent) => {
+            const suivant = new Set(precedent)
+            if (suivant.has(name)) suivant.delete(name)
+            else suivant.add(name)
+            return suivant
+          })
+        }
+        sql={fenetre?.sql ?? null}
+        onRefresh={relire}
+      />
       <div className={styles.grille}>
         <VirtualGrid
           label={`Lignes de ${schema}.${table}`}
@@ -277,8 +311,10 @@ function useHauteurDisponible() {
     const element = ref.current
     if (!element || typeof ResizeObserver === 'undefined') return
     const observateur = new ResizeObserver(() => {
-      // La grille moins la barre d'état, que la mesure du parent inclut.
-      const disponible = element.clientHeight - 26
+      // La grille, c'est le conteneur **moins** la toolbar (36 px) et la barre d'état (26) : la
+      // mesure porte sur le parent, qui les inclut toutes deux. Les oublier ferait dépasser la
+      // grille de la hauteur de la fenêtre, et la barre d'état sortirait de l'écran.
+      const disponible = element.clientHeight - 36 - 26
       if (disponible > 0) setValeur(disponible)
     })
     observateur.observe(element)
