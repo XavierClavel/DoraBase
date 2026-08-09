@@ -4,7 +4,8 @@ Ce document existe pour qu'une session neuve reprenne le travail sans avoir la c
 précédente. Il complète les specs et les plans, qui disent *quoi* construire ; lui dit **où on
 en est, ce qui a été décidé, et pourquoi**.
 
-Dernière mise à jour : 8 août 2026, branche `main`, dernier commit `d62a52f`.
+Dernière mise à jour : 9 août 2026. Le travail vit sur `feat/tranche-1-socle-design-a1`,
+fusionnée dans `main` par avance rapide — les deux pointent sur le même commit.
 
 ---
 
