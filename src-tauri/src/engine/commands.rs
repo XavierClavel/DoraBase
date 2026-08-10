@@ -413,11 +413,38 @@ pub async fn read_rows(
     query: RowQuery,
     registry: tauri::State<'_, ConnectionRegistry>,
 ) -> Result<RowWindow, EngineError> {
-    registry
+    // **Les journaux d'entrée et de sortie rendent le pont observable**, comme ceux de
+    // `test_connection` (`08d`). Ils manquaient ici, et leur absence a coûté une enquête : « la
+    // table ne contient aucune ligne » sur une table pleine ne disait pas si la commande était
+    // appelée, ce qu'elle demandait, ni ce qu'elle rendait.
+    log::info!(
+        "read_rows ← {}/{} · {}.{} (limit {:?}, {} filtre(s), {} tri(s))",
+        key.project,
+        key.database,
+        query.schema,
+        query.table,
+        query.limit,
+        query.filters.len(),
+        query.sort.len()
+    );
+
+    let resultat = registry
         .avec(&key.cle(), move |adaptateur| {
             Box::pin(async move { adaptateur.rows(&query).await })
         })
-        .await
+        .await;
+
+    match &resultat {
+        Ok(fenetre) => log::info!(
+            "read_rows → {} ligne(s) en {} ms · {}",
+            fenetre.rows.len(),
+            fenetre.duration_ms,
+            fenetre.sql
+        ),
+        Err(erreur) => log::info!("read_rows → échec : {erreur}"),
+    }
+
+    resultat
 }
 
 /// Une ligne rendue en `INSERT` exécutable, que `A5` copie dans le presse-papiers (`10f`).

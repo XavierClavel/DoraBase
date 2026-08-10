@@ -129,6 +129,8 @@ function texteDe(valeur: Value | undefined): string {
     case 'int':
     case 'float':
       return String(valeur.value)
+    case 'decimal':
+      return valeur.value
     case 'bool':
       return valeur.value ? 'true' : 'false'
     default:

@@ -21,6 +21,11 @@ export function rendreValeur(value: Value): ReactNode {
       return value.value ? 'true' : 'false'
     case 'int':
       return formatInteger(value.value)
+    case 'decimal':
+      // **Le texte exact que rend la base**, sans reformatage : `numeric` est un décimal de
+      // précision arbitraire, et le regrouper par milliers ou l'arrondir trahirait une valeur
+      // que l'utilisateur lit précisément pour sa précision — un montant, un taux.
+      return value.value
     case 'float':
       // Pas de groupement ni d'arrondi : un flottant tronqué à l'affichage laisserait croire à
       // une valeur ronde. Le moteur rend déjà la représentation textuelle exacte.
@@ -39,12 +44,32 @@ export function rendreValeur(value: Value): ReactNode {
       // **Jamais le contenu.** Des octets rendus en texte produisent du charabia, parfois long ;
       // la taille est ce qui renseigne.
       return `\\x… ${formatInteger(tailleBase64(value.base64))} o`
+    default:
+      // **L'exhaustivité, vérifiée par le compilateur.** Sans ce garde, un genre ajouté à `Value`
+      // tombait dans un `switch` qui rendait `undefined` — et `undefined` étant un `ReactNode`
+      // valide, TypeScript ne disait rien : la cellule s'affichait **vide**. C'est ce qui est
+      // arrivé en ajoutant `decimal` le 10 août 2026.
+      return refuserLInconnu(value)
   }
 }
 
-/** Un nombre s'aligne à droite, le reste à gauche — comme le mockup, et comme `DataTable`. */
+/**
+ * Refuse un genre de valeur non traité, **à la compilation**.
+ *
+ * Le paramètre est typé `never` : si un `switch` laisse un cas de côté, le type restant n'est plus
+ * `never` et la compilation échoue en nommant le genre oublié.
+ */
+function refuserLInconnu(value: never): never {
+  throw new Error(`genre de valeur non traité : ${JSON.stringify(value)}`)
+}
+
+/**
+ * Un nombre s'aligne à droite, le reste à gauche — comme le mockup, et comme `DataTable`.
+ *
+ * Un décimal en fait partie : c'est un nombre, même s'il voyage en texte pour garder sa précision.
+ */
 export function estNumerique(value: Value): boolean {
-  return value.kind === 'int' || value.kind === 'float'
+  return value.kind === 'int' || value.kind === 'float' || value.kind === 'decimal'
 }
 
 /**

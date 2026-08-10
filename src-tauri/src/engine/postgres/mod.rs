@@ -530,7 +530,7 @@ mod tests_db {
             .objects("introspection")
             .await
             .expect("introspection à travers le tunnel");
-        assert_eq!(objets.len(), 5, "4 tables et 1 vue");
+        assert_eq!(objets.len(), 6, "5 tables et 1 vue");
 
         // Le port local doit être **connu** : `A2` l'affiche sous « auto (63342) ».
         assert!(adaptateur.port_local_tunnel().is_some());
@@ -636,6 +636,35 @@ mod tests_db {
             "cent fois plus de lignes a coûté {} ms contre {} ms : la récupération est-elle paginée ?",
             grande.duration_ms,
             petite.duration_ms
+        );
+    }
+
+    /// **Un `numeric` se lit, et ne devient pas `NULL`.**
+    ///
+    /// Défaut trouvé le 10 août 2026 : `tokio-postgres` ne lit un `numeric` ni en `i64` ni en
+    /// `f64`, donc la lecture retombait sur le repli texte — que le `select` ne transtypait pas
+    /// pour une colonne de catégorie `Number`. Une colonne de montants s'affichait **vide**.
+    #[tokio::test]
+    async fn un_numeric_est_lu_exactement_et_non_comme_null() {
+        let adaptateur = adaptateur().await;
+        let mut requete = RowQuery::new(
+            "introspection",
+            "montants",
+            crate::engine::RowLimit::OneHundred,
+        );
+        requete.sort = vec![];
+        let f = adaptateur.rows(&requete).await.expect("lecture");
+        let ligne = f.rows.first().expect("la table est peuplée");
+
+        // La valeur **exacte**, en texte : un `f64` perdrait de la précision, et c'est
+        // inacceptable pour de l'argent — le premier usage de `numeric`.
+        assert_eq!(
+            ligne[1],
+            crate::engine::Value::Decimal {
+                value: "12345678.91".into()
+            },
+            "montant lu comme {:?}",
+            ligne[1]
         );
     }
 
@@ -1007,12 +1036,14 @@ mod tests_db {
     #[tokio::test]
     async fn les_compteurs_d_objets_sont_justes() {
         let schema = schema_de_test().await;
-        assert_eq!(schema.counts.tables, 4, "{:?}", schema.counts);
+        // `users`, `orders`, `petite`, `grande`, `montants` — cette dernière ajoutée le 10 août
+        // 2026 pour le cas `numeric`, qui se lisait `NULL`.
+        assert_eq!(schema.counts.tables, 5, "{:?}", schema.counts);
         assert_eq!(schema.counts.views, 1, "{:?}", schema.counts);
         assert_eq!(schema.counts.functions, 2, "{:?}", schema.counts);
-        // Six index pour quatre tables : chaque clé primaire en crée un, plus l'unicité
-        // sur `email` et l'index secondaire sur `status`.
-        assert_eq!(schema.counts.indexes, 6, "{:?}", schema.counts);
+        // Sept index pour cinq tables : chaque clé primaire en crée un, plus l'unicité sur
+        // `email` et l'index secondaire sur `status`.
+        assert_eq!(schema.counts.indexes, 7, "{:?}", schema.counts);
     }
 
     #[tokio::test]

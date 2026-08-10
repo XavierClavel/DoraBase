@@ -245,6 +245,12 @@ fn liste_colonnes(colonnes: &[ColumnInfo]) -> String {
     colonnes
         .iter()
         .map(|c| match c.category {
+            // Un `numeric` est **décimal de précision arbitraire** : `tokio-postgres` ne le lit ni
+            // en `i64` ni en `f64`, donc sans transtypage il retombait sur le repli texte — qui
+            // échouait faute de `::text`, et la valeur arrivait en `Null`.
+            TypeCategory::Number if est_decimal(&c.type_name) => {
+                format!("{}::text", identifiant(&c.name))
+            }
             // Lues dans leur type Rust naturel : les transtyper perdrait le typage sans rien
             // gagner (« 12900 » au lieu de 12900, un booléen en « t »).
             TypeCategory::Boolean | TypeCategory::Number | TypeCategory::Binary => {
@@ -254,6 +260,15 @@ fn liste_colonnes(colonnes: &[ColumnInfo]) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// Vrai pour les types décimaux exacts de PostgreSQL — `numeric` et son alias `decimal`.
+///
+/// Le nom vient de `format_type`, donc porte sa précision : « numeric(10,2) ». Un préfixe suffit,
+/// et `money` n'en fait pas partie — il se lit nativement.
+fn est_decimal(type_name: &str) -> bool {
+    let nom = type_name.trim();
+    nom.starts_with("numeric") || nom.starts_with("decimal")
 }
 
 /// Le SQL tel que `A5` le montre derrière « Voir le SQL ».
@@ -291,6 +306,12 @@ fn valeur_de(ligne: &Row, index: usize, colonne: &ColumnInfo) -> Result<Value, E
         TypeCategory::Boolean => ligne
             .try_get::<_, Option<bool>>(index)
             .map(|v| v.map(|value| Value::Bool { value }))
+            .ok(),
+        // Un décimal est transtypé en texte par le `select`, et gardé tel quel : sa valeur exacte
+        // compte plus que son type Rust, et `f64` la perdrait.
+        TypeCategory::Number if est_decimal(&colonne.type_name) => ligne
+            .try_get::<_, Option<String>>(index)
+            .map(|v| v.map(|value| Value::Decimal { value }))
             .ok(),
         TypeCategory::Number => lire_nombre(ligne, index),
         // Le JSON est lu en **texte**, non en `serde_json::Value` : ce dernier exigerait la
@@ -423,6 +444,9 @@ fn litteral_de(valeur: &Value) -> String {
         Value::Float { value } => value.to_string(),
         // Les apostrophes se doublent — la règle du standard SQL, et le seul échappement dont
         // une chaîne littérale a besoin en PostgreSQL hors chaînes E''.
+        // Un décimal se rend **sans guillemets** : c'est un nombre, et le citer forcerait
+        // PostgreSQL à un transtypage implicite qui échouerait sur une colonne d'un autre type.
+        Value::Decimal { value } => value.clone(),
         Value::Text { value } | Value::Timestamp { value } | Value::Json { value } => {
             format!("'{}'", value.replace('\'', "''"))
         }

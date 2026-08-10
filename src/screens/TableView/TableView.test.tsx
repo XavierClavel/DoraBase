@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { ColumnInfo, DatabaseKey, RowWindow, Value } from '../../domain/engine'
-import { rendreValeur } from './cellule'
+import { estNumerique, rendreValeur } from './cellule'
 import { TableView } from './TableView'
 import type { PasserelleLignes } from './useLignes'
 
@@ -158,6 +158,20 @@ describe('rendu d’une valeur', () => {
     expect(rendu({ kind: 'timestamp', value: '2026-07-31 09:41:02' })).toHaveTextContent(
       '2026-07-31 09:41:02',
     )
+  })
+
+  it('rend un décimal exactement, sans reformatage', () => {
+    // **Le défaut du 10 août 2026** : un `numeric` arrivait en `Null` faute de transtypage, et une
+    // colonne de montants s'affichait vide. Corrigé côté Rust ; ici on vérifie que le genre est
+    // rendu tel quel — le regrouper ou l'arrondir trahirait une valeur lue pour sa précision.
+    expect(rendu({ kind: 'decimal', value: '12345678.91' }).textContent).toBe('12345678.91')
+    expect(rendu({ kind: 'decimal', value: '0.0100' }).textContent).toBe('0.0100')
+  })
+
+  it('un décimal s’aligne à droite, comme un nombre', () => {
+    // Il voyage en texte pour garder sa précision, mais c'est un nombre.
+    expect(estNumerique({ kind: 'decimal', value: '1.5' })).toBe(true)
+    expect(estNumerique({ kind: 'text', value: '1.5' })).toBe(false)
   })
 
   it('rend les booléens en toutes lettres', () => {
