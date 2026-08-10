@@ -1,5 +1,10 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { CreateProjectRequest, Project, SaveDatabaseRequest } from '../../domain/config'
+import type {
+  CreateProjectRequest,
+  Project,
+  SaveDatabaseRequest,
+  UpdateVariantRequest,
+} from '../../domain/config'
 import type { ConnectionDraft } from './ConnectionDraft'
 
 /**
@@ -24,6 +29,38 @@ export async function enregistrerLaBase(request: SaveDatabaseRequest): Promise<P
  */
 export async function creerLeProjet(request: CreateProjectRequest): Promise<Project[]> {
   return invoke<Project[]>('create_project', { request })
+}
+
+/**
+ * Met à jour les réglages d'une variante existante (`08g`), et rend les projets à jour.
+ *
+ * Distincte de `save_database`, qui **ajoute** et refuse une base déjà là : c'est cette garde qui
+ * protège d'un écrasement par mégarde, et la fondre dans une commande « enregistrer ou mettre à
+ * jour » l'effacerait.
+ */
+export async function mettreAJourLaVariante(request: UpdateVariantRequest): Promise<Project[]> {
+  return invoke<Project[]>('update_variant', { request })
+}
+
+/**
+ * Convertit le brouillon de `A2` en requête de mise à jour.
+ *
+ * Le nom, l'environnement et le moteur ne sont **pas** repris du brouillon : ils désignent la
+ * variante et ne se modifient pas (`08g`). Le mot de passe part `null` quand le champ est vide,
+ * ce que le cœur lit comme « inchangé ».
+ */
+export function draftToUpdateRequest(
+  draft: ConnectionDraft,
+  cible: { project: string; database: string; environment: ConnectionDraft['environment'] },
+): UpdateVariantRequest {
+  const complet = draftToSaveRequest(draft)
+  return {
+    project: cible.project,
+    database: cible.database,
+    environment: cible.environment,
+    variant: complet.variant,
+    password: draft.password === '' ? null : draft.password,
+  }
 }
 
 /**

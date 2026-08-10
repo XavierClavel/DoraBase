@@ -21,11 +21,23 @@ import styles from './NewConnection.module.css'
  */
 export const NOUVEAU_PROJET = '\u0000nouveau'
 
+/** Pourquoi les trois champs d'identité sont verrouillés en édition. Dit, jamais deviné. */
+const RAISON_VERROU =
+  'Ces trois champs identifient la base : les changer déplacerait son mot de passe et fermerait sa connexion. Supprimez et redéclarez la base pour la renommer.'
+
 type ConnectionFormProps = {
   draft: ConnectionDraft
   onChange: (patch: Partial<ConnectionDraft>) => void
   /** Les projets existants. Vide, `08e` désactivera l'enregistrement. */
   projects: readonly { id: string; name: string }[]
+  /**
+   * Verrouille les champs qui **désignent** la base : son nom, son projet, son environnement.
+   *
+   * Le triplet `projet/base/environnement` est la clé du registre (`09b`) et la référence du secret
+   * (`08e`) : en changer un élément demanderait de déplacer le secret et de fermer la connexion
+   * ouverte. Voir `08g`.
+   */
+  verrouille?: boolean
 }
 
 const OPTIONS_SSL = SSL_MODE_ORDER.map((mode) => ({ value: mode, label: SSL_MODES[mode].label }))
@@ -79,7 +91,12 @@ function ToggleWithLabel({
  * flex imbriqué donnerait des colonnes qui ne s'alignent pas d'une rangée à l'autre — écart
  * que Vitest ne peut pas voir, d'où les mesures dans `e2e/`.
  */
-export function ConnectionForm({ draft, onChange, projects }: ConnectionFormProps) {
+export function ConnectionForm({
+  draft,
+  onChange,
+  projects,
+  verrouille = false,
+}: ConnectionFormProps) {
   const [passwordVisible, setPasswordVisible] = useState(false)
 
   // **« + Nouveau projet… » est une option du `Select`, pas un second écran** (`08f`) : personne
@@ -97,10 +114,15 @@ export function ConnectionForm({ draft, onChange, projects }: ConnectionFormProp
       {/* Rangée pleine largeur : `1fr 196px auto`, alignée en bas — les étiquettes n'ont pas
           toutes la même hauteur, et sans `align-items: end` les champs se décaleraient. */}
       <div className={styles.rowIdentity}>
+        {/* **Verrouillé en édition, et la raison est dite.** Un champ désactivé sans explication
+            fait croire à un bug — la leçon de `09f`. Le `title` porte l'explication : `Field` n'a
+            pas d'infobulle, et lui en ajouter une pour trois champs serait disproportionné. */}
         <Field
           label="Nom de la base"
           className={styles.nameField}
           value={draft.name}
+          disabled={verrouille}
+          title={verrouille ? RAISON_VERROU : undefined}
           onChange={(event) => onChange({ name: event.target.value })}
         />
         <Select
@@ -108,6 +130,8 @@ export function ConnectionForm({ draft, onChange, projects }: ConnectionFormProp
           icon={{ name: 'bag', color: 'var(--accent-deep)' }}
           options={optionsProjets}
           value={draft.project}
+          disabled={verrouille}
+          title={verrouille ? RAISON_VERROU : undefined}
           onValueChange={(project) => onChange({ project })}
         />
         <div>
@@ -116,6 +140,8 @@ export function ConnectionForm({ draft, onChange, projects }: ConnectionFormProp
             label="Variante d’environnement"
             options={OPTIONS_ENV}
             value={draft.environment}
+            disabled={verrouille}
+            title={verrouille ? RAISON_VERROU : undefined}
             onValueChange={(environment) => onChange({ environment: environment as Environment })}
           />
         </div>

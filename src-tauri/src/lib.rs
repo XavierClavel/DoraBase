@@ -22,6 +22,7 @@ pub fn run() {
             config::commands::save_config,
             config::commands::save_database,
             config::commands::create_project,
+            config::commands::update_variant,
             engine::commands::test_connection,
             engine::commands::open_database,
             engine::commands::close_database,

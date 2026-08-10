@@ -1,3 +1,4 @@
+import type { ButtonHTMLAttributes } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type { ConnectionState } from '../../domain/engine'
 import { Badge } from '../../ui/Badge/Badge'
@@ -22,7 +23,7 @@ type ProjectPillProps = {
   /** Vrai quand la base ouverte est en lecture seule. */
   readOnly?: boolean
   onOpenProjects?: () => void
-}
+} & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'className' | 'children'>
 
 /**
  * La pastille projet de la barre de titre des écrans de travail (`A4` → `A9`).
@@ -36,9 +37,14 @@ export function ProjectPill({
   connection,
   readOnly = false,
   onOpenProjects,
+  ...rest
 }: ProjectPillProps) {
   return (
-    <button type="button" className={styles.root} onClick={onOpenProjects}>
+    // `rest` est étalé pour que la pastille puisse **recevoir** ce qu'un parent lui donne :
+    // `Popover` (`10a`) clone son déclencheur pour y poser `aria-haspopup`, `aria-expanded` et son
+    // `onClick`. Sans cette transmission, le clone était silencieusement perdu — le menu de `08g`
+    // ne s'ouvrait pas, et rien ne le signalait.
+    <button type="button" className={styles.root} onClick={onOpenProjects} {...rest}>
       {connection && (
         <span className={styles.dot} data-state={connection.kind} aria-hidden="true" />
       )}

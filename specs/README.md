@@ -266,6 +266,13 @@ Corrigé, et `relation_depuis` rend désormais `Option` : une relation illisible
 journal** plutôt que de faire échouer `table_detail`. Le pire qu'elle puisse coûter est une ligne
 manquante dans le bloc « Relations » ; empêcher d'ouvrir la table était hors de proportion.
 
+**`Popover` clone son déclencheur, donc celui-ci doit transmettre ce qu'il reçoit** (trouvé le
+10 août 2026, en écrivant `08g`). `ProjectPill` ne transmettait pas ses props inconnues à son
+`<button>` : le clone posant `aria-haspopup`, `aria-expanded` et `onClick` était **silencieusement
+perdu**, et le menu ne s'ouvrait pas. Rien ne le signalait — ni TypeScript, ni un test unitaire, la
+pastille restant parfaitement rendue. À savoir pour tout futur déclencheur : un composant enveloppé
+par `Popover` ou `Tooltip` doit étaler le reste de ses props sur son élément interactif.
+
 **Une relation jamais analysée n'a pas zéro ligne** (trouvé à l'usage le 10 août 2026). PostgreSQL
 rend `reltuples = -1` pour une table fraîchement créée, une vue, ou une base restaurée sans
 `ANALYZE`. `06c` le traduisait en `0` — ce qui évitait bien le « −1 lignes » dans l'arbre, mais
@@ -337,6 +344,7 @@ propres critères de vérification.
 | [`08d`](08d-tester-la-connexion.md) | A2 + A3 | « Tester la connexion » : pont IPC réel, et sous-modale d'échec | **fait** (pont non observé) |
 | [`08e`](08e-enregistrer-et-ouvrir.md) | A2 | « Enregistrer & ouvrir » : config + secret | **fait** |
 | [`08f`](08f-creer-un-projet.md) | A2 | Créer un projet — `create_project`, « + Nouveau projet… » | **fait** |
+| [`08g`](08g-modifier-une-connexion.md) | A2 | Modifier une connexion — `update_variant`, menu de la pastille | **fait** |
 | [`09a`](09a-primitives-de-tableau.md) | — | Primitives : `SegmentedControl`, `StatTile`, `DataTable` | **fait** |
 | [`09b`](09b-cablage-des-donnees.md) | — | Câblage : `load_config` au démarrage, registre de connexions, introspection | **fait** (redémarrage non observé) |
 | [`09c`](09c-a4-barre-de-titre.md) | A4 | Barre de titre : pastille projet, fil d'Ariane, sélecteur d'environnement | **fait** (clic vs glissement non observé) |
