@@ -110,3 +110,36 @@
   font-weight: var(--weight-black);
   letter-spacing: 0;
 }
+
+/* L'enveloppe des lignes à menu (`08h`) : elle ne sert qu'à positionner le « … » par-dessus la
+ * gouttière que la ligne réserve à droite. `display: block` pour qu'elle occupe la largeur comme
+ * le bouton qu'elle remplace dans le flux. */
+.wrap {
+  display: block;
+  position: relative;
+}
+
+/* **Réservée, mais peinte seulement au survol ou au focus.** `visibility` et non `display` : la
+ * boîte garde sa place, donc le méta de la ligne ne se déplace pas d'un pixel quand la souris
+ * passe. Un bouton qui pousse ses voisins au survol fait bouger la cible qu'on visait. */
+.actions {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: var(--space-3);
+  display: flex;
+  align-items: center;
+  visibility: hidden;
+}
+
+/* Deux révélations. Le survol est le geste courant ; le focus est la seule voie sans souris — une
+ * action qui n'existe qu'au survol n'existe pas au clavier.
+ *
+ * Un menu **ouvert** doit aussi rester visible quand la souris s'en va vers son panneau : c'est
+ * acquis sans troisième règle, le panneau étant un descendant de cette enveloppe. Un
+ * `:has([aria-expanded="true"])` avait été posé en ceinture ; le retirer ne changeait aucune mesure,
+ * donc il n'est pas là — même arbitrage que l'`align-items: stretch` de la grille. */
+.wrap:hover .actions,
+.wrap:focus-within .actions {
+  visibility: visible;
+}

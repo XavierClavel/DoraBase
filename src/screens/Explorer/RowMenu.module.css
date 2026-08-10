@@ -1,0 +1,82 @@
+/*
+ * Le « … » d'une ligne de l'arbre (`08h`), et le menu qu'il ouvre.
+ *
+ * Le handoff ne maquette pas ce contrôle : sa géométrie est déduite de ce qui l'entoure — la
+ * hauteur de ligne de l'arbre est de 22 px, le bouton s'y inscrit sans la faire grandir.
+ */
+
+.declencheur {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-chip);
+  background: transparent;
+  cursor: pointer;
+  /* Les points sont plus bas que le centre optique dans la plupart des fontes : la hauteur de
+   * ligne nulle les recale sur la boîte du bouton. */
+  line-height: 0;
+  font-size: var(--text-dense);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.5px;
+  color: var(--ink-meta);
+}
+
+.declencheur:hover {
+  background: var(--hover-row);
+  color: var(--ink);
+}
+
+.declencheur:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* Le panneau : une pile d'actions, sans le remplissage du popover de colonnes de `10e`. */
+.root {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) 0;
+}
+
+.entree {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  height: var(--rowh);
+  padding: 0 var(--space-5);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.entree:hover:not(:disabled) {
+  background: var(--hover-row);
+}
+
+/* Une action désactivée reste **lisible** : elle annonce ce qui existera, et son infobulle dit
+ * pourquoi elle n'est pas là. La cacher ferait croire qu'elle n'existera jamais. */
+.entree:disabled {
+  cursor: default;
+  color: var(--ink-5);
+}
+
+.icone {
+  flex: none;
+  color: var(--ink-4);
+}
+
+.entree:disabled .icone {
+  color: var(--ink-5);
+}

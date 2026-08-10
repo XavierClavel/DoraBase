@@ -1,5 +1,7 @@
-import type { Project } from '../../domain/config'
+import { useState } from 'react'
+import type { Database, Project } from '../../domain/config'
 import type { SchemaInfo, TableDetail, TableSummary } from '../../domain/engine'
+import { NewConnection } from '../NewConnection/NewConnection'
 import type { PasserelleLignes } from '../TableView/useLignes'
 import type { PasserelleArbre } from './useArbre'
 import type { PasserelleDetail } from './useDetailTable'
@@ -288,20 +290,26 @@ const rowAsInsert = async () =>
   'INSERT INTO "public"."orders" ("id", "user_id", "status")\nVALUES (184220, 44019, \'paid\');'
 
 export function WorkbenchDemo() {
+  // **La démo monte `A2` en mode édition**, et ce n'est pas de la décoration. Elle se contentait
+  // d'inscrire la cible dans le titre du document, ce qui vérifiait un *proxy* du chemin : un test
+  // vert sur `document.title` n'aurait rien dit de la modale — le piège d'`A4`, qui n'existait que
+  // dans la galerie. Les commandes du formulaire ne répondent pas en Chromium ; ce qui se vérifie
+  // ici est qu'il s'ouvre, et sur la bonne base.
+  const [edition, setEdition] = useState<{ project: string; database: Database } | null>(null)
+
   return (
-    <Workbench
-      projects={PROJETS}
-      passerelle={PASSERELLE}
-      passerelleDetail={PASSERELLE_DETAIL}
-      passerelleLignes={PASSERELLE_LIGNES}
-      rowAsInsert={rowAsInsert}
-      // `?demo` ouvre l'écran en **mode édition** : c'est le seul moyen de voir `A6` sans base
-      // réelle, Playwright ne pilotant pas le pont Tauri.
-      onEditDatabase={(projet, base) => {
-        // La démo ne monte pas `A2` : le parcours d'édition complet appartient à l'application, et
-        // ce qui se vérifie ici est le **chemin** — que le menu désigne la bonne base.
-        document.title = `édition ${projet}/${base.name}`
-      }}
-    />
+    <>
+      {edition && <NewConnection edition={edition} onClose={() => setEdition(null)} />}
+      <Workbench
+        projects={PROJETS}
+        passerelle={PASSERELLE}
+        passerelleDetail={PASSERELLE_DETAIL}
+        passerelleLignes={PASSERELLE_LIGNES}
+        rowAsInsert={rowAsInsert}
+        // `?demo` ouvre l'écran en **mode édition** : c'est le seul moyen de voir `A6` sans base
+        // réelle, Playwright ne pilotant pas le pont Tauri.
+        onEditDatabase={(projet, base) => setEdition({ project: projet, database: base })}
+      />
+    </>
   )
 }

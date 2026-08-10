@@ -58,9 +58,13 @@ test('cliquer une base désigne celle-là, et referme le menu', async ({ page })
     .getByRole('button', { name: /analytics/ })
     .click()
 
-  // La démo n'ouvre pas `A2` : elle enregistre la cible, ce qui prouve que le menu désigne la
-  // bonne base et referme derrière lui.
-  await expect(page).toHaveTitle('édition Atelier Nord/analytics')
+  // **La modale s'ouvre, sur cette base.** Cette assertion portait sur `document.title`, que la
+  // démo inscrivait faute de monter `A2` : un proxy du chemin, qui n'aurait rien dit d'une modale
+  // cassée. `08h` a monté `A2` dans la démo, donc le vrai fait est vérifiable — et le proxy n'a plus
+  // de raison d'être.
+  const modale = page.getByRole('dialog', { name: 'Modifier analytics' })
+  await expect(modale).toBeVisible()
+  await expect(modale.getByLabel('Nom de la base')).toHaveValue('analytics')
   await expect(page.getByRole('dialog', { name: 'Projets et bases' })).toBeHidden()
 })
 

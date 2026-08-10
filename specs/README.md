@@ -354,7 +354,7 @@ propres critères de vérification.
 | [`08e`](08e-enregistrer-et-ouvrir.md) | A2 | « Enregistrer & ouvrir » : config + secret | **fait** |
 | [`08f`](08f-creer-un-projet.md) | A2 | Créer un projet — `create_project`, « + Nouveau projet… » | **fait** |
 | [`08g`](08g-modifier-une-connexion.md) | A2 | Modifier une connexion — `update_variant`, menu de la pastille | **fait** |
-| [`08h`](08h-menu-de-ligne-dans-l-arbre.md) | A4 | Le menu « … » des lignes projet et base de l'arbre | à faire |
+| [`08h`](08h-menu-de-ligne-dans-l-arbre.md) | A4 | Le menu « … » des lignes projet et base de l'arbre | **fait** |
 | [`08i`](08i-renommer-un-projet.md) | A4 | Renommer un projet — `rename_project`, migration des secrets | à faire |
 | [`08j`](08j-supprimer-une-connexion-ou-un-projet.md) | A4 | Supprimer une déclaration de connexion, ou un projet | à faire |
 | [`09a`](09a-primitives-de-tableau.md) | — | Primitives : `SegmentedControl`, `StatTile`, `DataTable` | **fait** |

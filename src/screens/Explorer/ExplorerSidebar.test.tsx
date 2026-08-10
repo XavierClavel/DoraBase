@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { Sprite } from '../../design/icons/Sprite'
-import type { Project } from '../../domain/config'
+import type { Environment, Project } from '../../domain/config'
 import type { ConnectionState, SchemaInfo, TableSummary } from '../../domain/engine'
 import { type Charge, idBase, idProjet, idSchema, type Noeud } from './arbre'
 import { ExplorerSidebar, filtrer } from './ExplorerSidebar'
@@ -40,11 +40,13 @@ function Piloté({
   initial = [] as string[],
   etat = { kind: 'never' } as ConnectionState,
   onToggleSpy,
+  onEditDatabase,
 }: {
   charge?: Charge
   initial?: string[]
   etat?: ConnectionState
   onToggleSpy?: (n: Noeud) => void
+  onEditDatabase?: (project: string, database: string, environment: Environment) => void
 }) {
   const [deplies, setDeplies] = useState(new Set(initial))
   const [choisi, setChoisi] = useState<string | null>(null)
@@ -57,6 +59,7 @@ function Piloté({
         charge={charge}
         etatDe={() => etat}
         selectedId={choisi}
+        onEditDatabase={onEditDatabase}
         onSelect={(n) => setChoisi(n.id)}
         onToggle={(n) => {
           onToggleSpy?.(n)
@@ -231,4 +234,72 @@ test('le pied porte les deux actions du handoff', () => {
   render(<Piloté />)
   expect(screen.getByRole('button', { name: /Ajouter une base/ })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Rafraîchir' })).toBeInTheDocument()
+})
+
+// --- Le menu « … » des lignes (`08h`) ---
+
+const TOUT_DEPLIE = [
+  idProjet('Atelier Nord'),
+  idBase('Atelier Nord', 'analytics'),
+  idSchema('Atelier Nord', 'analytics', 'public'),
+]
+
+test('seules les lignes projet et base portent un « … »', () => {
+  render(
+    <Piloté
+      initial={TOUT_DEPLIE}
+      charge={{ ...RIEN, schemas: { ...RIEN.schemas }, objets: { ...RIEN.objets } }}
+    />,
+  )
+  // Les deux projets/bases visibles en ont un ; le second projet est absent du décor, donc on
+  // compte ce qui est là : un projet et deux bases.
+  expect(screen.getByRole('button', { name: 'Actions de Atelier Nord' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Actions de analytics' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Actions de shop' })).toBeInTheDocument()
+})
+
+test('un schéma et une table n’en portent pas — il n’y a rien à y configurer', () => {
+  const charge: Charge = {
+    schemas: { [idBase('Atelier Nord', 'analytics')]: [schema('public')] },
+    objets: { [idSchema('Atelier Nord', 'analytics', 'public')]: [table('orders')] },
+    enCours: new Set(),
+    echecs: {},
+  }
+  render(<Piloté initial={TOUT_DEPLIE} charge={charge} />)
+  // Le décor doit bien contenir ces deux lignes, sinon le test ne mesure que leur absence.
+  expect(screen.getByRole('treeitem', { name: /public/ })).toBeInTheDocument()
+  expect(screen.getByRole('treeitem', { name: /orders/ })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Actions de public' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Actions de orders' })).not.toBeInTheDocument()
+})
+
+test('« Modifier… » porte les coordonnées du nœud, pas une déduction sur son libellé', async () => {
+  const vues: unknown[] = []
+  render(<Piloté initial={TOUT_DEPLIE} onEditDatabase={(...args) => vues.push(args)} />)
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de shop' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Modifier…' }))
+  // L'environnement vient du projet, la base de son nœud : deux bases homonymes dans deux projets
+  // seraient indiscernables sans ces coordonnées, et c'est la clé d'identité de `05a`.
+  expect(vues).toEqual([['Atelier Nord', 'shop', 'prod']])
+})
+
+test('les actions à venir sont désactivées et disent pourquoi', async () => {
+  render(<Piloté initial={TOUT_DEPLIE} onEditDatabase={() => {}} />)
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de Atelier Nord' }))
+
+  const renommer = screen.getByRole('button', { name: 'Renommer…' })
+  const supprimer = screen.getByRole('button', { name: 'Supprimer…' })
+  // **Présentes et désactivées**, pas absentes : les cacher ferait croire qu'elles n'existeront
+  // jamais, les laisser cliquables et inertes ferait croire à une panne (défaut n° 36).
+  expect(renommer).toBeDisabled()
+  expect(supprimer).toBeDisabled()
+  expect(renommer).toHaveAttribute('title', expect.stringContaining('08i'))
+  expect(supprimer).toHaveAttribute('title', expect.stringContaining('08j'))
+})
+
+test('« Modifier… » se désactive quand l’écran ne la relie à rien', async () => {
+  render(<Piloté initial={TOUT_DEPLIE} />)
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+  // Une action branchée sur rien est le défaut n° 36 : mieux vaut le dire que laisser cliquer.
+  expect(screen.getByRole('button', { name: 'Modifier…' })).toBeDisabled()
 })

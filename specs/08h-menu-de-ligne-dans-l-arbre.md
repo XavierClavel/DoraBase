@@ -39,9 +39,15 @@ curseur, et le méta de droite (compte de lignes, badge d'environnement) ne se d
 pixel quand la souris passe. Un bouton qui pousse ses voisins au survol fait bouger la cible qu'on
 visait — le pire moment pour déplacer quelque chose.
 
-Le « … » **remplace** le méta pendant le survol plutôt que de s'y ajouter : les deux côte à côte
-demanderaient soit d'élargir la sidebar, soit d'abréger un compte de lignes. Le méta reviendra dès
-que la souris partira, et sa valeur n'est pas ce qu'on cherche quand on veut agir sur la ligne.
+**La gouttière est réservée sur toutes les lignes de l'arbre**, pas seulement sur celles qui portent
+un menu. Ne la réserver que sur les lignes projet et base décalerait leurs badges par rapport aux
+comptes de lignes des tables : un désalignement permanent pour éviter un mouvement passager, mauvais
+échange.
+
+Le méta reste donc **à gauche** de la gouttière et ne disparaît jamais. Une première rédaction de
+cette spec faisait remplacer le méta par le « … » au survol ; c'était incompatible avec la
+réservation d'espace — si le « … » prend la place du méta, il n'y a rien à réserver — et cela faisait
+disparaître une information au moment précis où l'on désigne la ligne.
 
 ### Le survol seul ne suffit pas
 
