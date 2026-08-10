@@ -64,7 +64,7 @@ d'ordonnancement prise sur la foi d'un blocage inexistant.
 
 ## 3. Où en est le travail
 
-**Trente-une specs écrites, toutes implémentées.** `A1` (accueil), `A2`/`A3` (nouvelle connexion et
+**Trente-deux specs écrites, toutes implémentées.** `A1` (accueil), `A2`/`A3` (nouvelle connexion et
 son échec), `A4` (explorateur) et `A5` (visualiseur de table) sont assemblés **et atteignables
 depuis l'application**. La couche moteur PostgreSQL est complète, du contrat au tunnel SSH.
 Restent cinq specs d'écran à écrire (`11`–`15`) et six specs de moteur (`16`–`21`).
@@ -78,6 +78,7 @@ Restent cinq specs d'écran à écrire (`11`–`15`) et six specs de moteur (`16
 | `08a`–`08e` | primitives de formulaire, `A2`, panneau tunnel, test de connexion + `A3`, enregistrement | **fait** |
 | `09a`–`09f` | primitives de tableau, câblage des données, `A4` en quatre blocs | **fait** |
 | `08f` | créer un projet — `create_project`, « + Nouveau projet… » | **fait** |
+| `08g` | modifier une connexion — `update_variant`, menu de la pastille projet | **fait** |
 | `10a`–`10f` | primitives de grille, coquille de travail, grille, filtres et tri, toolbar, panneau de ligne | **fait** |
 | `11`–`15` | `A6` → `A10` | à écrire |
 | `16`–`21` | moteurs additionnels (MySQL, SQLite, MongoDB, Redis, Snowflake, BigQuery) | à écrire |
@@ -386,9 +387,8 @@ Trois points à trancher au passage :
 
 - **Le rappel `⌘E` de la barre d'état**, retiré par `10c` faute d'écran qui l'honore : `A6` le
   remet, et c'est le moment.
-- **Aucun écran ne permet de modifier une connexion enregistrée.** Relevé le 10 août 2026 : un port
-  erroné oblige à déclarer une seconde base. Ce n'est pas `A6`, mais c'est un manque réel — le
-  handoff ne maquette ni édition ni suppression de connexion.
+- **Supprimer une base ou un projet** reste impossible (`08g` a livré la modification). Destructif,
+  et il faut décider du sort des secrets ; le handoff ne le maquette pas. Sa propre spec.
 - **`SplitPane` horizontal** pour `12` (console SQL) : géométrie de poignée différente (pastille
   26×3 au lieu de 3×26). Son option `sized`, ajoutée par `10f`, y servira aussi.
 

@@ -295,6 +295,11 @@ export function WorkbenchDemo() {
       passerelleDetail={PASSERELLE_DETAIL}
       passerelleLignes={PASSERELLE_LIGNES}
       rowAsInsert={rowAsInsert}
+      onEditDatabase={(projet, base) => {
+        // La démo ne monte pas `A2` : le parcours d'édition complet appartient à l'application, et
+        // ce qui se vérifie ici est le **chemin** — que le menu désigne la bonne base.
+        document.title = `édition ${projet}/${base.name}`
+      }}
     />
   )
 }

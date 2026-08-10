@@ -110,3 +110,16 @@ export type Tunnel = { kind: TunnelKind, bastionHost: string, bastionPort: numbe
 localPort: number | null, };
 
 export type TunnelKind = "ssh";
+
+/**
+ * Ce que `A2` envoie en mode édition (`08g`).
+ */
+export type UpdateVariantRequest = { project: string, database: string, 
+/**
+ * L'environnement **désigne** la variante ; il ne se modifie pas. Voir `08g`.
+ */
+environment: Environment, variant: EnvironmentVariant, 
+/**
+ * `None` laisse le mot de passe en place — un champ vide veut dire « inchangé ».
+ */
+password: string | null, };

@@ -17,6 +17,15 @@ type RadioGroupProps<T extends string> = {
   options: readonly RadioOption<T>[]
   value: T
   onValueChange: (value: T) => void
+  /**
+   * Désactive tout le groupe — les trois champs verrouillés de `08g` en édition.
+   *
+   * Porté par le `<fieldset>` : un `disabled` sur lui désactive nativement tous ses contrôles, et
+   * le poser sur chaque `<input>` reviendrait au même en trois fois plus de lignes.
+   */
+  disabled?: boolean
+  /** Explication du verrou, en infobulle. Un contrôle désactivé sans raison passe pour un bug. */
+  title?: string
 }
 
 /**
@@ -42,11 +51,13 @@ export function RadioGroup<T extends string>({
   options,
   value,
   onValueChange,
+  disabled = false,
+  title,
 }: RadioGroupProps<T>) {
   const nom = useId()
 
   return (
-    <fieldset className={styles.root}>
+    <fieldset className={styles.root} disabled={disabled} title={title}>
       {/* La légende nomme le groupe pour un lecteur d'écran sans être affichée : `A2` met le
           nom du groupe dans une étiquette au-dessus, gérée par l'appelant. */}
       <legend className={styles.legend}>{label}</legend>

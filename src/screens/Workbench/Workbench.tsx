@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { rowAsInsert as rowAsInsertTauri } from '../../data/commandes'
-import type { Environment, Project } from '../../domain/config'
+import type { Database, Environment, Project } from '../../domain/config'
 import type {
   DatabaseKey,
   Filter,
@@ -23,6 +23,7 @@ import { TableStatusBar } from '../TableView/TableStatusBar'
 import { TableView } from '../TableView/TableView'
 import { PASSERELLE_LIGNES, type PasserelleLignes } from '../TableView/useLignes'
 import { AUCUN_ONGLET, fermer, ongletActif, ouvrir, reordonner } from './onglets'
+import { ProjectMenu } from './ProjectMenu'
 import { PASSERELLE_TAURI, type PasserelleArbre, useArbre } from './useArbre'
 import { PASSERELLE_DETAIL, type PasserelleDetail, useDetailTable } from './useDetailTable'
 import styles from './Workbench.module.css'
@@ -36,6 +37,8 @@ type WorkbenchProps = {
   /** Injectable comme les autres commandes : le pont ne répond pas hors de la webview (`08d`). */
   rowAsInsert?: typeof rowAsInsertTauri
   onNewDatabase?: () => void
+  /** Ouvre `A2` en mode édition sur cette base (`08g`). */
+  onEditDatabase?: (project: string, database: Database) => void
 }
 
 /**
@@ -54,6 +57,7 @@ export function Workbench({
   passerelleLignes,
   rowAsInsert = rowAsInsertTauri,
   onNewDatabase,
+  onEditDatabase,
 }: WorkbenchProps) {
   const { deplies, charge, etatDeBase, basculer, rafraichir } = useArbre(projects, passerelle)
   const [selection, setSelection] = useState<Noeud | null>(null)
@@ -144,15 +148,24 @@ export function Workbench({
         showConsole
         center={
           <>
-            <ProjectPill
-              projectName={projetActif?.name ?? '—'}
-              breadcrumb={contexte ? `${contexte.database} · ${contexte.schema}` : undefined}
-              connection={
-                contexte
-                  ? etatDeBase(contexte.project, contexte.database, environnement)
-                  : undefined
-              }
-            />
+            {/* La pastille ouvre le menu des projets et bases (`08g`) : son chevron l'annonçait
+                depuis `09c`, et son `onOpenProjects` n'était appelé par personne. */}
+            <ProjectMenu
+              projects={projects}
+              actif={projetActif}
+              onEdit={(projet, base) => onEditDatabase?.(projet, base)}
+              onAddDatabase={onNewDatabase}
+            >
+              <ProjectPill
+                projectName={projetActif?.name ?? '—'}
+                breadcrumb={contexte ? `${contexte.database} · ${contexte.schema}` : undefined}
+                connection={
+                  contexte
+                    ? etatDeBase(contexte.project, contexte.database, environnement)
+                    : undefined
+                }
+              />
+            </ProjectMenu>
             <EnvironmentPicker value={environnement} onValueChange={() => {}} />
           </>
         }

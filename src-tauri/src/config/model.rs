@@ -239,6 +239,22 @@ impl Database {
     pub fn variants(&self) -> &[EnvironmentVariant] {
         &self.variants
     }
+
+    /// Remplace les réglages d'une variante **en place**, sans toucher à son environnement.
+    ///
+    /// Le champ `variants` reste privé : le rendre public laisserait un appelant vider la liste
+    /// après construction et contourner l'invariant « au moins une variante ». Cette méthode
+    /// remplace donc à index donné, ce qui ne peut ni ajouter ni retirer.
+    ///
+    /// L'environnement de la variante remplaçante est **ignoré** au profit de celui en place : il
+    /// fait partie de la clé de connexion et de la référence du secret (`08e`), et le changer ici
+    /// laisserait un secret orphelin. Voir `08g`.
+    pub fn remplacer_variante(&mut self, index: usize, mut variante: EnvironmentVariant) {
+        if let Some(ancienne) = self.variants.get(index) {
+            variante.environment = ancienne.environment;
+            self.variants[index] = variante;
+        }
+    }
 }
 
 /// Un projet : ce que la sidebar liste. Pas des connexions — le handoff insiste.

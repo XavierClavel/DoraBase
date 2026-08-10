@@ -1,4 +1,10 @@
-import type { Engine, Environment, SslMode } from '../../domain/config'
+import type {
+  Database,
+  Engine,
+  Environment,
+  EnvironmentVariant,
+  SslMode,
+} from '../../domain/config'
 
 /**
  * L'état saisi dans `A2`, avant tout enregistrement.
@@ -104,5 +110,47 @@ export function emptyDraft(): ConnectionDraft {
     reconnectOnStartup: false,
     // Pas de tunnel par défaut : le panneau de `A2` s'ouvre replié et sans badge.
     tunnel: null,
+  }
+}
+
+/**
+ * Le brouillon d'une base **existante**, pour le mode édition de `08g`.
+ *
+ * Le mot de passe part **vide**, et ce n'est pas un oubli : la variante ne porte qu'une `SecretRef`,
+ * jamais la valeur — le front ne l'a donc pas, et ne doit pas l'avoir. Un champ vide veut dire
+ * « inchangé », ce que `update_variant` applique.
+ */
+export function draftDepuisLaVariante(
+  project: string,
+  database: Database,
+  variant: EnvironmentVariant,
+): ConnectionDraft {
+  return {
+    engine: database.engine,
+    name: database.name,
+    project,
+    newProjectName: '',
+    environment: variant.environment,
+    host: variant.host,
+    port: String(variant.port),
+    defaultDatabase: variant.defaultDatabase,
+    username: variant.username,
+    password: '',
+    sslMode: variant.sslMode,
+    readOnly: variant.readOnly,
+    reconnectOnStartup: variant.reconnectOnStartup,
+    tunnel:
+      variant.tunnel === null
+        ? null
+        : {
+            bastionHost: variant.tunnel.bastionHost,
+            bastionPort: String(variant.tunnel.bastionPort),
+            username: variant.tunnel.username,
+            privateKeyPath: variant.tunnel.privateKeyPath,
+            // Le port local est **attribué à l'ouverture**, jamais saisi : `06e` le choisit libre
+            // sur la machine. Le reprendre de la configuration afficherait un port d'une session
+            // précédente, qui n'a plus cours.
+            localPort: null,
+          },
   }
 }

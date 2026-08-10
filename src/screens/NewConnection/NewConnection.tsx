@@ -1,16 +1,33 @@
 import { useEffect, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
-import type { CreateProjectRequest, Project } from '../../domain/config'
+import type {
+  CreateProjectRequest,
+  Database,
+  Project,
+  UpdateVariantRequest,
+} from '../../domain/config'
 import type { ConnectionRequest, ConnectionTest } from '../../domain/engine'
 import { Button } from '../../ui/Button/Button'
 import { Modal } from '../../ui/Modal/Modal'
-import { type ConnectionDraft, emptyDraft, emptyTunnel, type TunnelDraft } from './ConnectionDraft'
+import {
+  type ConnectionDraft,
+  draftDepuisLaVariante,
+  emptyDraft,
+  emptyTunnel,
+  type TunnelDraft,
+} from './ConnectionDraft'
 import { ConnectionFailure } from './ConnectionFailure'
 import { ConnectionForm, NOUVEAU_PROJET } from './ConnectionForm'
 import { draftToRequest } from './draftToRequest'
 import { EngineSelector } from './EngineSelector'
 import { ENGINES, IMPLEMENTED_ENGINES } from './engines'
-import { creerLeProjet, draftToSaveRequest, enregistrerLaBase } from './enregistrerLaBase'
+import {
+  creerLeProjet,
+  draftToSaveRequest,
+  draftToUpdateRequest,
+  enregistrerLaBase,
+  mettreAJourLaVariante,
+} from './enregistrerLaBase'
 import styles from './NewConnection.module.css'
 import { ouvrirSelecteurDeCle } from './ouvrirSelecteurDeCle'
 import { TunnelPanel } from './TunnelPanel'
@@ -41,6 +58,15 @@ type NewConnectionProps = {
   onSave?: (request: ReturnType<typeof draftToSaveRequest>) => Promise<Project[]>
   /** Appelle la commande `create_project` (`08f`), sous « + Nouveau projet… ». */
   onCreateProject?: (request: CreateProjectRequest) => Promise<Project[]>
+  /**
+   * La base à modifier (`08g`). Absente, la modale **crée**.
+   *
+   * Le même formulaire sert les deux : `A2` porte déjà tous les champs, et un second écran en
+   * dupliquerait la mise en page — donc la dérive au premier changement du handoff.
+   */
+  edition?: { project: string; database: Database }
+  /** Appelle la commande `update_variant` (`08g`). */
+  onUpdate?: (request: UpdateVariantRequest) => Promise<Project[]>
   /** Appelé après un enregistrement réussi, avec les projets à jour. */
   onSaved?: (projects: Project[]) => void
 }
@@ -66,6 +92,20 @@ type EtatDuTest =
  * boutons du pied sont présents et inertes, comme ceux de `A1` l'ont été jusqu'ici — un
  * bouton absent ferait croire que la fonction n'est pas prévue.
  */
+/**
+ * La variante à modifier — la **première** de la base.
+ *
+ * Une base peut en avoir trois (`dev`, `staging`, `prod`), et le menu de la pastille n'en désigne
+ * qu'une : celle de l'environnement actif du projet. Ce scope modifie donc la variante qui
+ * correspond, ou la première à défaut. Choisir laquelle éditer quand il y en a plusieurs appartient
+ * à l'écran « Bases du projet » de `A10`.
+ */
+function varianteCible(edition: { database: Database }) {
+  const premiere = edition.database.variants[0]
+  if (!premiere) throw new Error('une base a toujours au moins une variante (05a)')
+  return premiere
+}
+
 export function NewConnection({
   onClose,
   projects = [],
@@ -73,9 +113,17 @@ export function NewConnection({
   onTest = testerLaConnexion,
   onSave = enregistrerLaBase,
   onCreateProject = creerLeProjet,
+  edition,
+  onUpdate = mettreAJourLaVariante,
   onSaved,
 }: NewConnectionProps) {
-  const [draft, setDraft] = useState<ConnectionDraft>(emptyDraft)
+  // En mode édition, le brouillon part des réglages enregistrés. `useState` avec initialiseur : le
+  // recalculer à chaque rendu écraserait la saisie en cours.
+  const [draft, setDraft] = useState<ConnectionDraft>(() =>
+    edition
+      ? draftDepuisLaVariante(edition.project, edition.database, varianteCible(edition))
+      : emptyDraft(),
+  )
   // Le panneau proxy est replié à l'ouverture : le mockup le montre déplié, mais il y montre
   // aussi un tunnel configuré. Pour une connexion neuve, déplier un bloc vide de cinq champs
   // pousserait vers le bas ce que l'utilisateur doit remplir d'abord.
@@ -105,6 +153,8 @@ export function NewConnection({
    * change sous les pieds de l'utilisateur.
    */
   useEffect(() => {
+    // En édition, le projet est **imposé** : il désigne la base à modifier.
+    if (edition) return
     // La sentinelle de `08f` est une valeur **valable** du `Select` : sans ce test, choisir
     // « + Nouveau projet… » serait aussitôt remplacé par le premier projet existant.
     if (draft.project === NOUVEAU_PROJET) return
@@ -121,7 +171,7 @@ export function NewConnection({
     // `setDraft` et non `patch` : `patch` est recréé à chaque rendu, donc le déclarer en
     // dépendance relancerait l'effet en boucle. Le poseur d'état de React, lui, est stable.
     if (!valide) setDraft((precedent) => ({ ...precedent, project: premier.id }))
-  }, [projects, draft.project])
+  }, [projects, draft.project, edition])
 
   /**
    * Toucher un champ du panneau **crée** le tunnel s'il n'existe pas.
@@ -172,6 +222,20 @@ export function NewConnection({
     if (enregistrementBloque) return
     setEnregistrement({ phase: 'en-cours' })
     try {
+      if (edition) {
+        // **Mise à jour, pas enregistrement** : `save_database` refuserait une base déjà là, et
+        // c'est cette garde qui protège d'un écrasement par mégarde.
+        const projets = await onUpdate(
+          draftToUpdateRequest(draft, {
+            project: edition.project,
+            database: edition.database.name,
+            environment: varianteCible(edition).environment,
+          }),
+        )
+        onSaved?.(projets)
+        onClose()
+        return
+      }
       // **Deux commandes, un geste.** Si la seconde échoue, le projet reste — créé et vide. C'est
       // le comportement honnête : le défaire supprimerait un projet à la suite d'un échec de
       // connexion, et détruirait un homonyme préexistant en cas de course. `08f` le dit.
@@ -213,7 +277,7 @@ export function NewConnection({
 
   return (
     <Modal
-      title="Nouvelle connexion"
+      title={edition ? `Modifier ${edition.database.name}` : 'Nouvelle connexion'}
       icon="db"
       onClose={onClose}
       footer={
@@ -273,13 +337,13 @@ export function NewConnection({
             onClick={() => void enregistrer()}
           >
             <Icon name="save" size={14} strokeWidth={2.2} />
-            Enregistrer &amp; ouvrir
+            {edition ? 'Enregistrer les modifications' : <>Enregistrer &amp; ouvrir</>}
           </Button>
         </>
       }
     >
       <EngineSelector value={draft.engine} onValueChange={(engine) => patch({ engine })} />
-      <ConnectionForm draft={draft} onChange={patch} projects={projects} />
+      <ConnectionForm draft={draft} onChange={patch} projects={projects} verrouille={!!edition} />
       <TunnelPanel
         tunnel={draft.tunnel}
         onChange={patchTunnel}

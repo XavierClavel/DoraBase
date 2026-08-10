@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useConfiguration } from '../data/useConfiguration'
 import { Sprite } from '../design/icons/Sprite'
-import type { Project } from '../domain/config'
+import type { Database, Project } from '../domain/config'
 import { NewConnection } from '../screens/NewConnection/NewConnection'
 import { WelcomeScreen } from '../screens/Welcome/WelcomeScreen'
 import { Workbench } from '../screens/Workbench/Workbench'
@@ -33,6 +33,13 @@ const WorkbenchDemo = showDemo
 
 export function App() {
   const [connexionOuverte, setConnexionOuverte] = useState(false)
+  /**
+   * La base en cours de modification (`08g`), ou `null` quand la modale **crée**.
+   *
+   * Un seul état pour les deux usages : c'est la même modale, et deux drapeaux indépendants
+   * permettraient de l'ouvrir en création *et* en édition à la fois.
+   */
+  const [edition, setEdition] = useState<{ project: string; database: Database } | null>(null)
   /**
    * Les projets connus, **relus au démarrage** depuis `09b`.
    *
@@ -72,11 +79,19 @@ export function App() {
         // devant un utilisateur qui a dix bases ferait de l'accueil une impasse. C'est aussi ce
         // qui rend `A4` atteignable : jusqu'ici, rien ne le montait.
         <>
-          <Workbench projects={projects} onNewDatabase={() => setConnexionOuverte(true)} />
-          {connexionOuverte && (
+          <Workbench
+            projects={projects}
+            onNewDatabase={() => setConnexionOuverte(true)}
+            onEditDatabase={(project, database) => setEdition({ project, database })}
+          />
+          {(connexionOuverte || edition) && (
             <NewConnection
-              onClose={() => setConnexionOuverte(false)}
+              onClose={() => {
+                setConnexionOuverte(false)
+                setEdition(null)
+              }}
               projects={projects.map((projet) => ({ id: projet.name, name: projet.name }))}
+              edition={edition ?? undefined}
               onSaved={setProjects}
             />
           )}

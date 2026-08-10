@@ -88,6 +88,20 @@ impl Default for ConfigState {
     }
 }
 
+/// Ce que `A2` envoie en mode édition (`08g`).
+#[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct UpdateVariantRequest {
+    pub project: String,
+    pub database: String,
+    /// L'environnement **désigne** la variante ; il ne se modifie pas. Voir `08g`.
+    pub environment: super::model::Environment,
+    pub variant: super::model::EnvironmentVariant,
+    /// `None` laisse le mot de passe en place — un champ vide veut dire « inchangé ».
+    pub password: Option<String>,
+}
+
 fn chemin_configuration(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     // `app_config_dir()` résout en `config_dir()/<identifiant du bundle>` — sur macOS,
     // `~/Library/Application Support/…`. Jamais un chemin littéral : c'est ce qui garde
@@ -252,5 +266,77 @@ pub fn save_database(
         projects.len()
     );
 
+    Ok(projects)
+}
+
+/// Met à jour les réglages d'une variante existante, et rend les projets à jour.
+///
+/// **Distincte de `save_database`**, qui ajoute et refuse une base déjà là — c'est cette garde qui
+/// protège d'un écrasement par mégarde, et la fondre dans une commande « enregistrer ou mettre à
+/// jour » l'effacerait. Même arbitrage qu'en `08f` pour `create_project`.
+///
+/// **La connexion ouverte de cette base est fermée** : elle pointe encore l'ancien hôte, et l'arbre
+/// continuerait d'afficher les schémas de la base précédente sans qu'un « Rafraîchir » y change
+/// quoi que ce soit. Elle n'est pas réouverte : le nouveau réglage peut être faux, et une erreur de
+/// connexion juste après un enregistrement réussi se lirait comme un échec de l'enregistrement.
+#[tauri::command]
+pub async fn update_variant(
+    app: AppHandle,
+    request: UpdateVariantRequest,
+    state: State<'_, ConfigState>,
+    registry: State<'_, crate::engine::registry::ConnectionRegistry>,
+) -> Result<Vec<Project>, String> {
+    let projects = {
+        let garde = state
+            .0
+            .lock()
+            .map_err(|_| "état de configuration corrompu".to_owned())?;
+        let store = garde
+            .as_ref()
+            .ok_or_else(|| "la configuration doit être lue avant d'être écrite".to_owned())?;
+
+        let mut projects: Vec<Project> = store.load_projects()?;
+
+        let repertoire = store
+            .path()
+            .parent()
+            .ok_or_else(|| "le fichier de configuration n'a pas de répertoire parent".to_owned())?
+            .to_path_buf();
+        let magasin = crate::secrets::selectionner(&repertoire).map_err(|e| e.to_string())?;
+        let secret = request.password.as_deref().map(crate::secrets::Secret::new);
+
+        super::enregistrer::mettre_a_jour(
+            &mut projects,
+            super::enregistrer::Modification {
+                project: &request.project,
+                database: &request.database,
+                environment: request.environment,
+                reglages: &request.variant,
+                password: secret.as_ref(),
+            },
+            magasin.store.as_ref(),
+            &mut |projets| store.save(projets).map_err(|erreur| erreur.to_string()),
+        )
+        .map_err(|erreur| erreur.to_string())?;
+
+        projects
+    };
+
+    // Hors du verrou : `fermer` attend la libération du port du tunnel, et tenir le verrou de
+    // configuration pendant une attente réseau le rendrait indisponible aux autres commandes.
+    let cle = crate::engine::registry::cle(
+        &request.project,
+        &request.database,
+        request.environment.slug(),
+    );
+    registry.fermer(&cle).await;
+
+    log::info!(
+        "update_variant ← {} / {} ({}) → connexion fermée, {} projet(s)",
+        request.project,
+        request.database,
+        app.package_info().name,
+        projects.len()
+    );
     Ok(projects)
 }
