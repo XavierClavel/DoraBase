@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { rowAsInsert as rowAsInsertTauri } from '../../data/commandes'
 import type { Database, Environment, Project } from '../../domain/config'
 import type {
@@ -18,11 +18,13 @@ import { BreadcrumbBar, type TypeObjet } from '../Explorer/BreadcrumbBar'
 import { DetailPanel } from '../Explorer/DetailPanel'
 import { ExplorerSidebar } from '../Explorer/ExplorerSidebar'
 import { ObjectTable } from '../Explorer/ObjectTable'
+import { EditBanner } from '../TableView/EditBanner'
+import type { EnAttente } from '../TableView/modifications'
 import { RowPanel } from '../TableView/RowPanel'
 import { TableStatusBar } from '../TableView/TableStatusBar'
 import { TableView } from '../TableView/TableView'
 import { PASSERELLE_LIGNES, type PasserelleLignes } from '../TableView/useLignes'
-import { AUCUN_ONGLET, fermer, ongletActif, ouvrir, reordonner } from './onglets'
+import { AUCUN_ONGLET, fermer, idOnglet, ongletActif, ouvrir, reordonner } from './onglets'
 import { ProjectMenu } from './ProjectMenu'
 import { PASSERELLE_TAURI, type PasserelleArbre, useArbre } from './useArbre'
 import { PASSERELLE_DETAIL, type PasserelleDetail, useDetailTable } from './useDetailTable'
@@ -39,7 +41,7 @@ type WorkbenchProps = {
   onNewDatabase?: () => void
   /** Ouvre `A2` en mode édition sur cette base (`08g`). */
   onEditDatabase?: (project: string, database: Database) => void
-  /** Ouvre l'écran en mode édition (`11a`). `11b` livrera la bascule `⌘E`. */
+  /** Ouvre l'écran en mode édition au montage — la démo s'en sert (`11a`). */
   edition?: boolean
 }
 
@@ -86,6 +88,20 @@ export function Workbench({
     total: number
   }>({ fenetre: null, loading: false, error: null, ligne: null, rang: null, total: 0 })
   const [rangChoisi, setRangChoisi] = useState<number | null>(null)
+  /**
+   * Le mode édition, **par onglet** (`11b`).
+   *
+   * Deux tables ouvertes n'ont aucune raison de basculer ensemble : l'état d'édition appartient à ce
+   * qu'on édite. Un `Set` des onglets en édition, plutôt qu'un drapeau global.
+   */
+  const [ongletsEnEdition, setOngletsEnEdition] = useState<ReadonlySet<string>>(new Set())
+  /**
+   * Les modifications en attente, **par onglet**, remontées par la vue de table.
+   *
+   * Le compte apparaît à quatre endroits — bandeau, arbre, panneau, barre d'état — et tous lisent
+   * **cette** source. Un compteur tenu à part divergerait au premier `⌘Z`.
+   */
+  const [attentes, setAttentes] = useState<Readonly<Record<string, EnAttente>>>({})
 
   const actif = ongletActif(etatOnglets)
 
@@ -129,6 +145,35 @@ export function Workbench({
     passerelleDetail,
   )
 
+  const idActif = actif ? idOnglet(actif) : null
+  const enEdition = edition || (idActif !== null && ongletsEnEdition.has(idActif))
+  const attente = idActif === null ? [] : (attentes[idActif] ?? [])
+
+  /**
+   * `⌘E` bascule le mode édition de l'onglet actif.
+   *
+   * `10c` avait retiré « ⌘E pour éditer » de la barre d'état faute d'écran qui l'honore — un
+   * raccourci affiché qui ne répond pas est pire qu'un raccourci absent (`09e`). Il répond
+   * maintenant, et le rappel revient.
+   */
+  useEffect(() => {
+    if (idActif === null) return
+    function auClavier(evenement: KeyboardEvent) {
+      if (!evenement.metaKey || evenement.key !== 'e') return
+      evenement.preventDefault()
+      setOngletsEnEdition((precedent) => {
+        const suivant = new Set(precedent)
+        // **Quitter le mode garde les modifications en attente** : les perdre sur une frappe serait
+        // le défaut qu'`esc` fermant une modale pleine a déjà produit.
+        if (suivant.has(idActif as string)) suivant.delete(idActif as string)
+        else suivant.add(idActif as string)
+        return suivant
+      })
+    }
+    window.addEventListener('keydown', auClavier)
+    return () => window.removeEventListener('keydown', auClavier)
+  }, [idActif])
+
   function ouvrirTable(objet: TableSummary) {
     if (!contexte) return
     setEtatOnglets((etat) =>
@@ -160,6 +205,7 @@ export function Workbench({
               onAddDatabase={onNewDatabase}
             >
               <ProjectPill
+                pendingChanges={attente.length}
                 projectName={projetActif?.name ?? '—'}
                 breadcrumb={contexte ? `${contexte.database} · ${contexte.schema}` : undefined}
                 connection={
@@ -173,6 +219,19 @@ export function Workbench({
           </>
         }
       />
+      {/* Le bandeau du mode édition, **sous la barre de titre** et au-dessus du corps : c'est là que
+          le mockup le place, et il court sur toute la largeur. */}
+      {actif && (
+        <EditBanner
+          compte={attente.length}
+          table={`${actif.schema}.${actif.table}`}
+          onVoirLeSQL={() => {}}
+          onToutAnnuler={() =>
+            setAttentes((precedent) => ({ ...precedent, [idActif as string]: [] }))
+          }
+          onAppliquer={() => {}}
+        />
+      )}
       <div className={styles.body}>
         <SplitPane
           storageKey="workbench:sidebar"
@@ -192,6 +251,12 @@ export function Workbench({
               deplies={deplies}
               charge={charge}
               etatDe={etatDeBase}
+              // La pastille de compte sur la table ouverte (`11b`) : le même modèle que le bandeau.
+              modifications={
+                actif && attente.length > 0
+                  ? { table: actif.table, schema: actif.schema, compte: attente.length }
+                  : undefined
+              }
               selectedId={selection?.id ?? null}
               onSelect={(noeud) => {
                 setSelection(noeud)
@@ -223,7 +288,7 @@ export function Workbench({
                       table: actif.table,
                       columns: detail?.columns ?? [],
                       loading,
-                      annotations: annotationsDe(etatRequete),
+                      annotations: annotationsDe(etatRequete, attente),
                     }
                   : undefined
               }
@@ -264,7 +329,11 @@ export function Workbench({
                       onLectureChange={setLecture}
                       rang={rangChoisi}
                       onRangChange={setRangChoisi}
-                      edition={edition}
+                      edition={enEdition}
+                      attente={attente}
+                      onAttenteChange={(a) =>
+                        setAttentes((precedent) => ({ ...precedent, [idActif as string]: a }))
+                      }
                     />
                   ) : (
                     <>
@@ -336,7 +405,13 @@ export function Workbench({
       {/* La barre d'état court sur toute la largeur, **sous les trois colonnes** — le mockup la
           place au niveau de la fenêtre, pas du centre. */}
       {actif && (
-        <TableStatusBar fenetre={lecture.fenetre} loading={lecture.loading} error={lecture.error} />
+        <TableStatusBar
+          fenetre={lecture.fenetre}
+          loading={lecture.loading}
+          error={lecture.error}
+          pendingChanges={attente.length}
+          editing={enEdition}
+        />
       )}
     </div>
   )
@@ -349,10 +424,10 @@ export function Workbench({
  * les deux — le mockup n'en montre pas d'exemple, et taire l'un des deux états serait pire que
  * les écrire ensemble.
  */
-function annotationsDe(etat: {
-  filters: readonly Filter[]
-  sort: readonly SortKey[]
-}): Record<string, string> {
+function annotationsDe(
+  etat: { filters: readonly Filter[]; sort: readonly SortKey[] },
+  attente: EnAttente,
+): Record<string, string> {
   const annotations: Record<string, string> = {}
   for (const filtre of etat.filters) annotations[filtre.column] = 'filtré'
   for (const critere of etat.sort) {
@@ -361,6 +436,9 @@ function annotationsDe(etat: {
       ? `filtré · tri ${fleche}`
       : `tri ${fleche}`
   }
+  // **« modifié » prime** : c'est l'état le plus récent et le seul qui attend une action. Le mockup
+  // de `A6` remplace bien « bpchar » et « tri ↓ » par « modifié » sur les colonnes touchées.
+  for (const modification of attente) annotations[modification.column] = 'modifié'
   return annotations
 }
 

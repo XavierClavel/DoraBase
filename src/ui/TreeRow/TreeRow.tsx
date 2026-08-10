@@ -23,6 +23,13 @@ type TreeRowProps = {
   meta?: string
   /** `mono` pour les tailles et comptages, `caps` pour le « n bases » des projets repliés. */
   metaVariant?: 'mono' | 'caps'
+  /**
+   * Rend la métadonnée en **pastille d'accent** — le compte de modifications de `A6` (`11b`).
+   *
+   * Le mockup la dessine à la place du compte de lignes : ce qui attend d'être écrit importe plus
+   * que la taille de la table, et les deux au même endroit se liraient mal.
+   */
+  metaBadge?: boolean
   /** Contenu libre de fin de ligne, un `Badge` d'environnement par exemple. */
   trailing?: ReactNode
   /** Cible courante : aplat d'accent atténué, filet gauche, encre pleine et graisse 700. */
@@ -55,6 +62,7 @@ export function TreeRow({
   chevron,
   meta,
   metaVariant = 'mono',
+  metaBadge = false,
   trailing,
   selected,
   strong,
@@ -94,7 +102,11 @@ export function TreeRow({
       {meta !== undefined && (
         <span
           data-meta={metaVariant}
-          className={cx(styles.meta, metaVariant === 'caps' && styles.metaCaps)}
+          className={cx(
+            styles.meta,
+            metaVariant === 'caps' && styles.metaCaps,
+            metaBadge && styles.metaBadge,
+          )}
         >
           {meta}
         </span>

@@ -52,6 +52,11 @@
   background: var(--warn);
 }
 
+/* Des modifications attendent : l'ambre du mockup de `A6`, qui prime sur l'état de connexion. */
+.dot[data-state="pending"] {
+  background: var(--gold);
+}
+
 .dot[data-state="offline"] {
   background: var(--danger);
 }

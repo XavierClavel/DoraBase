@@ -45,6 +45,13 @@ type ExplorerSidebarProps = {
   }
   /** Voir `Sidebar` : `fill` dans l'écran de travail, où un `SplitPane` porte la largeur. */
   width?: 'standard' | 'wide' | 'fill'
+  /**
+   * Le compte de modifications en attente sur une table (`11b`), en pastille d'accent sur sa ligne.
+   *
+   * Le mockup de `A6` remplace le compte de lignes (« 1.9 M ») par ce compte : ce qui attend d'être
+   * écrit importe plus que la taille de la table, et les deux au même endroit se liraient mal.
+   */
+  modifications?: { schema: string; table: string; compte: number }
 }
 
 /** Au-delà, la liste se résume — le mockup montre sept colonnes puis « + 11 autres ». */
@@ -70,6 +77,7 @@ export function ExplorerSidebar({
   onRefresh,
   columns,
   width = 'wide',
+  modifications,
 }: ExplorerSidebarProps) {
   const [filtre, setFiltre] = useState('')
 
@@ -146,8 +154,9 @@ export function ExplorerSidebar({
               icon={noeud.icon as never}
               iconColor={noeud.iconColor}
               chevron={noeud.chevron}
-              meta={noeud.meta}
-              metaVariant={noeud.metaVariant}
+              meta={compteDe(noeud, modifications) ?? noeud.meta}
+              metaVariant={compteDe(noeud, modifications) ? 'caps' : noeud.metaVariant}
+              metaBadge={compteDe(noeud, modifications) !== undefined}
               selected={noeud.id === selectedId}
               strong={noeud.kind === 'project'}
               trailing={
@@ -197,6 +206,21 @@ export function ExplorerSidebar({
       )}
     </Sidebar>
   )
+}
+
+/**
+ * Le compte de modifications d'une ligne d'arbre, s'il la concerne.
+ *
+ * Comparé sur le **triplet** schéma / table, pas sur le seul nom : deux schémas peuvent avoir une
+ * table homonyme, et la pastille se poserait sur les deux.
+ */
+function compteDe(
+  noeud: Noeud,
+  modifications?: { schema: string; table: string; compte: number },
+): string | undefined {
+  if (!modifications || noeud.kind !== 'object') return undefined
+  if (noeud.label !== modifications.table || noeud.schema !== modifications.schema) return undefined
+  return String(modifications.compte)
 }
 
 /**

@@ -1,5 +1,6 @@
 import { Icon } from '../../design/icons/Icon'
 import type { RowWindow } from '../../domain/engine'
+import { cx } from '../../ui/cx'
 import { formatInteger } from '../../ui/format'
 import styles from './TableStatusBar.module.css'
 
@@ -7,6 +8,13 @@ type TableStatusBarProps = {
   fenetre: RowWindow | null
   loading: boolean
   error: string | null
+  /**
+   * Le nombre de modifications en attente (`11b`). Au-dessus de zéro, la barre passe en ambre et
+   * dit ce qui attend plutôt que ce qui a été lu.
+   */
+  pendingChanges?: number
+  /** Vrai quand l'onglet est en mode édition — le rappel `⌘E` change de sens. */
+  editing?: boolean
 }
 
 /**
@@ -19,9 +27,36 @@ type TableStatusBarProps = {
  * Elle vit au niveau de l'**écran**, pas du centre : le mockup la fait courir sous les trois
  * colonnes, sidebar et panneau droit compris.
  */
-export function TableStatusBar({ fenetre, loading, error }: TableStatusBarProps) {
+export function TableStatusBar({
+  fenetre,
+  loading,
+  error,
+  pendingChanges = 0,
+  editing = false,
+}: TableStatusBarProps) {
+  // **La barre du mode édition dit autre chose**, et le mockup le montre : « 3 modifications en
+  // attente · 0 envoyée · transaction non ouverte ». Le compte de lignes lu n'est plus l'information
+  // qui compte quand quelque chose attend d'être écrit.
+  if (pendingChanges > 0) {
+    return (
+      <div className={cx(styles.root, styles.edition)} role="status" aria-label="État de la table">
+        <span className={styles.attente}>
+          {pendingChanges} modification{pendingChanges > 1 ? 's' : ''} en attente
+        </span>
+        <span>·</span>
+        {/* « 0 envoyée » est **vrai et important** : c'est la promesse que rien n'est parti. Elle
+            restera à zéro jusqu'à `11d`, qui écrit. */}
+        <span>0 envoyée</span>
+        <span>·</span>
+        <span>transaction non ouverte</span>
+        <span className={styles.espace} />
+        <span>⌘E quitte l’édition</span>
+      </div>
+    )
+  }
+
   return (
-    <div className={styles.root} role="status">
+    <div className={styles.root} role="status" aria-label="État de la table">
       {error ? (
         // Le message complet vit dans la grille, là où l'utilisateur cherche ses lignes ; la barre
         // ne porte que le verdict. L'écrire aux deux endroits ferait lire deux fois la même
@@ -43,12 +78,12 @@ export function TableStatusBar({ fenetre, loading, error }: TableStatusBarProps)
         <span>Aucune lecture</span>
       )}
       <span className={styles.espace} />
-      {/* **« ⌘E pour éditer » n'est pas affiché.** L'édition est `11` ; `09e` a déjà tranché ce cas
-          en retirant le rappel `⌘P` d'un champ qui ne l'honorait pas — un raccourci affiché qui ne
-          répond pas est pire qu'un raccourci absent. « lecture seule » reste, c'est vrai. */}
+      {/* **Le rappel `⌘E` est enfin honoré.** `10c` l'avait retiré faute d'écran qui y réponde — un
+          raccourci affiché qui ne répond pas est pire qu'un raccourci absent (`09e`). `11b` livre la
+          bascule, donc il revient. */}
       <span className={styles.lecture}>
-        <Icon name="lock" size={11} strokeWidth={2.2} />
-        lecture seule
+        <Icon name={editing ? 'pencil' : 'lock'} size={11} strokeWidth={2.2} />
+        {editing ? 'édition — aucune modification' : 'lecture seule — ⌘E pour éditer'}
       </span>
     </div>
   )

@@ -30,8 +30,10 @@ test('la barre d’état porte les chiffres de la fenêtre', async ({ page }) =>
   await expect(statut).toContainText('41 ms')
   await expect(statut).toContainText('limit 500')
   await expect(statut).toContainText('lecture seule')
-  // L'édition est `11` : un raccourci affiché qui ne répond pas est pire qu'un raccourci absent.
-  await expect(statut).not.toContainText('⌘E')
+  // `10c` avait retiré ce rappel faute d'écran qui y réponde — un raccourci affiché qui ne répond pas
+  // est pire qu'un raccourci absent (`09e`). **`11b` livre la bascule**, donc il revient, et ce test
+  // le vérifie plutôt que de l'interdire.
+  await expect(statut).toContainText('⌘E pour éditer')
 })
 
 test('les lignes font 26 px et la gouttière 30', async ({ page }) => {

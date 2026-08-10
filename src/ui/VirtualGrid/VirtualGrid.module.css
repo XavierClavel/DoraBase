@@ -161,3 +161,37 @@
   font-size: var(--text-dense);
   color: var(--ink-2);
 }
+
+/* Une ligne qui porte une modification en attente (A6) : fond #FDF6E8, et son numéro de gouttière
+   en --warn-ink gras. Relevé sur le mockup. */
+.rowModified {
+  background: var(--warn-bg-2);
+}
+
+.rowModified .td:first-child {
+  color: var(--warn-ink);
+  font-weight: var(--weight-bold);
+}
+
+/* Une cellule modifiée : fond #FBEFD6, liseré intérieur 1.5px --warn, et le **coin** ambre du
+   mockup.
+   Le coin n'est pas décoratif : c'est la seule marque qui distingue une cellule modifiée d'une
+   cellule teintée par un filtre (10d), et les deux teintes sont proches. Une différence qui ne
+   tiendrait qu'à une nuance de fond serait indistinguable pour une part des utilisateurs — la règle
+   que 09d applique déjà à ses quatre états de connexion. */
+.cellModified {
+  background: var(--warn-bg);
+  box-shadow: inset 0 0 0 1.5px var(--warn);
+}
+
+.cellModified::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-bottom: 5px solid var(--warn);
+  pointer-events: none;
+}
