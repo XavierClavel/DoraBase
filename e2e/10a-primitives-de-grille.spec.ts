@@ -9,8 +9,9 @@ test.beforeEach(async ({ page }) => {
   await page.evaluate(() => document.fonts.ready)
 })
 
-const grille = (page: Page) => page.locator('[data-testid=virtual-grid] [role=grid]')
-const viewport = (page: Page) => page.locator('[data-testid=virtual-grid] [role=grid] > div').nth(1)
+const grille_ = (page: Page) => page.locator('[data-testid=virtual-grid] [role=grid]')
+const viewport = (page: Page) =>
+  page.locator('[data-testid=virtual-grid] [role=grid] > div').first()
 
 test('les lignes font 26 px et l’en-tête aussi', async ({ page }) => {
   const mesures = await page.evaluate(() => {
@@ -31,8 +32,10 @@ test('les lignes font 26 px et l’en-tête aussi', async ({ page }) => {
 
 test('la barre de défilement a la course des cent mille lignes', async ({ page }) => {
   const hauteurs = await page.evaluate(() => {
-    const conteneur = document.querySelector('[data-testid=virtual-grid] [role=rowgroup] + div')
-    const toile = conteneur?.querySelector('[role=rowgroup]')
+    // La zone défilante, et la toile qui porte la hauteur totale. Depuis que l'en-tête vit dans
+    // la zone défilante, la toile est son **second** `rowgroup`.
+    const conteneur = document.querySelector('[data-testid=virtual-grid] [class*=viewport]')
+    const toile = conteneur?.querySelectorAll('[role=rowgroup]')[1]
     if (!conteneur || !toile) return null
     return { visible: conteneur.clientHeight, total: toile.getBoundingClientRect().height }
   })
@@ -42,15 +45,57 @@ test('la barre de défilement a la course des cent mille lignes', async ({ page 
 })
 
 test('l’en-tête reste en place quand la grille défile', async ({ page }) => {
-  const avant = await grille(page).locator('[role=columnheader]').first().boundingBox()
+  const avant = await grille_(page).locator('[role=columnheader]').first().boundingBox()
   await viewport(page).evaluate((element) => element.scrollTo({ top: 12_000 }))
-  const apres = await grille(page).locator('[role=columnheader]').first().boundingBox()
+  const apres = await grille_(page).locator('[role=columnheader]').first().boundingBox()
 
   expect(apres?.y).toBe(avant?.y)
   // Et le défilement a bien changé les lignes montées — sans quoi le test ci-dessus passerait
   // sur une grille immobile.
-  const premiere = await grille(page).locator('[role=row]').nth(2).getAttribute('aria-rowindex')
+  const premiere = await grille_(page).locator('[role=row]').nth(2).getAttribute('aria-rowindex')
   expect(Number(premiere)).toBeGreaterThan(400)
+})
+
+test('le fond d’une ligne sélectionnée court sur toutes les colonnes, même hors écran', async ({
+  page,
+}) => {
+  const grille = grille_(page)
+  await grille.getByRole('row').nth(2).click()
+
+  const mesures = await page.evaluate(() => {
+    const g = document.querySelector('[data-testid=virtual-grid] [role=grid]')
+    const ligne = g?.querySelector('[role=row][aria-selected="true"]')
+    const toile = ligne?.parentElement
+    const entete = g?.querySelector('[role=rowgroup]')
+    if (!ligne || !toile || !entete) return null
+    return {
+      ligne: Math.round(ligne.getBoundingClientRect().width),
+      toile: Math.round(toile.getBoundingClientRect().width),
+      entete: Math.round(entete.getBoundingClientRect().width),
+      visible: Math.round((toile.parentElement as HTMLElement).clientWidth),
+    }
+  })
+
+  // **Le défaut du 10 août 2026** : la ligne prenait la largeur de la *fenêtre*, donc son fond
+  // s'arrêtait au bord droit et disparaissait dès qu'on défilait horizontalement. Elle doit
+  // couvrir la largeur du **contenu**.
+  expect(mesures?.toile).toBeGreaterThan(mesures?.visible ?? 0)
+  expect(mesures?.ligne).toBe(mesures?.toile)
+  // L'en-tête aussi, sans quoi il cesse de désigner les colonnes sous lui.
+  expect(mesures?.entete).toBe(mesures?.toile)
+})
+
+test('l’en-tête suit le défilement horizontal', async ({ page }) => {
+  const premierEntete = grille_(page).getByRole('columnheader').first()
+  const avant = await premierEntete.boundingBox()
+
+  // 100 px : le défilement maximal est la largeur du contenu moins celle de la fenêtre, et
+  // demander plus plafonnerait — le test mesurerait alors le plafond, pas le suivi.
+  await viewport(page).evaluate((element) => element.scrollTo({ left: 100 }))
+
+  const apres = await premierEntete.boundingBox()
+  // Hors de la zone défilante, l'en-tête restait immobile et les colonnes se désalignaient.
+  expect(Math.round((avant?.x ?? 0) - (apres?.x ?? 0))).toBe(100)
 })
 
 test('le popover reste visible même ancré au bord droit', async ({ page }) => {
