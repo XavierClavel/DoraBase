@@ -227,13 +227,31 @@ fn identifiant(nom: &str) -> String {
     format!("\"{}\"", nom.replace('"', "\"\""))
 }
 
+/// La liste des colonnes du `select`, **avec le transtypage en texte là où il est nécessaire**.
+///
+/// `valeur_de` lit nativement trois catégories — booléen, nombre, binaire — et replie tout le
+/// reste sur du texte. Ce repli suppose que la colonne *arrive* en texte : sans `::text`,
+/// `try_get::<String>` échoue sur un `timestamptz`, un `jsonb`, un `uuid` ou une énumération, et
+/// la valeur devient `Null`.
+///
+/// **Défaut trouvé le 9 août 2026**, en écrivant le test d'`INSERT` de `10f` : l'`INSERT`
+/// reconstruit posait `NULL` dans `created_at`, colonne `not null`, et la base l'a refusé. Le
+/// commentaire de `valeur_de` annonçait ce transtypage depuis `06d` ; il n'avait jamais été
+/// écrit. Aucun test ne l'avait vu, les tables de mesure ne portant que des entiers et du texte.
 fn liste_colonnes(colonnes: &[ColumnInfo]) -> String {
     if colonnes.is_empty() {
         return "*".to_owned();
     }
     colonnes
         .iter()
-        .map(|c| identifiant(&c.name))
+        .map(|c| match c.category {
+            // Lues dans leur type Rust naturel : les transtyper perdrait le typage sans rien
+            // gagner (« 12900 » au lieu de 12900, un booléen en « t »).
+            TypeCategory::Boolean | TypeCategory::Number | TypeCategory::Binary => {
+                identifiant(&c.name)
+            }
+            _ => format!("{}::text", identifiant(&c.name)),
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -350,6 +368,66 @@ fn encoder_base64(octets: &[u8]) -> String {
     }
 
     sortie
+}
+
+/// Une ligne rendue en `INSERT`, tel que `A5` le copie (`10f`).
+///
+/// **Côté Rust, et non côté écran.** Composer ce SQL en JavaScript demanderait au front de
+/// connaître les règles de citation de sept moteurs — le projet a déjà refusé ce couplage deux
+/// fois, pour la clé de base (`09b`) et pour la référence de secret (`08e`).
+///
+/// Le SQL produit doit être **exécutable** : identifiants cités, apostrophes doublées, `NULL`
+/// sans guillemets, binaire en `\x…`. C'est ce que son test vérifie, en le réinjectant dans la
+/// base de test.
+pub fn insert_de(
+    schema: &str,
+    table: &str,
+    colonnes: &[ColumnInfo],
+    valeurs: &[Value],
+) -> Result<String, EngineError> {
+    if colonnes.len() != valeurs.len() {
+        return Err(EngineError::local(format!(
+            "{} colonnes pour {} valeurs : la ligne ne correspond pas à la table",
+            colonnes.len(),
+            valeurs.len()
+        )));
+    }
+
+    let noms = colonnes
+        .iter()
+        .map(|c| identifiant(&c.name))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let litteraux = valeurs
+        .iter()
+        .map(litteral_de)
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    Ok(format!(
+        "INSERT INTO {}.{} ({noms})\nVALUES ({litteraux});",
+        identifiant(schema),
+        identifiant(table)
+    ))
+}
+
+/// Un littéral SQL pour une valeur.
+///
+/// **`NULL` sans guillemets** : `'NULL'` est la chaîne « NULL », pas l'absence de valeur, et les
+/// confondre insérerait un texte là où la colonne devait rester vide.
+fn litteral_de(valeur: &Value) -> String {
+    match valeur {
+        Value::Null => "NULL".to_owned(),
+        Value::Bool { value } => value.to_string(),
+        Value::Int { value } => value.to_string(),
+        Value::Float { value } => value.to_string(),
+        // Les apostrophes se doublent — la règle du standard SQL, et le seul échappement dont
+        // une chaîne littérale a besoin en PostgreSQL hors chaînes E''.
+        Value::Text { value } | Value::Timestamp { value } | Value::Json { value } => {
+            format!("'{}'", value.replace('\'', "''"))
+        }
+        Value::Binary { base64 } => format!("decode('{}', 'base64')", base64.replace('\'', "''")),
+    }
 }
 
 #[cfg(test)]

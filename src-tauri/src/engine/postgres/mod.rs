@@ -191,6 +191,18 @@ impl EngineAdapter for PostgresAdapter {
         let detail = introspect::table_detail(&self.client, &query.schema, &query.table).await?;
         rows::rows(&self.client, query, &detail.columns).await
     }
+
+    async fn row_as_insert(
+        &self,
+        schema: &str,
+        table: &str,
+        values: &[crate::engine::Value],
+    ) -> Result<String, EngineError> {
+        // Les colonnes viennent du catalogue, comme pour `rows` : c'est ce qui garantit que
+        // l'`INSERT` nomme les vraies colonnes, dans l'ordre où la fenêtre les a rendues.
+        let detail = introspect::table_detail(&self.client, schema, table).await?;
+        rows::insert_de(schema, table, &detail.columns, values)
+    }
 }
 
 #[cfg(test)]
@@ -625,6 +637,184 @@ mod tests_db {
             grande.duration_ms,
             petite.duration_ms
         );
+    }
+
+    /// **Régression `06d`, trouvée le 9 août 2026.**
+    ///
+    /// Tout type non lu nativement — horodatage, JSON, UUID, énumération — arrivait en `Null`,
+    /// parce que le repli « lire en texte » supposait un transtypage que le `select` ne faisait
+    /// pas. `A5` aurait affiché `NULL` dans chaque colonne de date de chaque table.
+    ///
+    /// Les tests de `06d` ne l'ont pas vu : leurs tables de mesure ne portent que des entiers et
+    /// du texte, deux catégories qui se lisent nativement.
+    #[tokio::test]
+    async fn les_horodatages_et_le_json_ne_sont_pas_lus_comme_null() {
+        let adaptateur = adaptateur().await;
+        // La ligne aux colonnes exotiques non nulles est la dernière : un tri décroissant la
+        // ramène dans la fenêtre, là où un `LIMIT 100` sur l'ordre naturel ne l'atteindrait pas.
+        let mut requete = RowQuery::new(
+            "introspection",
+            "orders",
+            crate::engine::RowLimit::OneHundred,
+        );
+        requete.sort = vec![crate::engine::SortKey {
+            column: "id".into(),
+            direction: crate::engine::SortDirection::Descending,
+        }];
+        let f = adaptateur.rows(&requete).await.expect("lecture");
+        let ligne = f.rows.first().expect("orders est peuplée");
+
+        // `orders` : id, user_id, status, total_cents, metadata, ref, paid, blob, created_at.
+        // `created_at` est `not null default now()` — la voir à `Null` est donc impossible.
+        assert!(
+            matches!(ligne[8], crate::engine::Value::Timestamp { .. }),
+            "created_at lu comme {:?}",
+            ligne[8]
+        );
+        // `jsonb`, `uuid` : les deux types que `typcategory = 'U'` confond, et que le repli en
+        // texte doit rendre lisibles.
+        assert!(
+            matches!(ligne[4], crate::engine::Value::Text { .. }),
+            "metadata (jsonb) lu comme {:?}",
+            ligne[4]
+        );
+        assert!(
+            matches!(ligne[5], crate::engine::Value::Text { .. }),
+            "ref (uuid) lu comme {:?}",
+            ligne[5]
+        );
+    }
+
+    // --- INSERT copiable (10f) ---
+
+    /// **Le seul critère qui compte** : le SQL produit doit s'exécuter.
+    ///
+    /// Vérifier qu'il « ressemble » à un `INSERT` laisserait passer une apostrophe non doublée,
+    /// un `'NULL'` en chaîne ou un identifiant non cité — trois erreurs qui ne se voient qu'à
+    /// l'exécution.
+    ///
+    /// La ligne est réinsérée **telle quelle**, clé primaire comprise : c'est ce que copie
+    /// l'utilisateur, et c'est donc ce qu'il faut exercer. D'où la transaction annulée, précédée
+    /// d'un `delete` de la ligne d'origine — sans quoi la clé dupliquerait. Rien n'est laissé
+    /// derrière : le `rollback` défait les deux.
+    #[tokio::test]
+    async fn l_insert_produit_s_execute_reellement() {
+        let adaptateur = adaptateur().await;
+        let fenetre = fenetre("orders", crate::engine::RowLimit::OneHundred).await;
+        let ligne = fenetre
+            .rows
+            .first()
+            .expect("le schéma de test peuple orders");
+
+        let crate::engine::Value::Int { value: id } = ligne[0] else {
+            panic!("la première colonne d'orders est son id")
+        };
+
+        let sql = adaptateur
+            .row_as_insert("introspection", "orders", ligne)
+            .await
+            .expect("génération");
+
+        let script =
+            format!("begin;\ndelete from introspection.orders where id = {id};\n{sql}\nrollback;");
+
+        adaptateur
+            .client
+            .batch_execute(&script)
+            .await
+            .unwrap_or_else(|e| panic!("l'INSERT produit ne s'exécute pas : {e:?}\n{sql}"));
+
+        // Contrôle : la ligne d'origine est toujours là, le `rollback` ayant tout défait.
+        let restee = adaptateur
+            .client
+            .query_one(
+                "select count(*) from introspection.orders where id = $1",
+                &[&id],
+            )
+            .await
+            .expect("relecture");
+        assert_eq!(
+            restee.get::<_, i64>(0),
+            1,
+            "le rollback n'a pas défait le delete"
+        );
+    }
+
+    /// Une apostrophe dans une valeur ne doit pas casser le SQL — le cas classique.
+    ///
+    /// **Exécuté, pas seulement inspecté.** Une première version prouvait l'analyse par l'échec
+    /// attendu d'une contrainte `not null` : indirect, et vert pour la mauvaise raison dès que le
+    /// message d'erreur changeait de forme. Ici le SQL tourne pour de bon, dans une transaction
+    /// annulée.
+    #[tokio::test]
+    async fn une_apostrophe_est_doublee_et_le_sql_reste_executable() {
+        let adaptateur = adaptateur().await;
+        let colonnes = adaptateur
+            .table_detail("introspection", "petite")
+            .await
+            .expect("détail")
+            .columns;
+
+        let sql = crate::engine::postgres::rows::insert_de(
+            "introspection",
+            "petite",
+            &colonnes,
+            &[
+                crate::engine::Value::Int { value: 999_999 },
+                crate::engine::Value::Text {
+                    value: "l'apostrophe".into(),
+                },
+                crate::engine::Value::Int { value: 3 },
+            ],
+        )
+        .expect("génération");
+
+        assert!(sql.contains("'l''apostrophe'"), "{sql}");
+
+        adaptateur
+            .client
+            .batch_execute(&format!("begin;\n{sql}\nrollback;"))
+            .await
+            .unwrap_or_else(|e| panic!("l'INSERT produit ne s'exécute pas : {e:?}\n{sql}"));
+
+        // Le `rollback` a tout défait : rien n'est laissé dans la table.
+        let restant = adaptateur
+            .client
+            .query_one(
+                "select count(*) from introspection.petite where id = 999999",
+                &[],
+            )
+            .await
+            .expect("relecture");
+        assert_eq!(
+            restant.get::<_, i64>(0),
+            0,
+            "la transaction n'a pas été annulée"
+        );
+    }
+
+    /// **`NULL` sans guillemets.** `'NULL'` est la chaîne « NULL », pas l'absence de valeur, et
+    /// les confondre insérerait un texte là où la colonne devait rester vide — un défaut qui ne
+    /// se voit qu'à la relecture des données, longtemps après.
+    #[tokio::test]
+    async fn un_null_n_est_pas_la_chaine_null() {
+        let adaptateur = adaptateur().await;
+        let colonnes = adaptateur
+            .table_detail("introspection", "orders")
+            .await
+            .expect("détail")
+            .columns;
+
+        let sql = crate::engine::postgres::rows::insert_de(
+            "introspection",
+            "orders",
+            &colonnes,
+            &vec![crate::engine::Value::Null; colonnes.len()],
+        )
+        .expect("génération");
+
+        assert!(sql.contains("NULL"), "{sql}");
+        assert!(!sql.contains("'NULL'"), "{sql}");
     }
 
     #[tokio::test]

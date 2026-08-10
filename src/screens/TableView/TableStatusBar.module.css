@@ -1,0 +1,41 @@
+/*
+ * La barre d'état de A5, relevée sur le mockup : 26px, fond --bar, filet haut 1px --divider,
+ * 500 11px JetBrains Mono encre .5 ; le compte de lignes en --success-ink 700.
+ *
+ * Elle court sur toute la largeur de la fenêtre, **sous les trois colonnes** — le mockup la place
+ * au niveau de l'écran, pas du centre.
+ */
+
+.root {
+  flex: none;
+  height: var(--h-statusbar);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-6);
+  background: var(--bar);
+  border-top: 1px solid var(--divider);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  color: var(--ink-8);
+}
+
+.compte {
+  color: var(--success-ink);
+  font-weight: var(--weight-bold);
+}
+
+.echec {
+  color: var(--danger-ink);
+}
+
+.espace {
+  flex: 1;
+}
+
+.lecture {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}

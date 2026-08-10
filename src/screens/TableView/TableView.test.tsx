@@ -93,30 +93,6 @@ describe('TableView', () => {
     expect(within(grille).getAllByText('NULL')).toHaveLength(2)
   })
 
-  it('la barre d’état rend les chiffres de la fenêtre, pas des valeurs recalculées', async () => {
-    monter(
-      fenetre([[{ kind: 'int', value: 1 }, { kind: 'null' }, { kind: 'null' }]], {
-        durationMs: 128,
-        sql: 'select * from public.orders limit 100 offset 0',
-      }),
-    )
-
-    const statut = await screen.findByRole('status')
-    expect(statut).toHaveTextContent('1 ligne')
-    expect(statut).toHaveTextContent('128 ms')
-    // `limit 100` vient du **SQL réellement exécuté**, pas du palier demandé : montrer une
-    // requête différente de celle qui tourne serait un piège pour qui débogue.
-    expect(statut).toHaveTextContent('limit 100')
-  })
-
-  it('« lecture seule » est affiché, « ⌘E pour éditer » ne l’est pas', async () => {
-    monter(fenetre([[{ kind: 'int', value: 1 }]]))
-    const statut = await screen.findByRole('status')
-    expect(statut).toHaveTextContent('lecture seule')
-    // Un raccourci affiché qui ne répond pas est pire qu'un raccourci absent — `09e`.
-    expect(statut).not.toHaveTextContent('⌘E')
-  })
-
   it('une table sans ligne le dit, et ne ressemble ni à un chargement ni à un échec', async () => {
     monter(fenetre([]))
     expect(await screen.findByText(/ne contient aucune ligne/)).toBeInTheDocument()
@@ -141,10 +117,9 @@ describe('TableView', () => {
       </>,
     )
 
-    // Le message complet dans la grille, le verdict seul dans la barre d'état : la même phrase
-    // écrite deux fois se lirait comme deux erreurs.
+    // Le message complet vit dans la **grille** ; la barre d'état, qui n'appartient plus à cette
+    // vue depuis `10f`, ne porte que le verdict.
     expect(await screen.findByText(/la connexion a été fermée/)).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('lecture impossible')
     expect(screen.queryByText(/ne contient aucune ligne/)).not.toBeInTheDocument()
   })
 })

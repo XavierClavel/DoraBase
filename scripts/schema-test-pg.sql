@@ -69,6 +69,14 @@ insert into introspection.orders (user_id, status, total_cents)
          g * 100
     from generate_series(1, 500) g;
 
+-- Une ligne où **aucune colonne exotique n'est nulle**. Sans elle, `metadata`, `ref`, `paid` et
+-- `blob` valent NULL partout, et un défaut de lecture de ces types se lit exactement comme une
+-- colonne vide : c'est ce qui a caché, du 6 au 9 août 2026, le fait que jsonb, uuid, timestamptz
+-- et les énumérations arrivaient tous en `Null` faute de transtypage (voir `liste_colonnes`).
+insert into introspection.orders (user_id, status, total_cents, metadata, ref, paid, blob)
+  values (1, 'paid', 28000, '{"gift": true, "frame": "oak-30x40"}'::jsonb,
+          '11111111-2222-3333-4444-555555555555'::uuid, true, '\x0102030405060708'::bytea);
+
 -- `analyze` peuple `reltuples` et `last_analyze` : sans lui, les tests sur l'estimation et
 -- sur la colonne « Dernier ANALYZE » de `A4` n'auraient rien à observer. La vue, elle, reste
 -- volontairement non analysée — c'est le cas `reltuples = -1`.

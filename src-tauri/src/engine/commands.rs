@@ -232,7 +232,7 @@ mod tests {
 // --- Le câblage de `09b` : ouverture et introspection ------------------------------------
 
 use crate::engine::registry::{cle, ConnectionRegistry, ConnectionState};
-use crate::engine::{RowQuery, RowWindow, SchemaInfo, TableDetail, TableSummary};
+use crate::engine::{RowQuery, RowWindow, SchemaInfo, TableDetail, TableSummary, Value};
 
 /// Désigne une base dans un projet, pour un environnement.
 ///
@@ -416,6 +416,24 @@ pub async fn read_rows(
     registry
         .avec(&key.cle(), move |adaptateur| {
             Box::pin(async move { adaptateur.rows(&query).await })
+        })
+        .await
+}
+
+/// Une ligne rendue en `INSERT` exécutable, que `A5` copie dans le presse-papiers (`10f`).
+///
+/// Le presse-papiers, lui, reste côté front : c'est une API de la webview.
+#[tauri::command]
+pub async fn row_as_insert(
+    key: DatabaseKey,
+    schema: String,
+    table: String,
+    values: Vec<Value>,
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<String, EngineError> {
+    registry
+        .avec(&key.cle(), move |adaptateur| {
+            Box::pin(async move { adaptateur.row_as_insert(&schema, &table, &values).await })
         })
         .await
 }

@@ -11,7 +11,6 @@ import type {
   SortKey,
   Value,
 } from '../../domain/engine'
-import { formatInteger } from '../../ui/format'
 import { type GridColumn, VirtualGrid } from '../../ui/VirtualGrid/VirtualGrid'
 import { estNumerique, rendreValeur } from './cellule'
 import { FilterCell } from './FilterCell'
@@ -33,6 +32,24 @@ type TableViewProps = {
    * première modification.
    */
   onEtatChange?: (etat: { filters: readonly Filter[]; sort: readonly SortKey[] }) => void
+  /**
+   * Remonte la fenêtre lue et la ligne choisie.
+   *
+   * **La barre d'état et le panneau de ligne vivent au-dessus de cette vue**, parce que le mockup
+   * les y place : le panneau droit longe tout le corps de l'écran et la barre d'état court sur
+   * toute la largeur, sous les trois colonnes. Les rendre ici les enfermerait dans le centre.
+   */
+  onLectureChange?: (etat: {
+    fenetre: RowWindow | null
+    loading: boolean
+    error: string | null
+    ligne: readonly Value[] | null
+    rang: number | null
+    total: number
+  }) => void
+  /** Le rang sélectionné, piloté depuis l'écran pour que les flèches du panneau y répondent. */
+  rang?: number | null
+  onRangChange?: (rang: number | null) => void
 }
 
 /** Une ligne de la fenêtre, avec son rang — la gouttière `#` du mockup. */
@@ -61,6 +78,9 @@ export function TableView({
   columns,
   passerelle,
   onEtatChange,
+  onLectureChange,
+  rang = null,
+  onRangChange,
 }: TableViewProps) {
   const [filters, setFilters] = useState<readonly Filter[]>([])
   const [sort, setSort] = useState<readonly SortKey[]>([])
@@ -71,8 +91,12 @@ export function TableView({
   // Les colonnes **masquées**, et non les visibles : une table dont on n'a rien masqué a un
   // ensemble vide, quel que soit le nombre de colonnes qu'elle finira par avoir.
   const [masquees, setMasquees] = useState<ReadonlySet<string>>(new Set())
-  const [choisie, setChoisie] = useState<string | null>(null)
   const hauteur = useHauteurDisponible()
+  // La sélection est **pilotée par l'écran** : le panneau de ligne et ses flèches vivent au-dessus
+  // de cette vue, et deux copies du même rang divergeraient.
+  const choisie = rang === null ? null : String(rang)
+  const setChoisie = (valeur: string | null) =>
+    onRangChange?.(valeur === null ? null : Number(valeur))
 
   // Mémoïsée : `useLignes` relance sa lecture quand la requête change, et une requête
   // reconstruite à chaque rendu la relancerait indéfiniment.
@@ -105,6 +129,21 @@ export function TableView({
   const lignes: Ligne[] = useMemo(
     () => (fenetre?.rows ?? []).map((valeurs, rang) => ({ rang: rang + 1, valeurs })),
     [fenetre],
+  )
+
+  const ligneChoisie = lignes.find((l) => String(l.rang) === choisie)
+
+  useEffect(
+    () =>
+      onLectureChange?.({
+        fenetre,
+        loading,
+        error,
+        ligne: ligneChoisie?.valeurs ?? null,
+        rang: ligneChoisie?.rang ?? null,
+        total: lignes.length,
+      }),
+    [fenetre, loading, error, ligneChoisie, lignes.length, onLectureChange],
   )
 
   const colonnes: GridColumn<Ligne>[] = useMemo(
@@ -208,77 +247,23 @@ export function TableView({
         sql={fenetre?.sql ?? null}
         onRefresh={relire}
       />
-      <div className={styles.grille}>
-        <VirtualGrid
-          label={`Lignes de ${schema}.${table}`}
-          columns={colonnes}
-          rows={lignes}
-          rowId={(ligne) => String(ligne.rang)}
-          viewportHeight={hauteur.valeur}
-          filterRow
-          selectedId={choisie}
-          onSelect={(ligne) => setChoisie(String(ligne.rang))}
-          empty={<span>{messageVide(loading, error, schema, table)}</span>}
-        />
+      <div className={styles.centre}>
+        <div className={styles.grille}>
+          <VirtualGrid
+            label={`Lignes de ${schema}.${table}`}
+            columns={colonnes}
+            rows={lignes}
+            rowId={(ligne) => String(ligne.rang)}
+            viewportHeight={hauteur.valeur}
+            filterRow
+            selectedId={choisie}
+            onSelect={(ligne) => setChoisie(String(ligne.rang))}
+            empty={<span>{messageVide(loading, error, schema, table)}</span>}
+          />
+        </div>
       </div>
-      <BarreDEtat fenetre={fenetre} loading={loading} error={error} />
     </div>
   )
-}
-
-/**
- * La barre d'état de 26 px : `500 lignes · 41 ms · limit 500`, puis « lecture seule ».
- *
- * **Les chiffres viennent de `RowWindow`**, pas d'un recalcul : la durée est celle mesurée par
- * le moteur, et le compte est celui de la fenêtre reçue. Les recalculer côté front produirait
- * des valeurs *plausibles* qui cesseraient d'être vraies au premier écart.
- */
-function BarreDEtat({
-  fenetre,
-  loading,
-  error,
-}: {
-  fenetre: RowWindow | null
-  loading: boolean
-  error: string | null
-}) {
-  return (
-    <div className={styles.statut} role="status">
-      {error ? (
-        // **Le message complet vit dans la grille**, là où l'utilisateur cherche ses lignes ; la
-        // barre d'état ne porte que le verdict. L'écrire aux deux endroits ferait lire deux fois
-        // la même phrase, et allongerait une barre de 26 px.
-        <span className={styles.echec}>lecture impossible</span>
-      ) : loading ? (
-        <span>Lecture…</span>
-      ) : fenetre ? (
-        <>
-          <span className={styles.compte}>
-            {formatInteger(fenetre.rows.length)} ligne{fenetre.rows.length > 1 ? 's' : ''}
-          </span>
-          <span>·</span>
-          <span>{fenetre.durationMs} ms</span>
-          <span>·</span>
-          <span>limit {fenetre.rows.length === 0 ? '—' : limiteLue(fenetre.sql)}</span>
-        </>
-      ) : (
-        <span>Aucune lecture</span>
-      )}
-      <span className={styles.espace} />
-      {/* **« ⌘E pour éditer » n'est pas affiché.** L'édition est `11` ; `09e` a déjà tranché ce
-          cas en retirant le rappel `⌘P` d'un champ qui ne l'honorait pas — un raccourci affiché
-          qui ne répond pas est pire qu'un raccourci absent. « lecture seule » reste, c'est vrai. */}
-      <span className={styles.lecture}>
-        <Icon name="lock" size={11} strokeWidth={2.2} />
-        lecture seule
-      </span>
-    </div>
-  )
-}
-
-/** Le `limit` du SQL réellement exécuté — jamais une valeur reconstruite depuis l'état. */
-function limiteLue(sql: string): string {
-  return /limit\s+(\d+)/i.exec(sql)?.[1] ?? '—'
 }
 
 function messageVide(
@@ -311,10 +296,10 @@ function useHauteurDisponible() {
     const element = ref.current
     if (!element || typeof ResizeObserver === 'undefined') return
     const observateur = new ResizeObserver(() => {
-      // La grille, c'est le conteneur **moins** la toolbar (36 px) et la barre d'état (26) : la
-      // mesure porte sur le parent, qui les inclut toutes deux. Les oublier ferait dépasser la
-      // grille de la hauteur de la fenêtre, et la barre d'état sortirait de l'écran.
-      const disponible = element.clientHeight - 36 - 26
+      // La grille, c'est le conteneur **moins la toolbar** (36 px). La barre d'état, elle, vit au
+      // niveau de l'écran depuis `10f` : la retirer ici laisserait vingt-six pixels vides sous la
+      // grille. Mesuré, pas supposé.
+      const disponible = element.clientHeight - 36
       if (disponible > 0) setValeur(disponible)
     })
     observateur.observe(element)

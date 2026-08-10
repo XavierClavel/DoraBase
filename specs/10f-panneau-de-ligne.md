@@ -82,12 +82,41 @@ entrantes, les deux sens que `06c` fournit déjà — et c'est le seul des trois
 de la ligne sélectionnée. Le mockup ne le montre pas ouvert ; il liste donc les relations sans
 en inventer la présentation, en réemployant le bloc « Relations » de `09f`.
 
+### Le panneau droit de l'écran est **un**, et son contenu suit l'écran
+
+Constaté en implémentant : le mockup de `A5` montre un panneau de 296 px qui longe **tout** le
+corps, et une barre d'état qui court sous les trois colonnes. Rendre le panneau de ligne
+*dans* le centre l'enfermait sous la toolbar, et empilait deux panneaux droits — celui de
+détail de `A4` et celui de ligne — là où le mockup n'en montre qu'un.
+
+L'écran de travail (`10b`) porte donc un seul panneau droit, dont le contenu suit le contexte :
+le détail de l'objet sans onglet ouvert, la ligne sélectionnée avec. Et la barre d'état monte au
+niveau de l'écran.
+
+Corollaire, trouvé à la mesure : le `SplitPane` de `03` ne dimensionnait que son panneau de
+**gauche**. Sur l'écran de travail, c'était donc le centre qui recevait 296 px et la grille
+tombait à **zéro pixel de large** — depuis `10b`, sans qu'aucun test le voie : chacun mesurait
+la colonne qui l'intéressait. `SplitPane` reçoit une option `sized`, et un test verrouille le
+partage des trois colonnes.
+
 ### Précédent / suivant se déplacent dans la fenêtre, pas dans la table
 
 Les flèches de l'en-tête changent la ligne sélectionnée dans la fenêtre reçue. Aller au-delà
 demanderait de charger la fenêtre suivante, or `10c` a fixé `offset` à 0 et s'y tient. Aux
 extrémités, les flèches se désactivent — plutôt que de boucler, ce qui ferait croire à un
 parcours infini sur une fenêtre de 500 lignes.
+
+### Un défaut de `06d` que ce travail a révélé
+
+Le test d'`INSERT` a échoué sur `null value in column "created_at" violates not-null`. Cause :
+la lecture de lignes repliait sur du texte tout type non lu nativement — horodatage, JSON, UUID,
+énumération — mais le `select` ne transtypait pas, donc `try_get::<String>` échouait et la valeur
+devenait `Null`. **`A5` aurait affiché `NULL` dans chaque colonne de date de chaque table.**
+
+Les tests de `06d` ne l'avaient pas vu : leurs tables de mesure ne portent que des entiers et du
+texte, les deux catégories qui se lisent nativement. Et la table `orders` du décor avait ses
+colonnes exotiques nulles partout — un défaut de lecture y était indiscernable d'une colonne
+vide. Le décor de test reçoit donc une ligne dont **aucune** colonne exotique n'est nulle.
 
 ## Terminé quand
 
@@ -96,7 +125,8 @@ parcours infini sur une fenêtre de 500 lignes.
 - Une table cible sans champ de la liste blanche n'affiche **aucun** aperçu, et le test le
   vérifie explicitement — pas seulement le cas qui affiche.
 - La légende nomme les champs réellement détectés.
-- L'INSERT produit s'exécute contre la base de test, apostrophes, `NULL` et JSON compris.
+- L'INSERT produit **s'exécute** contre la base de test — dans une transaction annulée —
+  apostrophes, `NULL` et clé primaire comprises.
 - Sélectionner une ligne dans la grille met le panneau à jour, y compris son en-tête.
 - Précédent / suivant se désactivent aux bords de la fenêtre.
 - Une ligne sans clé primaire affiche un en-tête qui ne prétend pas en avoir une.

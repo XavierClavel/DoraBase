@@ -190,7 +190,47 @@ const PASSERELLE: PasserelleArbre = {
   listObjects: async () => OBJETS,
 }
 
-const PASSERELLE_DETAIL: PasserelleDetail = { describeTable: async () => DETAIL }
+const DETAIL_USERS: TableDetail = {
+  ...DETAIL,
+  name: 'users',
+  columns: [
+    {
+      position: 1,
+      name: 'id',
+      typeName: 'int8',
+      category: 'number',
+      nullable: false,
+      default: null,
+      key: 'primary',
+      comment: null,
+    },
+    {
+      position: 2,
+      name: 'email',
+      typeName: 'text',
+      category: 'text',
+      nullable: false,
+      default: null,
+      key: null,
+      comment: null,
+    },
+    {
+      position: 3,
+      name: 'name',
+      typeName: 'text',
+      category: 'text',
+      nullable: true,
+      default: null,
+      key: null,
+      comment: null,
+    },
+  ],
+  relations: [],
+}
+
+const PASSERELLE_DETAIL: PasserelleDetail = {
+  describeTable: async (_cle, _schema, table) => (table === 'users' ? DETAIL_USERS : DETAIL),
+}
 
 /**
  * Cinq cents lignes — le palier par défaut de `RowLimit`, et ce que la barre d'état de `A5`
@@ -213,12 +253,33 @@ const LIGNES = Array.from({ length: 500 }, (_, i) => [
 const PASSERELLE_LIGNES: PasserelleLignes = {
   readRows: async (_cle, requete) => ({
     offset: 0,
-    rows: LIGNES,
+    // Une requête filtrée sur une seule clé est celle de l'aperçu de ligne liée : elle rend la
+    // ligne de `users`, dont `email` et `name` sont détectables.
+    rows:
+      requete.table === 'users'
+        ? [
+            [
+              { kind: 'int', value: 90_233 },
+              { kind: 'text', value: 'marie.l@example.com' },
+              { kind: 'text', value: 'Marie Lefèvre' },
+            ],
+          ]
+        : LIGNES,
     total: { kind: 'estimated', value: 1_904_220 },
     sql: `select * from ${requete.schema}.${requete.table} limit 500 offset 0`,
     durationMs: 41,
   }),
 }
+
+/**
+ * L'`INSERT` de démonstration.
+ *
+ * En production, ce SQL vient de Rust : citer les identifiants et littéraliser les valeurs
+ * demande de connaître les règles du moteur. Ici, une chaîne figée suffit — la démo vérifie le
+ * câblage, pas la génération, que les tests Rust exercent contre la vraie base.
+ */
+const rowAsInsert = async () =>
+  'INSERT INTO "public"."orders" ("id", "user_id", "status")\nVALUES (184220, 44019, \'paid\');'
 
 export function WorkbenchDemo() {
   return (
@@ -227,6 +288,7 @@ export function WorkbenchDemo() {
       passerelle={PASSERELLE}
       passerelleDetail={PASSERELLE_DETAIL}
       passerelleLignes={PASSERELLE_LIGNES}
+      rowAsInsert={rowAsInsert}
     />
   )
 }

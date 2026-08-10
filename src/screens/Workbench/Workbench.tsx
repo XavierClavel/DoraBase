@@ -1,6 +1,14 @@
 import { useMemo, useState } from 'react'
+import { rowAsInsert as rowAsInsertTauri } from '../../data/commandes'
 import type { Environment, Project } from '../../domain/config'
-import type { DatabaseKey, Filter, SortKey, TableSummary } from '../../domain/engine'
+import type {
+  DatabaseKey,
+  Filter,
+  RowWindow,
+  SortKey,
+  TableSummary,
+  Value,
+} from '../../domain/engine'
 import { EnvironmentPicker } from '../../shell/EnvironmentPicker/EnvironmentPicker'
 import { ProjectPill } from '../../shell/ProjectPill/ProjectPill'
 import { TitleBar } from '../../shell/TitleBar/TitleBar'
@@ -10,8 +18,10 @@ import { BreadcrumbBar, type TypeObjet } from '../Explorer/BreadcrumbBar'
 import { DetailPanel } from '../Explorer/DetailPanel'
 import { ExplorerSidebar } from '../Explorer/ExplorerSidebar'
 import { ObjectTable } from '../Explorer/ObjectTable'
+import { RowPanel } from '../TableView/RowPanel'
+import { TableStatusBar } from '../TableView/TableStatusBar'
 import { TableView } from '../TableView/TableView'
-import type { PasserelleLignes } from '../TableView/useLignes'
+import { PASSERELLE_LIGNES, type PasserelleLignes } from '../TableView/useLignes'
 import { AUCUN_ONGLET, fermer, ongletActif, ouvrir, reordonner } from './onglets'
 import { PASSERELLE_TAURI, type PasserelleArbre, useArbre } from './useArbre'
 import { PASSERELLE_DETAIL, type PasserelleDetail, useDetailTable } from './useDetailTable'
@@ -23,6 +33,8 @@ type WorkbenchProps = {
   passerelle?: PasserelleArbre
   passerelleDetail?: PasserelleDetail
   passerelleLignes?: PasserelleLignes
+  /** Injectable comme les autres commandes : le pont ne répond pas hors de la webview (`08d`). */
+  rowAsInsert?: typeof rowAsInsertTauri
   onNewDatabase?: () => void
 }
 
@@ -40,6 +52,7 @@ export function Workbench({
   passerelle = PASSERELLE_TAURI,
   passerelleDetail = PASSERELLE_DETAIL,
   passerelleLignes,
+  rowAsInsert = rowAsInsertTauri,
   onNewDatabase,
 }: WorkbenchProps) {
   const { deplies, charge, etatDeBase, basculer, rafraichir } = useArbre(projects, passerelle)
@@ -54,6 +67,18 @@ export function Workbench({
     filters: readonly Filter[]
     sort: readonly SortKey[]
   }>({ filters: [], sort: [] })
+  // La lecture en cours, remontée par la vue de table : la barre d'état et le panneau de ligne
+  // vivent **ici**, parce que le mockup les place hors du centre — le panneau longe tout le corps,
+  // la barre court sur toute la largeur.
+  const [lecture, setLecture] = useState<{
+    fenetre: RowWindow | null
+    loading: boolean
+    error: string | null
+    ligne: readonly Value[] | null
+    rang: number | null
+    total: number
+  }>({ fenetre: null, loading: false, error: null, ligne: null, rang: null, total: 0 })
+  const [rangChoisi, setRangChoisi] = useState<number | null>(null)
 
   const actif = ongletActif(etatOnglets)
 
@@ -195,6 +220,10 @@ export function Workbench({
               min={240}
               max={420}
               handleShadow="end"
+              // **Le panneau dimensionné est celui de droite.** Sans cela, c'est le centre qui
+              // recevait 296 px et la grille tombait à zéro pixel de large — défaut de `10b`,
+              // constaté en mesurant `A5` le 10 août 2026.
+              sized="end"
               start={
                 <div className={styles.centre}>
                   <WorkbenchTabs
@@ -216,6 +245,9 @@ export function Workbench({
                       columns={detail?.columns ?? []}
                       passerelle={passerelleLignes}
                       onEtatChange={setEtatRequete}
+                      onLectureChange={setLecture}
+                      rang={rangChoisi}
+                      onRangChange={setRangChoisi}
                     />
                   ) : (
                     <>
@@ -241,21 +273,54 @@ export function Workbench({
                 </div>
               }
               end={
-                <DetailPanel
-                  detail={actif ? null : detail}
-                  schema={contexte?.schema ?? ''}
-                  loading={loading && !actif}
-                  error={error}
-                  onOpenData={() => {
-                    const objet = objets.find((o) => o.name === objetChoisi)
-                    if (objet) ouvrirTable(objet)
-                  }}
-                />
+                // **Un seul panneau droit, dont le contenu suit l'écran** : le détail de l'objet
+                // en `A4`, la ligne sélectionnée en `A5`. Les empiler donnerait deux panneaux là
+                // où le mockup n'en montre qu'un.
+                actif && cle ? (
+                  <RowPanel
+                    cle={cle}
+                    columns={detail?.columns ?? []}
+                    relations={detail?.relations ?? []}
+                    ligne={lecture.ligne}
+                    rang={lecture.rang}
+                    total={lecture.total}
+                    onNavigate={setRangChoisi}
+                    onCopyInsert={
+                      lecture.ligne
+                        ? () => {
+                            const valeurs = lecture.ligne
+                            if (!valeurs) return
+                            void rowAsInsert(cle, actif.schema, actif.table, valeurs).then((sql) =>
+                              navigator.clipboard?.writeText(sql),
+                            )
+                          }
+                        : undefined
+                    }
+                    passerelleDetail={passerelleDetail}
+                    passerelleLignes={passerelleLignes ?? PASSERELLE_LIGNES}
+                  />
+                ) : (
+                  <DetailPanel
+                    detail={detail}
+                    schema={contexte?.schema ?? ''}
+                    loading={loading}
+                    error={error}
+                    onOpenData={() => {
+                      const objet = objets.find((o) => o.name === objetChoisi)
+                      if (objet) ouvrirTable(objet)
+                    }}
+                  />
+                )
               }
             />
           }
         />
       </div>
+      {/* La barre d'état court sur toute la largeur, **sous les trois colonnes** — le mockup la
+          place au niveau de la fenêtre, pas du centre. */}
+      {actif && (
+        <TableStatusBar fenetre={lecture.fenetre} loading={lecture.loading} error={lecture.error} />
+      )}
     </div>
   )
 }

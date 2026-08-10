@@ -64,6 +64,19 @@ pub trait EngineAdapter {
     /// `RowQuery` exige un `RowLimit`, pris dans un ensemble fermé.
     fn rows(&self, query: &RowQuery)
         -> impl Future<Output = Result<RowWindow, EngineError>> + Send;
+
+    /// Une ligne rendue en `INSERT` exécutable — ce que `A5` copie (`10f`).
+    ///
+    /// **Sur l'adaptateur, et non dans l'écran** : citer les identifiants et littéraliser les
+    /// valeurs demande de connaître les règles du moteur, et le front en connaîtrait alors sept.
+    /// Le projet a déjà refusé ce couplage pour la clé de base (`09b`) et la référence de secret
+    /// (`08e`).
+    fn row_as_insert(
+        &self,
+        schema: &str,
+        table: &str,
+        values: &[Value],
+    ) -> impl Future<Output = Result<String, EngineError>> + Send;
 }
 
 /// Le moteur actif, réparti statiquement.
@@ -109,6 +122,17 @@ impl AnyEngine {
             Self::Postgres(adaptateur) => adaptateur.rows(query).await,
         }
     }
+
+    pub async fn row_as_insert(
+        &self,
+        schema: &str,
+        table: &str,
+        values: &[Value],
+    ) -> Result<String, EngineError> {
+        match self {
+            Self::Postgres(adaptateur) => adaptateur.row_as_insert(schema, table, values).await,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -149,6 +173,15 @@ mod tests {
             _table: &str,
         ) -> Result<TableDetail, EngineError> {
             Err(EngineError::local("adaptateur factice"))
+        }
+
+        async fn row_as_insert(
+            &self,
+            _schema: &str,
+            _table: &str,
+            _values: &[Value],
+        ) -> Result<String, EngineError> {
+            Ok(String::new())
         }
 
         async fn rows(&self, _query: &RowQuery) -> Result<RowWindow, EngineError> {

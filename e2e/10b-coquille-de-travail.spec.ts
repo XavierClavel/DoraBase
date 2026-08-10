@@ -55,6 +55,62 @@ test('ouvrir une table depuis l’arbre ouvre un onglet, et la sidebar liste ses
   await expect(page.locator('section').getByText('total_cents')).toBeVisible()
 })
 
+test('les trois colonnes se partagent la largeur, et la grille en garde l’essentiel', async ({
+  page,
+}) => {
+  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await page.getByRole('treeitem', { name: /analytics/ }).click()
+  await page.getByRole('treeitem', { name: 'public' }).click()
+  await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()
+  await page.waitForSelector('[role=grid]')
+
+  // **Le défaut que ce test verrouille** : le `SplitPane` ne dimensionnait que son panneau de
+  // gauche, donc le centre recevait 296 px et la grille tombait à **zéro** pixel de large. Aucun
+  // test ne mesurait le centre — chacun vérifiait la colonne qui l'intéressait.
+  const mesures = await page.evaluate(() => {
+    const separateurs = [...document.querySelectorAll('[role=separator]')]
+    const grille = document.querySelector('[role=grid]')
+    const panneau = document.querySelector('aside[aria-label^="Détail de la ligne"]')
+    return {
+      sidebar: Math.round(
+        separateurs[0]?.previousElementSibling?.getBoundingClientRect().width ?? 0,
+      ),
+      grille: Math.round(grille?.getBoundingClientRect().width ?? 0),
+      panneau: Math.round(panneau?.getBoundingClientRect().width ?? 0),
+      fenetre: window.innerWidth,
+    }
+  })
+
+  expect(mesures.sidebar).toBe(212)
+  expect(mesures.panneau).toBe(296)
+  // Le centre prend tout le reste : la fenêtre moins les deux colonnes, les deux poignées et les
+  // filets. Une valeur exacte serait fragile ; ce qui compte est qu'elle soit large.
+  expect(mesures.grille).toBeGreaterThan(700)
+})
+
+test('la barre d’état court sur toute la largeur, sous les trois colonnes', async ({ page }) => {
+  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await page.getByRole('treeitem', { name: /analytics/ }).click()
+  await page.getByRole('treeitem', { name: 'public' }).click()
+  await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()
+  await page.waitForSelector('[role=status]')
+
+  const mesures = await page.evaluate(() => {
+    const barre = document.querySelector('[role=status]')?.getBoundingClientRect()
+    const panneau = document
+      .querySelector('aside[aria-label^="Détail de la ligne"]')
+      ?.getBoundingClientRect()
+    return {
+      largeur: Math.round(barre?.width ?? 0),
+      fenetre: window.innerWidth,
+      // La barre est **sous** le panneau droit, pas à côté : c'est ce que le mockup montre.
+      sousLePanneau: (barre?.top ?? 0) >= (panneau?.bottom ?? Number.POSITIVE_INFINITY) - 1,
+    }
+  })
+  expect(mesures.largeur).toBe(mesures.fenetre)
+  expect(mesures.sousLePanneau).toBe(true)
+})
+
 test('fermer le dernier onglet laisse l’écran de travail debout', async ({ page }) => {
   await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
   await page.getByRole('treeitem', { name: /analytics/ }).click()

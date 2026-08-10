@@ -1,0 +1,250 @@
+/*
+ * Le panneau droit de A5, relevé sur le mockup :
+ *
+ *   panneau     296px, fond --paper-alt
+ *   en-tête     34px, « Ligne 3 » en 700 12px Nunito, « id 184217 » en 500 11px mono encre .45
+ *   onglets     36px, filet bas 2px accent sur l'actif, 700 11px Nunito
+ *   champs      étiquettes 96px en 600 11px Nunito encre .5, valeurs en 500 11.5px mono
+ *   ligne liée  encadré blanc radius 9px, titre en capitales 9.5px encre .4
+ *   bouton      27px pleine largeur, radius 8px, fond blanc, bordure 1px --border
+ *
+ * Le JSON coloré vit dans `JsonColore` : quatre couleurs, réemployables par A8 (vue JSON).
+ */
+
+.root {
+  /* Pas de largeur ici : c'est le `SplitPane` de l'écran de travail qui la porte, et qui la rend
+     réglable. Le mockup donne 296px, valeur par défaut de ce panneau. */
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--paper-alt);
+  font-family: var(--font-ui);
+}
+
+.header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--h-bar);
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--divider-2);
+}
+
+.titre {
+  font-size: var(--text-control);
+  font-weight: var(--weight-bold);
+}
+
+.identite {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  color: var(--ink-meta);
+}
+
+.espace {
+  flex: 1;
+}
+
+.fleche {
+  display: flex;
+  align-items: center;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--ink-4);
+  cursor: pointer;
+}
+
+.fleche:disabled {
+  color: var(--disabled);
+  cursor: default;
+}
+
+/* La flèche du haut est celle du bas retournée — le sprite n'en porte qu'une. */
+.haut {
+  transform: rotate(180deg);
+}
+
+.onglets {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  height: 36px;
+  border-bottom: 1px solid var(--divider-2);
+}
+
+.onglet {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-6);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  color: var(--ink-meta);
+  cursor: pointer;
+}
+
+.ongletActif {
+  border-bottom-color: var(--accent);
+  color: var(--ink);
+}
+
+.corps {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-6);
+}
+
+.champs {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.champ {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 21px;
+}
+
+.etiquette {
+  flex: none;
+  width: 96px;
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-8);
+}
+
+.valeur {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.cle {
+  flex: none;
+  color: var(--gold);
+}
+
+.fk {
+  flex: none;
+  color: var(--info);
+}
+
+.liens {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  color: var(--ink-6);
+}
+
+.liens li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--info);
+}
+
+/* Une relation entrante se lit dans l'autre sens : le mockup grise sa ligne. */
+.entrante {
+  color: var(--ink-3);
+}
+
+.liee {
+  margin-top: auto;
+  padding-top: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.lieeTitre {
+  margin: 0;
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps-sm);
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+/* La légende des champs détectés, en casse normale : c'est une phrase, pas un titre. */
+.detectes {
+  font-weight: var(--weight-normal);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-4);
+}
+
+.lieeCorps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-field-2);
+  background: var(--field);
+  border: 1px solid var(--divider);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+}
+
+.lieeNom {
+  color: var(--ink-meta);
+}
+
+.copier {
+  box-sizing: content-box;
+  /* Les navigateurs posent 1px de padding vertical sur `<button>` : sans cette remise à zéro, le
+     bouton rend 31px là où le mockup en donne 29 (27 de contenu + son filet). */
+  padding: 0;
+  margin-top: var(--space-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  height: 27px;
+  border-radius: var(--radius-field);
+  background: var(--field);
+  border: 1px solid var(--border);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.copier:hover {
+  background: var(--hover-bg);
+  border-color: var(--hover-border);
+}
+
+.vide {
+  margin: 0;
+  padding: var(--space-8) var(--space-6);
+  font-size: var(--text-dense);
+  color: var(--ink-2);
+}
