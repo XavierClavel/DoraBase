@@ -98,6 +98,15 @@ export function VirtualGrid<Row>({
   const fenetre = rows.slice(premiere, derniere)
 
   const gabarit = columns.map((colonne) => `${colonne.width}px`).join(' ')
+  /**
+   * La largeur du **contenu**, somme des colonnes.
+   *
+   * Elle est portée par l'en-tête et par la toile, faute de quoi tous deux prennent celle du
+   * conteneur : le fond de la ligne sélectionnée s'arrêtait alors au bord droit de la fenêtre, et
+   * disparaissait dès qu'on défilait horizontalement. Constaté à l'écran le 10 août 2026, sur une
+   * table de trente-quatre colonnes.
+   */
+  const largeurContenu = columns.reduce((somme, colonne) => somme + colonne.width, 0)
 
   // Ramener la ligne sélectionnée dans la fenêtre visible : sans cela, `↓` déplacerait une
   // sélection invisible dès qu'elle sort du bas de l'écran.
@@ -141,70 +150,41 @@ export function VirtualGrid<Row>({
       tabIndex={onSelect ? 0 : undefined}
       onKeyDown={deplacer}
     >
-      <div className={styles.head} role="rowgroup">
-        <div
-          className={styles.row}
-          role="row"
-          aria-rowindex={1}
-          style={{ gridTemplateColumns: gabarit }}
-        >
-          {columns.map((colonne) => (
-            <div
-              key={colonne.key}
-              role="columnheader"
-              className={cx(
-                styles.th,
-                colonne.numeric && styles.numeric,
-                colonne.tint === 'filtered' && styles.filtered,
-                colonne.tint === 'sorted' && styles.sorted,
-              )}
-            >
-              {colonne.header}
-            </div>
-          ))}
-        </div>
-        {filterRow && (
-          <div
-            className={cx(styles.row, styles.filterRow)}
-            role="row"
-            aria-rowindex={2}
-            style={{ gridTemplateColumns: gabarit }}
-          >
-            {columns.map((colonne) => (
-              <div
-                key={colonne.key}
-                role="columnheader"
-                className={cx(
-                  styles.tf,
-                  colonne.tint === 'filtered' && styles.filtered,
-                  colonne.tint === 'sorted' && styles.sorted,
-                )}
-              >
-                {colonne.filter}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      {rows.length === 0 && empty !== undefined ? (
-        <div className={styles.empty}>{empty}</div>
-      ) : (
-        // `role="presentation"` : un `role="grid"` attend des `rowgroup`/`row` pour enfants, et
-        // ce conteneur de défilement n'existe que pour porter le débordement. Même arbitrage que
-        // l'enveloppe d'onglet de `TabStrip`.
-        <div
-          ref={viewport}
-          role="presentation"
-          className={styles.viewport}
-          style={{ height: viewportHeight }}
-          onScroll={(evenement) => setScrollTop(evenement.currentTarget.scrollTop)}
-        >
-          {/* La toile porte la hauteur **totale** : c'est elle qui donne à la barre de
-              défilement la bonne course, alors que seules quelques lignes sont montées. */}
+      {/* `role="presentation"` : un `role="grid"` attend des `rowgroup`/`row` pour enfants, et ce
+          conteneur de défilement n'existe que pour porter le débordement. Même arbitrage que
+          l'enveloppe d'onglet de `TabStrip`. */}
+      <div
+        ref={viewport}
+        role="presentation"
+        className={styles.viewport}
+        style={{ height: viewportHeight }}
+        onScroll={(evenement) => setScrollTop(evenement.currentTarget.scrollTop)}
+      >
+        {/* **L'en-tête vit dans la zone défilante**, collé en haut. Hors d'elle, il ne suivait pas
+            le défilement **horizontal** : au-delà de la largeur de la fenêtre, les en-têtes ne
+            désignaient plus les colonnes sous eux. Le `sticky` garde le comportement vertical que
+            le test de `10a` vérifie.
+
+            **Rendu à une seule position de l'arbre**, hors de toute branche : une première version
+            le plaçait dans les deux issues du ternaire « vide / rempli », et React le démontait au
+            passage de l'une à l'autre — donc à l'arrivée de la première lecture. Une saisie de
+            filtre en cours et un popover ouvert étaient perdus à cet instant. Attrapé par les tests
+            de `10d`, pas par l'œil. */}
+        <EnTete
+          columns={columns}
+          gabarit={gabarit}
+          largeur={largeurContenu}
+          filterRow={filterRow}
+        />
+        {rows.length === 0 && empty !== undefined ? (
+          <div className={styles.empty}>{empty}</div>
+        ) : (
+          // La toile porte la hauteur **totale** : c'est elle qui donne à la barre de défilement
+          // la bonne course, alors que seules quelques lignes sont montées.
           <div
             role="rowgroup"
             className={styles.canvas}
-            style={{ height: rows.length * rowHeight }}
+            style={{ height: rows.length * rowHeight, width: largeurContenu }}
           >
             {fenetre.map((row, rang) => {
               const index = premiere + rang
@@ -248,6 +228,75 @@ export function VirtualGrid<Row>({
               )
             })}
           </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Les une ou deux lignes d'en-tête, **collées en haut de la zone défilante**.
+ *
+ * Extrait pour tenir en un seul endroit du rendu — sa place dans l'arbre doit être **stable**,
+ * sans quoi React le démonte et les `FilterCell` perdent leur saisie.
+ *
+ * Il porte la largeur du contenu : sans elle, il prend celle du conteneur et cesse de désigner les
+ * colonnes dès qu'on défile horizontalement.
+ */
+function EnTete<Row>({
+  columns,
+  gabarit,
+  largeur,
+  filterRow,
+}: {
+  columns: readonly GridColumn<Row>[]
+  gabarit: string
+  largeur: number
+  filterRow: boolean
+}) {
+  return (
+    <div className={styles.head} role="rowgroup" style={{ width: largeur }}>
+      <div
+        className={styles.row}
+        role="row"
+        aria-rowindex={1}
+        style={{ gridTemplateColumns: gabarit }}
+      >
+        {columns.map((colonne) => (
+          <div
+            key={colonne.key}
+            role="columnheader"
+            className={cx(
+              styles.th,
+              colonne.numeric && styles.numeric,
+              colonne.tint === 'filtered' && styles.filtered,
+              colonne.tint === 'sorted' && styles.sorted,
+            )}
+          >
+            {colonne.header}
+          </div>
+        ))}
+      </div>
+      {filterRow && (
+        <div
+          className={cx(styles.row, styles.filterRow)}
+          role="row"
+          aria-rowindex={2}
+          style={{ gridTemplateColumns: gabarit }}
+        >
+          {columns.map((colonne) => (
+            <div
+              key={colonne.key}
+              role="columnheader"
+              className={cx(
+                styles.tf,
+                colonne.tint === 'filtered' && styles.filtered,
+                colonne.tint === 'sorted' && styles.sorted,
+              )}
+            >
+              {colonne.filter}
+            </div>
+          ))}
         </div>
       )}
     </div>

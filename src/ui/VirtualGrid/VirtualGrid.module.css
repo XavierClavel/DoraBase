@@ -25,8 +25,15 @@
   box-shadow: var(--shadow-focus);
 }
 
+/* Collé en haut de la zone défilante : il suit le défilement **horizontal** et reste visible au
+   défilement vertical. Hors de cette zone, il ne suivait pas l'horizontal — au-delà de la largeur
+   de la fenêtre, les en-têtes ne désignaient plus les colonnes sous eux.
+   `min-width: 100%` : avec peu de colonnes, l'en-tête couvre quand même toute la largeur. */
 .head {
-  flex: none;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-width: 100%;
 }
 
 .row {
@@ -70,10 +77,14 @@
   position: relative;
 }
 
-/* Porte la hauteur totale : c'est elle qui donne à la barre de défilement sa course réelle,
- * alors que seules les lignes visibles sont montées. */
+/* Porte la hauteur totale **et la largeur du contenu** : la première donne à la barre de
+ * défilement sa course réelle, la seconde fait que le fond d'une ligne sélectionnée court sur
+ * toutes les colonnes. Sans elle, il s'arrêtait au bord droit de la fenêtre et disparaissait dès
+ * qu'on défilait horizontalement.
+ * `min-width: 100%` : avec peu de colonnes, la trame couvre toute la largeur. */
 .canvas {
   position: relative;
+  min-width: 100%;
 }
 
 .tr {

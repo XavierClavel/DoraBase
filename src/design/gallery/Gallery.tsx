@@ -1497,6 +1497,12 @@ function VirtualGridGallery() {
         <input className={styles.gridFilter} defaultValue="paid" aria-label="filtre statut" />
       ),
     },
+    // **Assez de colonnes pour déborder des 340 px du cadre.** C'est le cas qui a révélé, le
+    // 10 août 2026, que le fond d'une ligne sélectionnée s'arrêtait au bord droit de la fenêtre et
+    // que l'en-tête ne suivait pas le défilement horizontal. Sans débordement, aucun test ne peut
+    // les voir.
+    { key: 'devise', header: 'devise', width: 90, cell: () => 'EUR' },
+    { key: 'note', header: 'note', width: 160, cell: (l) => `ligne ${l.rang}` },
   ]
 
   return (
