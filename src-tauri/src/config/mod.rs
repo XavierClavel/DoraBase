@@ -14,7 +14,8 @@ mod query;
 mod store;
 
 pub use commands::{
-    load_config, save_config, save_database, ConfigLoad, ConfigState, SaveDatabaseRequest,
+    create_project, load_config, save_config, save_database, ConfigLoad, ConfigState,
+    CreateProjectRequest, SaveDatabaseRequest,
 };
 pub use enregistrer::{enregistrer, reference_de, NouvelleBase, SaveError};
 pub use model::{

@@ -68,3 +68,32 @@ test('avec un suffixe, la saisie fonctionne toujours', async () => {
   await userEvent.type(champ, 'db.internal')
   expect(champ).toHaveValue('db.internal')
 })
+
+describe('aucune correction automatique de la saisie', () => {
+  it('désactive capitale, correction, orthographe et complétion', () => {
+    render(<Field label="Hôte" />)
+    const champ = screen.getByLabelText('Hôte')
+
+    // **Ce champ sert à saisir des identifiants techniques.** macOS applique par défaut la
+    // capitale initiale : `localhost` devenait `Localhost`, et la connexion échouait pour une
+    // majuscule que l'utilisateur n'avait pas tapée.
+    expect(champ).toHaveAttribute('autocapitalize', 'off')
+    expect(champ).toHaveAttribute('autocorrect', 'off')
+    expect(champ).toHaveAttribute('spellcheck', 'false')
+    expect(champ).toHaveAttribute('autocomplete', 'off')
+  })
+
+  it('un appelant peut rétablir un attribut s’il a une raison', () => {
+    render(<Field label="Mot de passe" type="password" autoComplete="current-password" />)
+    // Les attributs sont étalés **avant** les props : celle de l'appelant l'emporte.
+    expect(screen.getByLabelText('Mot de passe')).toHaveAttribute(
+      'autocomplete',
+      'current-password',
+    )
+  })
+
+  it('le champ à suffixe les porte aussi', () => {
+    render(<Field label="Clé privée" suffix={<button type="button">Parcourir…</button>} />)
+    expect(screen.getByLabelText('Clé privée')).toHaveAttribute('autocapitalize', 'off')
+  })
+})

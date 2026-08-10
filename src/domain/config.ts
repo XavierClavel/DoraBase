@@ -14,6 +14,19 @@ export type ConfigLoad = { "kind": "fresh" } | { "kind": "loaded", projects: Arr
 quarantinedTo: string, } | { "kind": "tooNew", found: number, supported: number, };
 
 /**
+ * Ce que `A2` envoie pour créer un projet.
+ */
+export type CreateProjectRequest = { name: string, 
+/**
+ * L'environnement actif du projet, qui est celui de la variante qu'on lui déclare.
+ *
+ * `05a` en fait une propriété du **projet**, et `A2` ne propose que celui de la variante. Le
+ * coder à `dev` afficherait un arbre vide juste après l'enregistrement d'une base `prod` : la
+ * base existe, mais dans un autre environnement que celui affiché.
+ */
+activeEnvironment: Environment, };
+
+/**
  * Une base d'un projet, déclinée en 1..n environnements.
  */
 export type Database = { name: string, engine: Engine, variants: Array<EnvironmentVariant>, };

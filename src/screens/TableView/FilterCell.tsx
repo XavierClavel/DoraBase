@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FilterOperator } from '../../domain/engine'
 import { cx } from '../../ui/cx'
+import { SANS_CORRECTION } from '../../ui/Field/Field'
 import { Popover } from '../../ui/Popover/Popover'
 import styles from './FilterCell.module.css'
 import { OPERATEURS, signeDe } from './tri'
@@ -70,6 +71,7 @@ export function FilterCell({ column, operator, value, onApply }: FilterCellProps
         </button>
       </Popover>
       <input
+        {...SANS_CORRECTION}
         className={styles.saisie}
         aria-label={`Filtrer ${column}`}
         value={operator === 'isNull' ? '' : saisie}

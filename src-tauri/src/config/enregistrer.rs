@@ -4,7 +4,9 @@
 //! échoue. C'est tout le sujet de ce module, et la raison pour laquelle il est séparé de
 //! `commands.rs` : la logique d'ordonnancement et de rattrapage se teste sans Tauri.
 
-use crate::config::model::{Database, Engine, EnvironmentVariant, ModelError, Project, SecretRef};
+use crate::config::model::{
+    Database, Engine, Environment, EnvironmentVariant, ModelError, Project, SecretRef,
+};
 use crate::config::query::validate;
 use crate::secrets::{Secret, SecretError, SecretStore};
 
@@ -80,6 +82,54 @@ pub struct NouvelleBase<'a> {
     pub engine: Engine,
     pub variant: EnvironmentVariant,
     pub password: Option<&'a Secret>,
+}
+
+/// Ajoute un projet vide à la liste, ou dit pourquoi il ne peut pas l'être.
+///
+/// **Pure, et séparée de la commande** : les deux refus — nom vide, nom déjà pris — sont la
+/// substance de `08f`, et une fonction qui prend `State<ConfigState>` ne se teste pas sans
+/// application Tauri. Même découpage qu'`enregistrer`.
+///
+/// Le nom est **rogné** : « Print » et « Print  » désigneraient sinon deux projets, dont un
+/// invisiblement différent dans la sidebar.
+pub fn creer_projet(
+    projects: &[Project],
+    nom: &str,
+    active_environment: Environment,
+) -> Result<Vec<Project>, CreateError> {
+    let nom = nom.trim();
+    if nom.is_empty() {
+        return Err(CreateError::NomVide);
+    }
+    if projects.iter().any(|projet| projet.name == nom) {
+        return Err(CreateError::NomDeja {
+            project: nom.to_owned(),
+        });
+    }
+
+    let mut suivants = projects.to_vec();
+    suivants.push(Project {
+        name: nom.to_owned(),
+        active_environment,
+        databases: Vec::new(),
+    });
+    Ok(suivants)
+}
+
+/// Les deux refus de `creer_projet`.
+#[derive(Debug, PartialEq, Eq)]
+pub enum CreateError {
+    NomVide,
+    NomDeja { project: String },
+}
+
+impl std::fmt::Display for CreateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NomVide => write!(f, "le nom du projet ne peut pas être vide"),
+            Self::NomDeja { project } => write!(f, "un projet « {project} » existe déjà"),
+        }
+    }
 }
 
 /// Ajoute une base et sa variante à un projet, et range son mot de passe.
@@ -246,6 +296,77 @@ mod tests {
             active_environment: Environment::Dev,
             databases: Vec::new(),
         }]
+    }
+
+    // --- Création de projet (08f) ---
+
+    #[test]
+    fn un_projet_cree_est_vide_et_porte_l_environnement_demande() {
+        let suivants = creer_projet(&[], "Atelier Nord", Environment::Prod).expect("création");
+
+        assert_eq!(suivants.len(), 1);
+        assert_eq!(suivants[0].name, "Atelier Nord");
+        // L'environnement vient de la variante qu'on déclare : le coder à `dev` afficherait un
+        // arbre vide juste après l'enregistrement d'une base `prod`.
+        assert_eq!(suivants[0].active_environment, Environment::Prod);
+        assert!(suivants[0].databases.is_empty());
+    }
+
+    #[test]
+    fn un_nom_vide_ou_en_blancs_est_refuse() {
+        assert_eq!(
+            creer_projet(&[], "", Environment::Dev),
+            Err(CreateError::NomVide)
+        );
+        assert_eq!(
+            creer_projet(&[], "   ", Environment::Dev),
+            Err(CreateError::NomVide)
+        );
+    }
+
+    #[test]
+    fn un_nom_deja_pris_est_refuse_et_le_dit() {
+        let erreur = creer_projet(&projets(), "Atelier Nord", Environment::Dev)
+            .expect_err("le nom est déjà pris");
+        assert_eq!(
+            erreur,
+            CreateError::NomDeja {
+                project: "Atelier Nord".into()
+            }
+        );
+        assert!(erreur.to_string().contains("Atelier Nord"));
+    }
+
+    /// **Le nom est rogné**, donc « Print » et « Print  » sont le même projet.
+    ///
+    /// Sans cela, deux projets coexisteraient dans la sidebar sous un libellé identique à l'œil —
+    /// et le second serait injoignable puisque la clé de base emploie le nom.
+    #[test]
+    fn les_blancs_de_bord_ne_creent_pas_un_second_projet() {
+        let erreur = creer_projet(&projets(), "  Atelier Nord  ", Environment::Dev)
+            .expect_err("c'est le même projet");
+        assert_eq!(
+            erreur,
+            CreateError::NomDeja {
+                project: "Atelier Nord".into()
+            }
+        );
+
+        let suivants =
+            creer_projet(&[], "  Outils internes  ", Environment::Dev).expect("création");
+        assert_eq!(suivants[0].name, "Outils internes");
+    }
+
+    #[test]
+    fn creer_un_projet_ne_touche_pas_aux_projets_existants() {
+        let avant = projets();
+        let suivants =
+            creer_projet(&avant, "Data science", Environment::Staging).expect("création");
+
+        // Une fonction pure : la liste d'entrée n'est pas mutée, et l'appelant décide d'écrire.
+        assert_eq!(avant.len(), 1);
+        assert_eq!(suivants.len(), 2);
+        assert_eq!(suivants[0], avant[0]);
     }
 
     #[test]

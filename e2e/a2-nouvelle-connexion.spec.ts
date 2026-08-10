@@ -427,9 +427,19 @@ test('esc ferme la sous-modale sans fermer A2', async ({ page }) => {
 // Sans aucun projet, `A2` ne peut rien enregistrer : elle déclare une base *dans un projet
 // existant*, et le handoff ne maquette pas le parcours d'un utilisateur qui n'en a aucun.
 // Trou n°4, consigné au § « À trancher » de `specs/README.md`.
-test('sans projet, « Enregistrer » est désactivé et le sélecteur le dit', async ({ page }) => {
+test('sans projet, la création est proposée, et « Enregistrer » attend son nom', async ({
+  page,
+}) => {
+  // **Depuis `08f`, l'application neuve n'est plus une impasse** : le seul choix possible est de
+  // créer un projet, donc son champ de nom est visible d'emblée.
+  await expect(page.getByRole('combobox', { name: 'Projet' })).toContainText(/Nouveau projet/)
+  await expect(page.getByLabel('Nom du nouveau projet')).toBeVisible()
+  // Tant que le nom manque, l'enregistrement reste bloqué — l'écran a l'information sous la main.
   await expect(page.getByRole('button', { name: /Enregistrer & ouvrir/ })).toBeDisabled()
-  await expect(page.getByRole('combobox', { name: 'Projet' })).toContainText(/Aucun projet/)
+
+  await page.getByLabel('Nom du nouveau projet').fill('Data science')
+  await expect(page.getByRole('button', { name: /Enregistrer & ouvrir/ })).toBeEnabled()
+
   // Tester une connexion, en revanche, n'exige aucun projet : c'est justement ce qu'on veut
   // pouvoir faire avant de s'engager.
   await expect(page.getByRole('button', { name: /Tester la connexion/ })).toBeEnabled()

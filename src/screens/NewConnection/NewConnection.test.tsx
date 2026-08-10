@@ -149,14 +149,15 @@ test('changer de moteur ne perd pas ce qui a été saisi', async () => {
 
 // --- Projets ---
 
-test('sans aucun projet, le sélecteur le dit', () => {
+test('sans aucun projet, la création est proposée d’emblée', () => {
   monter()
-  // `A2` ne maquette pas ce cas et `⌘N` y mène directement. Afficher une liste vide
-  // ressemblerait à un bug ; `08e` refusera l'enregistrement.
-  expect(screen.getByRole('combobox', { name: 'Projet' })).toHaveTextContent(/Aucun projet/)
+  // **L'application neuve n'est plus une impasse** (`08f`) : `⌘N` mène ici, et le seul choix
+  // possible est de créer un projet — donc son champ de nom est visible sans rien faire.
+  expect(screen.getByRole('combobox', { name: 'Projet' })).toHaveTextContent(/Nouveau projet/)
+  expect(screen.getByLabelText('Nom du nouveau projet')).toBeInTheDocument()
 })
 
-test('avec des projets, ils sont proposés', () => {
+test('avec des projets, ils sont proposés, suivis de la création', () => {
   monter([
     { id: 'print', name: 'Atelier Nord' },
     { id: 'web', name: 'Atelier Sud' },
@@ -164,7 +165,14 @@ test('avec des projets, ils sont proposés', () => {
   const options = screen
     .getByRole('combobox', { name: 'Projet' })
     .querySelectorAll<HTMLOptionElement>('option')
-  expect([...options].map((o) => o.textContent)).toEqual(['Atelier Nord', 'Atelier Sud'])
+  expect([...options].map((o) => o.textContent)).toEqual([
+    'Atelier Nord',
+    'Atelier Sud',
+    '+ Nouveau projet…',
+  ])
+  // Le champ n'apparaît **que** sous la création : le rendre toujours, désactivé, ferait croire
+  // qu'on peut renommer le projet choisi.
+  expect(screen.queryByLabelText('Nom du nouveau projet')).not.toBeInTheDocument()
 })
 
 // --- Pied ---
@@ -235,6 +243,9 @@ test('tout le formulaire est atteignable au clavier', async () => {
     'Nom de la base',
     'Projet',
     'dev', // groupe d'environnements : une seule entrée
+    // Sans aucun projet, `08f` propose sa création d'emblée : le champ de nom est donc dans le
+    // parcours, entre le sélecteur et l'hôte.
+    'Nom du nouveau projet',
     'Hôte',
     'Port',
     'Base par défaut',

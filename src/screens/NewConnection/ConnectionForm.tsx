@@ -11,6 +11,16 @@ import type { ConnectionDraft } from './ConnectionDraft'
 import { ENVIRONMENT_ORDER, ENVIRONMENTS, SSL_MODE_ORDER, SSL_MODES } from './environments'
 import styles from './NewConnection.module.css'
 
+/**
+ * La valeur sentinelle du `Select` qui demande la création d'un projet.
+ *
+ * Une sentinelle et non un booléen à part : le `Select` a **une** valeur, et un état parallèle
+ * (« projet choisi » + « ou bien nouveau ») divergerait — c'est exactement le piège du select
+ * contrôlé que `08e` a déjà payé une fois. Le préfixe la rend impossible à confondre avec un nom
+ * de projet, que `05a` n'autorise pas à commencer par un caractère de contrôle.
+ */
+export const NOUVEAU_PROJET = '\u0000nouveau'
+
 type ConnectionFormProps = {
   draft: ConnectionDraft
   onChange: (patch: Partial<ConnectionDraft>) => void
@@ -72,12 +82,15 @@ function ToggleWithLabel({
 export function ConnectionForm({ draft, onChange, projects }: ConnectionFormProps) {
   const [passwordVisible, setPasswordVisible] = useState(false)
 
-  const optionsProjets =
-    projects.length > 0
-      ? projects.map((p) => ({ value: p.id, label: p.name }))
-      : // Aucun projet : `A2` n'en maquette pas le cas, et `08e` décidera du refus. Ici on
-        // le **dit** plutôt que d'afficher une liste vide, qui ressemblerait à un bug.
-        [{ value: '', label: 'Aucun projet — créez-en un d’abord' }]
+  // **« + Nouveau projet… » est une option du `Select`, pas un second écran** (`08f`) : personne
+  // ne crée un projet vide, donc le déclarer et y mettre sa première base est un seul geste.
+  // Avant, l'application neuve était une impasse — `08e` refusait l'enregistrement faute de
+  // projet, et rien ne permettait d'en faire un.
+  const optionsProjets = [
+    ...projects.map((p) => ({ value: p.id, label: p.name })),
+    { value: NOUVEAU_PROJET, label: '+ Nouveau projet…' },
+  ]
+  const creeUnProjet = draft.project === NOUVEAU_PROJET
 
   return (
     <div className={styles.form}>
@@ -107,6 +120,16 @@ export function ConnectionForm({ draft, onChange, projects }: ConnectionFormProp
           />
         </div>
       </div>
+
+      {/* Le champ n'existe **que** sous « + Nouveau projet… » : le rendre toujours, désactivé,
+          ferait croire qu'on peut renommer le projet choisi. */}
+      {creeUnProjet && (
+        <Field
+          label="Nom du nouveau projet"
+          value={draft.newProjectName}
+          onChange={(event) => onChange({ newProjectName: event.target.value })}
+        />
+      )}
 
       {/* Le port est **collé** à l'hôte : sous-grille `1fr 84px` avec un gap de 8px, contre
           les 18px de la grille principale. */}
