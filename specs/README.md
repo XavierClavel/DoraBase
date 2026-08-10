@@ -290,6 +290,15 @@ donc le contrôle sans déplacer la fenêtre, sans qu'il ait fallu l'écrire. À
 permission `core:window:allow-start-dragging` est nécessaire, `core:window:default` n'accordant
 aucune permission d'écriture.
 
+**Pourquoi `11` a été découpé en quatre** (10 août 2026) : `A6` porte la **première écriture du
+projet** dans une base de l'utilisateur, et trois choses distinctes autour d'elle — la saisie et son
+modèle, les marques qui rendent l'attente visible, le panneau qui montre le diff. `11d` mérite ses
+propres critères : une transaction partielle, un conflit non détecté ou un `UPDATE` sans `WHERE` ne
+se rattrapent pas, à la différence de tout ce que les dix specs précédentes pouvaient produire.
+
+L'ordre place le **modèle avec ce qui le produit** (`11a`) plutôt qu'avec ce qui l'affiche : une
+cellule qui n'enregistre rien n'édite pas, un modèle que rien ne produit est mort.
+
 **Pourquoi `10` a été découpé en six** (9 août 2026) : `A5` porte trois choses qu'aucune spec
 n'a livrées — la grille **virtualisée**, que `09a` a explicitement séparée de `DataTable` ; le
 branchement de la lecture paginée de `06d`, écrite et testée mais appelée par personne ; et la
@@ -357,7 +366,10 @@ propres critères de vérification.
 | [`10d`](10d-filtres-et-tri.md) | A5 | Filtres par en-tête, popover d'opérateur, tri multiple | **fait** |
 | [`10e`](10e-toolbar.md) | A5 | Toolbar : `LIMIT`, chips, « Voir le SQL », colonnes | **fait** |
 | [`10f`](10f-panneau-de-ligne.md) | A5 | Panneau droit : détail d'une ligne, ligne liée, INSERT | **fait** |
-| `11` | A6 | Édition inline, modifications en attente, diff et transaction | à écrire |
+| [`11a`](11a-cellule-editable.md) | A6 | Cellule éditable et modifications en attente | à faire |
+| [`11b`](11b-marques-du-mode-edition.md) | A6 | Bandeau, badge, teintes, annotations, barre d'état | à faire |
+| [`11c`](11c-panneau-des-modifications.md) | A6 | Panneau droit : cartes, diff, SQL prévisualisé | à faire |
+| [`11d`](11d-appliquer-les-modifications.md) | A6 | Appliquer : transaction, garde-fous, conflit | à faire |
 | `12` | A7 | Console SQL : éditeur, autocomplétion, onglets de résultat | à écrire |
 | `13` | A8 | Console MongoDB et vue JSON | à écrire |
 | `14` | A9 | Structure et DDL | à écrire |
