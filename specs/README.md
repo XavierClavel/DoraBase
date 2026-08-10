@@ -354,6 +354,9 @@ propres critères de vérification.
 | [`08e`](08e-enregistrer-et-ouvrir.md) | A2 | « Enregistrer & ouvrir » : config + secret | **fait** |
 | [`08f`](08f-creer-un-projet.md) | A2 | Créer un projet — `create_project`, « + Nouveau projet… » | **fait** |
 | [`08g`](08g-modifier-une-connexion.md) | A2 | Modifier une connexion — `update_variant`, menu de la pastille | **fait** |
+| [`08h`](08h-menu-de-ligne-dans-l-arbre.md) | A4 | Le menu « … » des lignes projet et base de l'arbre | à faire |
+| [`08i`](08i-renommer-un-projet.md) | A4 | Renommer un projet — `rename_project`, migration des secrets | à faire |
+| [`08j`](08j-supprimer-une-connexion-ou-un-projet.md) | A4 | Supprimer une déclaration de connexion, ou un projet | à faire |
 | [`09a`](09a-primitives-de-tableau.md) | — | Primitives : `SegmentedControl`, `StatTile`, `DataTable` | **fait** |
 | [`09b`](09b-cablage-des-donnees.md) | — | Câblage : `load_config` au démarrage, registre de connexions, introspection | **fait** (redémarrage non observé) |
 | [`09c`](09c-a4-barre-de-titre.md) | A4 | Barre de titre : pastille projet, fil d'Ariane, sélecteur d'environnement | **fait** (clic vs glissement non observé) |
@@ -367,7 +370,7 @@ propres critères de vérification.
 | [`10e`](10e-toolbar.md) | A5 | Toolbar : `LIMIT`, chips, « Voir le SQL », colonnes | **fait** |
 | [`10f`](10f-panneau-de-ligne.md) | A5 | Panneau droit : détail d'une ligne, ligne liée, INSERT | **fait** |
 | [`11a`](11a-cellule-editable.md) | A6 | Cellule éditable et modifications en attente | **fait** |
-| [`11b`](11b-marques-du-mode-edition.md) | A6 | Bandeau, badge, teintes, annotations, barre d'état | à faire |
+| [`11b`](11b-marques-du-mode-edition.md) | A6 | Bandeau, badge, teintes, annotations, barre d'état | **fait** |
 | [`11c`](11c-panneau-des-modifications.md) | A6 | Panneau droit : cartes, diff, SQL prévisualisé | à faire |
 | [`11d`](11d-appliquer-les-modifications.md) | A6 | Appliquer : transaction, garde-fous, conflit | à faire |
 | `12` | A7 | Console SQL : éditeur, autocomplétion, onglets de résultat | à écrire |
