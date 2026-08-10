@@ -10,7 +10,7 @@ correctifs venus du **premier usage réel** de l'application.
 
 ---
 
-## 0. À faire en premier — quatre vérifications à l'œil
+## 0. À faire en premier — quatre vérifications à l'œil, dont trois en attente
 
 **Elles s'accumulent depuis `08c` et rien ne peut les automatiser** : Playwright ne pilote pas
 WKWebView, et piloter le bureau par frappes synthétiques a été tenté puis abandonné — la fenêtre
@@ -29,12 +29,13 @@ pnpm tauri dev
 | 3 | ~~Enregistrer une base, quitter, relancer~~ | **Fait le 10 août** : le projet et sa base survivent au redémarrage | `09b` |
 | 4 | Cliquer la pastille projet de la barre de titre | Elle s'active et **ne déplace pas la fenêtre**. À revérifier : le glissement est passé en `deep`, donc tout le sous-arbre est glissable sauf les contrôles | `09c` |
 | 5 | Ouvrir une table, sélectionner une ligne, cliquer « Copier la ligne en INSERT », coller ailleurs | Le SQL arrive dans le presse-papiers — `navigator.clipboard` n'est pas exercé par les tests | `10f` |
+| 6 | Ouvrir une table, presser `⌘E`, modifier une cellule, presser `⌘Z` | Le mode édition s'ouvre, le bandeau paraît, `⌘Z` retire la modification. **`⌘E` et `⌘Z` sont des raccourcis système sur macOS** : sous WKWebView, le menu de l'application peut les intercepter avant la page — les e2e tournent sous Chromium, qui n'a pas de menu | `11b` |
 
-**Deux vérifications restent, et l'usage réel en a appris plus qu'elles** : neuf défauts en deux
+**Quatre vérifications restent, et l'usage réel en a appris plus qu'elles** : neuf défauts en deux
 jours, dont six signalés par l'utilisateur (voir `DEFAUTS.md` § « Ce qu'a trouvé le premier
 usage réel »). La leçon est au § 5, règle 9.
 
-Tant que ce n'est pas fait, **ne présenter aucun de ces quatre points comme vérifié**. Les
+Tant que ce n'est pas fait, **ne présenter aucun de ces points comme vérifié**. Les
 commandes sont enregistrées et compilées ; l'aller-retour ne l'est pas.
 
 ## 1. En trois phrases
