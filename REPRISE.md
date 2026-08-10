@@ -4,8 +4,8 @@ Ce document existe pour qu'une session neuve reprenne le travail sans avoir la c
 précédente. Il complète les specs et les plans, qui disent *quoi* construire ; lui dit **où on
 en est, ce qui a été décidé, et pourquoi**.
 
-Dernière mise à jour : 9 août 2026. Le travail vit sur `feat/tranche-1-socle-design-a1`,
-fusionnée dans `main` par avance rapide — les deux pointent sur le même commit.
+Dernière mise à jour : 10 août 2026. Le travail vit sur `quiver-leader`, en avance de six
+commits sur `main` : les six specs de `A5` (`10a`–`10f`).
 
 ---
 
@@ -27,6 +27,7 @@ pnpm tauri dev
 | 2 | Déplier « Proxy / tunnel », cliquer « Parcourir… » | Le sélecteur de fichier natif de macOS s'ouvre, et le chemin choisi arrive dans le champ | `08c` |
 | 3 | Enregistrer une base, quitter l'app, relancer | La base **réapparaît** — l'écriture et la relecture sont testées séparément, le parcours complet non | `09b` |
 | 4 | Cliquer la pastille projet de la barre de titre | Elle s'active et **ne déplace pas la fenêtre** — la barre porte `data-tauri-drag-region` | `09c` |
+| 5 | Ouvrir une table, sélectionner une ligne, cliquer « Copier la ligne en INSERT », coller ailleurs | Le SQL arrive dans le presse-papiers — `navigator.clipboard` n'est pas exercé par les tests | `10f` |
 
 Tant que ce n'est pas fait, **ne présenter aucun de ces quatre points comme vérifié**. Les
 commandes sont enregistrées et compilées ; l'aller-retour ne l'est pas.
@@ -58,10 +59,10 @@ d'ordonnancement prise sur la foi d'un blocage inexistant.
 
 ## 3. Où en est le travail
 
-**Vingt-quatre specs écrites, toutes implémentées.** `A1` (accueil), `A2`/`A3` (nouvelle
-connexion et son échec) et `A4` (explorateur) sont assemblés. La couche moteur PostgreSQL est
-complète, du contrat au tunnel SSH. Restent six specs d'écran à écrire (`10`–`15`) et six specs
-de moteur (`16`–`21`).
+**Trente specs écrites, toutes implémentées.** `A1` (accueil), `A2`/`A3` (nouvelle connexion et
+son échec), `A4` (explorateur) et `A5` (visualiseur de table) sont assemblés **et atteignables
+depuis l'application**. La couche moteur PostgreSQL est complète, du contrat au tunnel SSH.
+Restent cinq specs d'écran à écrire (`11`–`15`) et six specs de moteur (`16`–`21`).
 
 | Specs | Sujet | État |
 | --- | --- | --- |
@@ -71,18 +72,24 @@ de moteur (`16`–`21`).
 | `07` | `A1` — accueil | **fait** |
 | `08a`–`08e` | primitives de formulaire, `A2`, panneau tunnel, test de connexion + `A3`, enregistrement | **fait** |
 | `09a`–`09f` | primitives de tableau, câblage des données, `A4` en quatre blocs | **fait** |
-| `10`–`15` | `A5` → `A10` | à écrire |
+| `10a`–`10f` | primitives de grille, coquille de travail, grille, filtres et tri, toolbar, panneau de ligne | **fait** |
+| `11`–`15` | `A6` → `A10` | à écrire |
 | `16`–`21` | moteurs additionnels (MySQL, SQLite, MongoDB, Redis, Snowflake, BigQuery) | à écrire |
 
-**Comptes de tests** — 209 Rust (dont 48 contre PostgreSQL 17.6 réel et un vrai bastion SSH),
-369 Vitest, 73 Playwright.
+**Comptes de tests** — 218 Rust (dont 57 contre PostgreSQL 17.6 réel et un vrai bastion SSH ;
+161 sans décor), 463 Vitest, 99 Playwright.
 
 **La boucle du produit est complète depuis `09b`** : saisir (`08e`), persister, relire, afficher.
 `load_config` existait depuis `05b` et n'était appelée par personne.
 
-**Ce qui n'est pas fait dans `A4`** : la bande d'onglets. `TabStrip` existe depuis `03`, mais un
-onglet n'a de sens qu'une fois qu'on peut ouvrir une table — donc `10`. En livrer une qui ne
-s'ouvre ni ne se ferme sur rien aurait été un décor.
+**La bande d'onglets est vivante depuis `10b`** : ouvrir une table depuis l'arbre ou depuis
+« Ouvrir les données » du panneau de détail, changer d'onglet, fermer, réordonner. Fermer le
+dernier laisse l'écran debout, sur la liste des objets.
+
+**Ce qui n'est pas fait dans `A5`** : l'export CSV (bouton présent, désactivé, infobulle qui
+nomme sa spec), le bloc « Valeurs fréquentes » du popover d'opérateur, l'aperçu formaté
+« 280,00 € », et la pastille colorée de `status`. Les quatre sont consignés au § 6 avec leur
+raison — aucun n'est un oubli.
 
 **Deux réserves à ne pas oublier :**
 
@@ -144,15 +151,28 @@ de confiance à la première connexion serait la vraie réponse**, et le design 
 **Une seule identité pour une connexion** : `projet/base/environnement`. C'est à la fois la clé
 du registre (`09b`) et la référence du secret (`08e`). Deux conventions divergeraient.
 
+**Le panneau droit de l'écran de travail est unique** (`10f`), et son contenu suit l'écran :
+détail de l'objet en `A4`, ligne sélectionnée en `A5`. Le mockup n'en montre qu'un. La barre
+d'état, elle, court **sous** les trois colonnes — elle vit au niveau de l'écran, pas du centre.
+
+**La sidebar est à 212 px partout** (`10b`), y compris devant `A4` dont le handoff donne 252 :
+une coquille unique ne peut pas être les deux, et la colonne sauterait de quarante pixels à
+l'ouverture d'un onglet. Elle prend en outre la largeur de son `SplitPane`, sans quoi la poignée
+de `03` ne déplacerait rien.
+
+**Un filtre et un tri partent au serveur** (`10d`), ils ne trient pas la fenêtre reçue. Filtrer
+cinq cents lignes déjà lues serait immédiat et faux : l'utilisateur croirait voir toutes les
+commandes payées de la table. Les tests portent donc sur la **requête envoyée**.
+
 **Convention Rust à 4 espaces**, pas de `rustfmt.toml` alignant Rust sur le JS du projet.
 
 **Baloo 2 restreinte au latin, Nunito et JetBrains Mono complètes.** Le critère n'est pas « ce
 sous-ensemble sert-il » mais « cette police rend-elle des données arbitraires ». Baloo 2 ne porte
 que du chrome applicatif.
 
-## 5. Six règles tirées de 58 défauts
+## 5. Huit règles tirées des défauts rencontrés
 
-Le détail de chacun est dans [`DEFAUTS.md`](DEFAUTS.md), avec ce qui l'a attrapé. Ces six-là se
+Le détail de chacun est dans [`DEFAUTS.md`](DEFAUTS.md), avec ce qui l'a attrapé. Celles-là se
 sont **répétées**, et c'est ce qui en fait des règles plutôt que des anecdotes.
 
 1. **Le nom accessible se concatène sans espace, et `aria-label` sur un élément sans rôle est
@@ -162,28 +182,43 @@ sont **répétées**, et c'est ce qui en fait des règles plutôt que des anecdo
    contrôle**, par du texte masqué en `clip-path` — jamais `display: none`, qui le retirerait de
    l'arbre d'accessibilité. Biome signale la seconde à chaque fois, et a raison à chaque fois.
 
-2. **jsdom ne calcule aucune mise en page.** Toute exigence de hauteur, largeur, position ou
+2. **Un composant vérifié pièce par pièce n'est pas un écran livré.** `A4` était fidèle et testé,
+   et n'avait jamais été vu **entier dans l'application** : rien ne réunissait ses quatre
+   composants, et tous ses tests Playwright visaient `?gallery`. Invisible précisément parce que
+   la galerie donne la même image. Même motif pour trois couches complètes que personne ne
+   franchissait : `load_config` (attrapé en `09b`), `read_rows` (`10c`), `describe_table` (`10b`).
+   Depuis `10b`, au moins un test part de `/`.
+
+3. **jsdom ne calcule aucune mise en page.** Toute exigence de hauteur, largeur, position ou
    superposition est structurellement hors de portée de Vitest et va dans `e2e/`. Et il faut
    mesurer la valeur **calculée**, pas le rectangle : celui-ci inclut les bordures et masque un
    écart derrière un arrondi. Un `var()` vers un jeton inexistant ne casse d'ailleurs rien de
    visible — ni TypeScript, ni Vitest, ni l'œil.
 
-3. **Un test vert ne prouve rien tant qu'un sabotage ne l'a pas fait tomber.** Et un test qui
+4. **Un test vert ne prouve rien tant qu'un sabotage ne l'a pas fait tomber.** Et un test qui
    reste vert sous sabotage doit être **réécrit** : c'est arrivé quatre fois — un test qui
    comptait les entrées d'une table sans prouver le réemploi, un piège de focus que l'ordre de
    tabulation de jsdom n'atteignait pas, un message d'erreur qui passait pour la mauvaise raison,
    une fenêtre de 500 lignes rendue après en avoir ramené cent mille.
 
-4. **Le mockup fait foi — sa feuille de style comprise.** Trois valeurs du tableau de `A4` se
+5. **Le mockup fait foi — sa feuille de style comprise.** Trois valeurs du tableau de `A4` se
    jouaient à l'inverse de sa prose, et seul son `<style>` les donnait. Lire les blocs `style=`
    en ligne ne suffit pas.
 
-5. **Vérifier le chemin, pas seulement le résultat visible.** Saboter la pagination laissait vert
+6. **Vérifier le chemin, pas seulement le résultat visible.** Saboter la pagination laissait vert
    le test « la fenêtre rend 500 lignes » ; l'image de test SSH livrait `AllowTcpForwarding no`
    pendant que le test « un tunnel s'ouvre » passait. Quand la contrainte porte sur le chemin, il
    faut mesurer le chemin — un coût, un aller-retour réel.
 
-6. **Les outils qui vérifient doivent eux-mêmes pouvoir échouer.** `cmd | tail` fait porter le
+7. **Un décor de test aux colonnes vides cache les défauts de lecture.** `orders` avait
+   `metadata`, `ref`, `paid` et `blob` nuls partout : un type mal lu y était **indiscernable**
+   d'une colonne vide. Résultat, du 6 au 10 août 2026, `06d` rendait `Null` pour tout type non lu
+   nativement — horodatage, JSON, UUID, énumération — et `A5` aurait affiché `NULL` dans chaque
+   colonne de date de chaque table. Ce qui l'a attrapé n'est pas un test de lecture mais le test
+   d'`INSERT` de `10f`, qui **exécute** son SQL : la base a refusé un `NULL` dans une colonne
+   `not null`. Le décor porte désormais une ligne dont aucune colonne exotique n'est nulle.
+
+8. **Les outils qui vérifient doivent eux-mêmes pouvoir échouer.** `cmd | tail` fait porter le
    statut de sortie par `tail`, et « TOUT VERT » s'est affiché avec trois vérifications rouges.
    Un garde écrit contre une famille de fichiers ne couvre pas celle qu'elle engendre. Un
    `biome-ignore` doit être la **dernière** ligne de commentaire avant le nœud. Et
@@ -194,12 +229,17 @@ sont **répétées**, et c'est ce qui en fait des règles plutôt que des anecdo
 
 Consigné dans `specs/README.md` § « À trancher avant certaines specs ». En résumé :
 
-- **Onze trous du handoff** relevés en écrivant `08a`–`08e` et `09a`–`09f` : l'état actif de
-  `dev`, l'attente d'un test de connexion, le refus de saisie, le cas « aucun projet », le
-  panneau proxy replié, le sens du point d'état, les trois états de connexion non maquettés, le
-  segment « Index », la tuile qui présente une estimation comme un fait exact, les cinq colonnes
-  à montrer, et le champ « Chercher un objet… ⌘P ». Chacun a reçu **le minimum défendable**, dit
-  dans sa spec.
+- **Quinze trous du handoff** relevés en écrivant `08a`–`08e`, `09a`–`09f` et `10a`–`10f` : les
+  onze premiers concernaient `A2` et `A4` ; les quatre de `A5` sont la **pastille de `status`**
+  (le mockup se contredit — sa sidebar donne à cette colonne le glyphe `T` du texte), les
+  **valeurs fréquentes** du popover (un `GROUP BY` sur 1,9 million de lignes déclenché par
+  l'ouverture d'un menu), l'aperçu **« 280,00 € »** (qui suppose un lien entre `total_cents` et
+  `currency` que rien ne déclare) et le panneau de l'opérateur **`in`**, annoncé par des points de
+  suspension et maquetté nulle part. Chacun a reçu **le minimum défendable**, dit dans sa spec.
+- **L'export CSV est un sujet, pas un bouton** : outre `blob:` refusé par la CSP, il reste à
+  trancher la fenêtre ou le résultat complet, l'encodage, le séparateur, le traitement des `NULL`
+  et des sauts de ligne. Sur 1,9 million de lignes l'écriture doit être en flux, donc côté Rust.
+  `10e` livre le bouton désactivé avec l'infobulle qui nomme sa spec.
 - **Les feux tricolores ne peuvent pas être grisés** derrière une modale : `titleBarStyle:
   "Overlay"` les fait dessiner par macOS, hors d'atteinte du CSS. Trois contournements envisagés,
   tous refusés. L'écart tient à trois pastilles de 11 px.
@@ -300,22 +340,22 @@ cd src-tauri && cargo test                       # 161 tests, sans décor
 
 ## 11. La suite
 
-**`10` — `A5`, le visualiseur de table.** C'est le prochain écran, et il apporte trois choses
-qu'aucune spec n'a encore livrées : la **bande d'onglets** (reportée de `09e`), la **grille
-virtualisée** — dont `09a` a explicitement séparé `DataTable`, qui est un vrai `<table>` non
-virtualisé — et le branchement de la **lecture paginée** de `06d`, déjà écrite et testée mais
-jamais employée par un écran.
+**`11` — `A6`, l'édition inline.** C'est le prochain écran, et il apporte trois choses
+qu'aucune spec n'a livrées : la **cellule en saisie** (boîte flottante débordant de la trame),
+les **modifications en attente** avec leur diff, et la **transaction** qui les applique — donc
+la première écriture du projet dans une base de l'utilisateur.
 
-`A5` est probablement trop large pour une seule spec : grille, filtres par en-tête, tri multiple,
-palier de `LIMIT`, barre d'état, « Voir le SQL ». **Proposer le découpage avant d'écrire**, comme
-`AGENTS.md` le demande et comme `05`, `06`, `08` et `09` l'ont fait.
+`A6` est probablement trop large pour une seule spec : bandeau d'avertissement, cellule éditée,
+panneau des modifications en attente, SQL prévisualisé, garde-fous de production. **Proposer le
+découpage avant d'écrire**, comme `AGENTS.md` le demande et comme `05`, `06`, `08`, `09` et `10`
+l'ont fait.
 
 Deux points à trancher au passage :
 
+- **Le rappel `⌘E` de la barre d'état**, retiré par `10c` faute d'écran qui l'honore : il revient
+  avec `A6`, et c'est le moment de l'y remettre.
 - **`SplitPane` horizontal** pour `12` (console SQL) : géométrie de poignée différente (pastille
-  26×3 au lieu de 3×26).
-- **26 px dans l'échelle de `Button`** au moment d'écrire `15` : la hauteur revient onze fois
-  dans le mockup, `ConsoleFooterButton` la porte aujourd'hui en dur.
+  26×3 au lieu de 3×26). Son option `sized`, ajoutée par `10f`, y servira aussi.
 
-Et, avant tout : **les quatre vérifications du § 0**. Elles ne coûtent que deux minutes, et
-quatre affirmations du projet en dépendent.
+Et, avant tout : **les cinq vérifications du § 0**. Elles ne coûtent que trois minutes, et cinq
+affirmations du projet en dépendent.
