@@ -346,3 +346,69 @@ des tests verts au moment où il a été introduit.
    démarrer les rendrait invisibles sans casser la CI. Une étape dédiée du job Linux relit la
    sortie et refuse la présence de « décor SSH absent ». Le saut est aussi **annoncé** sur
    `stderr` plutôt que muet.
+
+---
+
+## Ce qu'a trouvé le premier usage réel, les 9 et 10 août 2026
+
+Neuf défauts, tous sur une suite verte, et **six signalés par l'utilisateur** — pas par nous. Le
+point commun : le décor de test était trop régulier pour les produire.
+
+26. **Un décor aux colonnes vides cache les défauts de lecture.** `orders` avait `metadata`,
+   `ref`, `paid` et `blob` nuls partout : un type mal lu y était **indiscernable** d'une colonne
+   vide. Du 6 au 10 août, `06d` rendait donc `Null` pour tout type non lu nativement —
+   horodatage, JSON, UUID, énumération — parce que le repli « lire en texte » supposait un
+   transtypage que le `select` ne faisait pas. `A5` aurait affiché `NULL` dans **chaque colonne de
+   date de chaque table**. Attrapé non par un test de lecture mais par le test d'`INSERT` de
+   `10f`, qui *exécute* son SQL : la base a refusé un `NULL` dans une colonne `not null`.
+27. **Le même piège, une seconde fois : `numeric`.** `tokio-postgres` ne le lit ni en `i64` ni en
+   `f64`, et la catégorie `Number` n'était pas transtypée — toute colonne de montants ou de taux
+   s'affichait vide. Les tables de mesure ne portaient que des entiers et du texte, les deux
+   catégories qui se lisent nativement. `Value::Decimal` garde désormais le texte exact : un `f64`
+   perdrait de la précision, inacceptable pour de l'argent. Le décor reçoit une table `montants`.
+28. **TypeScript ne signale pas un genre oublié quand le retour est `ReactNode`.** En ajoutant
+   `Value::Decimal`, le `switch` de rendu tombait dans aucun cas et rendait `undefined` — un
+   `ReactNode` valide. La cellule se serait affichée **vide**, sans une erreur. Le `switch` porte
+   maintenant un garde typé `never`, qui nomme le genre oublié à la compilation.
+29. **« Inconnu » n'est pas « zéro ».** `pg_class.reltuples` vaut `-1` pour une relation jamais
+   analysée ; `06c` le traduisait en `0`. Sur une base réelle dont aucune table n'avait été
+   analysée, `A4` les affichait **toutes vides**, et l'utilisateur en a conclu que ses tables
+   l'étaient. Le test qui aurait dû l'attraper vérifiait `value() >= 0` — ce que zéro satisfait.
+   `RowCount::Unknown` porte le cas, `value()` rend `Option`, et l'écran met un tiret cadratin avec
+   une infobulle qui parle d'`ANALYZE`.
+30. **Les colonnes d'une clé étrangère entrante étaient cherchées dans la mauvaise table.**
+   `REQUETE_RELATIONS` joignait `pg_attribute` sur `con.conrelid` dans les deux sens. Quand les
+   numéros d'attribut existaient de part et d'autre, elle rendait des noms **faux** — `users.email`
+   au lieu de `orders.user_id` — et le test restait vert parce qu'il ne vérifiait que la direction
+   et la table cible. Quand ils n'existaient pas, `array_agg` rendait `NULL` et **toute la table
+   devenait impossible à ouvrir**. Cas réel : une contrainte pointant la colonne 18 d'une table qui
+   en compte 16. `relation_depuis` omet désormais une relation illisible avec un journal — une
+   ligne manquante dans « Relations » vaut mieux qu'une table inaccessible.
+31. **`data-tauri-drag-region` nu ne rend glissable que l'élément cliqué.** Le script de Tauri
+   teste `el === composedPath[0]` ; la barre de titre étant couverte par ses enfants, seule la bande
+   de fond autour des feux répondait. La valeur `deep` étend au sous-arbre, et les éléments
+   cliquables la bloquent d'eux-mêmes. À savoir aussi : `core:window:default` n'accorde **aucune**
+   permission d'écriture, donc `core:window:allow-start-dragging` est nécessaire — le point était
+   consigné depuis `01` sans qu'on en tire la conséquence.
+32. **macOS corrigeait la saisie des identifiants techniques.** `localhost` devenait `Localhost`,
+   et la connexion échouait pour une majuscule que personne n'avait tapée. Quatre attributs
+   (`autoCapitalize`, `autoCorrect`, `spellCheck`, `autoComplete`) posés dans `Field`.
+33. **Une bande d'onglets qui « ne se réduit jamais » recouvre ce qui la suit.** `flex: none` sur
+   `TabStrip`, juste dans le contexte de `03`, faisait déborder la bande **sous** « Données /
+   Structure » avec sept onglets. Deux versions du test étaient vertes sans le correctif : mesurer
+   le rectangle du `tablist` voit toujours un chevauchement — `getBoundingClientRect` ignore la
+   découpe par `overflow` — et celui de l'enveloppe n'en voit jamais. La version qui mord interroge
+   `elementFromPoint` au centre du libellé : **ce qui compte est ce qui se trouve sous le pixel**.
+34. **Le highlight d'une ligne s'arrêtait au bord de la fenêtre.** Les lignes étaient posées sur
+   une toile large comme le *viewport*, pas comme le contenu. En corrigeant, deux défauts voisins
+   sont apparus : l'en-tête vivait **hors** de la zone défilante, donc ne suivait pas le défilement
+   horizontal — les en-têtes cessaient de désigner les colonnes sous eux ; et une fois déplacé, il
+   était rendu dans les **deux** issues du ternaire « vide / rempli », donc React le démontait à
+   l'arrivée de la première lecture, emportant une saisie de filtre en cours et un popover ouvert.
+   Ce troisième-là a été attrapé par les tests de `10d`, pas par l'œil.
+
+**Ce que ces neuf défauts disent du décor de test.** Aucun n'était un défaut de logique : tous
+tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros
+d'attribut qui coïncident, grille plus étroite que son cadre. Une suite verte sur un décor trop
+propre ne mesure que le décor. Depuis, `scripts/schema-test-pg.sql` porte une ligne dont aucune
+colonne exotique n'est nulle, une table `numeric`, et la galerie une grille qui déborde.
