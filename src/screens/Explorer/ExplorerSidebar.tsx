@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
-import type { Project } from '../../domain/config'
+import type { Environment, Project } from '../../domain/config'
 import type { ColumnInfo, ConnectionState } from '../../domain/engine'
 import { Badge } from '../../ui/Badge/Badge'
 import { ColumnRow } from '../../ui/ColumnRow/ColumnRow'
@@ -10,6 +10,7 @@ import { SidebarSectionTitle } from '../../ui/SidebarSectionTitle/SidebarSection
 import { TreeRow } from '../../ui/TreeRow/TreeRow'
 import { aplatir, type Charge, type Deplies, type Noeud } from './arbre'
 import styles from './ExplorerSidebar.module.css'
+import { RowMenu } from './RowMenu'
 
 type ExplorerSidebarProps = {
   projects: readonly Project[]
@@ -25,6 +26,12 @@ type ExplorerSidebarProps = {
   onSelect: (noeud: Noeud) => void
   onAddDatabase?: () => void
   onRefresh?: () => void
+  /**
+   * Modifier la configuration d'une base depuis son « … » (`08h`) — ouvre la modale de `08g`.
+   *
+   * Absent, l'entrée « Modifier… » est désactivée avec sa raison plutôt que cliquable et inerte.
+   */
+  onEditDatabase?: (project: string, database: string, environment: Environment) => void
   /**
    * La section contextuelle « Colonnes de *table* » des écrans de travail (`A5` → `A9`).
    *
@@ -75,6 +82,7 @@ export function ExplorerSidebar({
   onSelect,
   onAddDatabase,
   onRefresh,
+  onEditDatabase,
   columns,
   width = 'wide',
   modifications,
@@ -166,6 +174,7 @@ export function ExplorerSidebar({
                   </Badge>
                 ) : undefined
               }
+              actions={menuDe(noeud, onEditDatabase)}
               onClick={() => {
                 // Un clic sur une ligne dépliable fait les deux : il sélectionne *et* déplie. Le
                 // mockup ne montre pas de zone de clic distincte pour le chevron, et en inventer
@@ -272,4 +281,65 @@ export function filtrer(noeuds: readonly Noeud[], filtre: string): Noeud[] {
   }
 
   return noeuds.filter((noeud) => garde.has(noeud.id))
+}
+
+/**
+ * Le menu « … » d'une ligne, ou rien (`08h`).
+ *
+ * **Seuls le projet et la base en ont un** : ce sont les deux lignes qui portent une configuration.
+ * Un schéma et une table viennent de la base, il n'y a rien à y modifier — et ce qu'un menu y
+ * offrirait (copier le nom, ouvrir dans un onglet) n'est pas de la configuration.
+ */
+function menuDe(
+  noeud: Noeud,
+  onEditDatabase: ExplorerSidebarProps['onEditDatabase'],
+): ReactNode | undefined {
+  if (noeud.kind === 'project') {
+    return (
+      <RowMenu
+        cible={noeud.label}
+        entrees={[
+          { libelle: 'Renommer…', icone: 'pencil', raison: RAISONS.renommerProjet },
+          { libelle: 'Supprimer…', icone: 'trash', raison: RAISONS.supprimer },
+        ]}
+      />
+    )
+  }
+
+  if (noeud.kind !== 'database') return undefined
+
+  // Les coordonnées viennent du **nœud**, jamais d'une déduction sur son libellé : deux bases
+  // peuvent porter le même nom dans deux projets, et c'est la clé d'identité de `05a`.
+  const { project, label, environment } = noeud
+  const modifiable =
+    onEditDatabase !== undefined && project !== undefined && environment !== undefined
+
+  return (
+    <RowMenu
+      cible={label}
+      entrees={[
+        {
+          libelle: 'Modifier…',
+          icone: 'pencil',
+          onClick: modifiable
+            ? () => onEditDatabase(project as string, label, environment as Environment)
+            : undefined,
+          raison: modifiable ? undefined : RAISONS.modifierIndisponible,
+        },
+        { libelle: 'Supprimer…', icone: 'trash', raison: RAISONS.supprimer },
+      ]}
+    />
+  )
+}
+
+/**
+ * Pourquoi une entrée n'est pas encore là — **dite, jamais devinée**. La règle de `09f`, et la
+ * leçon du défaut n° 36 : un bouton cliquable et inerte se lit comme une panne.
+ */
+const RAISONS = {
+  renommerProjet:
+    'Renommer un projet déplace ses mots de passe enregistrés : cela arrive avec 08i.',
+  supprimer:
+    'Retirer une connexion efface aussi son mot de passe enregistré : cela arrive avec 08j.',
+  modifierIndisponible: 'Cet écran n’est pas relié à la modale de modification.',
 }

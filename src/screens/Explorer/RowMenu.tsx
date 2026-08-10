@@ -1,0 +1,68 @@
+import { Icon } from '../../design/icons/Icon'
+import { Popover } from '../../ui/Popover/Popover'
+import styles from './RowMenu.module.css'
+
+type RowMenuProps = {
+  /** Le libellé de la ligne, pour nommer le bouton — « Actions de analytics ». */
+  cible: string
+  /**
+   * Ce que le menu propose. Une entrée sans `onClick` est **désactivée et dit pourquoi** : c'est la
+   * règle de `09f`, et le défaut n° 36 est ce qui arrive quand on l'oublie — un bouton cliquable et
+   * inerte se lit comme une panne, là où un bouton désactivé qui porte sa raison s'explique.
+   */
+  entrees: readonly {
+    libelle: string
+    icone: 'pencil' | 'trash'
+    onClick?: () => void
+    /** La raison de l'absence, en infobulle. Requise quand `onClick` manque. */
+    raison?: string
+  }[]
+}
+
+/**
+ * Le menu « … » d'une ligne de l'arbre (`08h`).
+ *
+ * **Réutilise `Popover` (`10a`) sans nouveau composant** : celui-ci porte déjà les trois fermetures,
+ * la bascule d'alignement et le rendu du panneau. Un menu d'actions est un panneau de boutons.
+ *
+ * **Le panneau s'ouvre au-dessus d'une sidebar qui défile**, et c'est le défaut n° 35 qui guette :
+ * un `overflow` d'ancêtre le découperait sans qu'aucune assertion de visibilité s'en aperçoive. Le
+ * test de `08h` interroge donc `elementFromPoint`, jamais `toBeVisible()` seul.
+ */
+export function RowMenu({ cible, entrees }: RowMenuProps) {
+  return (
+    <Popover
+      title="Actions"
+      align="end"
+      content={(fermer) => (
+        <div className={styles.root}>
+          {entrees.map((entree) => (
+            <button
+              key={entree.libelle}
+              type="button"
+              className={styles.entree}
+              disabled={entree.onClick === undefined}
+              title={entree.onClick === undefined ? entree.raison : undefined}
+              onClick={() => {
+                fermer()
+                entree.onClick?.()
+              }}
+            >
+              <Icon name={entree.icone} size={12} strokeWidth={1.9} className={styles.icone} />
+              {entree.libelle}
+            </button>
+          ))}
+        </div>
+      )}
+    >
+      {/* **Trois points en texte, et non une icône.** Le handoff n'en dessine aucune : ses 48
+          symboles sont extraits du mockup tels quels (`02`), et en inventer un tracé serait
+          s'écarter de la source de vérité du design pour un glyphe que la typographie rend déjà.
+          `aria-hidden` sur les points : leur sens est dans le nom du bouton, et « ··· » lu à voix
+          haute ne dit rien. */}
+      <button type="button" className={styles.declencheur} aria-label={`Actions de ${cible}`}>
+        <span aria-hidden="true">···</span>
+      </button>
+    </Popover>
+  )
+}

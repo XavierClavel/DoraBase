@@ -32,6 +32,14 @@ type TreeRowProps = {
   metaBadge?: boolean
   /** Contenu libre de fin de ligne, un `Badge` d'environnement par exemple. */
   trailing?: ReactNode
+  /**
+   * Le menu d'actions de la ligne — le « … » de `08h`.
+   *
+   * **Rendu en frère du bouton, pas dedans** : un bouton dans un bouton est invalide, et le clic y
+   * déclencherait les deux. La ligne s'enveloppe donc d'un conteneur, qui n'existe que dans ce cas
+   * — voir le corps du composant pour ce que cette enveloppe coûte à l'arbre ARIA.
+   */
+  actions?: ReactNode
   /** Cible courante : aplat d'accent atténué, filet gauche, encre pleine et graisse 700. */
   selected?: boolean
   /** Encre pleine et graisse 700 sans aplat — le projet actif déplié du mockup. */
@@ -64,6 +72,7 @@ export function TreeRow({
   metaVariant = 'mono',
   metaBadge = false,
   trailing,
+  actions,
   selected,
   strong,
   muted,
@@ -141,7 +150,7 @@ export function TreeRow({
     )
   }
 
-  return (
+  const bouton = (
     <button
       type="button"
       className={className}
@@ -152,5 +161,25 @@ export function TreeRow({
     >
       {contenu}
     </button>
+  )
+
+  if (actions === undefined) return bouton
+
+  // **L'enveloppe n'apparaît que pour les lignes qui ont un menu**, et elle a un coût qu'il vaut
+  // mieux nommer : le `role="treeitem"` que l'écran pose via `rest` reste sur le `<button>`, donc le
+  // « … » est un élément interactif *frère* du nœud d'arbre, à l'intérieur d'une enveloppe
+  // `presentation`. L'alternative — faire porter `treeitem` à l'enveloppe — retirerait le rôle au
+  // seul élément que le clic et le focus désignent, ce que le commentaire d'en-tête écarte depuis
+  // `A4`. Le compromis retenu garde l'arbre navigable au clavier et rend le menu atteignable par
+  // `Tab`, avec son propre nom accessible.
+  return (
+    <span role="presentation" className={styles.wrap}>
+      {bouton}
+      {/* `presentation` aussi : cette boîte ne fait que positionner, et un `<span>` nu ajouterait
+          un nœud générique dans l'arbre annoncé. */}
+      <span role="presentation" className={styles.actions}>
+        {actions}
+      </span>
+    </span>
   )
 }

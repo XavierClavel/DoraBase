@@ -15,6 +15,17 @@
   font-weight: var(--weight-semibold);
 }
 
+/* **La gouttière du « … » (`08h`), réservée sur toutes les lignes de l'arbre** — pas seulement sur
+ * celles qui portent un menu. Ne la réserver que sur les lignes projet et base décalerait leurs
+ * badges par rapport aux comptes de lignes des tables : un désalignement permanent pour éviter un
+ * mouvement passager.
+ *
+ * Posée ici et non dans `TreeRow` : la primitive de `04` sert d'autres écrans, qui n'ont pas de
+ * menu de ligne. `[data-depth]` désigne les deux formes de ligne, bouton et div. */
+.tree [data-depth] {
+  padding-right: 24px;
+}
+
 /* Une ligne de message — chargement, échec, vide. Alignée sur l'indentation de son niveau, pour
  * qu'elle se lise comme un enfant du nœud déplié et non comme un état global de la sidebar. */
 .message {

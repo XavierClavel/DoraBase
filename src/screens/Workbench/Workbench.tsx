@@ -255,6 +255,16 @@ export function Workbench({
                   ? { table: actif.table, schema: actif.schema, compte: attente.length }
                   : undefined
               }
+              // Le « … » d'une ligne de base mène à la même modale que le menu de la pastille
+              // (`08g`) : deux chemins vers un seul écran, et c'est voulu — l'arbre est là où
+              // l'utilisateur regarde ses bases, la pastille là où il regarde son projet.
+              // La sidebar nomme la base ; le projet, lui, connaît son objet `Database`.
+              onEditDatabase={(nomProjet, nomBase) => {
+                const base = projects
+                  .find((projet) => projet.name === nomProjet)
+                  ?.databases.find((declaration) => declaration.name === nomBase)
+                if (base) onEditDatabase?.(nomProjet, base)
+              }}
               selectedId={selection?.id ?? null}
               onSelect={(noeud) => {
                 setSelection(noeud)
