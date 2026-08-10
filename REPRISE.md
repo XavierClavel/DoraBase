@@ -4,8 +4,9 @@ Ce document existe pour qu'une session neuve reprenne le travail sans avoir la c
 précédente. Il complète les specs et les plans, qui disent *quoi* construire ; lui dit **où on
 en est, ce qui a été décidé, et pourquoi**.
 
-Dernière mise à jour : 10 août 2026. Le travail vit sur `quiver-leader`, en avance de six
-commits sur `main` : les six specs de `A5` (`10a`–`10f`).
+Dernière mise à jour : 10 août 2026. Le travail vit sur `quiver-leader`, en avance de treize
+commits sur `main` : les six specs de `A5` (`10a`–`10f`), la création de projet (`08f`), et sept
+correctifs venus du **premier usage réel** de l'application.
 
 ---
 
@@ -23,11 +24,15 @@ pnpm tauri dev
 
 | # | Ce qu'il faut faire | Ce qu'il faut observer | Spec |
 | --- | --- | --- | --- |
-| 1 | `⌘N`, remplir `localhost` / `55432` / `dorabase_test` / `dorabase` / `dorabase-test`, cliquer « Tester la connexion » | Quatre lignes dans la console : `invoke test_connection →` (front), `test_connection ←` puis `→` (Rust), `test_connection ✓` (front) | `08d` |
+| 1 | ~~Tester la connexion~~ | **Fait le 10 août** : le pont répond, la connexion aboutit | `08d` |
 | 2 | Déplier « Proxy / tunnel », cliquer « Parcourir… » | Le sélecteur de fichier natif de macOS s'ouvre, et le chemin choisi arrive dans le champ | `08c` |
-| 3 | Enregistrer une base, quitter l'app, relancer | La base **réapparaît** — l'écriture et la relecture sont testées séparément, le parcours complet non | `09b` |
-| 4 | Cliquer la pastille projet de la barre de titre | Elle s'active et **ne déplace pas la fenêtre** — la barre porte `data-tauri-drag-region` | `09c` |
+| 3 | ~~Enregistrer une base, quitter, relancer~~ | **Fait le 10 août** : le projet et sa base survivent au redémarrage | `09b` |
+| 4 | Cliquer la pastille projet de la barre de titre | Elle s'active et **ne déplace pas la fenêtre**. À revérifier : le glissement est passé en `deep`, donc tout le sous-arbre est glissable sauf les contrôles | `09c` |
 | 5 | Ouvrir une table, sélectionner une ligne, cliquer « Copier la ligne en INSERT », coller ailleurs | Le SQL arrive dans le presse-papiers — `navigator.clipboard` n'est pas exercé par les tests | `10f` |
+
+**Deux vérifications restent, et l'usage réel en a appris plus qu'elles** : neuf défauts en deux
+jours, dont six signalés par l'utilisateur (voir `DEFAUTS.md` § « Ce qu'a trouvé le premier
+usage réel »). La leçon est au § 5, règle 9.
 
 Tant que ce n'est pas fait, **ne présenter aucun de ces quatre points comme vérifié**. Les
 commandes sont enregistrées et compilées ; l'aller-retour ne l'est pas.
@@ -59,7 +64,7 @@ d'ordonnancement prise sur la foi d'un blocage inexistant.
 
 ## 3. Où en est le travail
 
-**Trente specs écrites, toutes implémentées.** `A1` (accueil), `A2`/`A3` (nouvelle connexion et
+**Trente-une specs écrites, toutes implémentées.** `A1` (accueil), `A2`/`A3` (nouvelle connexion et
 son échec), `A4` (explorateur) et `A5` (visualiseur de table) sont assemblés **et atteignables
 depuis l'application**. La couche moteur PostgreSQL est complète, du contrat au tunnel SSH.
 Restent cinq specs d'écran à écrire (`11`–`15`) et six specs de moteur (`16`–`21`).
@@ -72,12 +77,13 @@ Restent cinq specs d'écran à écrire (`11`–`15`) et six specs de moteur (`16
 | `07` | `A1` — accueil | **fait** |
 | `08a`–`08e` | primitives de formulaire, `A2`, panneau tunnel, test de connexion + `A3`, enregistrement | **fait** |
 | `09a`–`09f` | primitives de tableau, câblage des données, `A4` en quatre blocs | **fait** |
+| `08f` | créer un projet — `create_project`, « + Nouveau projet… » | **fait** |
 | `10a`–`10f` | primitives de grille, coquille de travail, grille, filtres et tri, toolbar, panneau de ligne | **fait** |
 | `11`–`15` | `A6` → `A10` | à écrire |
 | `16`–`21` | moteurs additionnels (MySQL, SQLite, MongoDB, Redis, Snowflake, BigQuery) | à écrire |
 
-**Comptes de tests** — 218 Rust (dont 57 contre PostgreSQL 17.6 réel et un vrai bastion SSH ;
-161 sans décor), 463 Vitest, 99 Playwright.
+**Comptes de tests** — 226 Rust (dont ceux sur PostgreSQL 17.6 réel et un vrai bastion SSH),
+479 Vitest, 103 Playwright.
 
 **La boucle du produit est complète depuis `09b`** : saisir (`08e`), persister, relire, afficher.
 `load_config` existait depuis `05b` et n'était appelée par personne.
@@ -164,6 +170,20 @@ de `03` ne déplacerait rien.
 cinq cents lignes déjà lues serait immédiat et faux : l'utilisateur croirait voir toutes les
 commandes payées de la table. Les tests portent donc sur la **requête envoyée**.
 
+**Un projet se crée depuis `A2`, en deux commandes et un geste** (`08f`). Le `Select` porte
+« + Nouveau projet… », qui révèle un champ de nom ; l'écran enchaîne `create_project` puis
+`save_database`. Si la seconde échoue, le projet reste — le défaire supprimerait un projet à la
+suite d'un échec de connexion, et détruirait un homonyme en cas de course. Son environnement actif
+vient de la variante déclarée, sinon l'arbre serait vide juste après l'enregistrement.
+
+**`esc` dans un champ rend le focus, il ne ferme pas la modale.** Une frappe destinée à sortir d'un
+champ jetait tout le formulaire. Un second `esc` ferme ; depuis un bouton, la fermeture est
+immédiate — il n'y a pas de saisie à abandonner.
+
+**Aucune correction automatique dans les champs.** macOS transformait `localhost` en `Localhost`, et
+la connexion échouait pour une majuscule que personne n'avait tapée. Les quatre attributs vivent
+dans `Field` et sont réemployés par les saisies qui n'y passent pas.
+
 **Convention Rust à 4 espaces**, pas de `rustfmt.toml` alignant Rust sur le JS du projet.
 
 **Baloo 2 restreinte au latin, Nunito et JetBrains Mono complètes.** Le critère n'est pas « ce
@@ -210,13 +230,17 @@ sont **répétées**, et c'est ce qui en fait des règles plutôt que des anecdo
    pendant que le test « un tunnel s'ouvre » passait. Quand la contrainte porte sur le chemin, il
    faut mesurer le chemin — un coût, un aller-retour réel.
 
-7. **Un décor de test aux colonnes vides cache les défauts de lecture.** `orders` avait
-   `metadata`, `ref`, `paid` et `blob` nuls partout : un type mal lu y était **indiscernable**
-   d'une colonne vide. Résultat, du 6 au 10 août 2026, `06d` rendait `Null` pour tout type non lu
-   nativement — horodatage, JSON, UUID, énumération — et `A5` aurait affiché `NULL` dans chaque
-   colonne de date de chaque table. Ce qui l'a attrapé n'est pas un test de lecture mais le test
-   d'`INSERT` de `10f`, qui **exécute** son SQL : la base a refusé un `NULL` dans une colonne
-   `not null`. Le décor porte désormais une ligne dont aucune colonne exotique n'est nulle.
+7. **Un décor de test trop régulier ne mesure que le décor.** C'est la leçon des neuf défauts du
+   premier usage réel (`DEFAUTS.md` § du 10 août 2026) : aucun n'était une erreur de logique, tous
+   tenaient à une régularité du décor — colonnes exotiques nulles **partout**, tables toutes
+   analysées, numéros d'attribut qui coïncident par hasard entre deux tables, grille de
+   démonstration plus étroite que son cadre. Sur un tel décor, une suite verte ne prouve rien de ce
+   qu'elle prétend : `06d` a rendu `NULL` pour tout horodatage pendant quatre jours sans qu'un test
+   bronche, et deux versions d'un test de chevauchement ont été vertes sans le correctif.
+
+   Avant d'écrire un test, demander **ce que le décor rend indiscernable** : une colonne vide et un
+   type mal lu, une table vide et une table jamais analysée, un chevauchement et une découpe par
+   `overflow`. Puis rendre les deux distinguables dans le décor.
 
 8. **Les outils qui vérifient doivent eux-mêmes pouvoir échouer.** `cmd | tail` fait porter le
    statut de sortie par `tail`, et « TOUT VERT » s'est affiché avec trois vérifications rouges.
@@ -340,22 +364,32 @@ cd src-tauri && cargo test                       # 161 tests, sans décor
 
 ## 11. La suite
 
-**`11` — `A6`, l'édition inline.** C'est le prochain écran, et il apporte trois choses
-qu'aucune spec n'a livrées : la **cellule en saisie** (boîte flottante débordant de la trame),
-les **modifications en attente** avec leur diff, et la **transaction** qui les applique — donc
-la première écriture du projet dans une base de l'utilisateur.
+**`11` — `A6`, l'édition inline.** C'est le prochain écran, et il porte le premier **écrit** du
+projet dans une base de l'utilisateur — jusqu'ici tout est en lecture. Trois choses qu'aucune spec
+n'a livrées : la cellule en saisie (boîte flottante débordant de la trame), les modifications en
+attente avec leur diff, et la transaction qui les applique.
 
-`A6` est probablement trop large pour une seule spec : bandeau d'avertissement, cellule éditée,
-panneau des modifications en attente, SQL prévisualisé, garde-fous de production. **Proposer le
-découpage avant d'écrire**, comme `AGENTS.md` le demande et comme `05`, `06`, `08`, `09` et `10`
-l'ont fait.
+`A6` est trop large pour une seule spec. **Proposer le découpage avant d'écrire**, comme
+`AGENTS.md` le demande et comme `05`, `06`, `08`, `09` et `10` l'ont fait. Une piste, à confirmer :
 
-Deux points à trancher au passage :
+| Spec | Scope |
+| --- | --- |
+| `11a` | La cellule éditable : boîte flottante, caret, `↩` / `esc`, infobulle de raccourcis |
+| `11b` | Les modifications en attente : modèle, bandeau 34 px, teintes de ligne et de cellule |
+| `11c` | Le panneau droit « Modifications en attente » : une carte par changement, diff barré / vert |
+| `11d` | L'écriture : `BEGIN` / `UPDATE` / `COMMIT`, SQL prévisualisé, garde-fous de production |
 
-- **Le rappel `⌘E` de la barre d'état**, retiré par `10c` faute d'écran qui l'honore : il revient
-  avec `A6`, et c'est le moment de l'y remettre.
+`11d` est celle qui mérite le plus d'attention : c'est la première écriture, et les garde-fous de
+`A10` (« refuser DELETE/UPDATE sans WHERE », « patch inverse 24 h ») en dépendent.
+
+Trois points à trancher au passage :
+
+- **Le rappel `⌘E` de la barre d'état**, retiré par `10c` faute d'écran qui l'honore : `A6` le
+  remet, et c'est le moment.
+- **Aucun écran ne permet de modifier une connexion enregistrée.** Relevé le 10 août 2026 : un port
+  erroné oblige à déclarer une seconde base. Ce n'est pas `A6`, mais c'est un manque réel — le
+  handoff ne maquette ni édition ni suppression de connexion.
 - **`SplitPane` horizontal** pour `12` (console SQL) : géométrie de poignée différente (pastille
   26×3 au lieu de 3×26). Son option `sized`, ajoutée par `10f`, y servira aussi.
 
-Et, avant tout : **les cinq vérifications du § 0**. Elles ne coûtent que trois minutes, et cinq
-affirmations du projet en dépendent.
+Et, avant tout : **les vérifications 2, 4 et 5 du § 0**.
