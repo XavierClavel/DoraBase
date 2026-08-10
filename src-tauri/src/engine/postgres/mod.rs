@@ -1202,27 +1202,40 @@ mod tests_db {
         );
     }
 
+    /// **Ce test ne vérifiait que la direction et la table cible, et c'est ce qui a laissé passer
+    /// le défaut du 10 août 2026** : les colonnes d'une relation entrante étaient cherchées dans
+    /// la mauvaise table. Il rendait `users.email` là où il fallait `orders.user_id`, et le test
+    /// restait vert — les noms n'étaient pas regardés.
+    ///
+    /// Sur une base réelle, la même erreur produisait un `array_agg` à `NULL` dès que le numéro
+    /// d'attribut n'existait pas dans l'autre table, et **empêchait d'ouvrir la table**.
+    ///
+    /// La version qui mord nomme les colonnes des deux côtés, dans les deux sens.
     #[tokio::test]
-    async fn les_relations_sont_rendues_dans_les_deux_sens() {
+    async fn les_relations_nomment_les_bonnes_colonnes_dans_les_deux_sens() {
         let sortantes = detail_de_test("orders").await;
-        assert!(
-            sortantes.relations.iter().any(|r| {
-                r.direction == crate::engine::RelationDirection::Outgoing
-                    && r.target_table == "users"
-            }),
-            "{:?}",
-            sortantes.relations
-        );
+        let sortante = sortantes
+            .relations
+            .iter()
+            .find(|r| r.direction == crate::engine::RelationDirection::Outgoing)
+            .unwrap_or_else(|| panic!("orders référence users : {:?}", sortantes.relations));
+        assert_eq!(sortante.target_table, "users");
+        // Vue depuis `orders`, la relation part de **sa** colonne `user_id` vers `users.id`.
+        assert_eq!(sortante.columns, vec!["user_id".to_owned()]);
+        assert_eq!(sortante.target_columns, vec!["id".to_owned()]);
 
         let entrantes = detail_de_test("users").await;
-        assert!(
-            entrantes.relations.iter().any(|r| {
-                r.direction == crate::engine::RelationDirection::Incoming
-                    && r.target_table == "orders"
-            }),
-            "{:?}",
-            entrantes.relations
-        );
+        let entrante = entrantes
+            .relations
+            .iter()
+            .find(|r| r.direction == crate::engine::RelationDirection::Incoming)
+            .unwrap_or_else(|| panic!("orders référence users : {:?}", entrantes.relations));
+        assert_eq!(entrante.target_table, "orders");
+        // **Le sens s'inverse, pas les tables** : vue depuis `users`, la relation part de sa
+        // colonne `id` et pointe `orders.user_id`. L'ancienne requête rendait `users.email` ici,
+        // parce qu'elle cherchait l'attribut n°2 dans `users` au lieu d'`orders`.
+        assert_eq!(entrante.columns, vec!["id".to_owned()]);
+        assert_eq!(entrante.target_columns, vec!["user_id".to_owned()]);
     }
 
     /// **Le critère le plus fort de la spec** : un DDL qui ne se réexécute pas est faux, et

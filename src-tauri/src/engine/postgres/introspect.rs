@@ -188,19 +188,41 @@ select tgname as name, pg_get_triggerdef(oid) as definition
 /// Les clés étrangères dans les **deux sens** : sortante pour suivre une référence, entrante
 /// pour savoir qui référence cette table. `A4` montre un bloc « Relations », `A5` un aperçu
 /// de « ligne liée ».
+/// Les clés étrangères d'une table, **dans les deux sens**.
+///
+/// # Le défaut du 10 août 2026, et pourquoi il était invisible
+///
+/// La version précédente joignait les colonnes sur `con.conrelid` dans les deux sens. Pour une
+/// relation **entrante**, elle prenait donc `confkey` — des numéros d'attribut de *notre* table —
+/// et les cherchait dans la table *étrangère*. Deux conséquences :
+///
+/// 1. quand les numéros existaient de part et d'autre, elle rendait des noms de colonnes
+///    **faux** — et le test passait, parce que `users.id` et `orders.id` sont tous deux en
+///    position 1 ;
+/// 2. quand ils n'existaient pas, `array_agg` rendait `NULL`, et la lecture échouait sur
+///    « error deserializing column 5 » — ce qui **empêchait d'ouvrir la table**. Constaté sur une
+///    base réelle : une contrainte pointant la colonne 18 d'une table qui en compte 16.
+///
+/// La version correcte tient en une phrase : les colonnes de **notre** table se cherchent dans
+/// notre table, celles de la cible dans la cible. `ct` étant déjà la table cible, la jointure
+/// s'écrit directement — pas besoin d'un second `case`.
 const REQUETE_RELATIONS: &str = "
 select con.conname                                        as constraint_name,
-       (con.conrelid = $1::text::regclass)                      as outgoing,
+       (con.conrelid = $1::text::regclass)                as outgoing,
        cn.nspname                                         as target_schema,
        ct.relname                                         as target_table,
        (select array_agg(a.attname order by k.ord)
-          from unnest(case when con.conrelid = $1::text::regclass then con.conkey else con.confkey end)
+          from unnest(case when con.conrelid = $1::text::regclass
+                           then con.conkey else con.confkey end)
                with ordinality as k(attnum, ord)
-          join pg_attribute a on a.attrelid = con.conrelid and a.attnum = k.attnum) as columns,
+          join pg_attribute a on a.attrelid = $1::text::regclass
+                             and a.attnum = k.attnum) as columns,
        (select array_agg(a.attname order by k.ord)
-          from unnest(case when con.conrelid = $1::text::regclass then con.confkey else con.conkey end)
+          from unnest(case when con.conrelid = $1::text::regclass
+                           then con.confkey else con.conkey end)
                with ordinality as k(attnum, ord)
-          join pg_attribute a on a.attrelid = con.confrelid and a.attnum = k.attnum) as target_columns
+          join pg_attribute a on a.attrelid = ct.oid
+                             and a.attnum = k.attnum) as target_columns
   from pg_constraint con
   join pg_class ct on ct.oid = case when con.conrelid = $1::text::regclass
                                     then con.confrelid else con.conrelid end
@@ -288,8 +310,8 @@ pub async fn table_detail(
         .await
         .map_err(|e| traduire(&e))?
         .iter()
-        .map(relation_depuis)
-        .collect::<Result<Vec<_>, _>>()?;
+        .filter_map(relation_depuis)
+        .collect::<Vec<_>>();
 
     let ddl = assembler_ddl(schema, table, &colonnes, &contraintes);
 
@@ -330,19 +352,41 @@ fn colonne_depuis(ligne: &tokio_postgres::Row) -> Result<ColumnInfo, EngineError
     })
 }
 
-fn relation_depuis(ligne: &tokio_postgres::Row) -> Result<Relation, EngineError> {
-    let sortante: bool = ligne.try_get("outgoing").map_err(|e| traduire(&e))?;
-    Ok(Relation {
-        constraint_name: ligne.try_get("constraint_name").map_err(|e| traduire(&e))?,
+/// Une relation, **ou rien** quand elle est illisible.
+///
+/// `Option` et non `Result` : une relation dont on ne sait pas nommer les colonnes doit être
+/// **omise**, pas faire échouer tout `table_detail`. C'est la leçon du défaut du 10 août 2026 —
+/// un `array_agg` à `NULL` empêchait d'ouvrir la table, alors que le pire qu'il pouvait coûter
+/// était une ligne manquante dans le bloc « Relations ».
+///
+/// L'omission est **journalisée** : une relation qui disparaît sans un mot serait un mensonge par
+/// omission, et c'est précisément ce que le bloc « Relations » ne doit pas faire.
+fn relation_depuis(ligne: &tokio_postgres::Row) -> Option<Relation> {
+    let sortante: bool = ligne.try_get("outgoing").ok()?;
+    let nom: String = ligne.try_get("constraint_name").ok()?;
+
+    let colonnes: Option<Vec<String>> = ligne.try_get("columns").ok().flatten();
+    let colonnes_cibles: Option<Vec<String>> = ligne.try_get("target_columns").ok().flatten();
+
+    let (Some(columns), Some(target_columns)) = (colonnes, colonnes_cibles) else {
+        log::warn!(
+            "relation « {nom} » omise : le catalogue n'a pas rendu ses colonnes — la table reste \
+             lisible, son bloc « Relations » est incomplet"
+        );
+        return None;
+    };
+
+    Some(Relation {
+        constraint_name: nom,
         direction: if sortante {
             RelationDirection::Outgoing
         } else {
             RelationDirection::Incoming
         },
-        columns: ligne.try_get("columns").map_err(|e| traduire(&e))?,
-        target_schema: ligne.try_get("target_schema").map_err(|e| traduire(&e))?,
-        target_table: ligne.try_get("target_table").map_err(|e| traduire(&e))?,
-        target_columns: ligne.try_get("target_columns").map_err(|e| traduire(&e))?,
+        columns,
+        target_schema: ligne.try_get("target_schema").ok()?,
+        target_table: ligne.try_get("target_table").ok()?,
+        target_columns,
     })
 }
 

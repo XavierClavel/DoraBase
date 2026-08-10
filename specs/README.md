@@ -250,6 +250,22 @@ des trois. `SplitPane` reçoit une option `sized`, et un test e2e verrouille le 
 l'objet en `A4`, ligne sélectionnée en `A5`. Le mockup n'en montre qu'un, et la barre d'état court
 **sous** les trois colonnes — elle vit donc au niveau de l'écran, pas du centre.
 
+**Les colonnes d'une clé étrangère entrante étaient cherchées dans la mauvaise table** (trouvé le
+10 août 2026, sur une base réelle). `REQUETE_RELATIONS` joignait `pg_attribute` sur `con.conrelid`
+dans les deux sens : pour une relation **entrante**, elle prenait donc les numéros d'attribut de
+*notre* table et les cherchait dans la table *étrangère*. Deux conséquences, dont la seconde
+bloquait le produit :
+
+- quand les numéros existaient de part et d'autre, elle rendait des noms **faux** — et le test
+  restait vert, parce qu'il ne vérifiait que la direction et la table cible ;
+- quand ils n'existaient pas, `array_agg` rendait `NULL`, `try_get::<Vec<String>>` échouait, et
+  **toute la table devenait impossible à ouvrir**. Le cas réel : une contrainte pointant la
+  colonne 18 d'une table qui en compte 16.
+
+Corrigé, et `relation_depuis` rend désormais `Option` : une relation illisible est **omise avec un
+journal** plutôt que de faire échouer `table_detail`. Le pire qu'elle puisse coûter est une ligne
+manquante dans le bloc « Relations » ; empêcher d'ouvrir la table était hors de proportion.
+
 **Une relation jamais analysée n'a pas zéro ligne** (trouvé à l'usage le 10 août 2026). PostgreSQL
 rend `reltuples = -1` pour une table fraîchement créée, une vue, ou une base restaurée sans
 `ANALYZE`. `06c` le traduisait en `0` — ce qui évitait bien le « −1 lignes » dans l'arbre, mais
