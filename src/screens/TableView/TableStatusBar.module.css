@@ -39,3 +39,15 @@
   align-items: center;
   gap: var(--space-2);
 }
+
+/* La barre du mode édition : l'ambre du mockup, fond #FDF3E0 et encre --warn-ink. Le filet du haut
+   suit, sinon la barre paraîtrait posée sur la trame plutôt que rattachée à l'écran. */
+.edition {
+  background: var(--warn-bg-2);
+  border-top-color: color-mix(in oklab, var(--gold) 50%, transparent);
+  color: var(--warn-ink);
+}
+
+.attente {
+  font-weight: var(--weight-bold);
+}

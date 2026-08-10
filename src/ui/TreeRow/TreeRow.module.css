@@ -92,3 +92,21 @@
   font: var(--weight-bold) var(--text-caps-sm) var(--font-ui);
   color: var(--ink-3);
 }
+
+/* Le compte de modifications de A6 : pastille 16 × 14, fond accent, texte blanc 800 9.5px.
+   Relevé sur le mockup, où elle remplace le compte de lignes de la table éditée. */
+.metaBadge {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 14px;
+  border-radius: var(--radius-badge);
+  background: var(--accent);
+  color: var(--ink-on-accent);
+  font-family: var(--font-ui);
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-black);
+  letter-spacing: 0;
+}

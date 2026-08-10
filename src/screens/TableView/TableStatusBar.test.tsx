@@ -22,7 +22,7 @@ function monter(props: Partial<Parameters<typeof TableStatusBar>[0]> = {}) {
       <TableStatusBar fenetre={fenetre()} loading={false} error={null} {...props} />
     </>,
   )
-  return screen.getByRole('status')
+  return screen.getByRole('status', { name: 'État de la table' })
 }
 
 describe('barre d’état', () => {
@@ -40,11 +40,29 @@ describe('barre d’état', () => {
     expect(barre).toHaveTextContent('limit 100')
   })
 
-  it('« lecture seule » est affiché, « ⌘E pour éditer » ne l’est pas', () => {
+  it('« lecture seule » annonce ⌘E, que `11b` honore désormais', () => {
     const barre = monter()
     expect(barre).toHaveTextContent('lecture seule')
-    // Un raccourci affiché qui ne répond pas est pire qu'un raccourci absent — `09e`.
-    expect(barre).not.toHaveTextContent('⌘E')
+    // `10c` avait retiré ce rappel faute d'écran qui y réponde — un raccourci affiché qui ne répond
+    // pas est pire qu'un raccourci absent (`09e`). `11b` livre la bascule, donc il revient.
+    expect(barre).toHaveTextContent('⌘E pour éditer')
+  })
+
+  it('en édition sans modification, elle le dit sans annoncer le compte', () => {
+    const barre = monter({ editing: true })
+    expect(barre).toHaveTextContent('édition — aucune modification')
+    // La lecture reste annoncée : rien n'attend, donc rien ne la remplace.
+    expect(barre).toHaveTextContent('1 ligne')
+  })
+
+  it('avec des modifications, elle dit ce qui attend et que rien n’est parti', () => {
+    const barre = monter({ pendingChanges: 3, editing: true })
+    expect(barre).toHaveTextContent('3 modifications en attente')
+    // **La promesse qui compte** : elle restera à « 0 envoyée » jusqu'à `11d`, qui écrit.
+    expect(barre).toHaveTextContent('0 envoyée')
+    expect(barre).toHaveTextContent('transaction non ouverte')
+    // Le compte de lignes lu n'est plus l'information qui compte.
+    expect(barre).not.toHaveTextContent('1 ligne')
   })
 
   it('un échec porte le verdict, pas le message complet', () => {

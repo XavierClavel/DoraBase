@@ -19,6 +19,7 @@ import { FilterCell } from './FilterCell'
 import {
   annulerLaDerniere,
   type EnAttente,
+  lignesModifiees,
   modificationDe,
   raisonDuRefus,
   retenir,
@@ -68,8 +69,16 @@ type TableViewProps = {
    * depuis `10c`.
    */
   edition?: boolean
-  /** Publie les modifications en attente vers l'écran, qui en porte les marques (`11b`). */
-  onModificationsChange?: (attente: EnAttente) => void
+  /**
+   * Les modifications en attente, **détenues par l'écran** (`11b`).
+   *
+   * Contrôlées et non locales : le compte s'affiche à quatre endroits hors de cette vue — bandeau,
+   * arbre, pastille, barre d'état — et « Tout annuler » vit dans le bandeau. Une copie ici
+   * divergerait, et l'a fait : vider depuis le bandeau était aussitôt écrasé par la vue qui
+   * repoussait son propre état. Un seul état, plusieurs lecteurs.
+   */
+  attente?: EnAttente
+  onAttenteChange?: (attente: EnAttente) => void
 }
 
 /** Une ligne de la fenêtre, avec son rang — la gouttière `#` du mockup. */
@@ -102,7 +111,8 @@ export function TableView({
   rang = null,
   onRangChange,
   edition = false,
-  onModificationsChange,
+  attente = [],
+  onAttenteChange,
 }: TableViewProps) {
   const [filters, setFilters] = useState<readonly Filter[]>([])
   const [sort, setSort] = useState<readonly SortKey[]>([])
@@ -113,8 +123,6 @@ export function TableView({
   // Les colonnes **masquées**, et non les visibles : une table dont on n'a rien masqué a un
   // ensemble vide, quel que soit le nombre de colonnes qu'elle finira par avoir.
   const [masquees, setMasquees] = useState<ReadonlySet<string>>(new Set())
-  // Les modifications en attente (`11a`). **Rien n'est envoyé** : c'est le sens de « en attente ».
-  const [attente, setAttente] = useState<EnAttente>([])
   const [enEdition, setEnEdition] = useState<EnEdition | null>(null)
   const hauteur = useHauteurDisponible()
   // La sélection est **pilotée par l'écran** : le panneau de ligne et ses flèches vivent au-dessus
@@ -162,10 +170,6 @@ export function TableView({
     [fenetre],
   )
 
-  useEffect(() => {
-    onModificationsChange?.(attente)
-  }, [attente, onModificationsChange])
-
   /**
    * `⌘Z` annule la **dernière modification retenue**.
    *
@@ -181,11 +185,11 @@ export function TableView({
     function auClavier(evenement: KeyboardEvent) {
       if (!evenement.metaKey || evenement.key !== 'z' || enEdition !== null) return
       evenement.preventDefault()
-      setAttente(annulerLaDerniere)
+      onAttenteChange?.(annulerLaDerniere(attente))
     }
     window.addEventListener('keydown', auClavier)
     return () => window.removeEventListener('keydown', auClavier)
-  }, [edition, enEdition])
+  }, [edition, enEdition, attente, onAttenteChange])
 
   // Quitter le mode édition ferme la saisie en cours mais **garde** les modifications retenues :
   // les perdre sur une frappe serait le défaut qu'`esc` fermant une modale pleine a déjà produit.
@@ -301,8 +305,8 @@ export function TableView({
                     valeur={valeur}
                     retenue={modifiee?.apres}
                     onValider={(saisie) => {
-                      setAttente((precedent) =>
-                        retenir(precedent, {
+                      onAttenteChange?.(
+                        retenir(attente, {
                           cle,
                           rang: ligne.rang,
                           column: colonne.name,
@@ -365,6 +369,7 @@ export function TableView({
       enEdition,
       edition,
       cleDe,
+      onAttenteChange,
     ],
   )
 
@@ -398,6 +403,24 @@ export function TableView({
             columns={colonnes}
             rows={lignes}
             rowId={(ligne) => String(ligne.rang)}
+            {...(edition
+              ? {
+                  // Les teintes de `11b` : une ligne qui porte une modification, une cellule qui en
+                  // est une. Elles lisent le **même** modèle que le compte du bandeau.
+                  rowTint: (ligne: Ligne) => {
+                    const cle = cleDe(ligne)
+                    return cle !== null && lignesModifiees(attente).has(cle)
+                      ? 'modified'
+                      : undefined
+                  },
+                  cellTint: (ligne: Ligne, column: string) => {
+                    const cle = cleDe(ligne)
+                    return cle !== null && modificationDe(attente, cle, column) !== undefined
+                      ? 'modified'
+                      : undefined
+                  },
+                }
+              : {})}
             viewportHeight={hauteur.valeur}
             filterRow
             selectedId={choisie}

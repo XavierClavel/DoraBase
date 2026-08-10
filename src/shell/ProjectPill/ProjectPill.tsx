@@ -22,6 +22,17 @@ type ProjectPillProps = {
   connection?: ConnectionState
   /** Vrai quand la base ouverte est en lecture seule. */
   readOnly?: boolean
+  /**
+   * Le nombre de modifications en attente (`11b`). Au-dessus de zéro, la pastille porte le badge
+   * « ÉDITION » et son point passe à l'ambre.
+   *
+   * **Le point change de sens, et c'est le mockup qui le dit** : `A5` le montre vert (base
+   * connectée), `A6` ambre — la même pastille, la même base. Il décrit donc l'état de l'**écran**
+   * quand il y a quelque chose à signaler, et celui de la connexion sinon. Deux informations sur un
+   * pixel de couleur n'est pas idéal ; le badge lève l'ambiguïté sans dépendre de la couleur, ce que
+   * `09d` exige déjà de ses quatre états.
+   */
+  pendingChanges?: number
   onOpenProjects?: () => void
 } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'className' | 'children'>
 
@@ -36,6 +47,7 @@ export function ProjectPill({
   breadcrumb,
   connection,
   readOnly = false,
+  pendingChanges = 0,
   onOpenProjects,
   ...rest
 }: ProjectPillProps) {
@@ -45,14 +57,25 @@ export function ProjectPill({
     // `onClick`. Sans cette transmission, le clone était silencieusement perdu — le menu de `08g`
     // ne s'ouvrait pas, et rien ne le signalait.
     <button type="button" className={styles.root} onClick={onOpenProjects} {...rest}>
-      {connection && (
-        <span className={styles.dot} data-state={connection.kind} aria-hidden="true" />
+      {(connection || pendingChanges > 0) && (
+        <span
+          className={styles.dot}
+          data-state={pendingChanges > 0 ? 'pending' : connection?.kind}
+          aria-hidden="true"
+        />
       )}
       <Icon name="bag" size={12} strokeWidth={2} className={styles.bag} />
       <span className={styles.name}>{projectName}</span>
       <Icon name="chevd" size={11} strokeWidth={2.4} className={styles.chevron} />
       {breadcrumb && <span className={styles.breadcrumb}>{breadcrumb}</span>}
-      {readOnly && (
+      {pendingChanges > 0 && (
+        <Badge tone="warn" size="xs" icon={<Icon name="pencil" size={10} strokeWidth={2.6} />}>
+          Édition
+        </Badge>
+      )}
+      {/* **« Lecture seule » disparaît en édition** : les deux badges côte à côte se
+          contrediraient. Le mockup de `A6` met « ÉDITION » là où `A5` met « LECTURE SEULE ». */}
+      {readOnly && pendingChanges === 0 && (
         <Badge tone="muted" size="xs" icon={<Icon name="lock" size={10} strokeWidth={2.4} />}>
           Lecture seule
         </Badge>
@@ -67,7 +90,16 @@ export function ProjectPill({
           avant l'état. En tête, il donnait « connectée · PostgreSQL 17.6Atelier Nord ».
           L'espace est explicite, faute de quoi les nœuds de texte se collent — le piège de
           `08a` et `09a`. */}
-      {connection && <span className={styles.srOnly}>{` ${libelleDeConnexion(connection)}`}</span>}
+      {connection && pendingChanges === 0 && (
+        <span className={styles.srOnly}>{` ${libelleDeConnexion(connection)}`}</span>
+      )}
+      {/* En édition, l'état annoncé est celui qui compte : ce qui attend d'être écrit. L'espace est
+          explicite — le piège de `08a` et `09a`. */}
+      {pendingChanges > 0 && (
+        <span className={styles.srOnly}>
+          {` ${pendingChanges} modification${pendingChanges > 1 ? 's' : ''} en attente`}
+        </span>
+      )}
     </button>
   )
 }

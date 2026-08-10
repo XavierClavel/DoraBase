@@ -10,6 +10,9 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()
   await page.waitForSelector('[role=grid]')
   await page.evaluate(() => document.fonts.ready)
+  // **L'édition s'ouvre par `⌘E`**, depuis que `11b` a livré la bascule : la démo ne la force plus
+  // par un drapeau, et un décor déjà en édition n'aurait jamais montré que le raccourci marche.
+  await page.keyboard.press('Meta+e')
   await page.getByRole('button', { name: 'Modifier status' }).nth(2).click()
   await page.waitForSelector('[data-saisie]')
 })

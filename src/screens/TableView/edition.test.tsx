@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { ColumnInfo, DatabaseKey, RowQuery, Value } from '../../domain/engine'
@@ -45,18 +46,34 @@ function monter(options: { columns?: ColumnInfo[]; edition?: boolean; lignes?: V
     durationMs: 1,
   }))
   const attentes: EnAttente[] = []
-  render(
-    <>
-      <Sprite />
+  // **Créée une fois**, hors du composant : `useLignes` relance sa lecture quand la passerelle
+  // change d'identité, et un objet littéral en prop en crée une neuve à chaque rendu — donc une
+  // lecture par frappe.
+  const passerelle = { readRows } as unknown as PasserelleLignes
+
+  function Pilotee() {
+    const [attente, setAttente] = useState<EnAttente>([])
+    return (
       <TableView
         cle={CLE}
         schema="public"
         table="orders"
         columns={options.columns ?? COLONNES}
         edition={options.edition ?? true}
-        onModificationsChange={(a) => attentes.push(a)}
-        passerelle={{ readRows } as unknown as PasserelleLignes}
+        attente={attente}
+        onAttenteChange={(a) => {
+          attentes.push(a)
+          setAttente(a)
+        }}
+        passerelle={passerelle}
       />
+    )
+  }
+
+  render(
+    <>
+      <Sprite />
+      <Pilotee />
     </>,
   )
   return { readRows, attentes, derniere: () => attentes[attentes.length - 1] ?? [] }

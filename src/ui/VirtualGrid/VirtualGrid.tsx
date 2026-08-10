@@ -55,6 +55,16 @@ type VirtualGridProps<Row> = {
   filterRow?: boolean
   selectedId?: string | null
   onSelect?: (row: Row, index: number) => void
+  /**
+   * Teinte une **ligne** entière — celles qui portent une modification en attente (`11b`).
+   *
+   * Symétrique du `tint` de colonne : la grille connaît trois raisons de teinter, `filtered`,
+   * `sorted` et `modified`, toutes venues du handoff. Passer une classe CSS à la place ferait fuir
+   * l'habillage hors du module qui le porte.
+   */
+  rowTint?: (row: Row, index: number) => 'modified' | undefined
+  /** Teinte une **cellule**, et lui ajoute le coin ambre du mockup (`11b`). */
+  cellTint?: (row: Row, column: string) => 'modified' | undefined
   /** Rendu à la place des lignes quand `rows` est vide. */
   empty?: ReactNode
 }
@@ -83,6 +93,8 @@ export function VirtualGrid<Row>({
   filterRow = false,
   selectedId = null,
   onSelect,
+  rowTint,
+  cellTint,
   empty,
 }: VirtualGridProps<Row>) {
   const [scrollTop, setScrollTop] = useState(0)
@@ -202,7 +214,15 @@ export function VirtualGrid<Row>({
                   tabIndex={-1}
                   aria-rowindex={index + 1 + lignesDEnTete}
                   aria-selected={onSelect ? selectionnee : undefined}
-                  className={cx(styles.row, styles.tr, selectionnee && styles.selected)}
+                  className={cx(
+                    styles.row,
+                    styles.tr,
+                    // La teinte de modification **avant** la sélection dans l'ordre des classes :
+                    // une ligne à la fois modifiée et sélectionnée doit se lire comme sélectionnée,
+                    // c'est l'état que l'utilisateur vient de produire.
+                    rowTint?.(row, index) === 'modified' && styles.rowModified,
+                    selectionnee && styles.selected,
+                  )}
                   style={{
                     gridTemplateColumns: gabarit,
                     height: rowHeight,
@@ -219,6 +239,7 @@ export function VirtualGrid<Row>({
                         colonne.numeric && styles.numeric,
                         colonne.tint === 'filtered' && styles.filtered,
                         colonne.tint === 'sorted' && styles.sorted,
+                        cellTint?.(row, colonne.key) === 'modified' && styles.cellModified,
                       )}
                     >
                       {colonne.cell(row, index)}

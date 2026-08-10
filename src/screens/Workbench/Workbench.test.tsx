@@ -284,3 +284,140 @@ describe('Workbench', () => {
     expect(screen.getByRole('treeitem', { name: /shop/ })).toBeInTheDocument()
   })
 })
+
+// --- Le mode édition (11b) ---
+
+describe('mode édition', () => {
+  /** Ouvre l'arbre, une table, et bascule en édition. */
+  async function ouvrirEtEditer(utilisateur: ReturnType<typeof userEvent.setup>) {
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
+    await screen.findByRole('grid')
+    await utilisateur.keyboard('{Meta>}e{/Meta}')
+  }
+
+  /** Modifie la colonne `created_at` de la première ligne. */
+  async function modifier(
+    utilisateur: ReturnType<typeof userEvent.setup>,
+    valeur = '2026-08-01 08:00:00',
+  ) {
+    const cellules = await screen.findAllByRole('button', { name: 'Modifier created_at' })
+    await utilisateur.click(cellules[0] as HTMLElement)
+    const champ = screen.getByLabelText('Nouvelle valeur')
+    await utilisateur.clear(champ)
+    await utilisateur.type(champ, `${valeur}{Enter}`)
+  }
+
+  it('⌘E bascule, et le rappel de la barre d’état suit', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
+    await screen.findByRole('grid')
+
+    // `10c` avait retiré ce rappel faute d'écran qui y réponde ; il répond maintenant.
+    expect(screen.getByRole('status', { name: 'État de la table' })).toHaveTextContent(
+      '⌘E pour éditer',
+    )
+    expect(screen.queryByRole('button', { name: /Modifier/ })).not.toBeInTheDocument()
+
+    await utilisateur.keyboard('{Meta>}e{/Meta}')
+    expect(screen.getByRole('status', { name: 'État de la table' })).toHaveTextContent('édition')
+    expect(screen.getAllByRole('button', { name: /Modifier/ }).length).toBeGreaterThan(0)
+  })
+
+  it('sans modification, aucun bandeau', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await ouvrirEtEditer(utilisateur)
+    // Un bandeau à « 0 modification » occuperait 34 px pour ne rien dire.
+    expect(screen.queryByText(/modification.* en attente sur/)).not.toBeInTheDocument()
+  })
+
+  it('les quatre affichages du compte suivent le même modèle', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await ouvrirEtEditer(utilisateur)
+    await modifier(utilisateur)
+
+    // 1. le bandeau
+    expect(await screen.findByText(/1 modification en attente sur/)).toBeInTheDocument()
+    // 2. la barre d'état
+    expect(screen.getByRole('status', { name: 'État de la table' })).toHaveTextContent(
+      '1 modification en attente',
+    )
+    // 3. le badge de la pastille projet
+    expect(screen.getByRole('button', { name: /Édition/ })).toBeInTheDocument()
+    // 4. la pastille de l'arbre, à la place du compte de lignes
+    const ligne = screen.getByRole('treeitem', { name: /^orders/ })
+    expect(ligne).toHaveTextContent('1')
+  })
+
+  it('⌘Z retire la modification, et les quatre affichages suivent', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await ouvrirEtEditer(utilisateur)
+    await modifier(utilisateur)
+    await screen.findByText(/1 modification en attente sur/)
+
+    await utilisateur.keyboard('{Meta>}z{/Meta}')
+
+    // Un compteur tenu à part divergerait ici.
+    await waitFor(() =>
+      expect(screen.queryByText(/modification.* en attente sur/)).not.toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('button', { name: /Édition/ })).not.toBeInTheDocument()
+  })
+
+  it('« Tout annuler » vide le modèle', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await ouvrirEtEditer(utilisateur)
+    await modifier(utilisateur)
+    await screen.findByText(/1 modification en attente sur/)
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Tout annuler' }))
+
+    await waitFor(() =>
+      expect(screen.queryByText(/modification.* en attente sur/)).not.toBeInTheDocument(),
+    )
+  })
+
+  it('quitter le mode édition **garde** les modifications en attente', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await ouvrirEtEditer(utilisateur)
+    await modifier(utilisateur)
+    await screen.findByText(/1 modification en attente sur/)
+
+    await utilisateur.keyboard('{Meta>}e{/Meta}')
+
+    // Les perdre sur une frappe serait le défaut qu'`esc` fermant une modale pleine a produit.
+    expect(screen.getByText(/1 modification en attente sur/)).toBeInTheDocument()
+    // Mais plus aucune cellule ne s'ouvre.
+    expect(screen.queryByRole('button', { name: /Modifier/ })).not.toBeInTheDocument()
+  })
+
+  it('la colonne modifiée est annotée dans la sidebar', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await ouvrirEtEditer(utilisateur)
+    await modifier(utilisateur)
+
+    const section = (await screen.findByText('Colonnes de orders')).parentElement as HTMLElement
+    // « modifié » prime sur le type et sur « tri ↓ » : c'est l'état qui attend une action.
+    await waitFor(() => expect(within(section).getByText('modifié')).toBeInTheDocument())
+  })
+
+  it('le mode est par onglet : basculer l’un ne bascule pas l’autre', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await ouvrirEtEditer(utilisateur)
+    expect(screen.getAllByRole('button', { name: /Modifier/ }).length).toBeGreaterThan(0)
+
+    // Ouvrir un second onglet : il n'a aucune raison d'être en édition.
+    await utilisateur.click(screen.getByRole('treeitem', { name: /order_items/ }))
+    await screen.findByRole('grid')
+    expect(screen.queryByRole('button', { name: /Modifier/ })).not.toBeInTheDocument()
+  })
+})
