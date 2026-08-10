@@ -134,3 +134,37 @@ test('un nom de projet long ne pousse pas les actions hors de la barre', async (
   })
   expect(deborde).toBe(false)
 })
+
+/**
+ * Le contrat de glissement de la fenêtre.
+ *
+ * **Playwright ne peut pas glisser une fenêtre native** — il pilote Chromium, où le pont Tauri ne
+ * répond pas. Ce qu'il peut vérifier, et ce qui a manqué : la **valeur** de l'attribut, et que les
+ * contrôles de la barre restent des éléments cliquables.
+ *
+ * Le script de Tauri (`window/scripts/drag.js`) traite l'attribut nu comme « clics directs
+ * seulement » : la barre étant couverte par ses enfants, seule la bande de fond répondait.
+ * `deep` étend le glissement au sous-arbre, et tout élément cliquable sur le chemin le bloque.
+ */
+test('la barre de titre est glissable en profondeur, et ses contrôles bloquent le glissement', async ({
+  page,
+}) => {
+  const contrat = await page.evaluate(() => {
+    const barre = document.querySelector('[data-tauri-drag-region]')
+    if (!barre) return null
+    // Les éléments que `drag.js` considère cliquables — donc bloquants — doivent couvrir les
+    // contrôles de la barre : sans cela, cliquer la pastille projet déplacerait la fenêtre.
+    const controles = [...barre.querySelectorAll('button, select')]
+    return {
+      valeur: barre.getAttribute('data-tauri-drag-region'),
+      // Aucun contrôle ne doit porter l'attribut : il ferait de lui une zone de glissement, et le
+      // clic cesserait d'activer le contrôle.
+      controlesSansAttribut: controles.every((c) => !c.hasAttribute('data-tauri-drag-region')),
+      auMoinsUnControle: controles.length > 0,
+    }
+  })
+
+  expect(contrat?.valeur).toBe('deep')
+  expect(contrat?.controlesSansAttribut).toBe(true)
+  expect(contrat?.auMoinsUnControle).toBe(true)
+})

@@ -1,3 +1,5 @@
+import type { RowCount } from '../domain/engine'
+
 /**
  * Le formatage abrégé des comptes et des tailles, tel que le handoff l'écrit.
  *
@@ -59,6 +61,21 @@ export function formatBytes(value: number): string {
     rang += 1
   }
   return `${reste < 10 ? reste.toFixed(1) : Math.round(reste)} ${unites[rang]}`
+}
+
+/**
+ * Un comptage de lignes, **avec son incertitude**.
+ *
+ * **Trois cas, pas deux.** `unknown` n'est ni zéro ni une estimation : c'est ce que PostgreSQL
+ * rend d'une relation jamais analysée (`reltuples = -1`). Le traduire en `0` faisait afficher
+ * « 0 ligne » sur des tables pleines — sur une base réelle dont aucune table n'avait été
+ * analysée, l'écran les montrait **toutes vides**. Constaté à l'usage le 10 août 2026.
+ *
+ * Le tiret cadratin dit « on ne sait pas », ce que `ABSENT` sert déjà à dire ailleurs.
+ */
+export function formatRowCount(rows: RowCount): string {
+  if (rows.kind === 'unknown') return ABSENT
+  return formatCount(rows.value)
 }
 
 /**

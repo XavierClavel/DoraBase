@@ -15,6 +15,13 @@ type StatTileProps = {
    * un astérisque discret, faute de forme maquettée.
    */
   approximate?: boolean
+  /**
+   * Explique un tiret cadratin, quand la valeur est **inconnue** plutôt qu'absente.
+   *
+   * Sans elle, une tuile « Lignes — » ne dit pas si la table est vide, si l'information manque ou
+   * si l'écran a échoué. C'est le cas d'une relation jamais analysée (`RowCount::Unknown`).
+   */
+  unknownHint?: string
   className?: string
 }
 
@@ -25,11 +32,19 @@ type StatTileProps = {
  * fonte fait le travail que ferait ailleurs une hiérarchie de taille. C'est aussi la règle du
  * produit — une valeur technique est en mono (`08b`).
  */
-export function StatTile({ label, value, approximate = false, className }: StatTileProps) {
+export function StatTile({
+  label,
+  value,
+  approximate = false,
+  unknownHint,
+  className,
+}: StatTileProps) {
   return (
     <div
       className={cx(styles.root, className)}
-      title={approximate ? `${label} : estimation du catalogue, non un comptage exact` : undefined}
+      title={
+        approximate ? `${label} : estimation du catalogue, non un comptage exact` : unknownHint
+      }
     >
       <div className={styles.label}>{label}</div>
       <div className={styles.value}>

@@ -1,7 +1,7 @@
 import { Icon } from '../../design/icons/Icon'
 import type { IconName } from '../../design/icons/names'
 import type { TableDetail } from '../../domain/engine'
-import { ABSENT, formatBytes, formatCount } from '../../ui/format'
+import { ABSENT, formatBytes, formatRowCount } from '../../ui/format'
 import { StatTile } from '../../ui/StatTile/StatTile'
 import { Tooltip } from '../../ui/Tooltip/Tooltip'
 import styles from './DetailPanel.module.css'
@@ -110,8 +110,13 @@ export function DetailPanel({
               présenter à l'identique serait un mensonge de précision, que le handoff commet. */}
           <StatTile
             label="Lignes"
-            value={detail.rows.value < 0 ? ABSENT : formatCount(detail.rows.value)}
+            value={formatRowCount(detail.rows)}
             approximate={detail.rows.kind === 'estimated'}
+            unknownHint={
+              detail.rows.kind === 'unknown'
+                ? 'Lignes : cette relation n’a jamais été analysée, le catalogue n’en a aucune estimation. Un ANALYZE la renseignerait.'
+                : undefined
+            }
           />
           <StatTile
             label="Taille"

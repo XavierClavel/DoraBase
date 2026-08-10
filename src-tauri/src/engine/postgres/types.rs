@@ -3,7 +3,7 @@
 //! Fonction **pure**, donc testable sans base et exhaustivement — ce qui compte, parce que
 //! c'est elle qui décide du glyphe et de l'alignement dans `A5`.
 
-use crate::engine::TypeCategory;
+use crate::engine::{RowCount, TypeCategory};
 
 /// Traduit un type PostgreSQL en catégorie, depuis son `typcategory` et son nom.
 ///
@@ -32,17 +32,24 @@ pub fn categoriser(typcategory: char, nom: &str) -> TypeCategory {
     }
 }
 
-/// Le comptage de lignes que PostgreSQL estime, ou son absence.
+/// Le comptage de lignes que PostgreSQL estime, **ou son absence**.
 ///
-/// **`reltuples = -1` signifie « inconnu »**, pas « moins une ligne » : depuis PostgreSQL 14,
-/// c'est la valeur d'une relation jamais analysée — une vue fraîchement créée, par exemple.
-/// L'afficher tel quel donnerait « −1 lignes » dans l'arbre de `A4`. Relevé sur une vue du
-/// schéma de test.
-pub fn estimation_de(reltuples: f32) -> i64 {
+/// **`reltuples = -1` signifie « inconnu »**, pas « moins une ligne » ni « zéro » : depuis
+/// PostgreSQL 14, c'est la valeur d'une relation jamais analysée — une table fraîchement créée,
+/// une vue, une base restaurée sans `ANALYZE`.
+///
+/// **Une première version rendait `0`**, ce qui évitait bien le « −1 lignes » dans l'arbre mais
+/// remplaçait un mensonge par un autre : sur une base réelle dont aucune table n'avait été
+/// analysée, `A4` affichait « 0 » partout et l'utilisateur a conclu que ses tables étaient vides.
+/// Constaté à l'usage le 10 août 2026. `RowCount::Unknown` porte désormais ce cas, et l'écran
+/// rend un tiret cadratin.
+pub fn estimation_de(reltuples: f32) -> RowCount {
     if reltuples < 0.0 {
-        0
+        RowCount::Unknown
     } else {
-        reltuples as i64
+        RowCount::Estimated {
+            value: reltuples as i64,
+        }
     }
 }
 
@@ -89,17 +96,19 @@ mod tests {
         assert_eq!(categoriser('A', "integer[]"), TypeCategory::Other);
     }
 
+    /// **Le défaut du 10 août 2026** : `-1` devenait `0`, donc toute table jamais analysée
+    /// paraissait vide — sur une base réelle, l'utilisateur a conclu que ses tables l'étaient.
     #[test]
-    fn un_comptage_inconnu_ne_devient_pas_negatif() {
-        // `reltuples = -1` : jamais analysée.
-        assert_eq!(estimation_de(-1.0), 0);
-        assert_eq!(estimation_de(0.0), 0);
-        assert_eq!(estimation_de(500.0), 500);
+    fn un_comptage_inconnu_n_est_ni_negatif_ni_zero() {
+        assert_eq!(estimation_de(-1.0), RowCount::Unknown);
+        // Zéro reste zéro : une table vraiment vide est un fait, pas une absence d'information.
+        assert_eq!(estimation_de(0.0), RowCount::Estimated { value: 0 });
+        assert_eq!(estimation_de(500.0), RowCount::Estimated { value: 500 });
     }
 
     #[test]
     fn une_estimation_fractionnaire_est_tronquee() {
         // `reltuples` est un flottant : PostgreSQL y met parfois une valeur non entière.
-        assert_eq!(estimation_de(499.7), 499);
+        assert_eq!(estimation_de(499.7), RowCount::Estimated { value: 499 });
     }
 }

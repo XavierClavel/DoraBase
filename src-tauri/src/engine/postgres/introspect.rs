@@ -12,7 +12,7 @@ use tokio_postgres::Client;
 
 use crate::engine::{
     ColumnInfo, ConstraintInfo, EngineError, IndexInfo, KeyKind, ObjectCounts, ObjectKind,
-    Relation, RelationDirection, RowCount, SchemaInfo, TableDetail, TableSummary, TriggerInfo,
+    Relation, RelationDirection, SchemaInfo, TableDetail, TableSummary, TriggerInfo,
 };
 
 use super::error::traduire;
@@ -112,10 +112,9 @@ pub async fn objects(client: &Client, schema: &str) -> Result<Vec<TableSummary>,
                 name: ligne.try_get("name").map_err(|e| traduire(&e))?,
                 kind: nature_de(&relkind),
                 // **Une estimation, jamais un compte exact** : `A4` ouvre un arbre, et
-                // compter exactement coûterait un parcours complet par table.
-                rows: RowCount::Estimated {
-                    value: estimation_de(reltuples),
-                },
+                // compter exactement coûterait un parcours complet par table. Et `Unknown`
+                // quand le planificateur n'a rien — `reltuples = -1`.
+                rows: estimation_de(reltuples),
                 size_bytes: u64::try_from(taille).ok(),
                 column_count: u32::try_from(colonnes).unwrap_or(0),
                 primary_key: ligne.try_get("primary_key").map_err(|e| traduire(&e))?,

@@ -1,4 +1,4 @@
-import { ABSENT, formatBytes, formatCount } from './format'
+import { ABSENT, formatBytes, formatCount, formatRowCount } from './format'
 
 // --- Comptes ---
 
@@ -85,4 +85,24 @@ test('l’unité s’arrête à PB plutôt que de manquer', () => {
 
 test('une taille négative rend le tiret', () => {
   expect(formatBytes(-1)).toBe(ABSENT)
+})
+
+describe('formatRowCount', () => {
+  it('rend un tiret pour un comptage inconnu, jamais zéro', () => {
+    // **Le défaut du 10 août 2026.** `reltuples = -1` devenait `0`, donc toute table jamais
+    // analysée paraissait vide : sur une base réelle, l'utilisateur a conclu que ses tables
+    // l'étaient. « Pas d'estimation » et « estimé à rien » sont deux faits distincts.
+    expect(formatRowCount({ kind: 'unknown' })).toBe(ABSENT)
+  })
+
+  it('rend zéro pour une table vraiment vide', () => {
+    // Une table vide est un **fait**, pas une absence d'information : la confondre avec
+    // l'inconnu serait le défaut symétrique.
+    expect(formatRowCount({ kind: 'estimated', value: 0 })).toBe('0')
+  })
+
+  it('abrège une estimation comme un compte exact', () => {
+    expect(formatRowCount({ kind: 'estimated', value: 1_900_000 })).toBe('1.9 M')
+    expect(formatRowCount({ kind: 'exact', value: 1_904_220 })).toBe('1.9 M')
+  })
 })

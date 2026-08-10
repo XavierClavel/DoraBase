@@ -1,6 +1,6 @@
 import type { TableSummary } from '../../domain/engine'
 import { type Column, DataTable } from '../../ui/DataTable/DataTable'
-import { ABSENT, formatBytes, formatCount } from '../../ui/format'
+import { ABSENT, formatBytes, formatRowCount } from '../../ui/format'
 import type { TypeObjet } from './BreadcrumbBar'
 
 type ObjectTableProps = {
@@ -81,7 +81,7 @@ const COLONNES: Column<TableSummary>[] = [
     // `RowCount` distingue `estimated` de `exact` au niveau du type (`06c`). Le tableau n'affiche
     // qu'un nombre — la distinction sert à `09f`, dont la tuile ne doit pas présenter une
     // estimation comme un fait exact.
-    cell: (o) => (o.rows.value < 0 ? ABSENT : formatCount(o.rows.value)),
+    cell: (o) => formatRowCount(o.rows),
     numeric: true,
     width: '88px',
   },

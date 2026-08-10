@@ -44,12 +44,28 @@ pub enum RowCount {
         #[ts(type = "number")]
         value: i64,
     },
+    /// **Le planificateur ne sait pas**, et ce n'est pas zéro.
+    ///
+    /// `pg_class.reltuples` vaut `-1` pour une relation jamais analysée — une table fraîchement
+    /// créée, une vue, une base restaurée sans `ANALYZE`. Le traduire en `0` faisait afficher
+    /// « 0 ligne » sur des tables pleines : constaté à l'usage le 10 août 2026, sur une base
+    /// réelle dont **toutes** les tables paraissaient vides.
+    ///
+    /// Une troisième variante et non un `Option<i64>` dans `Estimated` : « estimé à rien » et
+    /// « pas d'estimation » sont deux faits distincts, et c'est précisément leur confusion qui a
+    /// produit le défaut.
+    Unknown,
 }
 
 impl RowCount {
-    pub fn value(self) -> i64 {
+    /// La valeur, ou `None` quand il n'y en a pas.
+    ///
+    /// **`Option` et non `0`** : rendre zéro pour « inconnu » ramènerait le mensonge que
+    /// `Unknown` existe pour éviter, un cran plus loin.
+    pub fn value(self) -> Option<i64> {
         match self {
-            Self::Estimated { value } | Self::Exact { value } => value,
+            Self::Estimated { value } | Self::Exact { value } => Some(value),
+            Self::Unknown => None,
         }
     }
 
@@ -263,8 +279,18 @@ mod tests {
     fn un_comptage_distingue_l_estimation_de_l_exact() {
         assert!(!RowCount::Estimated { value: 1_900_000 }.is_exact());
         assert!(RowCount::Exact { value: 1_904_220 }.is_exact());
-        assert_eq!(RowCount::Exact { value: 1_904_220 }.value(), 1_904_220);
-        assert_eq!(RowCount::Estimated { value: 1_900_000 }.value(), 1_900_000);
+        assert_eq!(
+            RowCount::Exact { value: 1_904_220 }.value(),
+            Some(1_904_220)
+        );
+        assert_eq!(
+            RowCount::Estimated { value: 1_900_000 }.value(),
+            Some(1_900_000)
+        );
+        // **« Inconnu » n'a pas de valeur, et surtout pas zéro** : rendre `0` ici ramènerait le
+        // mensonge que cette variante existe pour éviter.
+        assert_eq!(RowCount::Unknown.value(), None);
+        assert!(!RowCount::Unknown.is_exact());
     }
 
     #[test]

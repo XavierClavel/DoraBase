@@ -31,12 +31,22 @@ type TitleBarProps = {
 }
 
 // `data-tauri-drag-region` rend la fenêtre déplaçable : sous `titleBarStyle: Overlay`
-// (spec 01), macOS ne fournit plus de zone de glissement native. Tauri ne rend
-// glissables que les éléments qui portent l'attribut ; les boutons enfants restent
-// cliquables sans traitement particulier.
+// (spec 01), macOS ne fournit plus de zone de glissement native.
+//
+// **La valeur `deep` est nécessaire, et l'attribut nu ne suffisait pas.** Le script de Tauri
+// (`window/scripts/drag.js`) traite l'attribut nu comme « seuls les clics **directs** sur cet
+// élément » : `el === composedPath[0]`. Or la barre est presque entièrement couverte par ses
+// enfants — wordmark, centre, actions — donc seule la bande de fond autour des feux répondait.
+// Constaté à l'usage le 10 août 2026, après avoir cru le problème réglé par la seule permission.
+//
+// `deep` étend le glissement au sous-arbre, et les éléments **cliquables** le bloquent
+// d'eux-mêmes : le même script refuse de glisser dès qu'un `<button>`, `<select>` ou tout élément
+// focalisable se trouve sur le chemin. Cliquer la pastille projet ou l'engrenage active donc le
+// contrôle, sans déplacer la fenêtre — ce qui est le comportement voulu, et qu'il n'a pas fallu
+// écrire.
 export function TitleBar({ showConsole = false, dimmed = false, center }: TitleBarProps) {
   return (
-    <div className={cx(styles.root, dimmed && styles.dimmed)} data-tauri-drag-region>
+    <div className={cx(styles.root, dimmed && styles.dimmed)} data-tauri-drag-region="deep">
       <div className={cx(styles.wordmark, dimmed && styles.wordmarkDimmed)}>
         <svg className={styles.logo} viewBox="0 0 512 512" aria-hidden="true">
           <use href="#logo" />
