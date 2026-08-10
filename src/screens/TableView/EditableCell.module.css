@@ -1,0 +1,63 @@
+/*
+ * La cellule en saisie de A6, relevée sur le mockup :
+ *
+ *   boîte    absolue, left/right -1px, top -3px, hauteur var(--rowh) + 6px
+ *   fond     blanc, radius 6px, bordure 2px accent, ombre 0 6px 16px -6px  → --shadow-cell
+ *   texte    600 12px JetBrains Mono, aligné comme sa colonne
+ *
+ * Le caret du mockup n'est pas repris : c'est un artefact de maquette statique, et notre `<input>`
+ * a un vrai curseur.
+ *
+ * Elle **déborde** de sa ligne de 3px en haut et en bas : c'est ce qui la détache de la trame sans
+ * rogner son texte ni pousser ses voisines.
+ */
+
+.root {
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  /* **Centrée sur sa cellule**, et non calée à `-3px` de son haut : la cellule prend la hauteur de
+     son contenu et se centre dans la ligne (`align-items: center`), donc son haut n'est pas celui de
+     la ligne. Un décalage fixe plaçait la boîte neuf pixels trop bas — mesuré, pas supposé. */
+  top: 50%;
+  transform: translateY(-50%);
+  height: calc(var(--rowh) + 6px);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 7px;
+  border-radius: var(--radius-control);
+  background: var(--field);
+  border: 2px solid var(--accent);
+  box-shadow: var(--shadow-cell);
+  /* Au-dessus des lignes, qui sont elles-mêmes positionnées (`VirtualGrid`). */
+  z-index: 3;
+}
+
+.champ {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-control);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+  /* **Hérité de la cellule**, pas fixé à droite : le mockup édite `total_cents`, une colonne
+     numérique, mais une colonne de texte doit rester alignée à gauche. Le fixer alignerait
+     « refunded » à droite au milieu d'une colonne alignée à gauche. */
+  text-align: inherit;
+}
+
+.champ:focus {
+  outline: none;
+}
+
+/* `NULL` posé : la valeur est un état, pas du texte saisi — l'encre atténuée le dit, comme dans la
+   grille (`10c`). */
+.nul .champ {
+  color: var(--ink-3);
+  font-style: italic;
+}

@@ -39,6 +39,8 @@ type WorkbenchProps = {
   onNewDatabase?: () => void
   /** Ouvre `A2` en mode édition sur cette base (`08g`). */
   onEditDatabase?: (project: string, database: Database) => void
+  /** Ouvre l'écran en mode édition (`11a`). `11b` livrera la bascule `⌘E`. */
+  edition?: boolean
 }
 
 /**
@@ -58,6 +60,7 @@ export function Workbench({
   rowAsInsert = rowAsInsertTauri,
   onNewDatabase,
   onEditDatabase,
+  edition = false,
 }: WorkbenchProps) {
   const { deplies, charge, etatDeBase, basculer, rafraichir } = useArbre(projects, passerelle)
   const [selection, setSelection] = useState<Noeud | null>(null)
@@ -261,6 +264,7 @@ export function Workbench({
                       onLectureChange={setLecture}
                       rang={rangChoisi}
                       onRangChange={setRangChoisi}
+                      edition={edition}
                     />
                   ) : (
                     <>
