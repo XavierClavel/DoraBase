@@ -144,6 +144,58 @@ pub struct SaveDatabaseRequest {
     pub password: Option<String>,
 }
 
+/// Ce que `A2` envoie pour créer un projet.
+#[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct CreateProjectRequest {
+    pub name: String,
+    /// L'environnement actif du projet, qui est celui de la variante qu'on lui déclare.
+    ///
+    /// `05a` en fait une propriété du **projet**, et `A2` ne propose que celui de la variante. Le
+    /// coder à `dev` afficherait un arbre vide juste après l'enregistrement d'une base `prod` : la
+    /// base existe, mais dans un autre environnement que celui affiché.
+    pub active_environment: super::model::Environment,
+}
+
+/// Crée un projet vide, et rend les projets à jour.
+///
+/// **Une commande distincte, et non un `save_database` plus permissif.** `enregistrer` refuse un
+/// projet inconnu, et c'est une bonne chose : une commande qui créerait l'entité manquante par
+/// effet de bord ferait d'une faute de frappe dans un nom de projet un second projet silencieux.
+///
+/// Sans elle, l'application neuve était une **impasse** : `08e` refuse l'enregistrement tant
+/// qu'aucun projet n'existe, et rien ne permettait d'en faire un. Constaté à l'usage le 10 août
+/// 2026, en essayant de déclarer une première connexion.
+#[tauri::command]
+pub fn create_project(
+    request: CreateProjectRequest,
+    state: State<'_, ConfigState>,
+) -> Result<Vec<Project>, String> {
+    let garde = state
+        .0
+        .lock()
+        .map_err(|_| "état de configuration corrompu".to_owned())?;
+    let store = garde
+        .as_ref()
+        .ok_or_else(|| "la configuration doit être lue avant d'être écrite".to_owned())?;
+
+    // Les projets viennent du disque, pas du front : le même arbitrage qu'en `08e`, pour la même
+    // raison — une liste envoyée par l'écran pourrait être périmée et écraser une écriture.
+    let projects: Vec<Project> = store.load_projects()?;
+    let suivants =
+        super::enregistrer::creer_projet(&projects, &request.name, request.active_environment)
+            .map_err(|erreur| erreur.to_string())?;
+
+    store.save(&suivants).map_err(|erreur| erreur.to_string())?;
+    log::info!(
+        "create_project ← {} → {} projet(s)",
+        request.name,
+        suivants.len()
+    );
+    Ok(suivants)
+}
+
 /// Ajoute une base et sa variante à un projet, et range son mot de passe.
 ///
 /// **Rend les projets à jour**, et pas seulement `Ok(())` : sans cela l'écran devrait relire la

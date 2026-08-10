@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Project, SaveDatabaseRequest } from '../../domain/config'
+import type { CreateProjectRequest, Project, SaveDatabaseRequest } from '../../domain/config'
 import type { ConnectionDraft } from './ConnectionDraft'
 
 /**
@@ -13,6 +13,17 @@ import type { ConnectionDraft } from './ConnectionDraft'
  */
 export async function enregistrerLaBase(request: SaveDatabaseRequest): Promise<Project[]> {
   return invoke<Project[]>('save_database', { request })
+}
+
+/**
+ * Crée un projet vide, et rend les projets **à jour**.
+ *
+ * Distincte de `save_database`, et pas par symétrie : `enregistrer` refuse un projet inconnu, et
+ * une commande qui créerait l'entité manquante par effet de bord ferait d'une faute de frappe un
+ * second projet silencieux. Voir `08f`.
+ */
+export async function creerLeProjet(request: CreateProjectRequest): Promise<Project[]> {
+  return invoke<Project[]>('create_project', { request })
 }
 
 /**

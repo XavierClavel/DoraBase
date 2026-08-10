@@ -48,6 +48,22 @@ const FOCALISABLES =
  */
 const pile: symbol[] = []
 
+/**
+ * Vrai quand le focus est dans une **saisie de texte**.
+ *
+ * Pas « dans un contrôle » : un bouton ou une case à cocher n'a rien à quitter, et exiger deux
+ * `esc` depuis un bouton serait une friction sans raison. Un `<select>`, en revanche, gère `esc`
+ * lui-même pour refermer sa liste — le laisser hors de cette liste est donc volontaire.
+ */
+function dansUnChamp(element: Element | null): boolean {
+  if (!element) return false
+  if (element instanceof HTMLTextAreaElement) return true
+  if (!(element instanceof HTMLInputElement)) return false
+  // Les types qui portent du texte. Une case à cocher ou un bouton radio n'a pas de saisie à
+  // abandonner.
+  return !['checkbox', 'radio', 'button', 'submit', 'reset'].includes(element.type)
+}
+
 function focalisablesDe(racine: HTMLElement): HTMLElement[] {
   return Array.from(racine.querySelectorAll<HTMLElement>(FOCALISABLES)).filter(
     // `offsetParent` nul signale un élément non rendu — le contenu d'un
@@ -110,6 +126,14 @@ export function Modal({
       if (!auSommet()) return
       if (evenement.key === 'Escape') {
         evenement.preventDefault()
+        // **`esc` dans un champ rend d'abord le focus, il ne ferme pas la modale.** Sinon, une
+        // frappe destinée à sortir d'un champ jette tout le formulaire — et l'utilisateur qui
+        // vient de saisir dix valeurs les perd. Un second `esc`, le focus étant revenu sur la
+        // coquille, ferme comme attendu.
+        if (dansUnChamp(document.activeElement)) {
+          coquille.current?.focus()
+          return
+        }
         fermer.current()
         return
       }
@@ -163,6 +187,10 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        // Focalisable **par programme seulement** : `esc` dans un champ y ramène le focus, et un
+        // second `esc` ferme. Sans `tabIndex`, `focus()` serait sans effet et le focus retomberait
+        // sur `<body>`, hors du piège de tabulation.
+        tabIndex={-1}
         className={cx(styles.shell, nested && styles.shellNested, className)}
       >
         <div className={styles.header}>

@@ -103,9 +103,12 @@ cinq endroits où le mockup ne répond pas, et où la vraie réponse appartient 
 3. **Rien ne maquette un refus de saisie.** `A2` n'a aucun message d'erreur de champ.
    `08e` réemploie le message inline du pied, là où `08d` affiche déjà les échecs. Un
    affichage par champ serait plus juste.
-4. **Que voit un utilisateur sans aucun projet ?** `A2` a un `Select` de projets
-   existants, sans « Nouveau projet… ». Or `⌘N` y mène directement. `08e` désactive
-   l'enregistrement et l'annonce dans le `Select`, sans inventer de formulaire de création.
+4. **Que voit un utilisateur sans aucun projet ? — tranché le 10 août 2026, par `08f`.** `A2`
+   avait un `Select` de projets existants, sans « Nouveau projet… », alors que `⌘N` y mène
+   directement : `08e` désactivait l'enregistrement, et **rien ne permettait de créer un projet**.
+   L'application neuve était une impasse, constatée à l'usage. `08f` ajoute une entrée
+   « + Nouveau projet… » au `Select`, qui révèle un champ de nom, et enchaîne `create_project`
+   puis `save_database` — personne ne crée un projet vide.
 5. **Le panneau proxy replié, et sans tunnel, n'est pas maquetté.** `08c` rend l'en-tête
    seul et fait disparaître le badge « SSH activé » — la seule lecture cohérente.
 
@@ -299,7 +302,8 @@ propres critères de vérification.
 | [`08b`](08b-a2-modale-et-formulaire.md) | A2 | Coquille de modale, sélecteur de moteur, formulaire principal | **fait** |
 | [`08c`](08c-a2-panneau-proxy-tunnel.md) | A2 | Panneau proxy / tunnel | **fait** (sélecteur de fichier non observé) |
 | [`08d`](08d-tester-la-connexion.md) | A2 + A3 | « Tester la connexion » : pont IPC réel, et sous-modale d'échec | **fait** (pont non observé) |
-| [`08e`](08e-enregistrer-et-ouvrir.md) | A2 | « Enregistrer & ouvrir » : config + secret | **fait** (relecture au démarrage → `09`) |
+| [`08e`](08e-enregistrer-et-ouvrir.md) | A2 | « Enregistrer & ouvrir » : config + secret | **fait** |
+| [`08f`](08f-creer-un-projet.md) | A2 | Créer un projet — `create_project`, « + Nouveau projet… » | **fait** |
 | [`09a`](09a-primitives-de-tableau.md) | — | Primitives : `SegmentedControl`, `StatTile`, `DataTable` | **fait** |
 | [`09b`](09b-cablage-des-donnees.md) | — | Câblage : `load_config` au démarrage, registre de connexions, introspection | **fait** (redémarrage non observé) |
 | [`09c`](09c-a4-barre-de-titre.md) | A4 | Barre de titre : pastille projet, fil d'Ariane, sélecteur d'environnement | **fait** (clic vs glissement non observé) |

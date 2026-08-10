@@ -84,12 +84,10 @@ export function App() {
       ) : (
         <>
           {/* **Le bouton dit « Nouveau projet », la modale « Nouvelle connexion ».**
-              Ce n'est pas une erreur d'assemblage : `A1` n'offre que cette action et `⌘N`,
-              tandis que `A2` déclare une base *dans un projet existant*. Le handoff ne
-              maquette pas le parcours d'un utilisateur sans projet — trou consigné au
-              § « À trancher » de `specs/README.md`. En attendant, `A2` est câblée ici parce
-              que c'est la seule entrée qui existe, et `08e` refusera l'enregistrement tant
-              qu'aucun projet n'existe. */}
+              Ce n'est pas une erreur d'assemblage : `A1` n'offre que cette action et `⌘N`, et
+              depuis `08f` la modale sait créer le projet **et** sa première base en un geste —
+              sans aucun projet, elle propose la création d'emblée. Le trou consigné au
+              § « À trancher » est donc fermé : l'application neuve n'est plus une impasse. */}
           <WelcomeScreen
             onNewProject={() => setConnexionOuverte(true)}
             projectCount={projects.length}

@@ -15,6 +15,13 @@ export type ConnectionDraft = {
   name: string
   /** Identifiant du projet d'accueil. `A2` choisit parmi les projets existants (`08e`). */
   project: string
+  /**
+   * Le nom saisi sous « + Nouveau projet… » (`08f`).
+   *
+   * Séparé de `project`, qui porte alors la sentinelle : les fusionner ferait du nom en cours de
+   * frappe une valeur de `Select`, et le champ perdrait sa saisie à chaque rendu.
+   */
+  newProjectName: string
   environment: Environment
   host: string
   /** Chaîne et non nombre : un champ de saisie passe par des états qu'un `u16` interdit. */
@@ -85,6 +92,7 @@ export function emptyDraft(): ConnectionDraft {
     engine: 'postgresql',
     name: '',
     project: '',
+    newProjectName: '',
     environment: 'dev',
     host: '',
     port: '5432',

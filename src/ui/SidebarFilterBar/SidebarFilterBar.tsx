@@ -1,4 +1,5 @@
 import { Icon } from '../../design/icons/Icon'
+import { SANS_CORRECTION } from '../Field/Field'
 import styles from './SidebarFilterBar.module.css'
 
 type SidebarFilterBarProps = {
@@ -28,6 +29,7 @@ export function SidebarFilterBar({
           muet pour un lecteur d'écran : le placeholder ne fait pas office de nom. D'où
           `aria-label`, qui reprend le même texte. */}
       <input
+        {...SANS_CORRECTION}
         type="text"
         className={styles.input}
         value={value}

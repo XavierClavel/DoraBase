@@ -1,4 +1,5 @@
 import { Icon } from '../../design/icons/Icon'
+import { SANS_CORRECTION } from '../../ui/Field/Field'
 import { type Segment, SegmentedControl } from '../../ui/SegmentedControl/SegmentedControl'
 import styles from './BreadcrumbBar.module.css'
 
@@ -69,6 +70,7 @@ export function BreadcrumbBar({
       <label className={styles.search}>
         <Icon name="search" size={12} strokeWidth={2} className={styles.searchIcon} />
         <input
+          {...SANS_CORRECTION}
           type="text"
           className={styles.searchInput}
           value={filter}

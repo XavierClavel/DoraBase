@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
-import type { Project } from '../../domain/config'
+import type { CreateProjectRequest, Project } from '../../domain/config'
 import type { ConnectionRequest, ConnectionTest } from '../../domain/engine'
 import { Button } from '../../ui/Button/Button'
 import { Modal } from '../../ui/Modal/Modal'
 import { type ConnectionDraft, emptyDraft, emptyTunnel, type TunnelDraft } from './ConnectionDraft'
 import { ConnectionFailure } from './ConnectionFailure'
-import { ConnectionForm } from './ConnectionForm'
+import { ConnectionForm, NOUVEAU_PROJET } from './ConnectionForm'
 import { draftToRequest } from './draftToRequest'
 import { EngineSelector } from './EngineSelector'
 import { ENGINES, IMPLEMENTED_ENGINES } from './engines'
-import { draftToSaveRequest, enregistrerLaBase } from './enregistrerLaBase'
+import { creerLeProjet, draftToSaveRequest, enregistrerLaBase } from './enregistrerLaBase'
 import styles from './NewConnection.module.css'
 import { ouvrirSelecteurDeCle } from './ouvrirSelecteurDeCle'
 import { TunnelPanel } from './TunnelPanel'
@@ -39,6 +39,8 @@ type NewConnectionProps = {
   onTest?: (request: ConnectionRequest) => Promise<ConnectionTest>
   /** Appelle la commande `save_database`. Injectée pour la même raison que `onTest`. */
   onSave?: (request: ReturnType<typeof draftToSaveRequest>) => Promise<Project[]>
+  /** Appelle la commande `create_project` (`08f`), sous « + Nouveau projet… ». */
+  onCreateProject?: (request: CreateProjectRequest) => Promise<Project[]>
   /** Appelé après un enregistrement réussi, avec les projets à jour. */
   onSaved?: (projects: Project[]) => void
 }
@@ -70,6 +72,7 @@ export function NewConnection({
   onBrowseKey = ouvrirSelecteurDeCle,
   onTest = testerLaConnexion,
   onSave = enregistrerLaBase,
+  onCreateProject = creerLeProjet,
   onSaved,
 }: NewConnectionProps) {
   const [draft, setDraft] = useState<ConnectionDraft>(emptyDraft)
@@ -102,8 +105,18 @@ export function NewConnection({
    * change sous les pieds de l'utilisateur.
    */
   useEffect(() => {
+    // La sentinelle de `08f` est une valeur **valable** du `Select` : sans ce test, choisir
+    // « + Nouveau projet… » serait aussitôt remplacé par le premier projet existant.
+    if (draft.project === NOUVEAU_PROJET) return
     const premier = projects.at(0)
-    if (!premier) return
+    // Aucun projet : la sentinelle est le seul choix, donc le brouillon la prend — ce qui rend le
+    // champ de nom visible d'emblée, et l'application neuve n'est plus une impasse.
+    if (!premier) {
+      if (draft.project !== NOUVEAU_PROJET) {
+        setDraft((precedent) => ({ ...precedent, project: NOUVEAU_PROJET }))
+      }
+      return
+    }
     const valide = projects.some((projet) => projet.id === draft.project)
     // `setDraft` et non `patch` : `patch` est recréé à chaque rendu, donc le déclarer en
     // dépendance relancerait l'effet en boucle. Le poseur d'état de React, lui, est stable.
@@ -146,14 +159,32 @@ export function NewConnection({
   // Il est aussi désactivé **sans aucun projet** : `A2` déclare une base *dans un projet
   // existant*, et le handoff ne maquette pas le parcours d'un utilisateur qui n'en a aucun.
   // Voir le § « À trancher » de `specs/README.md`, trou n°4.
+  const creeUnProjet = draft.project === NOUVEAU_PROJET
+  const nomDuProjetManque = creeUnProjet && draft.newProjectName.trim() === ''
+
+  // **Il n'est plus désactivé faute de projet** : depuis `08f`, `A2` sait en créer un. Il l'est
+  // en revanche quand « + Nouveau projet… » est choisi sans nom saisi — un refus qui serait sinon
+  // dit par le cœur après un aller-retour, là où l'écran a l'information sous la main.
   const enregistrementBloque =
-    test.phase === 'echoue' || projects.length === 0 || enregistrement.phase === 'en-cours'
+    test.phase === 'echoue' || nomDuProjetManque || enregistrement.phase === 'en-cours'
 
   async function enregistrer() {
     if (enregistrementBloque) return
     setEnregistrement({ phase: 'en-cours' })
     try {
-      const projets = await onSave(draftToSaveRequest(draft))
+      // **Deux commandes, un geste.** Si la seconde échoue, le projet reste — créé et vide. C'est
+      // le comportement honnête : le défaire supprimerait un projet à la suite d'un échec de
+      // connexion, et détruirait un homonyme préexistant en cas de course. `08f` le dit.
+      let nom = draft.project
+      if (creeUnProjet) {
+        nom = draft.newProjectName.trim()
+        const apresCreation = await onCreateProject({
+          name: nom,
+          activeEnvironment: draft.environment,
+        })
+        onSaved?.(apresCreation)
+      }
+      const projets = await onSave(draftToSaveRequest({ ...draft, project: nom }))
       onSaved?.(projets)
       // La modale se ferme : `08e` § Hors périmètre — « ouvrir » veut dire aller vers `A4`,
       // qui n'existe pas avant `09`. Ce scope enregistre et ferme ; `09` branchera la

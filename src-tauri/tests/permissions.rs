@@ -25,6 +25,11 @@ const ATTENDUES: &[(&str, &str)] = &[
     ("core:app:default", "les métadonnées de l'application"),
     ("core:resources:default", "les ressources embarquées"),
     (
+        "core:window:allow-start-dragging",
+        "déplacer la fenêtre par sa barre de titre (`data-tauri-drag-region`) — `core:window:default` \
+         n'accorde aucune permission d'écriture, et l'attribut seul ne suffisait donc pas",
+    ),
+    (
         "dialog:allow-open",
         "le bouton « Parcourir… » de la clé privée (08c) — ouverture seule",
     ),
@@ -97,6 +102,6 @@ fn la_surface_reste_tres_inferieure_au_jeu_par_defaut_de_tauri() {
     let compte = permissions_declarees().len();
     assert!(
         compte <= 12,
-        "{compte} permissions : la surface dérive (six au plan 01, sept depuis 08c)"
+        "{compte} permissions : la surface dérive (six au plan 01, sept depuis 08c, huit depuis 10g)"
     );
 }

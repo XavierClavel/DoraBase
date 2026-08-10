@@ -9,6 +9,12 @@ test('A1 est conforme à la référence', async ({ page }) => {
 // La modale de `A2` par-dessus `A1`, capturée comme référence de la même façon. Elle inclut
 // la barre de titre ternie derrière, qui fait partie de l'écran.
 //
+// **Ces captures montrent l'état « aucun projet »**, celui d'une application neuve — et non celui
+// du mockup, qui montre un `Select` rempli. L'écart existait avant `08f` (le sélecteur disait
+// « Aucun projet ») ; depuis, il porte en plus le champ « Nom du nouveau projet », que le handoff
+// ne maquette pas. Les références ont donc été **régénérées délibérément** le 10 août 2026 : une
+// capture qu'on rafraîchit sans le dire cesse d'être une référence.
+//
 // **Les trois feux ne sont pas dans la capture** : ils sont dessinés par macOS par-dessus la
 // fenêtre, hors du DOM et hors de portée de Playwright comme du CSS. Le mockup les grise ;
 // nous ne pouvons pas. Voir `specs/README.md` § « À trancher ».

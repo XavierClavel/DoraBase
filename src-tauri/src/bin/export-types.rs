@@ -15,7 +15,7 @@
 //!
 //! Lancé par `pnpm domain:build`, vérifié par `pnpm domain:check`.
 
-use dorabase_lib::config::{ConfigLoad, Project, SaveDatabaseRequest};
+use dorabase_lib::config::{ConfigLoad, CreateProjectRequest, Project, SaveDatabaseRequest};
 use dorabase_lib::engine::commands::{
     ConnectionRequest, ConnectionStateEntry, ConnectionTest, DatabaseKey,
 };
@@ -48,6 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Project::export_all(&config)?;
     ConfigLoad::export_all(&config)?;
     SaveDatabaseRequest::export_all(&config)?;
+    CreateProjectRequest::export_all(&config)?;
     SecretMechanism::export_all(&config)?;
 
     ConnectionProbe::export_all(&config)?;

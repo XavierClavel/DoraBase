@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Sprite } from '../../design/icons/Sprite'
-import type { Project, SaveDatabaseRequest } from '../../domain/config'
+import type { CreateProjectRequest, Project, SaveDatabaseRequest } from '../../domain/config'
 import { emptyDraft } from './ConnectionDraft'
 import { draftToSaveRequest } from './enregistrerLaBase'
 import { NewConnection } from './NewConnection'
@@ -10,16 +10,21 @@ const PROJETS = [{ id: 'Atelier Nord', name: 'Atelier Nord' }]
 
 const APRES: Project[] = [{ name: 'Atelier Nord', activeEnvironment: 'dev', databases: [] }]
 
-type Espion = { requetes: SaveDatabaseRequest[]; projets: Project[][] }
+type Espion = {
+  requetes: SaveDatabaseRequest[]
+  projets: Project[][]
+  creations: CreateProjectRequest[]
+}
 
 function monter(
   options: {
     onSave?: (request: SaveDatabaseRequest) => Promise<Project[]>
     projects?: readonly { id: string; name: string }[]
     onClose?: () => void
+    onCreateProject?: (request: CreateProjectRequest) => Promise<Project[]>
   } = {},
 ) {
-  const espion: Espion = { requetes: [], projets: [] }
+  const espion: Espion = { requetes: [], projets: [], creations: [] }
   render(
     <>
       <Sprite />
@@ -34,6 +39,13 @@ function monter(
           options.onSave ??
           (async (request) => {
             espion.requetes.push(request)
+            return APRES
+          })
+        }
+        onCreateProject={
+          options.onCreateProject ??
+          (async (request) => {
+            espion.creations.push(request)
             return APRES
           })
         }
@@ -178,4 +190,102 @@ test('pendant l’enregistrement, le bouton ne se reclique pas', async () => {
   expect(appels).toBe(1)
 
   debloquer?.()
+})
+
+// --- Créer un projet (08f) ---
+
+/** Choisit « + Nouveau projet… » et saisit un nom. */
+async function creerLeProjet(utilisateur: ReturnType<typeof userEvent.setup>, nom: string) {
+  await utilisateur.selectOptions(
+    screen.getByRole('combobox', { name: 'Projet' }),
+    screen.getByRole('option', { name: '+ Nouveau projet…' }),
+  )
+  await utilisateur.type(screen.getByLabelText('Nom du nouveau projet'), nom)
+}
+
+test('créer un projet et sa base est un seul geste, en deux commandes', async () => {
+  const utilisateur = userEvent.setup()
+  const espion = monter()
+  await utilisateur.type(screen.getByLabelText('Nom de la base'), 'analytics')
+  await creerLeProjet(utilisateur, 'Data science')
+
+  await utilisateur.click(enregistrer())
+
+  await waitFor(() => expect(espion.creations).toHaveLength(1))
+  expect(espion.creations[0]?.name).toBe('Data science')
+  // L'environnement du projet vient de la variante déclarée : le coder à `dev` afficherait un
+  // arbre vide juste après l'enregistrement d'une base `prod`.
+  expect(espion.creations[0]?.activeEnvironment).toBe('dev')
+
+  // Puis la base, dans le projet qui vient d'être créé — et non sous la sentinelle du `Select`.
+  await waitFor(() => expect(espion.requetes).toHaveLength(1))
+  expect(espion.requetes[0]?.project).toBe('Data science')
+})
+
+test('l’environnement du projet suit la variante choisie', async () => {
+  const utilisateur = userEvent.setup()
+  const espion = monter()
+  await utilisateur.click(screen.getByRole('radio', { name: /prod/ }))
+  await creerLeProjet(utilisateur, 'Data science')
+  await utilisateur.click(enregistrer())
+
+  await waitFor(() => expect(espion.creations[0]?.activeEnvironment).toBe('prod'))
+})
+
+test('le nom du projet est rogné avant d’être envoyé', async () => {
+  const utilisateur = userEvent.setup()
+  const espion = monter()
+  await creerLeProjet(utilisateur, '  Data science  ')
+  await utilisateur.click(enregistrer())
+
+  // Rogné des deux côtés : « Print » et « Print  » désigneraient sinon deux projets, dont un
+  // invisiblement différent dans la sidebar. Le cœur le rogne aussi — ceinture et bretelles, et
+  // c'est la requête envoyée qui doit être propre.
+  await waitFor(() => expect(espion.creations[0]?.name).toBe('Data science'))
+  expect(espion.requetes[0]?.project).toBe('Data science')
+})
+
+test('sans nom saisi, l’enregistrement est bloqué et rien n’est envoyé', async () => {
+  const utilisateur = userEvent.setup()
+  const espion = monter()
+  await utilisateur.selectOptions(
+    screen.getByRole('combobox', { name: 'Projet' }),
+    screen.getByRole('option', { name: '+ Nouveau projet…' }),
+  )
+
+  // L'écran a l'information sous la main : l'envoyer pour se faire refuser coûterait un
+  // aller-retour et un message venu du cœur là où le formulaire sait déjà.
+  expect(enregistrer()).toBeDisabled()
+  await utilisateur.click(enregistrer())
+  expect(espion.creations).toHaveLength(0)
+  expect(espion.requetes).toHaveLength(0)
+})
+
+test('un projet existant choisi ne déclenche aucune création', async () => {
+  const utilisateur = userEvent.setup()
+  const espion = monter({ projects: PROJETS })
+  await utilisateur.type(screen.getByLabelText('Nom de la base'), 'analytics')
+  await utilisateur.click(enregistrer())
+
+  await waitFor(() => expect(espion.requetes).toHaveLength(1))
+  expect(espion.creations).toHaveLength(0)
+})
+
+test('un projet créé dont la base échoue reste créé, et l’écran le dit', async () => {
+  const utilisateur = userEvent.setup()
+  const espion = monter({
+    onSave: async () => {
+      throw new Error('la base « analytics » existe déjà dans ce projet')
+    },
+  })
+  await creerLeProjet(utilisateur, 'Data science')
+  await utilisateur.click(enregistrer())
+
+  // Le défaire supprimerait un projet à la suite d'un échec, et détruirait un homonyme
+  // préexistant en cas de course. `08f` l'assume : le projet reste, vide, et se remplit au geste
+  // suivant.
+  await waitFor(() => expect(espion.creations).toHaveLength(1))
+  // Les projets à jour ont été publiés dès la création : l'arbre montre le projet vide.
+  expect(espion.projets).toHaveLength(1)
+  expect(await screen.findByText(/existe déjà dans ce projet/)).toBeInTheDocument()
 })

@@ -52,6 +52,39 @@ test('esc ferme', async () => {
   expect(onClose).toHaveBeenCalledOnce()
 })
 
+test('esc dans un champ rend le focus à la modale, il ne la ferme pas', async () => {
+  const onClose = vi.fn()
+  render(
+    <Modal title="Nouvelle connexion" icon="db" onClose={onClose}>
+      <input aria-label="Hôte" defaultValue="localhost" />
+    </Modal>,
+  )
+
+  const champ = screen.getByLabelText('Hôte')
+  champ.focus()
+  await userEvent.keyboard('{Escape}')
+
+  // **Une frappe destinée à sortir d'un champ ne doit pas jeter le formulaire.** L'utilisateur
+  // qui vient de saisir dix valeurs les perdrait.
+  expect(onClose).not.toHaveBeenCalled()
+  expect(champ).not.toHaveFocus()
+  expect(screen.getByRole('dialog')).toHaveFocus()
+
+  // Le focus étant revenu sur la coquille, un second `esc` ferme comme attendu.
+  await userEvent.keyboard('{Escape}')
+  expect(onClose).toHaveBeenCalledOnce()
+})
+
+test('esc depuis un bouton ferme sans détour', async () => {
+  const onClose = vi.fn()
+  render(<Simple onClose={onClose} />)
+
+  // Un bouton n'a pas de saisie à abandonner : exiger deux `esc` serait une friction sans raison.
+  screen.getByRole('button', { name: 'champ' }).focus()
+  await userEvent.keyboard('{Escape}')
+  expect(onClose).toHaveBeenCalledOnce()
+})
+
 test('la croix ferme', async () => {
   const onClose = vi.fn()
   render(<Simple onClose={onClose} />)
