@@ -64,6 +64,12 @@ const objet = (name: string, over: Partial<TableSummary> = {}): TableSummary => 
 
 const OBJETS: TableSummary[] = [
   objet('orders'),
+  // Assez de tables pour que la bande d'onglets déborde : c'est ce qui a révélé, le 10 août 2026,
+  // qu'elle passait **sous** « Données / Structure » au lieu de défiler.
+  objet('flyway_schema_history'),
+  objet('catalogue_session'),
+  objet('intervals_connection'),
+  objet('prescribed_session'),
   objet('order_items', { rows: { kind: 'estimated', value: 6_400_000 } }),
   objet('users', { rows: { kind: 'estimated', value: 92_800 } }),
   objet('orders_daily', { kind: 'view', rows: { kind: 'estimated', value: 0 }, primaryKey: null }),
