@@ -24,10 +24,12 @@
   border-radius: var(--radius-field);
   background: var(--field);
   cursor: pointer;
-  /* La barre de titre porte `data-tauri-drag-region` : sans cette exclusion, un clic sur la
-   * pastille déplacerait la fenêtre au lieu de l'activer. Tauri respecte l'attribut posé à
-   * `false` sur un descendant. */
   white-space: nowrap;
+  /* **C'est la pastille qui rétrécit, pas la barre qui découpe.** La barre de titre portait un
+   * `overflow: hidden` pour empêcher un nom long de pousser ses actions ; il découpait aussi le
+   * menu projet, qui s'ouvre sous elle. Le `min-width: 0` autorise le rétrécissement, et
+   * `.name` sacrifie ses caractères en dernier recours. */
+  min-width: 0;
 }
 
 .root:focus-visible {
@@ -71,6 +73,10 @@
   font-size: var(--text-dense);
   font-weight: var(--weight-bold);
   color: var(--ink);
+  /* Le nom est ce qui cède quand la barre manque de place : abrégé, jamais débordé. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chevron {
@@ -81,6 +87,9 @@
 /* Le fil d'Ariane est en mono : un nom de schéma est une valeur technique, et c'est la règle du
  * produit depuis `08b` — ce que l'utilisateur transcrit littéralement est en mono. */
 .breadcrumb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-family: var(--font-mono);
   font-size: var(--text-label);
   font-weight: var(--weight-medium);

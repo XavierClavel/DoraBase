@@ -76,6 +76,40 @@ test('la ligne et la cellule modifiées portent bien les teintes ambre du modèl
   expect(mesures?.coin).toBe('5px')
 })
 
+test('l’encadré ambre borde la case, pas le texte', async ({ page }) => {
+  await modifier(page)
+
+  const boites = await page.evaluate(() => {
+    const cellule = document.querySelector('[role=grid] [class*=cellModified]')
+    const ligne = cellule?.closest('[role=row]')
+    if (!cellule || !ligne) return null
+    const boiteCellule = cellule.getBoundingClientRect()
+    // La boîte du **texte lui-même**, mesurée par un `Range` : `getBoundingClientRect` sur la
+    // cellule rendrait la case, qui est justement ce dont on veut la distinguer.
+    const plage = document.createRange()
+    plage.selectNodeContents(cellule)
+    const boiteTexte = plage.getBoundingClientRect()
+    return {
+      cellule: boiteCellule.height,
+      ligne: ligne.getBoundingClientRect().height,
+      ecartDeCentre:
+        boiteTexte.height > 0
+          ? (boiteTexte.top + boiteTexte.bottom) / 2 - (boiteCellule.top + boiteCellule.bottom) / 2
+          : null,
+    }
+  })
+
+  // **Le fond et le liseré d'une cellule sont ceux de la case, pas de la boîte du texte.** `.row`
+  // centrait ses cellules, qui prenaient donc la hauteur de leur contenu : l'encadré paraissait
+  // collé aux caractères. Un pixel d'écart est le filet de la ligne.
+  expect(boites?.cellule).toBeCloseTo((boites?.ligne ?? 0) - 1, 0)
+  // **Et le texte reste centré dedans.** Étirer les cellules retire au flux le soin de le centrer :
+  // c'est la hauteur de ligne qui s'en charge, et ce test est la seule chose qui l'empêche de
+  // retomber en haut de la case — un correctif de hauteur qui décale tous les textes de la grille
+  // d'un cran serait un défaut bien pire que celui qu'il répare.
+  expect(Math.abs(boites?.ecartDeCentre ?? 99)).toBeLessThanOrEqual(1)
+})
+
 test('une cellule modifiée se distingue d’une cellule filtrée autrement que par la couleur', async ({
   page,
 }) => {

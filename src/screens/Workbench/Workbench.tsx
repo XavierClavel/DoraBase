@@ -225,11 +225,9 @@ export function Workbench({
         <EditBanner
           compte={attente.length}
           table={`${actif.schema}.${actif.table}`}
-          onVoirLeSQL={() => {}}
           onToutAnnuler={() =>
             setAttentes((precedent) => ({ ...precedent, [idActif as string]: [] }))
           }
-          onAppliquer={() => {}}
         />
       )}
       <div className={styles.body}>

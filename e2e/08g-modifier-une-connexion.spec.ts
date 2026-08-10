@@ -17,6 +17,21 @@ test('la pastille projet ouvre le menu des bases', async ({ page }) => {
 
   const menu = page.getByRole('dialog', { name: 'Projets et bases' })
   await expect(menu).toBeVisible()
+  // **`toBeVisible()` ne prouve pas qu'on le voit.** Il vérifie une boîte non vide et l'absence de
+  // `visibility: hidden` — il **ignore le découpage par un ancêtre `overflow: hidden`**. La barre de
+  // titre en portait un, le panneau était coupé net, et ce test était vert : cliquer la pastille ne
+  // faisait rien de visible. Même piège que la bande d'onglets de `10b`. Seul `elementFromPoint`
+  // répond à « qu'y a-t-il réellement à cet endroit de l'écran ? ».
+  const auPoint = await page.evaluate(() => {
+    const panneau = document.querySelector('[role=dialog][aria-label="Projets et bases"]')
+    const boite = panneau?.getBoundingClientRect()
+    if (!panneau || !boite || boite.height === 0) return null
+    const dessus = document.elementFromPoint(boite.left + boite.width / 2, boite.top + 4)
+    return { contenu: panneau.contains(dessus), bas: boite.bottom, hauteurBarre: 44 }
+  })
+  expect(auPoint?.contenu).toBe(true)
+  // Et il déborde bien de la barre de titre : c'est ce débordement qu'un ancêtre découpait.
+  expect(auPoint?.bas).toBeGreaterThan(auPoint?.hauteurBarre ?? 0)
   await expect(menu.getByText('analytics')).toBeVisible()
   // Les environnements déclarés distinguent deux bases de même nom, et c'est ce qu'on cherche en
   // corrigeant un port.
