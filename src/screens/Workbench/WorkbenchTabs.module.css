@@ -13,14 +13,23 @@
   border-bottom: 1px solid var(--divider);
 }
 
-/* La bande occupe la place restante ; les deux vues restent collées à droite. */
+/* La bande occupe la place restante et **défile** ; les deux vues gardent la leur.
+ *
+ * `TabStrip` porte `flex: none` depuis `03` — « une bande d'onglets ne se réduit jamais » — ce qui
+ * était juste dans son contexte et faux ici : avec assez d'onglets ouverts, elle débordait et
+ * passait **sous** « Données / Structure ». Constaté à l'écran le 10 août 2026, avec sept onglets.
+ *
+ * L'enveloppe défile donc à sa place, et `flex: none` sur les vues les empêche d'être écrasées.
+ * macOS ne montre la barre de défilement qu'au geste, donc rien ne s'ajoute à la trame. */
 .strip {
   flex: 1;
   min-width: 0;
   display: flex;
+  overflow-x: auto;
 }
 
 .vues {
+  flex: none;
   display: flex;
   align-items: center;
   gap: var(--space-3);

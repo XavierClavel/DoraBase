@@ -111,6 +111,55 @@ test('la barre d’état court sur toute la largeur, sous les trois colonnes', a
   expect(mesures.sousLePanneau).toBe(true)
 })
 
+test('avec beaucoup d’onglets, la bande défile et ne recouvre pas « Données »', async ({
+  page,
+}) => {
+  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await page.getByRole('treeitem', { name: /analytics/ }).click()
+  await page.getByRole('treeitem', { name: 'public' }).click()
+
+  // Ouvrir toutes les tables du schéma : assez pour déborder de la bande.
+  for (const nom of [
+    /^orders 1\.9/,
+    /flyway_schema_history/,
+    /catalogue_session/,
+    /intervals_connection/,
+    /prescribed_session/,
+    /order_items/,
+    /^users/,
+  ]) {
+    await page.getByRole('treeitem', { name: nom }).click()
+  }
+  await expect(page.getByRole('tab')).toHaveCount(7)
+
+  const recouvrement = await page.evaluate(() => {
+    const bande = document.querySelector('[role=tablist]')
+    const vues = document.querySelector('[aria-current="page"]')
+    const enveloppe = bande?.parentElement
+    if (!bande || !vues || !enveloppe) return null
+
+    // **Le recouvrement se mesure au point, pas au rectangle.** `getBoundingClientRect` rend la
+    // géométrie réelle d'un élément même découpé par un `overflow`, et l'enveloppe, elle, reste
+    // toujours dans ses bornes : deux premières versions de ce test étaient vertes sans le
+    // correctif. Ce qui compte est **ce qui se trouve sous le pixel** où « Données » s'affiche.
+    const boite = vues.getBoundingClientRect()
+    const dessus = document.elementFromPoint(
+      Math.round(boite.left + boite.width / 2),
+      Math.round(boite.top + boite.height / 2),
+    )
+
+    return {
+      recouvertParUnOnglet: bande.contains(dessus),
+      // Le cas est bien exercé : sans débordement, il n'y a rien à recouvrir.
+      deborde: bande.scrollWidth > enveloppe.clientWidth,
+    }
+  })
+
+  expect(recouvrement?.deborde).toBe(true)
+  expect(recouvrement?.recouvertParUnOnglet).toBe(false)
+  await expect(page.getByText('Données')).toBeVisible()
+})
+
 test('fermer le dernier onglet laisse l’écran de travail debout', async ({ page }) => {
   await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
   await page.getByRole('treeitem', { name: /analytics/ }).click()
