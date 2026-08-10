@@ -28,7 +28,8 @@ pub fn run() {
             engine::commands::list_schemas,
             engine::commands::list_objects,
             engine::commands::describe_table,
-            engine::commands::read_rows
+            engine::commands::read_rows,
+            engine::commands::row_as_insert
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

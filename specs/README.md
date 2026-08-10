@@ -237,6 +237,16 @@ comptages et tailles ne viennent pas de l'utilisateur mais du catalogue de la ba
 et leur forme est dictée par chaque moteur. Ils appartiennent donc à `06a`, pas au
 modèle de configuration — c'est la ligne de faille qui a guidé le découpage.
 
+**`SplitPane` ne dimensionnait que son panneau de gauche** (trouvé le 10 août 2026, en mesurant
+`A5`). Ce qui convient à une sidebar, et pas à l'écran de travail, dont le panneau **droit** est
+de largeur fixe : le centre recevait 296 px et la grille tombait à zéro pixel de large, depuis
+`10b`. Aucun test ne l'avait vu — chacun mesurait la colonne qui l'intéressait, jamais le partage
+des trois. `SplitPane` reçoit une option `sized`, et un test e2e verrouille le partage.
+
+**Le panneau droit de l'écran de travail est unique, son contenu suit l'écran** : détail de
+l'objet en `A4`, ligne sélectionnée en `A5`. Le mockup n'en montre qu'un, et la barre d'état court
+**sous** les trois colonnes — elle vit donc au niveau de l'écran, pas du centre.
+
 **Pourquoi `10` a été découpé en six** (9 août 2026) : `A5` porte trois choses qu'aucune spec
 n'a livrées — la grille **virtualisée**, que `09a` a explicitement séparée de `DataTable` ; le
 branchement de la lecture paginée de `06d`, écrite et testée mais appelée par personne ; et la
@@ -296,12 +306,12 @@ propres critères de vérification.
 | [`09d`](09d-a4-sidebar-et-arbre.md) | A4 | Sidebar 252 px et son arbre à quatre niveaux | **fait** |
 | [`09e`](09e-a4-liste-des-objets.md) | A4 | Centre : fil d'Ariane, tableau des objets | **fait** (bande d'onglets → `10`) |
 | [`09f`](09f-a4-panneau-droit.md) | A4 | Panneau de détail 300 px | **fait** |
-| [`10a`](10a-primitives-de-grille.md) | — | Primitives : `VirtualGrid`, `Popover` | à faire |
-| [`10b`](10b-coquille-de-travail-et-onglets.md) | A5 | Coquille d'écran de travail et bande d'onglets câblée | à faire |
-| [`10c`](10c-grille-de-donnees.md) | A5 | Grille de données : `read_rows`, rendu des valeurs, barre d'état | à faire |
-| [`10d`](10d-filtres-et-tri.md) | A5 | Filtres par en-tête, popover d'opérateur, tri multiple | à faire |
-| [`10e`](10e-toolbar.md) | A5 | Toolbar : `LIMIT`, chips, « Voir le SQL », colonnes | à faire |
-| [`10f`](10f-panneau-de-ligne.md) | A5 | Panneau droit : détail d'une ligne, ligne liée, INSERT | à faire |
+| [`10a`](10a-primitives-de-grille.md) | — | Primitives : `VirtualGrid`, `Popover` | **fait** |
+| [`10b`](10b-coquille-de-travail-et-onglets.md) | A5 | Coquille d'écran de travail et bande d'onglets câblée | **fait** |
+| [`10c`](10c-grille-de-donnees.md) | A5 | Grille de données : `read_rows`, rendu des valeurs, barre d'état | **fait** |
+| [`10d`](10d-filtres-et-tri.md) | A5 | Filtres par en-tête, popover d'opérateur, tri multiple | **fait** |
+| [`10e`](10e-toolbar.md) | A5 | Toolbar : `LIMIT`, chips, « Voir le SQL », colonnes | **fait** |
+| [`10f`](10f-panneau-de-ligne.md) | A5 | Panneau droit : détail d'une ligne, ligne liée, INSERT | **fait** |
 | `11` | A6 | Édition inline, modifications en attente, diff et transaction | à écrire |
 | `12` | A7 | Console SQL : éditeur, autocomplétion, onglets de résultat | à écrire |
 | `13` | A8 | Console MongoDB et vue JSON | à écrire |

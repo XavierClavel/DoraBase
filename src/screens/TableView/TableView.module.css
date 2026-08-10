@@ -3,22 +3,34 @@
  *
  *   gouttière #   30px, encre .3, 10px
  *   NULL          rgba(35,32,28,.35)
- *   barre d'état  26px, fond --bar, filet haut 1px --divider,
- *                 500 11px JetBrains Mono, encre .5 ; le compte en --success-ink 700
- *
- * La grille elle-même est habillée par `VirtualGrid` (10a) : hauteurs, filets et sélection y
+ * * La grille elle-même est habillée par `VirtualGrid` (10a) : hauteurs, filets et sélection y
  * vivent, pour que A6 et A7 en héritent sans les recopier.
  */
 
+/* `width: 100%` et `min-width: 0` : sans eux, la vue se réduit à la largeur de son panneau droit
+   et la grille tombe à zéro — mesuré dans Playwright, invisible autrement. Le `min-width` est ce
+   qui autorise la grille à défiler horizontalement au lieu de pousser le conteneur. */
 .root {
   display: flex;
   flex-direction: column;
   flex: 1;
+  width: 100%;
+  min-width: 0;
   min-height: 0;
+}
+
+/* Grille et panneau de ligne côte à côte : le mockup borde le panneau par la toolbar au-dessus
+   et la barre d'état en dessous, à la différence du panneau de détail de A4 qui longe toute la
+   hauteur du corps. */
+.centre {
+  flex: 1;
+  min-height: 0;
+  display: flex;
 }
 
 .grille {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
@@ -38,40 +50,6 @@
 
 .nombre {
   font-variant-numeric: tabular-nums;
-}
-
-.statut {
-  flex: none;
-  height: var(--h-statusbar);
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-6);
-  background: var(--bar);
-  border-top: 1px solid var(--divider);
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
-  font-weight: var(--weight-medium);
-  color: var(--ink-8);
-}
-
-.compte {
-  color: var(--success-ink);
-  font-weight: var(--weight-bold);
-}
-
-.echec {
-  color: var(--danger-ink);
-}
-
-.espace {
-  flex: 1;
-}
-
-.lecture {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
 }
 
 /* L'en-tête cliquable d'une colonne : le tri se déclenche dessus, le `⌘`-clic l'empile. */

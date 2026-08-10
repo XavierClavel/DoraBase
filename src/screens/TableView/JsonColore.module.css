@@ -1,0 +1,37 @@
+/*
+ * Les quatre couleurs du JSON, relevées sur le panneau droit de A5 :
+ *   clés         --json-key      #31648F
+ *   chaînes      --json-string   #C9502A
+ *   nombres      --json-number   #2E7D57  (et les booléens, que le mockup colore pareil)
+ *   accolades    --json-punct    #7C5CD6
+ */
+
+.root {
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-control-2);
+  background: var(--field);
+  border: 1px solid var(--divider);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-code-tight);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cle {
+  color: var(--json-key);
+}
+
+.chaine {
+  color: var(--json-string);
+}
+
+.nombre {
+  color: var(--json-number);
+}
+
+.ponctuation {
+  color: var(--json-punct);
+}

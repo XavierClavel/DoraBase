@@ -15,6 +15,17 @@ type SplitPaneProps = {
   max: number
   /** Côté d'où part le dégradé de la poignée, selon le panneau qu'elle borde. */
   handleShadow?: 'start' | 'end'
+  /**
+   * Lequel des deux panneaux porte `defaultSize` ; l'autre prend la place restante.
+   *
+   * **`end` manquait, et son absence a cassé un écran.** `03` ne dimensionnait que le panneau de
+   * gauche, ce qui convient à une sidebar. Mais l'écran de travail (`10b`) a un **panneau droit**
+   * de largeur fixe : sans cette option, c'est le centre qui recevait 296 px et le panneau qui
+   * prenait tout le reste. Constaté le 10 août 2026 en mesurant la grille de `A5`, qui tombait à
+   * zéro pixel de large — un test de fidélité par écran ne l'avait pas vu, aucun ne mesurait le
+   * centre.
+   */
+  sized?: 'start' | 'end'
   start: ReactNode
   end: ReactNode
 }
@@ -55,6 +66,7 @@ export function SplitPane({
   min,
   max,
   handleShadow = 'start',
+  sized = 'start',
   start,
   end,
 }: SplitPaneProps) {
@@ -78,7 +90,10 @@ export function SplitPane({
     const originSize = size
 
     function onMove(moveEvent: PointerEvent) {
-      commit(originSize + (moveEvent.clientX - originX))
+      // Vers la droite agrandit le panneau de gauche et **rétrécit** celui de droite : le geste
+      // suit toujours la poignée, quel que soit le panneau dimensionné.
+      const delta = moveEvent.clientX - originX
+      commit(originSize + (sized === 'start' ? delta : -delta))
     }
     function onUp() {
       window.removeEventListener('pointermove', onMove)
@@ -90,13 +105,17 @@ export function SplitPane({
   }
 
   function handleKeyDown(event: ReactKeyboardEvent) {
-    if (event.key === 'ArrowLeft') commit(size - KEYBOARD_STEP)
-    if (event.key === 'ArrowRight') commit(size + KEYBOARD_STEP)
+    const pas = sized === 'start' ? KEYBOARD_STEP : -KEYBOARD_STEP
+    if (event.key === 'ArrowLeft') commit(size - pas)
+    if (event.key === 'ArrowRight') commit(size + pas)
   }
 
   return (
     <div className={styles.root}>
-      <div className={styles.pane} style={{ width: size }}>
+      <div
+        className={sized === 'start' ? styles.pane : styles.end}
+        style={sized === 'start' ? { width: size } : undefined}
+      >
         {start}
       </div>
       {/* biome-ignore lint/a11y/useSemanticElements: la règle propose `<hr>`, inutilisable
@@ -117,7 +136,12 @@ export function SplitPane({
       >
         <div className={styles.grip} />
       </div>
-      <div className={styles.end}>{end}</div>
+      <div
+        className={sized === 'end' ? styles.pane : styles.end}
+        style={sized === 'end' ? { width: size } : undefined}
+      >
+        {end}
+      </div>
     </div>
   )
 }

@@ -9,6 +9,7 @@ import type {
   SchemaInfo,
   TableDetail,
   TableSummary,
+  Value,
 } from '../domain/engine'
 
 /**
@@ -75,6 +76,23 @@ export async function describeTable(
  */
 export async function readRows(key: DatabaseKey, query: RowQuery): Promise<RowWindow> {
   return invoke<RowWindow>('read_rows', { key, query })
+}
+
+/**
+ * Une ligne rendue en `INSERT` exécutable, que `A5` copie (`10f`).
+ *
+ * **Composé côté Rust**, où vit la connaissance du moteur : citer les identifiants et
+ * littéraliser les valeurs demanderait au JavaScript de connaître les règles de sept moteurs — le
+ * couplage que le projet a déjà refusé pour la clé de base (`09b`) et la référence de secret
+ * (`08e`). Le presse-papiers, lui, reste côté front : c'est une API de la webview.
+ */
+export async function rowAsInsert(
+  key: DatabaseKey,
+  schema: string,
+  table: string,
+  values: readonly Value[],
+): Promise<string> {
+  return invoke<string>('row_as_insert', { key, schema, table, values })
 }
 
 /**
