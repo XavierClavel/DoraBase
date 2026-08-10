@@ -1033,7 +1033,12 @@ mod tests_db {
             orders.last_analyze.is_some(),
             "la table de test a été analysée"
         );
-        assert!(orders.rows.value() > 0, "500 lignes insérées");
+        assert_eq!(
+            orders.rows.value().map(|v| v > 0),
+            Some(true),
+            "500 lignes insérées et la table est analysée : {:?}",
+            orders.rows
+        );
     }
 
     #[tokio::test]
@@ -1044,12 +1049,24 @@ mod tests_db {
         );
     }
 
+    /// **Ce test était vert pour la mauvaise raison.**
+    ///
+    /// Il vérifiait `value() >= 0`, ce que `0` satisfaisait : `estimation_de` traduisait
+    /// `reltuples = -1` en zéro, et l'écran affichait donc « 0 ligne » sur toute relation jamais
+    /// analysée. Sur une base réelle dont aucune table ne l'avait été, `A4` les montrait **toutes
+    /// vides** — constaté à l'usage le 10 août 2026.
+    ///
+    /// La version qui mord exige `Unknown` : « pas d'estimation » n'est ni négatif, ni zéro.
     #[tokio::test]
-    async fn un_comptage_inconnu_n_est_pas_rendu_comme_moins_un() {
-        // `reltuples = -1` sur une vue jamais analysée : l'afficher tel quel donnerait
-        // « −1 lignes » dans l'arbre de `A4`.
+    async fn un_comptage_inconnu_est_rendu_inconnu_et_non_zero() {
+        // `paid_orders` est volontairement laissée non analysée par le décor de test.
         let vue = objet_de_test("paid_orders").await;
-        assert!(vue.rows.value() >= 0, "comptage négatif : {:?}", vue.rows);
+        assert_eq!(
+            vue.rows,
+            crate::engine::RowCount::Unknown,
+            "une relation jamais analysée doit rendre Unknown"
+        );
+        assert_eq!(vue.rows.value(), None);
     }
 
     #[tokio::test]

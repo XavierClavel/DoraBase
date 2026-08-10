@@ -121,14 +121,24 @@ export function ConnectionForm({ draft, onChange, projects }: ConnectionFormProp
         </div>
       </div>
 
-      {/* Le champ n'existe **que** sous « + Nouveau projet… » : le rendre toujours, désactivé,
+      {/* **Sa propre rangée, pleine largeur** (`08f`). Deux placements ont été essayés et écartés
+          à la mesure : dans la grille principale sans `grid-column`, le champ volait une cellule et
+          « Hôte » / « Port » remontaient sur sa rangée ; dans la cellule du sélecteur, il cassait
+          l'`align-items: end` de la rangée d'identité — le sélecteur ne s'alignait plus avec le nom
+          de la base ni avec les boutons d'environnement.
+
+          Le champ n'existe **que** sous « + Nouveau projet… » : le rendre toujours, désactivé,
           ferait croire qu'on peut renommer le projet choisi. */}
       {creeUnProjet && (
-        <Field
-          label="Nom du nouveau projet"
-          value={draft.newProjectName}
-          onChange={(event) => onChange({ newProjectName: event.target.value })}
-        />
+        // Une enveloppe, parce que le `className` de `Field` va sur son `<input>` et non sur la
+        // boîte qui porte l'étiquette — c'est elle qui est l'item de la grille.
+        <div className={styles.newProjectRow}>
+          <Field
+            label="Nom du nouveau projet"
+            value={draft.newProjectName}
+            onChange={(event) => onChange({ newProjectName: event.target.value })}
+          />
+        </div>
       )}
 
       {/* Le port est **collé** à l'hôte : sous-grille `1fr 84px` avec un gap de 8px, contre

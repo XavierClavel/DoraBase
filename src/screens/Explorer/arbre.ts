@@ -1,6 +1,6 @@
 import type { Environment, Project } from '../../domain/config'
 import type { ConnectionState, SchemaInfo, TableSummary } from '../../domain/engine'
-import { formatCount } from '../../ui/format'
+import { formatRowCount } from '../../ui/format'
 
 /**
  * L'aplatissement de l'arbre de `A4`, en fonction **pure**.
@@ -182,7 +182,7 @@ function noeudsDeSchema(
         // `RowCount` distingue `estimated` de `exact` **au niveau du type** (`06c`) : le mockup
         // n'affiche qu'un nombre, mais l'information est là et `09f` en aura besoin pour ne pas
         // présenter une estimation comme un fait exact.
-        meta: formatCount(objet.rows.value),
+        meta: formatRowCount(objet.rows),
         metaVariant: 'mono' as const,
         project,
         database,

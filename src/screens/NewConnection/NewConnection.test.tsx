@@ -243,8 +243,8 @@ test('tout le formulaire est atteignable au clavier', async () => {
     'Nom de la base',
     'Projet',
     'dev', // groupe d'environnements : une seule entrée
-    // Sans aucun projet, `08f` propose sa création d'emblée : le champ de nom est donc dans le
-    // parcours, entre le sélecteur et l'hôte.
+    // Sans aucun projet, `08f` propose sa création d'emblée : le champ est sur sa propre rangée,
+    // entre la rangée d'identité et l'hôte.
     'Nom du nouveau projet',
     'Hôte',
     'Port',

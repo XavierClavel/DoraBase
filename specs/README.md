@@ -250,6 +250,23 @@ des trois. `SplitPane` reçoit une option `sized`, et un test e2e verrouille le 
 l'objet en `A4`, ligne sélectionnée en `A5`. Le mockup n'en montre qu'un, et la barre d'état court
 **sous** les trois colonnes — elle vit donc au niveau de l'écran, pas du centre.
 
+**Une relation jamais analysée n'a pas zéro ligne** (trouvé à l'usage le 10 août 2026). PostgreSQL
+rend `reltuples = -1` pour une table fraîchement créée, une vue, ou une base restaurée sans
+`ANALYZE`. `06c` le traduisait en `0` — ce qui évitait bien le « −1 lignes » dans l'arbre, mais
+remplaçait un mensonge par un autre : sur une base réelle dont aucune table n'avait été analysée,
+`A4` les affichait **toutes vides**, et l'utilisateur en a conclu que ses tables l'étaient.
+`RowCount` porte désormais une troisième variante, `Unknown`, et l'écran rend un tiret cadratin
+avec une infobulle qui dit qu'un `ANALYZE` renseignerait le catalogue. Le test qui aurait dû
+l'attraper vérifiait `value() >= 0`, ce que zéro satisfaisait.
+
+**`data-tauri-drag-region` nu ne rend glissable que l'élément lui-même**, pas son sous-arbre : le
+script de Tauri teste `el === composedPath[0]`. La barre de titre étant couverte par ses enfants,
+seule la bande de fond autour des feux répondait. La valeur **`deep`** étend le glissement au
+sous-arbre, et les éléments cliquables le bloquent d'eux-mêmes — cliquer la pastille projet active
+donc le contrôle sans déplacer la fenêtre, sans qu'il ait fallu l'écrire. À savoir aussi : la
+permission `core:window:allow-start-dragging` est nécessaire, `core:window:default` n'accordant
+aucune permission d'écriture.
+
 **Pourquoi `10` a été découpé en six** (9 août 2026) : `A5` porte trois choses qu'aucune spec
 n'a livrées — la grille **virtualisée**, que `09a` a explicitement séparée de `DataTable` ; le
 branchement de la lecture paginée de `06d`, écrite et testée mais appelée par personne ; et la

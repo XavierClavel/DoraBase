@@ -166,7 +166,7 @@ export type RelationDirection = "outgoing" | "incoming";
  * distinction, l'écran ne saurait pas s'il montre une valeur sûre, et la colonne
  * « Dernier ANALYZE » de `A4` n'aurait aucun sens.
  */
-export type RowCount = { "kind": "estimated", value: number, } | { "kind": "exact", value: number, };
+export type RowCount = { "kind": "estimated", value: number, } | { "kind": "exact", value: number, } | { "kind": "unknown" };
 
 /**
  * Les paliers de `LIMIT` du stepper de `A5` : 100 / 500 / 1000 / 5000.
