@@ -257,4 +257,4 @@ export type TypeCategory = "text" | "number" | "timestamp" | "json" | "uuid" | "
  * colonnes en pastille. C'est donc l'écran qui formate — lui seul connaît la densité et
  * la locale. Rendre une chaîne déjà formatée lui retirerait cette décision.
  */
-export type Value = { "kind": "null" } | { "kind": "bool", value: boolean, } | { "kind": "int", value: number, } | { "kind": "float", value: number, } | { "kind": "text", value: string, } | { "kind": "timestamp", value: string, } | { "kind": "json", value: string, } | { "kind": "binary", base64: string, };
+export type Value = { "kind": "null" } | { "kind": "bool", value: boolean, } | { "kind": "int", value: number, } | { "kind": "float", value: number, } | { "kind": "decimal", value: string, } | { "kind": "text", value: string, } | { "kind": "timestamp", value: string, } | { "kind": "json", value: string, } | { "kind": "binary", base64: string, };

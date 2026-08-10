@@ -233,6 +233,11 @@ function brutDe(valeur: Value | undefined): unknown {
     case 'text':
     case 'timestamp':
       return valeur.value
+    // **En chaîne, et c'est voulu** : un décimal exact ne se représente pas en nombre JSON sans
+    // perte, et JSON n'a pas de type décimal. Le rendre en `number` transformerait `12345678.91`
+    // en `12345678.909999999`, dans un objet destiné à être recollé ailleurs.
+    case 'decimal':
+      return valeur.value
     case 'json':
       // Réinjecté tel quel quand il est analysable : imbriquer une chaîne de JSON dans du JSON
       // produirait un objet doublement échappé, illisible et non recollable.

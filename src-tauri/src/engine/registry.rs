@@ -494,7 +494,8 @@ mod tests_db {
             .expect("introspection");
 
         // 4 tables et 1 vue dans le schéma de test, dont la composition est connue.
-        assert_eq!(objets.len(), 5);
+        // Cinq tables et une vue depuis le 10 août 2026 : `montants` couvre le cas `numeric`.
+        assert_eq!(objets.len(), 6);
 
         registre.fermer(cle).await;
     }

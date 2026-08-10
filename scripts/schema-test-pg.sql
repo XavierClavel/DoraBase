@@ -77,6 +77,17 @@ insert into introspection.orders (user_id, status, total_cents, metadata, ref, p
   values (1, 'paid', 28000, '{"gift": true, "frame": "oak-30x40"}'::jsonb,
           '11111111-2222-3333-4444-555555555555'::uuid, true, '\x0102030405060708'::bytea);
 
+-- Un décimal exact, et une précision qu'un `f64` ne représente pas : `12345678.91` en binaire
+-- vaut 12345678.909999999... Sans le transtypage de `liste_colonnes`, cette colonne se lisait
+-- `NULL` — une colonne de montants s'affichait vide (défaut du 10 août 2026).
+create table introspection.montants (
+  id bigserial primary key,
+  montant numeric(12,2) not null,
+  taux decimal(5,4)
+);
+insert into introspection.montants (montant, taux)
+  values (12345678.91, 0.1975), (0.01, null);
+
 -- `analyze` peuple `reltuples` et `last_analyze` : sans lui, les tests sur l'estimation et
 -- sur la colonne « Dernier ANALYZE » de `A4` n'auraient rien à observer. La vue, elle, reste
 -- volontairement non analysée — c'est le cas `reltuples = -1`.

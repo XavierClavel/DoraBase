@@ -157,6 +157,21 @@ pub enum Value {
     Float {
         value: f64,
     },
+    /// Un décimal **exact**, gardé en texte.
+    ///
+    /// `numeric` de PostgreSQL est un décimal de précision arbitraire, et `tokio-postgres` ne le
+    /// lit ni en `i64` ni en `f64` : la lecture retombait sur le repli texte, que le `select` ne
+    /// transtypait pas — la valeur arrivait donc en `Null`. Une colonne de montants s'affichait
+    /// vide. Constaté le 10 août 2026 sur `numeric(10,2)`.
+    ///
+    /// **Pas un `f64`** : convertir `12345678.91` en flottant binaire perd de la précision, et
+    /// c'est inacceptable pour de l'argent — le premier usage de `numeric`. Le texte exact que
+    /// rend la base est ce qu'il faut afficher.
+    ///
+    /// Distinct de `Text` : l'écran l'aligne à **droite**, comme un nombre.
+    Decimal {
+        value: String,
+    },
     Text {
         value: String,
     },
