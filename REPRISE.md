@@ -10,7 +10,7 @@ correctifs venus du **premier usage réel** de l'application.
 
 ---
 
-## 0. À faire en premier — quatre vérifications à l'œil, dont trois en attente
+## 0. À faire en premier — six vérifications à l'œil, dont une en attente
 
 **Elles s'accumulent depuis `08c` et rien ne peut les automatiser** : Playwright ne pilote pas
 WKWebView, et piloter le bureau par frappes synthétiques a été tenté puis abandonné — la fenêtre
@@ -25,14 +25,14 @@ pnpm tauri dev
 | # | Ce qu'il faut faire | Ce qu'il faut observer | Spec |
 | --- | --- | --- | --- |
 | 1 | ~~Tester la connexion~~ | **Fait le 10 août** : le pont répond, la connexion aboutit | `08d` |
-| 2 | Déplier « Proxy / tunnel », cliquer « Parcourir… » | Le sélecteur de fichier natif de macOS s'ouvre, et le chemin choisi arrive dans le champ | `08c` |
+| 2 | ~~« Parcourir… » du panneau tunnel~~ | **Fait le 10 août** : le sélecteur natif s'ouvre et le chemin arrive dans le champ | `08c` |
 | 3 | ~~Enregistrer une base, quitter, relancer~~ | **Fait le 10 août** : le projet et sa base survivent au redémarrage | `09b` |
-| 4 | Cliquer la pastille projet de la barre de titre | Elle s'active et **ne déplace pas la fenêtre**. À revérifier : le glissement est passé en `deep`, donc tout le sous-arbre est glissable sauf les contrôles | `09c` |
-| 5 | Ouvrir une table, sélectionner une ligne, cliquer « Copier la ligne en INSERT », coller ailleurs | Le SQL arrive dans le presse-papiers — `navigator.clipboard` n'est pas exercé par les tests | `10f` |
-| 6 | Ouvrir une table, presser `⌘E`, modifier une cellule, presser `⌘Z` | Le mode édition s'ouvre, le bandeau paraît, `⌘Z` retire la modification. **`⌘E` et `⌘Z` sont des raccourcis système sur macOS** : sous WKWebView, le menu de l'application peut les intercepter avant la page — les e2e tournent sous Chromium, qui n'a pas de menu | `11b` |
+| 4 | Cliquer la pastille projet de la barre de titre | **Défaut trouvé le 10 août** : la fenêtre ne bougeait pas, mais le menu ne paraissait pas — un `overflow: hidden` de la barre le découpait (`DEFAUTS.md` n° 35). Corrigé ; **à reprendre** pour confirmer que le menu s'ouvre dans l'application | `09c` |
+| 5 | ~~« Copier la ligne en INSERT », puis coller~~ | **Fait le 10 août** : le SQL arrive dans le presse-papiers | `10f` |
+| 6 | ~~`⌘E`, modifier une cellule, `⌘Z`~~ | **Fait le 10 août** : la bascule et l'annulation répondent sous WKWebView, malgré les raccourcis système. Deux défauts d'affichage relevés au passage (`DEFAUTS.md` n° 36 et 37), corrigés | `11b` |
 
-**Quatre vérifications restent, et l'usage réel en a appris plus qu'elles** : neuf défauts en deux
-jours, dont six signalés par l'utilisateur (voir `DEFAUTS.md` § « Ce qu'a trouvé le premier
+**Une seule vérification reste — et l'usage réel en a appris bien plus qu'elles** : douze défauts en deux
+jours, dont neuf signalés par l'utilisateur (voir `DEFAUTS.md` § « Ce qu'a trouvé le premier
 usage réel »). La leçon est au § 5, règle 9.
 
 Tant que ce n'est pas fait, **ne présenter aucun de ces points comme vérifié**. Les
