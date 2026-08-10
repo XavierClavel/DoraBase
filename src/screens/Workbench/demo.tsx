@@ -295,6 +295,9 @@ export function WorkbenchDemo() {
       passerelleDetail={PASSERELLE_DETAIL}
       passerelleLignes={PASSERELLE_LIGNES}
       rowAsInsert={rowAsInsert}
+      // `?demo` ouvre l'écran en **mode édition** : c'est le seul moyen de voir `A6` sans base
+      // réelle, Playwright ne pilotant pas le pont Tauri.
+      edition
       onEditDatabase={(projet, base) => {
         // La démo ne monte pas `A2` : le parcours d'édition complet appartient à l'application, et
         // ce qui se vérifie ici est le **chemin** — que le menu désigne la bonne base.

@@ -366,7 +366,7 @@ propres critères de vérification.
 | [`10d`](10d-filtres-et-tri.md) | A5 | Filtres par en-tête, popover d'opérateur, tri multiple | **fait** |
 | [`10e`](10e-toolbar.md) | A5 | Toolbar : `LIMIT`, chips, « Voir le SQL », colonnes | **fait** |
 | [`10f`](10f-panneau-de-ligne.md) | A5 | Panneau droit : détail d'une ligne, ligne liée, INSERT | **fait** |
-| [`11a`](11a-cellule-editable.md) | A6 | Cellule éditable et modifications en attente | à faire |
+| [`11a`](11a-cellule-editable.md) | A6 | Cellule éditable et modifications en attente | **fait** |
 | [`11b`](11b-marques-du-mode-edition.md) | A6 | Bandeau, badge, teintes, annotations, barre d'état | à faire |
 | [`11c`](11c-panneau-des-modifications.md) | A6 | Panneau droit : cartes, diff, SQL prévisualisé | à faire |
 | [`11d`](11d-appliquer-les-modifications.md) | A6 | Appliquer : transaction, garde-fous, conflit | à faire |

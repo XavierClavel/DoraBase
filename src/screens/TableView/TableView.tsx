@@ -11,13 +11,26 @@ import type {
   SortKey,
   Value,
 } from '../../domain/engine'
+import { cx } from '../../ui/cx'
 import { type GridColumn, VirtualGrid } from '../../ui/VirtualGrid/VirtualGrid'
-import { estNumerique, rendreValeur } from './cellule'
+import { apercuDeLaSaisie, estNumerique, rendreValeur } from './cellule'
+import { EditableCell } from './EditableCell'
 import { FilterCell } from './FilterCell'
+import {
+  annulerLaDerniere,
+  type EnAttente,
+  modificationDe,
+  raisonDuRefus,
+  retenir,
+  texteBrutDe,
+} from './modifications'
 import styles from './TableView.module.css'
 import { Toolbar } from './Toolbar'
 import { basculerTri, filtreDe, poserFiltre, rangDeTri } from './tri'
 import { LIMITE_PAR_DEFAUT, type PasserelleLignes, useLignes } from './useLignes'
+
+/** L'édition en cours : une cellule ouverte à la saisie. */
+type EnEdition = { cle: string; rang: number; column: string }
 
 type TableViewProps = {
   cle: DatabaseKey
@@ -50,6 +63,13 @@ type TableViewProps = {
   /** Le rang sélectionné, piloté depuis l'écran pour que les flèches du panneau y répondent. */
   rang?: number | null
   onRangChange?: (rang: number | null) => void
+  /**
+   * Le mode édition (`11b`), par onglet. Sans lui, la grille est en lecture seule — ce qu'elle est
+   * depuis `10c`.
+   */
+  edition?: boolean
+  /** Publie les modifications en attente vers l'écran, qui en porte les marques (`11b`). */
+  onModificationsChange?: (attente: EnAttente) => void
 }
 
 /** Une ligne de la fenêtre, avec son rang — la gouttière `#` du mockup. */
@@ -81,6 +101,8 @@ export function TableView({
   onLectureChange,
   rang = null,
   onRangChange,
+  edition = false,
+  onModificationsChange,
 }: TableViewProps) {
   const [filters, setFilters] = useState<readonly Filter[]>([])
   const [sort, setSort] = useState<readonly SortKey[]>([])
@@ -91,6 +113,9 @@ export function TableView({
   // Les colonnes **masquées**, et non les visibles : une table dont on n'a rien masqué a un
   // ensemble vide, quel que soit le nombre de colonnes qu'elle finira par avoir.
   const [masquees, setMasquees] = useState<ReadonlySet<string>>(new Set())
+  // Les modifications en attente (`11a`). **Rien n'est envoyé** : c'est le sens de « en attente ».
+  const [attente, setAttente] = useState<EnAttente>([])
+  const [enEdition, setEnEdition] = useState<EnEdition | null>(null)
   const hauteur = useHauteurDisponible()
   // La sélection est **pilotée par l'écran** : le panneau de ligne et ses flèches vivent au-dessus
   // de cette vue, et deux copies du même rang divergeraient.
@@ -114,7 +139,13 @@ export function TableView({
 
   const { fenetre, loading, error, relire } = useLignes(cle, query, passerelle)
 
-  useEffect(() => onEtatChange?.({ filters, sort }), [filters, sort, onEtatChange])
+  // **Un bloc, pas une flèche concise** : une flèche concise *retourne* la valeur du rappel, et
+  // React la prend pour une fonction de nettoyage — « destroy is not a function » au démontage dès
+  // que le rappel rend autre chose que `undefined`. Trouvé par un test dont le rappel poussait dans
+  // un tableau, ce qui rend un nombre.
+  useEffect(() => {
+    onEtatChange?.({ filters, sort })
+  }, [filters, sort, onEtatChange])
 
   // `useCallback` : la fonction entre dans le `useMemo` des colonnes, qu'une nouvelle identité à
   // chaque rendu recalculerait pour rien.
@@ -131,19 +162,66 @@ export function TableView({
     [fenetre],
   )
 
+  useEffect(() => {
+    onModificationsChange?.(attente)
+  }, [attente, onModificationsChange])
+
+  /**
+   * `⌘Z` annule la **dernière modification retenue**.
+   *
+   * Sur la fenêtre et non dans le champ : `esc` abandonne la saisie, `⌘Z` défait un changement
+   * validé — le mockup écrit les deux côte à côte, et les confondre ferait perdre une modification
+   * en voulant sortir d'une cellule.
+   *
+   * Inopérant pendant une saisie : là, `⌘Z` est l'annulation du navigateur dans le champ, et la
+   * détourner surprendrait.
+   */
+  useEffect(() => {
+    if (!edition) return
+    function auClavier(evenement: KeyboardEvent) {
+      if (!evenement.metaKey || evenement.key !== 'z' || enEdition !== null) return
+      evenement.preventDefault()
+      setAttente(annulerLaDerniere)
+    }
+    window.addEventListener('keydown', auClavier)
+    return () => window.removeEventListener('keydown', auClavier)
+  }, [edition, enEdition])
+
+  // Quitter le mode édition ferme la saisie en cours mais **garde** les modifications retenues :
+  // les perdre sur une frappe serait le défaut qu'`esc` fermant une modale pleine a déjà produit.
+  useEffect(() => {
+    if (!edition) setEnEdition(null)
+  }, [edition])
+
   const ligneChoisie = lignes.find((l) => String(l.rang) === choisie)
 
-  useEffect(
-    () =>
-      onLectureChange?.({
-        fenetre,
-        loading,
-        error,
-        ligne: ligneChoisie?.valeurs ?? null,
-        rang: ligneChoisie?.rang ?? null,
-        total: lignes.length,
-      }),
-    [fenetre, loading, error, ligneChoisie, lignes.length, onLectureChange],
+  useEffect(() => {
+    onLectureChange?.({
+      fenetre,
+      loading,
+      error,
+      ligne: ligneChoisie?.valeurs ?? null,
+      rang: ligneChoisie?.rang ?? null,
+      total: lignes.length,
+    })
+  }, [fenetre, loading, error, ligneChoisie, lignes.length, onLectureChange])
+
+  /**
+   * La valeur de la clé primaire d'une ligne, en texte — l'identité d'une modification (`11a`).
+   *
+   * `null` quand la table n'en a pas : elle n'est alors **pas éditable**, parce que `11d` n'aurait
+   * pas de `WHERE` pour retrouver la ligne.
+   */
+  const rangDeLaCle = columns.findIndex((colonne) => colonne.key === 'primary')
+  // `useCallback` : la fonction entre dans le `useMemo` des colonnes, qu'une nouvelle identité à
+  // chaque rendu recalculerait pour rien.
+  const cleDe = useCallback(
+    (ligne: Ligne): string | null => {
+      if (rangDeLaCle === -1) return null
+      const valeur = ligne.valeurs[rangDeLaCle]
+      return valeur === undefined ? null : texteBrutDe(valeur)
+    },
+    [rangDeLaCle],
   )
 
   const colonnes: GridColumn<Ligne>[] = useMemo(
@@ -212,16 +290,82 @@ export function TableView({
             cell: (ligne: Ligne) => {
               const valeur = ligne.valeurs[rang]
               if (valeur === undefined) return null
+              const cle = cleDe(ligne)
+              const modifiee = cle === null ? undefined : modificationDe(attente, cle, colonne.name)
+              const ouverte =
+                enEdition !== null && enEdition.cle === cle && enEdition.column === colonne.name
+
+              if (ouverte && cle !== null) {
+                return (
+                  <EditableCell
+                    valeur={valeur}
+                    retenue={modifiee?.apres}
+                    onValider={(saisie) => {
+                      setAttente((precedent) =>
+                        retenir(precedent, {
+                          cle,
+                          rang: ligne.rang,
+                          column: colonne.name,
+                          avant: valeur,
+                          apres: saisie,
+                        }),
+                      )
+                      setEnEdition(null)
+                    }}
+                    onAbandonner={() => setEnEdition(null)}
+                  />
+                )
+              }
+
+              // **La valeur retenue prime sur celle de la base** : c'est ce que l'utilisateur a
+              // tapé, et c'est ce que `11d` écrira. Afficher l'ancienne ferait croire que la
+              // saisie a été perdue.
+              const affichee = modifiee ? apercuDeLaSaisie(modifiee.apres) : rendreValeur(valeur)
+              const classe = estNumerique(valeur) ? styles.nombre : undefined
+
+              if (!edition) return <span className={classe}>{affichee}</span>
+
+              // **Un `<button>` qui remplit la cellule**, et non un `div` à double-clic : le
+              // clavier vient gratuitement — `Tab` pour parcourir, `↩` ou espace pour ouvrir — là
+              // où un gestionnaire de double-clic n'a aucun équivalent au clavier.
+              const refusDeLaColonne = raisonDuRefus(colonne)
+              if (refusDeLaColonne !== null || cle === null) {
+                const raison =
+                  cle === null
+                    ? 'Cette table n’a pas de clé primaire : DoraBase ne saurait pas quelle ligne mettre à jour.'
+                    : refusDeLaColonne
+                return (
+                  <span className={cx(classe, styles.nonEditable)} title={raison ?? undefined}>
+                    {affichee}
+                  </span>
+                )
+              }
               return (
-                <span className={estNumerique(valeur) ? styles.nombre : undefined}>
-                  {rendreValeur(valeur)}
-                </span>
+                <button
+                  type="button"
+                  className={cx(classe, styles.editable)}
+                  aria-label={`Modifier ${colonne.name}`}
+                  onClick={() => setEnEdition({ cle, rang: ligne.rang, column: colonne.name })}
+                >
+                  {affichee}
+                </button>
               )
             },
           }
         }),
     ],
-    [columns, filters, sort, operateurs, appliquerFiltre, masquees],
+    [
+      columns,
+      filters,
+      sort,
+      operateurs,
+      appliquerFiltre,
+      masquees,
+      attente,
+      enEdition,
+      edition,
+      cleDe,
+    ],
   )
 
   return (

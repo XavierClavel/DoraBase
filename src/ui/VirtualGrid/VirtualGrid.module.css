@@ -110,7 +110,12 @@
   box-shadow: inset 2px 0 0 var(--info);
 }
 
+/* `position: relative` : une cellule est le **référentiel** de ce qu'elle contient en absolu — la
+   boîte de saisie de `A6`, notamment. Sans elle, cette boîte se cale sur la ligne, qui est
+   elle-même positionnée, et s'étend sur toute la largeur. Le mockup pose la même chose sur son
+   `<td>`. Aucun effet visuel autrement. */
 .td {
+  position: relative;
   padding: 0 8px;
   font-family: var(--font-mono);
   font-size: var(--text-dense);
@@ -120,6 +125,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+
+/* Une cellule qui contient une saisie **cesse de découper** : la boîte de `A6` déborde de 3px en
+   haut et en bas, et l'`overflow: hidden` posé pour l'ellipse la rognait — elle disparaissait même
+   entièrement, la ligne étant plus basse que la boîte.
+   `:has()` plutôt qu'une classe passée par `VirtualGrid` : le débordement est une propriété de ce
+   que la cellule **contient**, pas de la colonne. Supporté depuis Safari 15.4, sous notre plancher
+   de 16.4 (`01`). L'attribut `data-saisie` évite de dépendre d'un nom de classe hashé d'un autre
+   module. */
+.td:has([data-saisie]) {
+  overflow: visible;
+  /* Au-dessus des cellules voisines, qui la masqueraient sinon par ordre de peinture. */
+  z-index: 2;
 }
 
 .numeric {

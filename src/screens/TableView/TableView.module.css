@@ -81,3 +81,30 @@
   font-size: var(--text-caps-sm);
   font-weight: var(--weight-bold);
 }
+
+/* Une cellule éditable, en mode édition : un `<button>` qui remplit la cellule, pour que le clavier
+   vienne gratuitement. Il n'a **aucun habillage** — le mockup ne montre pas de bouton dans la
+   grille, seulement une cellule qui s'ouvre. */
+.editable {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: text;
+}
+
+.editable:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-badge);
+}
+
+/* Une cellule que l'on ne peut pas éditer — clé primaire, binaire, ou table sans clé. Le curseur
+   d'aide annonce que le `title` explique pourquoi. */
+.nonEditable {
+  cursor: help;
+}

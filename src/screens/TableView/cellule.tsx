@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { Value } from '../../domain/engine'
 import { formatInteger } from '../../ui/format'
+import type { Saisie } from './modifications'
 import styles from './TableView.module.css'
 
 /**
@@ -81,4 +82,19 @@ export function estNumerique(value: Value): boolean {
 function tailleBase64(base64: string): number {
   const rembourrage = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
   return Math.max(0, (base64.length * 3) / 4 - rembourrage)
+}
+
+/**
+ * L'aperçu d'une **saisie retenue**, dans la grille.
+ *
+ * Distinct de `rendreValeur` : une saisie est du texte, pas une `Value` typée — sa conversion
+ * appartient au moteur (`11a`). Elle s'affiche donc telle qu'elle a été tapée, sans groupement ni
+ * formatage, parce que c'est exactement ce qui sera écrit.
+ *
+ * `NULL` garde le rendu de `rendreValeur` : la même absence de valeur doit se lire pareil, qu'elle
+ * vienne de la base ou d'une saisie.
+ */
+export function apercuDeLaSaisie(saisie: Saisie): ReactNode {
+  if (saisie.kind === 'null') return <span className={styles.nul}>NULL</span>
+  return saisie.texte
 }
