@@ -226,6 +226,9 @@ export function VirtualGrid<Row>({
                   style={{
                     gridTemplateColumns: gabarit,
                     height: rowHeight,
+                    // La densité descend aux cellules, qui y centrent leur texte : elles sont
+                    // étirées, et seule la ligne connaît sa hauteur.
+                    ['--pitch' as string]: `${rowHeight}px`,
                     transform: `translateY(${index * rowHeight}px)`,
                   }}
                   onClick={onSelect ? () => onSelect(row, index) : undefined}

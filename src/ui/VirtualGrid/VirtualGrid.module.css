@@ -120,7 +120,17 @@
   font-family: var(--font-mono);
   font-size: var(--text-dense);
   font-weight: var(--weight-medium);
-  line-height: var(--leading-grid);
+  /* **La cellule occupe la hauteur de sa case, et sa hauteur de ligne la lui donne.**
+   * `--leading-grid` était plus court que la ligne, et `.row` centrant ses cellules, le fond et le
+   * liseré d'une cellule ne couvraient que la boîte du texte : l'encadré ambre d'une cellule
+   * modifiée paraissait collé à ses caractères au lieu de border sa case. Signalé à l'écran le
+   * 10 août 2026.
+   * La hauteur de ligne fait donc les deux : elle remplit la case **et** y centre le texte. Un
+   * `align-items: stretch` sur la ligne a été essayé en plus ; le retirer ne changeait rien à la
+   * mesure, donc il n'y est pas.
+   * `--pitch` vient de la ligne, qui seule connaît la densité (`rowHeight`, que `15` fera varier de
+   * 20 à 36 px) ; moins le filet d'un pixel, sans quoi le texte descendrait d'un demi-pixel. */
+  line-height: calc(var(--pitch) - 1px);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

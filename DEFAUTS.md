@@ -351,8 +351,9 @@ des tests verts au moment où il a été introduit.
 
 ## Ce qu'a trouvé le premier usage réel, les 9 et 10 août 2026
 
-Neuf défauts, tous sur une suite verte, et **six signalés par l'utilisateur** — pas par nous. Le
-point commun : le décor de test était trop régulier pour les produire.
+Douze défauts, tous sur une suite verte, et **neuf signalés par l'utilisateur** — pas par nous. Le
+point commun : le décor de test était trop régulier pour les produire, ou l'assertion mesurait
+autre chose que ce qu'elle prétendait.
 
 26. **Un décor aux colonnes vides cache les défauts de lecture.** `orders` avait `metadata`,
    `ref`, `paid` et `blob` nuls partout : un type mal lu y était **indiscernable** d'une colonne
@@ -406,6 +407,32 @@ point commun : le décor de test était trop régulier pour les produire.
    était rendu dans les **deux** issues du ternaire « vide / rempli », donc React le démontait à
    l'arrivée de la première lecture, emportant une saisie de filtre en cours et un popover ouvert.
    Ce troisième-là a été attrapé par les tests de `10d`, pas par l'œil.
+
+35. **Un `overflow: hidden` posé pour un nom long découpait le menu projet.** La barre de titre le
+   portait sur son bloc central pour qu'un nom de projet long rétrécisse au lieu de pousser les
+   actions dehors. Le panneau du `Popover` s'ouvrant en absolu *sous* la barre, il était coupé net :
+   cliquer la pastille ne faisait rien de visible. **Un test le couvrait déjà et était vert** —
+   `toBeVisible()` de Playwright vérifie une boîte non vide et l'absence de `visibility: hidden`,
+   et **ignore la découpe par un ancêtre**. Même piège que le n° 33, dans l'autre sens : là c'était
+   `getBoundingClientRect`, ici l'assertion de visibilité de l'outil. Le correctif fait porter le
+   rétrécissement au **texte qui doit rétrécir**, ce qui est de toute façon plus juste : ce n'est
+   pas au conteneur de décider ce qu'on sacrifie.
+36. **Un bouton actif et inerte fait croire à un défaut — davantage qu'un bouton désactivé.** `11b`
+   avait laissé « Voir le SQL » et « Appliquer » cliquables en écrivant explicitement que les
+   désactiver « ferait croire à un défaut ». L'utilisateur a cliqué, rien ne s'est produit, et il
+   l'a signalé comme un défaut. `09f` avait déjà tranché l'inverse — action désactivée, raison dans
+   l'infobulle — et sa règle valait ici aussi : **un clic sans effet ne s'explique pas, un bouton
+   désactivé qui dit pourquoi, si.** Une décision de conception prise contre un précédent du projet
+   mérite d'être justifiée par autre chose qu'une intuition.
+37. **Le fond et le liseré d'une cellule tenaient la boîte du texte, pas la case.** `.row` centrait
+   ses cellules (`align-items: center`) et leur hauteur de ligne était plus courte que la ligne :
+   l'encadré ambre d'une cellule modifiée paraissait **collé à ses caractères**. Invisible aux
+   tests, qui mesuraient la présence du liseré et la couleur du fond, jamais leur **étendue**. Le
+   test qui mord compare la hauteur de la cellule à celle de la ligne *et* le centre du texte à
+   celui de la case — car le correctif de hauteur pouvait décaler tous les textes de la grille d'un
+   cran, un défaut pire que celui qu'il réparait. Au passage, un `align-items: stretch` ajouté « en
+   ceinture » ne changeait rien à la mesure une fois la hauteur de ligne corrigée : il a été retiré
+   plutôt que gardé sans rien défendre.
 
 **Ce que ces neuf défauts disent du décor de test.** Aucun n'était un défaut de logique : tous
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros

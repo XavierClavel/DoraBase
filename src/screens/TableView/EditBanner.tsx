@@ -6,9 +6,14 @@ type EditBannerProps = {
   compte: number
   /** La table concernée, en mono — `public.orders`. */
   table: string
-  onVoirLeSQL: () => void
+  /**
+   * Montrer le SQL des modifications — `11c`. **Absent tant que l'écran n'existe pas**, et le
+   * bouton se désactive alors en le disant.
+   */
+  onVoirLeSQL?: () => void
   onToutAnnuler: () => void
-  onAppliquer: () => void
+  /** Écrire dans la base — `11d`. Absent tant que la commande n'existe pas. */
+  onAppliquer?: () => void
   /** Vrai pendant l'application : les trois boutons attendent. */
   enCours?: boolean
   /** Le refus de l'application, affiché ici — là où les messages du mode édition vivent. */
@@ -22,10 +27,11 @@ type EditBannerProps = {
  * bandeau à « 0 modification » occuperait 34 px pour ne rien dire. Le mode édition, lui, se voit au
  * badge de la pastille projet et aux cellules qui s'ouvrent.
  *
- * **« Appliquer » est actif dès `11b`**, et non désactivé avec une infobulle comme les quatre
- * actions de `09f`. La raison de l'écart : là, les écrans attendus étaient à trois specs de
- * distance ; ici la commande arrive dans la spec suivante, et un bouton mort sous un bandeau qui
- * annonce trois modifications ferait croire à un défaut. Son échec s'affiche dans ce bandeau.
+ * **« Voir le SQL » et « Appliquer » sont désactivés tant que leur écran n'existe pas**, comme les
+ * quatre actions de `09f`. `11b` avait tranché l'inverse — « un bouton mort sous un bandeau qui
+ * annonce trois modifications ferait croire à un défaut » — et c'est un bouton *actif et inerte* qui
+ * a fait croire à un défaut, signalé à l'usage le 10 août 2026. Un clic sans effet ne s'explique
+ * pas ; un bouton désactivé qui dit pourquoi, si. La leçon de `09f` valait aussi ici.
  */
 export function EditBanner({
   compte,
@@ -53,18 +59,40 @@ export function EditBanner({
       <span className={styles.rappel}>rien n’est envoyé à la base avant validation</span>
       {refus !== null && <span className={styles.refus}>{refus}</span>}
       <span className={styles.espace} />
-      <button type="button" className={styles.action} onClick={onVoirLeSQL}>
+      <button
+        type="button"
+        className={styles.action}
+        onClick={onVoirLeSQL}
+        disabled={onVoirLeSQL === undefined}
+        title={onVoirLeSQL === undefined ? RAISONS.sql : undefined}
+      >
         <Icon name="code" size={12} strokeWidth={2} />
         Voir le SQL
       </button>
       <button type="button" className={styles.action} onClick={onToutAnnuler} disabled={enCours}>
         Tout annuler
       </button>
-      <button type="button" className={styles.appliquer} onClick={onAppliquer} disabled={enCours}>
+      <button
+        type="button"
+        className={styles.appliquer}
+        onClick={onAppliquer}
+        disabled={enCours || onAppliquer === undefined}
+        title={onAppliquer === undefined ? RAISONS.appliquer : undefined}
+      >
         <Icon name="check" size={12} strokeWidth={2.6} />
         {enCours ? 'Application…' : 'Appliquer'}
         <span className={styles.raccourci}>⌘↩</span>
       </button>
     </div>
   )
+}
+
+/**
+ * Pourquoi une action n'est pas encore là — **dite, jamais devinée**, comme les refus de
+ * `modifications.ts`. Le même dispositif qu'en `09f` : la phrase est dans l'infobulle du bouton
+ * désactivé, à portée du geste qui a échoué.
+ */
+const RAISONS = {
+  sql: 'Le SQL des modifications arrive avec le panneau des modifications en attente.',
+  appliquer: 'L’écriture dans la base n’est pas encore branchée : rien ne peut partir.',
 }
