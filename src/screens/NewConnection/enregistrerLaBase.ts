@@ -2,6 +2,8 @@ import { invoke } from '@tauri-apps/api/core'
 import type {
   CreateProjectRequest,
   Project,
+  RenameProjectRequest,
+  RenameProjectResult,
   SaveDatabaseRequest,
   UpdateVariantRequest,
 } from '../../domain/config'
@@ -40,6 +42,21 @@ export async function creerLeProjet(request: CreateProjectRequest): Promise<Proj
  */
 export async function mettreAJourLaVariante(request: UpdateVariantRequest): Promise<Project[]> {
   return invoke<Project[]>('update_variant', { request })
+}
+
+/**
+ * Renomme un projet (`08i`), et rend les projets à jour **avec ce qu'il y a à dire**.
+ *
+ * Le nom d'un projet est dans la clé d'identité de ses secrets (`05a`) : renommer déplace des mots
+ * de passe dans le Trousseau. La commande rend donc deux listes en plus des projets — ceux qui
+ * étaient déclarés mais introuvables, et ceux qu'elle n'a pas su effacer. Les taire laisserait
+ * l'utilisateur découvrir l'un ou l'autre bien plus tard, sur un échec de connexion sans raison
+ * apparente.
+ */
+export async function renommerLeProjet(
+  request: RenameProjectRequest,
+): Promise<RenameProjectResult> {
+  return invoke<RenameProjectResult>('rename_project', { request })
 }
 
 /**

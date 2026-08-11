@@ -309,6 +309,13 @@ export function WorkbenchDemo() {
         // `?demo` ouvre l'écran en **mode édition** : c'est le seul moyen de voir `A6` sans base
         // réelle, Playwright ne pilotant pas le pont Tauri.
         onEditDatabase={(projet, base) => setEdition({ project: projet, database: base })}
+        // La démo renomme **pour de faux** : le pont ne répond pas en Chromium. Ce qui se vérifie ici
+        // est le chemin jusqu'à la modale, et le rapport qu'elle sait afficher — d'où un secret
+        // introuvable annoncé, cas que la commande réelle produit sur un Trousseau nettoyé à la main.
+        onRenameProject={async (projet) => ({
+          missingSecrets: [`${projet}/analytics/prod`],
+          leftoverSecrets: [],
+        })}
       />
     </>
   )

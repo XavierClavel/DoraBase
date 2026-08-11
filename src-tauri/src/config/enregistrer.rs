@@ -184,6 +184,301 @@ pub fn mettre_a_jour(
 }
 
 /// Ce qu'il y a à modifier.
+/// L'échec d'un renommage de projet (`08i`).
+#[derive(Debug)]
+pub enum RenameError {
+    /// Le projet nommé n'existe pas.
+    Inconnu { project: String },
+    /// Un nom vide, ou seulement des espaces.
+    NomVide,
+    /// Un autre projet porte déjà ce nom : les clés d'identité deviendraient ambiguës.
+    DejaPris { project: String },
+    /// Le magasin de secrets a refusé. **Les secrets déjà déplacés ont été remis en place.**
+    Secret {
+        source: SecretError,
+        secrets_repris: bool,
+    },
+    /// La configuration n'a pas pu être écrite, après que les secrets ont été déplacés — donc
+    /// remis en place, faute de quoi le projet garderait son nom sans ses mots de passe.
+    Config {
+        reason: String,
+        secrets_repris: bool,
+    },
+}
+
+impl std::fmt::Display for RenameError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Inconnu { project } => write!(f, "le projet « {project} » n'existe pas"),
+            Self::NomVide => write!(f, "un nom de projet ne peut pas être vide"),
+            Self::DejaPris { project } => {
+                write!(f, "un projet nommé « {project} » existe déjà")
+            }
+            Self::Secret {
+                source,
+                secrets_repris,
+            } => {
+                write!(f, "les mots de passe n'ont pas pu être déplacés : {source}")?;
+                // **Le dire, toujours.** Sans cette phrase, l'utilisateur qui réessaie ne sait pas
+                // si ses mots de passe sont restés lisibles — la même exigence que `SaveError`.
+                if *secrets_repris {
+                    write!(
+                        f,
+                        " (le renommage est annulé, les mots de passe sont intacts)"
+                    )?;
+                }
+                Ok(())
+            }
+            Self::Config {
+                reason,
+                secrets_repris,
+            } => {
+                write!(f, "la configuration n'a pas pu être écrite : {reason}")?;
+                if *secrets_repris {
+                    write!(
+                        f,
+                        " (le renommage est annulé, les mots de passe sont intacts)"
+                    )?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+/// Ce qu'un renommage réussi laisse à faire à l'appelant.
+#[derive(Debug)]
+pub struct Renommage {
+    /// Les clés de registre à fermer : elles n'existent plus sous l'ancien nom.
+    pub cles_a_fermer: Vec<String>,
+    /// Les références dont le secret était **introuvable** — déclaré mais absent du magasin.
+    ///
+    /// Ce n'est pas un échec : voir `renommer_projet`.
+    pub secrets_absents: Vec<String>,
+    /// Les anciennes références que le magasin n'a pas su supprimer après coup : le renommage a
+    /// bien eu lieu, il reste un doublon. Bénin, mais dit.
+    pub residus: Vec<String>,
+}
+
+/// Renomme un projet, en **déplaçant ses secrets d'abord**.
+///
+/// Le nom d'un projet n'est pas une étiquette : `projet/base/environnement` identifie une connexion
+/// dans le registre (`09b`) **et** un secret dans le Trousseau (`05c`). Renommer est donc une
+/// migration, et l'ordre des trois effets est ce que cette fonction garantit :
+///
+/// 1. **Les secrets d'abord** — écrire le nouveau, vérifier qu'il se relit, supprimer l'ancien.
+///    L'inverse laisserait une base sans mot de passe si l'écriture échouait.
+/// 2. **La configuration en dernier** : c'est elle qui rend le renommage visible, et elle ne doit
+///    devenir vraie qu'une fois les secrets en place.
+/// 3. La fermeture des connexions appartient à l'appelant — elle attend le réseau, et cette
+///    fonction reste synchrone et testable. Les clés sont rendues dans `Renommage`.
+///
+/// **Un échec remet en place ce qui a déjà bougé.** Un projet dont trois bases sur cinq ont migré
+/// serait pire qu'un refus : deux bases inutilisables, et rien pour le dire.
+///
+/// **Un secret absent n'est pas un secret illisible**, et la distinction décide du sort du
+/// renommage. Un magasin qui *refuse* (`Err`) annule tout : quelque chose ne fonctionne pas, et
+/// continuer produirait un état inconnu. Un secret simplement *introuvable* (`Ok(None)`) — effacé à
+/// la main, ou jamais écrit — laisse le renommage se poursuivre : l'interrompre rendrait le projet
+/// **irrenommable**, exactement le piège qui rendrait une déclaration indélébile en `08j`. La
+/// référence suit le nouveau nom, la base redemandera son mot de passe, et l'appelant reçoit la
+/// liste dans `secrets_absents` pour pouvoir le dire.
+pub fn renommer_projet(
+    projects: &mut [Project],
+    ancien: &str,
+    nouveau: &str,
+    magasin: &dyn SecretStore,
+    ecrire: &mut dyn FnMut(&[Project]) -> Result<(), String>,
+) -> Result<Renommage, RenameError> {
+    let nouveau = nouveau.trim();
+    if nouveau.is_empty() {
+        return Err(RenameError::NomVide);
+    }
+
+    let index = projects
+        .iter()
+        .position(|projet| projet.name == ancien)
+        .ok_or_else(|| RenameError::Inconnu {
+            project: ancien.to_owned(),
+        })?;
+
+    // **Renommer en son propre nom est accepté sans rien faire.** Le refuser comme doublon serait
+    // exact et inutile : l'utilisateur a validé sans changer le champ, et l'état voulu est atteint.
+    if nouveau == ancien {
+        return Ok(Renommage {
+            cles_a_fermer: Vec::new(),
+            secrets_absents: Vec::new(),
+            residus: Vec::new(),
+        });
+    }
+
+    if projects.iter().any(|projet| projet.name == nouveau) {
+        return Err(RenameError::DejaPris {
+            project: nouveau.to_owned(),
+        });
+    }
+
+    // Ce qu'il faut déplacer, relevé avant de toucher à quoi que ce soit : une base, un
+    // environnement, et la référence que la variante **déclare**. Prendre la référence déclarée
+    // plutôt que de la recalculer respecte les variantes dont la référence a été posée autrement.
+    let a_deplacer: Vec<(String, &'static str, SecretRef)> = projects[index]
+        .databases
+        .iter()
+        .flat_map(|base| {
+            base.variants()
+                .iter()
+                .filter_map(|variante| {
+                    variante.password.as_ref().map(|reference| {
+                        (
+                            base.name.clone(),
+                            variante.environment.slug(),
+                            reference.clone(),
+                        )
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    // **Rien n'est supprimé pendant la migration.** Une première version effaçait chaque ancien
+    // secret sitôt le nouveau écrit ; un magasin qui tombe en panne d'écriture à mi-parcours rendait
+    // alors la restauration impossible — les anciens étaient déjà partis, et on ne pouvait plus les
+    // réécrire. Deux mots de passe perdus dans le pire cas. La phase destructive est donc repoussée
+    // **après** l'écriture de la configuration : jusque-là, tout échec se défait en retirant ce qui
+    // a été posé, et les originaux n'ont jamais bougé.
+    let mut ecrits: Vec<SecretRef> = Vec::new();
+    let mut a_supprimer: Vec<SecretRef> = Vec::new();
+    let mut secrets_absents = Vec::new();
+
+    for (base, environnement, ancienne) in &a_deplacer {
+        let nouvelle = reference_de(nouveau, base, environnement);
+        let secret = match magasin.retrieve(ancienne) {
+            Ok(Some(secret)) => secret,
+            // Un secret simplement introuvable laisse passer — voir la documentation ci-dessus.
+            Ok(None) => {
+                secrets_absents.push(ancienne.as_str().to_owned());
+                continue;
+            }
+            Err(source) => {
+                return Err(RenameError::Secret {
+                    source,
+                    secrets_repris: retirer_les_ecrits(magasin, &ecrits),
+                });
+            }
+        };
+
+        if let Err(source) = magasin.store(&nouvelle, &secret) {
+            return Err(RenameError::Secret {
+                source,
+                secrets_repris: retirer_les_ecrits(magasin, &ecrits),
+            });
+        }
+        // Consigné **immédiatement** : à partir d'ici, un échec doit défaire cette écriture.
+        ecrits.push(nouvelle.clone());
+
+        // **Vérifier qu'il se relit avant de compter dessus.** Un magasin qui accepte l'écriture
+        // sans la conserver — un profil verrouillé, un disque plein — ferait perdre le mot de passe
+        // au moment où l'on efface l'original.
+        match magasin.retrieve(&nouvelle) {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                return Err(RenameError::Secret {
+                    source: SecretError::Magasin {
+                        detail: "le mot de passe déplacé ne se relit pas".to_owned(),
+                    },
+                    secrets_repris: retirer_les_ecrits(magasin, &ecrits),
+                });
+            }
+            Err(source) => {
+                return Err(RenameError::Secret {
+                    source,
+                    secrets_repris: retirer_les_ecrits(magasin, &ecrits),
+                });
+            }
+        }
+        a_supprimer.push(ancienne.clone());
+    }
+
+    // Les clés de registre relevées **avant** l'écriture : elles portent l'ancien nom, qui va
+    // disparaître du modèle.
+    let cles_a_fermer = projects[index]
+        .databases
+        .iter()
+        .flat_map(|base| {
+            base.variants()
+                .iter()
+                .map(|variante| {
+                    crate::engine::registry::cle(ancien, &base.name, variante.environment.slug())
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    // Le projet est reconstruit à côté, validé, puis substitué — le pattern de `mettre_a_jour` :
+    // un modèle à moitié muté n'existe jamais, même le temps d'une ligne.
+    let mut candidat = projects[index].clone();
+    candidat.name = nouveau.to_owned();
+    for base in &mut candidat.databases {
+        let nom_base = base.name.clone();
+        for rang in 0..base.variants().len() {
+            let mut variante = base.variants()[rang].clone();
+            if variante.password.is_some() {
+                variante.password = Some(reference_de(
+                    nouveau,
+                    &nom_base,
+                    variante.environment.slug(),
+                ));
+            }
+            base.remplacer_variante(rang, variante);
+        }
+    }
+    validate(&candidat).map_err(|erreur| RenameError::Config {
+        reason: erreur.to_string(),
+        secrets_repris: retirer_les_ecrits(magasin, &ecrits),
+    })?;
+
+    let precedent = std::mem::replace(&mut projects[index], candidat);
+    if let Err(reason) = ecrire(projects) {
+        // Le modèle en mémoire est rendu à son état d'origine : le laisser renommé alors que le
+        // disque ne l'est pas ferait divorcer l'écran du fichier jusqu'au prochain démarrage.
+        projects[index] = precedent;
+        return Err(RenameError::Config {
+            reason,
+            secrets_repris: retirer_les_ecrits(magasin, &ecrits),
+        });
+    }
+
+    // **La phase destructive, en dernier.** Un échec ici ne compromet rien : le renommage a eu lieu,
+    // et il reste un doublon sous l'ancienne référence — bénin, et bien préférable à un secret
+    // perdu. Il est rendu pour que l'appelant puisse le dire plutôt que de le taire.
+    let residus = a_supprimer
+        .into_iter()
+        .filter(|ancienne| magasin.delete(ancienne).is_err())
+        .map(|ancienne| ancienne.as_str().to_owned())
+        .collect();
+
+    Ok(Renommage {
+        cles_a_fermer,
+        secrets_absents,
+        residus,
+    })
+}
+
+/// Retire les références posées sous le nouveau nom. Rend `true` si tout a pu être retiré.
+///
+/// **Il n'y a rien d'autre à défaire** : la migration ne supprime aucun original avant que la
+/// configuration soit écrite, donc les anciens secrets sont toujours là. C'est ce qui rend le
+/// rollback possible même quand le magasin refuse d'écrire — le cas où une restauration serait,
+/// elle, impossible.
+///
+/// **Sans valeur de retour, l'appelant ne pourrait pas le dire à l'utilisateur** — et « vos mots de
+/// passe sont intacts » est précisément ce qu'il a besoin d'entendre après un échec.
+fn retirer_les_ecrits(magasin: &dyn SecretStore, ecrits: &[SecretRef]) -> bool {
+    ecrits
+        .iter()
+        .all(|nouvelle| magasin.delete(nouvelle).is_ok())
+}
+
 pub struct Modification<'a> {
     pub project: &'a str,
     pub database: &'a str,
@@ -397,6 +692,24 @@ mod tests {
 
     pub(super) fn magasin() -> MagasinSync {
         MagasinSync(std::sync::Mutex::new(HashMap::new()), false, false)
+    }
+
+    /// Un magasin qui refuse ce qu'on lui demande de refuser — les champs du tuple étant privés
+    /// hors de ce module, les tests voisins passent par ici.
+    pub(super) fn magasin_defaillant(ecriture: bool, suppression: bool) -> MagasinSync {
+        MagasinSync(std::sync::Mutex::new(HashMap::new()), ecriture, suppression)
+    }
+
+    impl MagasinSync {
+        /// Pose un secret **sans passer par les drapeaux de panne** : garnir un magasin qui refuse
+        /// d'écrire est impossible autrement, et un magasin vide ne prouverait qu'une chose — que
+        /// des secrets absents ne se déplacent pas.
+        pub(super) fn poser(&self, reference: &SecretRef, valeur: &str) {
+            self.0
+                .lock()
+                .expect("magasin")
+                .insert(reference.as_str().to_owned(), valeur.to_owned());
+        }
     }
 
     fn variante(env: Environment) -> EnvironmentVariant {
@@ -1093,5 +1406,491 @@ mod tests_parcours {
         crate::engine::postgres::PostgresAdapter::connect(&corrigee, secret.as_ref())
             .await
             .expect("le port corrigé doit joindre la base");
+    }
+}
+
+// --- Renommer un projet (`08i`) ---
+
+#[cfg(test)]
+mod tests_renommage {
+    use super::tests::{magasin, magasin_defaillant, MagasinSync};
+    use super::*;
+    use crate::config::model::{Environment, SslMode};
+    use std::collections::HashMap;
+
+    fn variante(env: Environment, reference: Option<SecretRef>) -> EnvironmentVariant {
+        EnvironmentVariant {
+            environment: env,
+            host: "db.internal".into(),
+            port: 5432,
+            default_database: "analytics".into(),
+            username: "dora_ro".into(),
+            password: reference,
+            ssl_mode: SslMode::Prefer,
+            read_only: true,
+            reconnect_on_startup: false,
+            tunnel: None,
+        }
+    }
+
+    /// Un projet à **deux bases et trois secrets** : le décor décide de ce que le test peut voir.
+    /// Avec une seule base et un seul secret, une migration qui s'arrête à mi-parcours serait
+    /// indiscernable d'une migration complète — la leçon de la règle 7 de `REPRISE.md`.
+    fn decor() -> Vec<Project> {
+        vec![
+            Project {
+                name: "Print".into(),
+                active_environment: Environment::Prod,
+                databases: vec![
+                    Database::new(
+                        "analytics",
+                        crate::config::model::Engine::PostgreSql,
+                        vec![
+                            variante(
+                                Environment::Dev,
+                                Some(reference_de("Print", "analytics", "dev")),
+                            ),
+                            variante(
+                                Environment::Prod,
+                                Some(reference_de("Print", "analytics", "prod")),
+                            ),
+                        ],
+                    )
+                    .expect("base de décor"),
+                    Database::new(
+                        "shop",
+                        crate::config::model::Engine::MySql,
+                        vec![variante(
+                            Environment::Prod,
+                            Some(reference_de("Print", "shop", "prod")),
+                        )],
+                    )
+                    .expect("base de décor"),
+                ],
+            },
+            // Un **voisin**, pour que « le projet renommé » se distingue de « le premier projet ».
+            Project {
+                name: "Outils".into(),
+                active_environment: Environment::Dev,
+                databases: Vec::new(),
+            },
+        ]
+    }
+
+    fn garnir(magasin: &MagasinSync) {
+        for (base, env) in [
+            ("analytics", "dev"),
+            ("analytics", "prod"),
+            ("shop", "prod"),
+        ] {
+            magasin.poser(
+                &reference_de("Print", base, env),
+                &format!("mdp-{base}-{env}"),
+            );
+        }
+    }
+
+    #[test]
+    fn renommer_deplace_les_secrets_et_ecrit_la_configuration() {
+        let mut projets = decor();
+        let m = magasin();
+        garnir(&m);
+        let mut ecrits = 0;
+
+        let issue = renommer_projet(&mut projets, "Print", "Atelier Nord", &m, &mut |_| {
+            ecrits += 1;
+            Ok(())
+        })
+        .expect("renommage");
+
+        assert_eq!(projets[0].name, "Atelier Nord");
+        assert_eq!(projets[1].name, "Outils", "le voisin n'a pas bougé");
+        assert_eq!(ecrits, 1);
+
+        // **Les trois secrets**, pas seulement le premier : c'est ce qu'un décor à une seule base
+        // n'aurait pas pu montrer.
+        for (base, env) in [
+            ("analytics", "dev"),
+            ("analytics", "prod"),
+            ("shop", "prod"),
+        ] {
+            let nouvelle = reference_de("Atelier Nord", base, env);
+            assert_eq!(
+                m.retrieve(&nouvelle).expect("relecture"),
+                Some(Secret::new(format!("mdp-{base}-{env}"))),
+                "{base}/{env} doit être lisible sous le nouveau nom"
+            );
+            assert!(
+                m.retrieve(&reference_de("Print", base, env))
+                    .expect("relecture")
+                    .is_none(),
+                "{base}/{env} ne doit plus exister sous l'ancien"
+            );
+        }
+
+        // Les références du modèle suivent, sinon la configuration désignerait des secrets partis.
+        assert_eq!(
+            projets[0].databases[0].variants()[0].password,
+            Some(reference_de("Atelier Nord", "analytics", "dev"))
+        );
+
+        // Les clés de registre rendues portent l'**ancien** nom : ce sont celles à fermer.
+        assert_eq!(issue.cles_a_fermer.len(), 3);
+        assert!(issue.cles_a_fermer.iter().all(|cle| cle.contains("Print")));
+        assert!(issue.secrets_absents.is_empty());
+    }
+
+    #[test]
+    fn la_configuration_n_est_ecrite_qu_une_fois_les_secrets_en_place() {
+        let mut projets = decor();
+        let m = magasin();
+        garnir(&m);
+        let mut vu_au_moment_de_l_ecriture = None;
+
+        renommer_projet(&mut projets, "Print", "Nouveau", &m, &mut |_| {
+            // **L'ordre est la garantie de cette spec**, et il ne se vérifie pas après coup : au
+            // moment où la configuration s'écrit, les secrets doivent déjà avoir bougé. L'inverse
+            // laisserait une base sans mot de passe si l'écriture échouait.
+            vu_au_moment_de_l_ecriture = Some(
+                m.retrieve(&reference_de("Nouveau", "shop", "prod"))
+                    .expect("relecture")
+                    .is_some(),
+            );
+            Ok(())
+        })
+        .expect("renommage");
+
+        assert_eq!(vu_au_moment_de_l_ecriture, Some(true));
+    }
+
+    #[test]
+    fn un_magasin_en_panne_annule_tout_et_remet_les_secrets() {
+        let mut projets = decor();
+        // Le magasin **contient** les trois secrets mais refuse d'écrire : la panne survient au
+        // premier déplacement. Sans le garnissage, il aurait rendu trois absences et le renommage
+        // aurait réussi — le test n'aurait mesuré que le vide.
+        let m = magasin_defaillant(true, false);
+        garnir(&m);
+        let mut ecrits = 0;
+
+        let erreur = renommer_projet(&mut projets, "Print", "Nouveau", &m, &mut |_| {
+            ecrits += 1;
+            Ok(())
+        })
+        .expect_err("le renommage doit échouer");
+
+        assert!(matches!(erreur, RenameError::Secret { .. }));
+        // **La configuration n'a pas été écrite du tout** : un projet à moitié renommé serait pire
+        // qu'un refus.
+        assert_eq!(ecrits, 0);
+        assert_eq!(projets[0].name, "Print");
+        assert_eq!(
+            projets[0].databases[0].variants()[0].password,
+            Some(reference_de("Print", "analytics", "dev"))
+        );
+    }
+
+    #[test]
+    fn un_magasin_qui_ne_sait_pas_supprimer_laisse_un_doublon_mais_le_dit() {
+        let mut projets = decor();
+        let defaillant = magasin_defaillant(false, true);
+        garnir(&defaillant);
+
+        let issue = renommer_projet(&mut projets, "Print", "Nouveau", &defaillant, &mut |_| {
+            Ok(())
+        })
+        .expect("un magasin qui refuse de supprimer ne doit pas empêcher un renommage");
+
+        // **La suppression est la dernière étape, et son échec ne compromet rien** : le renommage a
+        // eu lieu, les secrets sont lisibles sous le nouveau nom, et il reste un doublon sous
+        // l'ancien. Refuser le renommage pour cela serait absurde — et dans l'ordre précédent, où
+        // les originaux partaient au fur et à mesure, la même panne rendait la restauration
+        // impossible et pouvait faire perdre des mots de passe.
+        assert_eq!(projets[0].name, "Nouveau");
+        assert_eq!(issue.residus.len(), 3);
+        for (base, env) in [
+            ("analytics", "dev"),
+            ("analytics", "prod"),
+            ("shop", "prod"),
+        ] {
+            assert!(
+                defaillant
+                    .retrieve(&reference_de("Nouveau", base, env))
+                    .expect("relecture")
+                    .is_some(),
+                "{base}/{env} doit être lisible sous le nouveau nom"
+            );
+        }
+    }
+
+    /// Un magasin qui accepte les `n` premières écritures puis refuse.
+    ///
+    /// **C'est le seul décor qui produit le défaut du rollback** : une référence posée sous le
+    /// nouveau nom, puis un échec plus loin. Les deux drapeaux « tout ou rien » de `MagasinSync` ne
+    /// peuvent pas le produire — ils échouent à la première écriture ou à aucune, et dans les deux
+    /// cas il n'y a rien à défaire.
+    struct MagasinCapricieux {
+        contenu: std::sync::Mutex<HashMap<String, String>>,
+        ecritures_avant_panne: std::sync::Mutex<usize>,
+    }
+
+    impl SecretStore for MagasinCapricieux {
+        fn store(&self, reference: &SecretRef, secret: &Secret) -> Result<(), SecretError> {
+            let mut restantes = self.ecritures_avant_panne.lock().expect("compteur");
+            if *restantes == 0 {
+                return Err(SecretError::Magasin {
+                    detail: "magasin en panne".into(),
+                });
+            }
+            *restantes -= 1;
+            self.contenu
+                .lock()
+                .expect("magasin")
+                .insert(reference.as_str().to_owned(), secret.expose().to_owned());
+            Ok(())
+        }
+
+        fn retrieve(&self, reference: &SecretRef) -> Result<Option<Secret>, SecretError> {
+            Ok(self
+                .contenu
+                .lock()
+                .expect("magasin")
+                .get(reference.as_str())
+                .map(Secret::new))
+        }
+
+        fn delete(&self, reference: &SecretRef) -> Result<(), SecretError> {
+            self.contenu
+                .lock()
+                .expect("magasin")
+                .remove(reference.as_str());
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn une_reference_ecrite_juste_avant_l_echec_est_retiree() {
+        let mut projets = decor();
+        let contenu = HashMap::from([
+            ("Print/analytics/dev".to_owned(), "un".to_owned()),
+            ("Print/analytics/prod".to_owned(), "deux".to_owned()),
+            ("Print/shop/prod".to_owned(), "trois".to_owned()),
+        ]);
+        // Deux déplacements passent, le troisième échoue à l'écriture.
+        let m = MagasinCapricieux {
+            contenu: std::sync::Mutex::new(contenu),
+            ecritures_avant_panne: std::sync::Mutex::new(2),
+        };
+
+        let erreur = renommer_projet(&mut projets, "Print", "Nouveau", &m, &mut |_| Ok(()))
+            .expect_err("le renommage doit échouer");
+        assert!(matches!(
+            erreur,
+            RenameError::Secret {
+                secrets_repris: true,
+                ..
+            }
+        ));
+
+        // **Rien ne subsiste sous le nouveau nom.** Une première version du rollback ne suivait que
+        // les déplacements *complets* : les deux références déjà posées restaient là, et le prochain
+        // démarrage aurait trouvé des secrets d'un projet qui n'existe pas.
+        for (base, env) in [
+            ("analytics", "dev"),
+            ("analytics", "prod"),
+            ("shop", "prod"),
+        ] {
+            assert!(
+                m.retrieve(&reference_de("Nouveau", base, env))
+                    .expect("relecture")
+                    .is_none(),
+                "{base}/{env} ne doit rien laisser sous le nouveau nom"
+            );
+            assert!(
+                m.retrieve(&reference_de("Print", base, env))
+                    .expect("relecture")
+                    .is_some(),
+                "{base}/{env} doit être repris sous l'ancien"
+            );
+        }
+        assert_eq!(projets[0].name, "Print");
+    }
+
+    #[test]
+    fn une_ecriture_impossible_remet_les_secrets_et_le_modele() {
+        let mut projets = decor();
+        let m = magasin();
+        garnir(&m);
+
+        let erreur = renommer_projet(&mut projets, "Print", "Nouveau", &m, &mut |_| {
+            Err("disque plein".to_owned())
+        })
+        .expect_err("le renommage doit échouer");
+
+        match erreur {
+            RenameError::Config {
+                secrets_repris,
+                reason,
+            } => {
+                assert!(secrets_repris);
+                assert!(reason.contains("disque plein"));
+            }
+            autre => panic!("issue inattendue : {autre:?}"),
+        }
+        // Le modèle en mémoire est rendu : le laisser renommé ferait divorcer l'écran du fichier.
+        assert_eq!(projets[0].name, "Print");
+        assert_eq!(
+            projets[0].databases[1].variants()[0].password,
+            Some(reference_de("Print", "shop", "prod"))
+        );
+        assert!(m
+            .retrieve(&reference_de("Print", "shop", "prod"))
+            .expect("relecture")
+            .is_some());
+    }
+
+    #[test]
+    fn un_secret_absent_ne_bloque_pas_le_renommage() {
+        let mut projets = decor();
+        let m = magasin();
+        // Deux secrets sur trois : le troisième a été effacé à la main dans le Trousseau.
+        m.store(
+            &reference_de("Print", "analytics", "dev"),
+            &Secret::new("mdp"),
+        )
+        .expect("garnissage");
+
+        let issue = renommer_projet(&mut projets, "Print", "Nouveau", &m, &mut |_| Ok(()))
+            .expect("un secret absent ne doit pas rendre le projet irrenommable");
+
+        assert_eq!(projets[0].name, "Nouveau");
+        // Les deux absents sont **dits**, pour que l'écran puisse en avertir.
+        assert_eq!(issue.secrets_absents.len(), 2);
+        assert!(issue
+            .secrets_absents
+            .iter()
+            .any(|reference| reference.contains("shop")));
+    }
+
+    #[test]
+    fn le_secret_reste_lisible_dans_le_vrai_magasin_apres_renommage() {
+        // **Le magasin réellement utilisé**, pas une simulation. Un renommage qui passe sur une
+        // `HashMap` et échoue sur le magasin chiffré serait un renommage qui ne marche pas — et
+        // c'est le magasin de tout développement, la signature ad hoc n'ouvrant pas le Trousseau.
+        let repertoire = tempfile::tempdir().expect("répertoire temporaire");
+        let magasin = crate::secrets::selectionner_pour(
+            crate::secrets::SignatureKind::AdHoc,
+            repertoire.path(),
+        )
+        .expect("magasin chiffré");
+        let magasin = magasin.store.as_ref();
+
+        let mut projets = decor();
+        for (base, env) in [
+            ("analytics", "dev"),
+            ("analytics", "prod"),
+            ("shop", "prod"),
+        ] {
+            magasin
+                .store(
+                    &reference_de("Print", base, env),
+                    &Secret::new(format!("mdp-{base}-{env}")),
+                )
+                .expect("garnissage");
+        }
+
+        renommer_projet(&mut projets, "Print", "Atelier", magasin, &mut |_| Ok(()))
+            .expect("renommage");
+
+        for (base, env) in [
+            ("analytics", "dev"),
+            ("analytics", "prod"),
+            ("shop", "prod"),
+        ] {
+            assert_eq!(
+                magasin
+                    .retrieve(&reference_de("Atelier", base, env))
+                    .expect("relecture"),
+                Some(Secret::new(format!("mdp-{base}-{env}"))),
+                "{base}/{env} doit rester lisible — sinon la base redemanderait son mot de passe"
+            );
+            assert!(magasin
+                .retrieve(&reference_de("Print", base, env))
+                .expect("relecture")
+                .is_none());
+        }
+    }
+
+    #[test]
+    fn un_nom_deja_pris_est_refuse_sans_rien_toucher() {
+        let mut projets = decor();
+        let m = magasin();
+        garnir(&m);
+
+        let erreur = renommer_projet(&mut projets, "Print", "Outils", &m, &mut |_| Ok(()))
+            .expect_err("deux projets homonymes rendraient les clés ambiguës");
+
+        assert!(matches!(erreur, RenameError::DejaPris { .. }));
+        assert_eq!(projets[0].name, "Print");
+        assert!(
+            m.retrieve(&reference_de("Outils", "analytics", "dev"))
+                .expect("relecture")
+                .is_none(),
+            "le refus doit précéder toute écriture de secret"
+        );
+    }
+
+    #[test]
+    fn renommer_en_son_propre_nom_ne_fait_rien() {
+        let mut projets = decor();
+        let m = magasin();
+        garnir(&m);
+        let mut ecrits = 0;
+
+        let issue = renommer_projet(&mut projets, "Print", "Print", &m, &mut |_| {
+            ecrits += 1;
+            Ok(())
+        })
+        .expect("le même nom est l'état voulu, pas un doublon");
+
+        // Ni écriture ni fermeture de connexion : l'utilisateur a validé sans changer le champ.
+        assert_eq!(ecrits, 0);
+        assert!(issue.cles_a_fermer.is_empty());
+        assert_eq!(projets[0].name, "Print");
+    }
+
+    #[test]
+    fn un_nom_vide_ou_blanc_est_refuse() {
+        let mut projets = decor();
+        let m = magasin();
+        assert!(matches!(
+            renommer_projet(&mut projets, "Print", "   ", &m, &mut |_| Ok(())),
+            Err(RenameError::NomVide)
+        ));
+    }
+
+    #[test]
+    fn un_projet_inconnu_est_refuse() {
+        let mut projets = decor();
+        let m = magasin();
+        assert!(matches!(
+            renommer_projet(&mut projets, "Absent", "Nouveau", &m, &mut |_| Ok(())),
+            Err(RenameError::Inconnu { .. })
+        ));
+    }
+
+    #[test]
+    fn le_nouveau_nom_est_debarrasse_de_ses_espaces() {
+        let mut projets = decor();
+        let m = magasin();
+        garnir(&m);
+        renommer_projet(&mut projets, "Print", "  Atelier  ", &m, &mut |_| Ok(()))
+            .expect("renommage");
+        // Sinon la référence du secret porterait les espaces, et le nom affiché aussi.
+        assert_eq!(projets[0].name, "Atelier");
+        assert!(m
+            .retrieve(&reference_de("Atelier", "shop", "prod"))
+            .expect("relecture")
+            .is_some());
     }
 }

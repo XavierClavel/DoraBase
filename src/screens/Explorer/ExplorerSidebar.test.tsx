@@ -41,12 +41,17 @@ function Piloté({
   etat = { kind: 'never' } as ConnectionState,
   onToggleSpy,
   onEditDatabase,
+  onRenameProject,
 }: {
   charge?: Charge
   initial?: string[]
   etat?: ConnectionState
   onToggleSpy?: (n: Noeud) => void
   onEditDatabase?: (project: string, database: string, environment: Environment) => void
+  onRenameProject?: (
+    project: string,
+    nom: string,
+  ) => Promise<{ missingSecrets: string[]; leftoverSecrets: string[] }>
 }) {
   const [deplies, setDeplies] = useState(new Set(initial))
   const [choisi, setChoisi] = useState<string | null>(null)
@@ -60,6 +65,7 @@ function Piloté({
         etatDe={() => etat}
         selectedId={choisi}
         onEditDatabase={onEditDatabase}
+        onRenameProject={onRenameProject}
         onSelect={(n) => setChoisi(n.id)}
         onToggle={(n) => {
           onToggleSpy?.(n)
@@ -238,6 +244,9 @@ test('le pied porte les deux actions du handoff', () => {
 
 // --- Le menu « … » des lignes (`08h`) ---
 
+/** Un renommage sans rien à signaler — le cas courant. */
+const VIDE = { missingSecrets: [], leftoverSecrets: [] }
+
 const TOUT_DEPLIE = [
   idProjet('Atelier Nord'),
   idBase('Atelier Nord', 'analytics'),
@@ -283,18 +292,100 @@ test('« Modifier… » porte les coordonnées du nœud, pas une déduction sur 
   expect(vues).toEqual([['Atelier Nord', 'shop', 'prod']])
 })
 
-test('les actions à venir sont désactivées et disent pourquoi', async () => {
+test('la suppression, à venir, est présente mais désactivée et dit pourquoi', async () => {
   render(<Piloté initial={TOUT_DEPLIE} onEditDatabase={() => {}} />)
   await userEvent.click(screen.getByRole('button', { name: 'Actions de Atelier Nord' }))
 
-  const renommer = screen.getByRole('button', { name: 'Renommer…' })
   const supprimer = screen.getByRole('button', { name: 'Supprimer…' })
-  // **Présentes et désactivées**, pas absentes : les cacher ferait croire qu'elles n'existeront
-  // jamais, les laisser cliquables et inertes ferait croire à une panne (défaut n° 36).
-  expect(renommer).toBeDisabled()
+  // **Présente et désactivée**, pas absente : la cacher ferait croire qu'elle n'existera jamais, la
+  // laisser cliquable et inerte ferait croire à une panne (défaut n° 36).
   expect(supprimer).toBeDisabled()
-  expect(renommer).toHaveAttribute('title', expect.stringContaining('08i'))
   expect(supprimer).toHaveAttribute('title', expect.stringContaining('08j'))
+})
+
+test('« Renommer… » ouvre la modale de renommage, sur ce projet', async () => {
+  render(<Piloté initial={TOUT_DEPLIE} onRenameProject={async () => VIDE} />)
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de Atelier Nord' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Renommer…' }))
+
+  const modale = screen.getByRole('dialog', { name: /Renommer Atelier Nord/ })
+  // Le champ part du nom actuel : le vider obligerait à retaper un nom qu'on veut seulement corriger.
+  expect(screen.getByLabelText('Nom du projet')).toHaveValue('Atelier Nord')
+  // **Ce que le renommage entraîne est dit avant de le faire** : déplacer des mots de passe et
+  // fermer des connexions n'est pas ce qu'on attend d'un changement de nom.
+  expect(modale).toHaveTextContent('mots de passe enregistrés suivent')
+  expect(modale).toHaveTextContent('connexions ouvertes de ce projet seront fermées')
+})
+
+test('le renommage passe le projet et le nouveau nom, débarrassé de ses espaces', async () => {
+  const vus: unknown[] = []
+  render(
+    <Piloté
+      initial={TOUT_DEPLIE}
+      onRenameProject={async (...args) => {
+        vus.push(args)
+        return VIDE
+      }}
+    />,
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de Atelier Nord' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Renommer…' }))
+  const champ = screen.getByLabelText('Nom du projet')
+  await userEvent.clear(champ)
+  await userEvent.type(champ, '  Atelier  ')
+  await userEvent.click(screen.getByRole('button', { name: 'Renommer' }))
+
+  expect(vus).toEqual([['Atelier Nord', 'Atelier']])
+  // Une modale qui reste ouverte après un succès sans rien à dire ferait croire à un échec.
+  expect(screen.queryByRole('dialog', { name: /Renommer/ })).not.toBeInTheDocument()
+})
+
+test('un refus s’affiche dans la modale, qui reste ouverte', async () => {
+  render(
+    <Piloté
+      initial={TOUT_DEPLIE}
+      onRenameProject={async () => {
+        throw new Error('un projet nommé « Outils » existe déjà')
+      }}
+    />,
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de Atelier Nord' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Renommer…' }))
+  await userEvent.clear(screen.getByLabelText('Nom du projet'))
+  await userEvent.type(screen.getByLabelText('Nom du projet'), 'Outils')
+  await userEvent.click(screen.getByRole('button', { name: 'Renommer' }))
+
+  // À côté du champ qu'il faut corriger, comme le refus de connexion de `08d` — pas dans une alerte
+  // système, qui obligerait à la fermer avant de pouvoir relire ce qu'on avait tapé.
+  expect(await screen.findByRole('alert')).toHaveTextContent('existe déjà')
+  expect(screen.getByRole('dialog', { name: /Renommer/ })).toBeInTheDocument()
+})
+
+test('un mot de passe introuvable est dit, et la modale ne se referme pas dessus', async () => {
+  render(
+    <Piloté
+      initial={TOUT_DEPLIE}
+      onRenameProject={async () => ({
+        missingSecrets: ['Atelier Nord/analytics/prod'],
+        leftoverSecrets: [],
+      })}
+    />,
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de Atelier Nord' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Renommer…' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Renommer' }))
+
+  // **Refermer sur un succès muet cacherait le fait.** Une base qui redemande son mot de passe sans
+  // raison apparente se découvrirait des semaines plus tard, sur un échec de connexion.
+  const rapport = await screen.findByRole('status')
+  expect(rapport).toHaveTextContent('introuvables dans le Trousseau')
+  expect(screen.getByRole('dialog', { name: /Renommer/ })).toBeInTheDocument()
+})
+
+test('« Renommer… » se désactive quand l’écran ne la relie à rien', async () => {
+  render(<Piloté initial={TOUT_DEPLIE} />)
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de Atelier Nord' }))
+  expect(screen.getByRole('button', { name: 'Renommer…' })).toBeDisabled()
 })
 
 test('« Modifier… » se désactive quand l’écran ne la relie à rien', async () => {

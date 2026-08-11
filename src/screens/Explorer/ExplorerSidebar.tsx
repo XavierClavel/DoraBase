@@ -10,6 +10,7 @@ import { SidebarSectionTitle } from '../../ui/SidebarSectionTitle/SidebarSection
 import { TreeRow } from '../../ui/TreeRow/TreeRow'
 import { aplatir, type Charge, type Deplies, type Noeud } from './arbre'
 import styles from './ExplorerSidebar.module.css'
+import { RenameProjectDialog } from './RenameProjectDialog'
 import { RowMenu } from './RowMenu'
 
 type ExplorerSidebarProps = {
@@ -32,6 +33,16 @@ type ExplorerSidebarProps = {
    * Absent, l'entrée « Modifier… » est désactivée avec sa raison plutôt que cliquable et inerte.
    */
   onEditDatabase?: (project: string, database: string, environment: Environment) => void
+  /**
+   * Renommer un projet depuis son « … » (`08i`) — la commande `rename_project`.
+   *
+   * Injecté comme `onEditDatabase` : le pont IPC ne répond pas hors de la webview, donc ce qui se
+   * teste ici est le **câblage**, pas la commande. Absent, l'entrée est désactivée avec sa raison.
+   */
+  onRenameProject?: (
+    project: string,
+    nom: string,
+  ) => Promise<{ missingSecrets: string[]; leftoverSecrets: string[] }>
   /**
    * La section contextuelle « Colonnes de *table* » des écrans de travail (`A5` → `A9`).
    *
@@ -83,11 +94,17 @@ export function ExplorerSidebar({
   onAddDatabase,
   onRefresh,
   onEditDatabase,
+  onRenameProject,
   columns,
   width = 'wide',
   modifications,
 }: ExplorerSidebarProps) {
   const [filtre, setFiltre] = useState('')
+  // Le projet dont on demande le renommage (`08i`). La modale vit **ici**, dans l'écran qui porte le
+  // point d'entrée : la remonter au `Workbench` obligerait chaque écran qui monte une sidebar à
+  // répéter le même montage.
+  const [aRenommer, setARenommer] = useState<string | null>(null)
+  const demanderLeRenommage = onRenameProject === undefined ? undefined : setARenommer
 
   const noeuds = useMemo(
     () => aplatir(projects, deplies, charge, etatDe),
@@ -97,123 +114,135 @@ export function ExplorerSidebar({
   const visibles = useMemo(() => filtrer(noeuds, filtre), [noeuds, filtre])
 
   return (
-    <Sidebar
-      width={width}
-      filter={
-        // Le compteur `n/m` de `04` sert ici : il dit combien de lignes **affichées** le filtre
-        // retient, ce qui rappelle implicitement qu'il ne cherche pas au-delà.
-        <SidebarFilterBar
-          value={filtre}
-          onChange={setFiltre}
-          matchCount={filtre === '' ? undefined : visibles.length}
-          totalCount={filtre === '' ? undefined : noeuds.length}
+    <>
+      {aRenommer !== null && onRenameProject !== undefined && (
+        <RenameProjectDialog
+          projet={aRenommer}
+          onClose={() => setARenommer(null)}
+          onRename={(nom) => onRenameProject(aRenommer, nom)}
         />
-      }
-      footer={
-        // `ConsoleFooterButton` de `04` n'est pas réemployé : son libellé est figé
-        // (« Nouvelle console ») et sa hauteur est de 26 px, là où le pied de `A4` en fait 28 et
-        // porte deux actions. Trois écarts sur un composant de dix lignes — le dupliquer serait
-        // moins coûteux que le paramétrer, et `04` avait déjà noté sa dette de 26 px.
-        <div className={styles.footer}>
-          <button type="button" className={styles.add} onClick={onAddDatabase}>
-            <Icon name="plus" size={12} strokeWidth={2.2} />
-            Ajouter une base
-          </button>
-          <span className={styles.footerSpacer} />
-          <button
-            type="button"
-            className={styles.refresh}
-            onClick={onRefresh}
-            aria-label="Rafraîchir"
-          >
-            <Icon name="refresh" size={13} strokeWidth={2} />
-          </button>
-        </div>
-      }
-    >
-      {/* `role="tree"` et `treeitem` : l'arbre est aplati dans le DOM, donc `aria-level` porte la
+      )}
+      <Sidebar
+        width={width}
+        filter={
+          // Le compteur `n/m` de `04` sert ici : il dit combien de lignes **affichées** le filtre
+          // retient, ce qui rappelle implicitement qu'il ne cherche pas au-delà.
+          <SidebarFilterBar
+            value={filtre}
+            onChange={setFiltre}
+            matchCount={filtre === '' ? undefined : visibles.length}
+            totalCount={filtre === '' ? undefined : noeuds.length}
+          />
+        }
+        footer={
+          // `ConsoleFooterButton` de `04` n'est pas réemployé : son libellé est figé
+          // (« Nouvelle console ») et sa hauteur est de 26 px, là où le pied de `A4` en fait 28 et
+          // porte deux actions. Trois écarts sur un composant de dix lignes — le dupliquer serait
+          // moins coûteux que le paramétrer, et `04` avait déjà noté sa dette de 26 px.
+          <div className={styles.footer}>
+            <button type="button" className={styles.add} onClick={onAddDatabase}>
+              <Icon name="plus" size={12} strokeWidth={2.2} />
+              Ajouter une base
+            </button>
+            <span className={styles.footerSpacer} />
+            <button
+              type="button"
+              className={styles.refresh}
+              onClick={onRefresh}
+              aria-label="Rafraîchir"
+            >
+              <Icon name="refresh" size={13} strokeWidth={2} />
+            </button>
+          </div>
+        }
+      >
+        {/* `role="tree"` et `treeitem` : l'arbre est aplati dans le DOM, donc `aria-level` porte la
           profondeur qu'une imbrication aurait donnée gratuitement. Sans lui, un lecteur d'écran
           annoncerait une liste plate de vingt éléments sans hiérarchie. */}
-      <div role="tree" aria-label="Projets et bases" className={styles.tree}>
-        {visibles.length === 0 && filtre !== '' && (
-          <p className={styles.vide}>Aucune ligne affichée ne correspond à « {filtre} ».</p>
-        )}
-        {visibles.map((noeud) =>
-          noeud.message ? (
-            // Une ligne de message n'est pas un `treeitem` : ce n'est pas un nœud de l'arbre
-            // mais un état de son chargement, et l'annoncer comme tel ferait compter un
-            // enfant qui n'existe pas.
-            <p key={noeud.id} className={styles.message} data-depth={noeud.depth}>
-              {noeud.label}
-            </p>
-          ) : (
-            <TreeRow
-              key={noeud.id}
-              // Le rôle est **sur la ligne elle-même**, qui est un `<button>` : une enveloppe le
-              // portant mettrait l'élément interactif à l'intérieur du nœud d'arbre, où ni le
-              // clic ni le focus ne le désignent.
-              role="treeitem"
-              aria-level={noeud.depth + 1}
-              aria-expanded={noeud.chevron ? noeud.chevron === 'open' : undefined}
-              aria-selected={noeud.id === selectedId}
-              aria-label={noeud.announce}
-              depth={noeud.depth}
-              label={noeud.label}
-              icon={noeud.icon as never}
-              iconColor={noeud.iconColor}
-              chevron={noeud.chevron}
-              meta={compteDe(noeud, modifications) ?? noeud.meta}
-              metaVariant={compteDe(noeud, modifications) ? 'caps' : noeud.metaVariant}
-              metaBadge={compteDe(noeud, modifications) !== undefined}
-              selected={noeud.id === selectedId}
-              strong={noeud.kind === 'project'}
-              trailing={
-                noeud.badge ? (
-                  <Badge tone={noeud.badge.tone} size="xs">
-                    {noeud.badge.text}
-                  </Badge>
-                ) : undefined
-              }
-              actions={menuDe(noeud, onEditDatabase)}
-              onClick={() => {
-                // Un clic sur une ligne dépliable fait les deux : il sélectionne *et* déplie. Le
-                // mockup ne montre pas de zone de clic distincte pour le chevron, et en inventer
-                // une réduirait la cible à onze pixels.
-                onSelect(noeud)
-                if (noeud.chevron) onToggle(noeud)
-              }}
-            />
-          ),
-        )}
-      </div>
-      {columns && (
-        <section className={styles.colonnes}>
-          <SidebarSectionTitle>Colonnes de {columns.table}</SidebarSectionTitle>
-          {columns.loading ? (
-            <p className={styles.message}>Chargement des colonnes…</p>
-          ) : (
-            <>
-              {columns.columns.slice(0, APERCU_COLONNES).map((colonne) => (
-                <ColumnRow
-                  key={colonne.name}
-                  label={colonne.name}
-                  // La clé prime sur la catégorie : le mockup montre une icône de clé pour `id`
-                  // et de clé étrangère pour `user_id`, et un glyphe de type pour les autres.
-                  typeIcon={colonne.key === 'primary' ? 'key' : colonne.key ? 'fk' : undefined}
-                  typeIconColor={colonne.key === 'primary' ? 'var(--gold)' : 'var(--info)'}
-                  typeGlyph={colonne.key ? undefined : glypheDe(colonne.category)}
-                  meta={columns.annotations?.[colonne.name] ?? colonne.typeName}
-                  metaActive={columns.annotations?.[colonne.name] !== undefined}
-                />
-              ))}
-              {columns.columns.length > APERCU_COLONNES && (
-                <ColumnRow label={`+ ${columns.columns.length - APERCU_COLONNES} autres`} summary />
-              )}
-            </>
+        <div role="tree" aria-label="Projets et bases" className={styles.tree}>
+          {visibles.length === 0 && filtre !== '' && (
+            <p className={styles.vide}>Aucune ligne affichée ne correspond à « {filtre} ».</p>
           )}
-        </section>
-      )}
-    </Sidebar>
+          {visibles.map((noeud) =>
+            noeud.message ? (
+              // Une ligne de message n'est pas un `treeitem` : ce n'est pas un nœud de l'arbre
+              // mais un état de son chargement, et l'annoncer comme tel ferait compter un
+              // enfant qui n'existe pas.
+              <p key={noeud.id} className={styles.message} data-depth={noeud.depth}>
+                {noeud.label}
+              </p>
+            ) : (
+              <TreeRow
+                key={noeud.id}
+                // Le rôle est **sur la ligne elle-même**, qui est un `<button>` : une enveloppe le
+                // portant mettrait l'élément interactif à l'intérieur du nœud d'arbre, où ni le
+                // clic ni le focus ne le désignent.
+                role="treeitem"
+                aria-level={noeud.depth + 1}
+                aria-expanded={noeud.chevron ? noeud.chevron === 'open' : undefined}
+                aria-selected={noeud.id === selectedId}
+                aria-label={noeud.announce}
+                depth={noeud.depth}
+                label={noeud.label}
+                icon={noeud.icon as never}
+                iconColor={noeud.iconColor}
+                chevron={noeud.chevron}
+                meta={compteDe(noeud, modifications) ?? noeud.meta}
+                metaVariant={compteDe(noeud, modifications) ? 'caps' : noeud.metaVariant}
+                metaBadge={compteDe(noeud, modifications) !== undefined}
+                selected={noeud.id === selectedId}
+                strong={noeud.kind === 'project'}
+                trailing={
+                  noeud.badge ? (
+                    <Badge tone={noeud.badge.tone} size="xs">
+                      {noeud.badge.text}
+                    </Badge>
+                  ) : undefined
+                }
+                actions={menuDe(noeud, onEditDatabase, demanderLeRenommage)}
+                onClick={() => {
+                  // Un clic sur une ligne dépliable fait les deux : il sélectionne *et* déplie. Le
+                  // mockup ne montre pas de zone de clic distincte pour le chevron, et en inventer
+                  // une réduirait la cible à onze pixels.
+                  onSelect(noeud)
+                  if (noeud.chevron) onToggle(noeud)
+                }}
+              />
+            ),
+          )}
+        </div>
+        {columns && (
+          <section className={styles.colonnes}>
+            <SidebarSectionTitle>Colonnes de {columns.table}</SidebarSectionTitle>
+            {columns.loading ? (
+              <p className={styles.message}>Chargement des colonnes…</p>
+            ) : (
+              <>
+                {columns.columns.slice(0, APERCU_COLONNES).map((colonne) => (
+                  <ColumnRow
+                    key={colonne.name}
+                    label={colonne.name}
+                    // La clé prime sur la catégorie : le mockup montre une icône de clé pour `id`
+                    // et de clé étrangère pour `user_id`, et un glyphe de type pour les autres.
+                    typeIcon={colonne.key === 'primary' ? 'key' : colonne.key ? 'fk' : undefined}
+                    typeIconColor={colonne.key === 'primary' ? 'var(--gold)' : 'var(--info)'}
+                    typeGlyph={colonne.key ? undefined : glypheDe(colonne.category)}
+                    meta={columns.annotations?.[colonne.name] ?? colonne.typeName}
+                    metaActive={columns.annotations?.[colonne.name] !== undefined}
+                  />
+                ))}
+                {columns.columns.length > APERCU_COLONNES && (
+                  <ColumnRow
+                    label={`+ ${columns.columns.length - APERCU_COLONNES} autres`}
+                    summary
+                  />
+                )}
+              </>
+            )}
+          </section>
+        )}
+      </Sidebar>
+    </>
   )
 }
 
@@ -293,13 +322,19 @@ export function filtrer(noeuds: readonly Noeud[], filtre: string): Noeud[] {
 function menuDe(
   noeud: Noeud,
   onEditDatabase: ExplorerSidebarProps['onEditDatabase'],
+  demanderLeRenommage: ((projet: string) => void) | undefined,
 ): ReactNode | undefined {
   if (noeud.kind === 'project') {
     return (
       <RowMenu
         cible={noeud.label}
         entrees={[
-          { libelle: 'Renommer…', icone: 'pencil', raison: RAISONS.renommerProjet },
+          {
+            libelle: 'Renommer…',
+            icone: 'pencil',
+            onClick: demanderLeRenommage ? () => demanderLeRenommage(noeud.label) : undefined,
+            raison: demanderLeRenommage ? undefined : RAISONS.renommerIndisponible,
+          },
           { libelle: 'Supprimer…', icone: 'trash', raison: RAISONS.supprimer },
         ]}
       />
@@ -337,8 +372,7 @@ function menuDe(
  * leçon du défaut n° 36 : un bouton cliquable et inerte se lit comme une panne.
  */
 const RAISONS = {
-  renommerProjet:
-    'Renommer un projet déplace ses mots de passe enregistrés : cela arrive avec 08i.',
+  renommerIndisponible: 'Cet écran n’est pas relié à la commande de renommage.',
   supprimer:
     'Retirer une connexion efface aussi son mot de passe enregistré : cela arrive avec 08j.',
   modifierIndisponible: 'Cet écran n’est pas relié à la modale de modification.',

@@ -41,6 +41,11 @@ type WorkbenchProps = {
   onNewDatabase?: () => void
   /** Ouvre `A2` en mode édition sur cette base (`08g`). */
   onEditDatabase?: (project: string, database: Database) => void
+  /** Renommer un projet depuis le « … » de l'arbre (`08i`) — passé tel quel à la sidebar. */
+  onRenameProject?: (
+    project: string,
+    nom: string,
+  ) => Promise<{ missingSecrets: string[]; leftoverSecrets: string[] }>
   /** Ouvre l'écran en mode édition au montage — la démo s'en sert (`11a`). */
   edition?: boolean
 }
@@ -62,6 +67,7 @@ export function Workbench({
   rowAsInsert = rowAsInsertTauri,
   onNewDatabase,
   onEditDatabase,
+  onRenameProject,
   edition = false,
 }: WorkbenchProps) {
   const { deplies, charge, etatDeBase, basculer, rafraichir } = useArbre(projects, passerelle)
@@ -265,6 +271,7 @@ export function Workbench({
                   ?.databases.find((declaration) => declaration.name === nomBase)
                 if (base) onEditDatabase?.(nomProjet, base)
               }}
+              onRenameProject={onRenameProject}
               selectedId={selection?.id ?? null}
               onSelect={(noeud) => {
                 setSelection(noeud)

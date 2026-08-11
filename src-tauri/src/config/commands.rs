@@ -158,6 +158,29 @@ pub struct SaveDatabaseRequest {
     pub password: Option<String>,
 }
 
+/// Ce que `08i` envoie pour renommer un projet.
+#[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct RenameProjectRequest {
+    pub project: String,
+    pub name: String,
+}
+
+/// Ce qu'un renommage réussi rend à l'écran (`08i`).
+///
+/// **Pas seulement les projets.** Deux faits méritent d'être dits plutôt que tus : des mots de passe
+/// déclarés mais introuvables — les bases les redemanderont — et des originaux que le magasin n'a
+/// pas su effacer. Les taire laisserait l'utilisateur découvrir l'un ou l'autre bien plus tard.
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct RenameProjectResult {
+    pub projects: Vec<Project>,
+    pub missing_secrets: Vec<String>,
+    pub leftover_secrets: Vec<String>,
+}
+
 /// Ce que `A2` envoie pour créer un projet.
 #[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -208,6 +231,70 @@ pub fn create_project(
         suivants.len()
     );
     Ok(suivants)
+}
+
+/// Renomme un projet, en déplaçant ses mots de passe (`08i`).
+///
+/// **`async`, comme `update_variant` et pour la même raison** : les connexions ouvertes du projet
+/// doivent être fermées, leur clé de registre portant l'ancien nom, et `fermer` attend la libération
+/// du port d'un éventuel tunnel. L'attente a lieu **hors du verrou** de configuration, qui resterait
+/// sinon indisponible aux autres commandes pendant une attente réseau.
+#[tauri::command]
+pub async fn rename_project(
+    request: RenameProjectRequest,
+    state: State<'_, ConfigState>,
+    registry: State<'_, crate::engine::registry::ConnectionRegistry>,
+) -> Result<RenameProjectResult, String> {
+    let (projects, renommage) = {
+        let garde = state
+            .0
+            .lock()
+            .map_err(|_| "état de configuration corrompu".to_owned())?;
+        let store = garde
+            .as_ref()
+            .ok_or_else(|| "la configuration doit être lue avant d'être écrite".to_owned())?;
+
+        // Les projets viennent du disque, pas du front : une liste envoyée par l'écran pourrait être
+        // périmée et écraser une écriture. Même arbitrage qu'en `08e` et `08f`.
+        let mut projects: Vec<Project> = store.load_projects()?;
+
+        let repertoire = store
+            .path()
+            .parent()
+            .ok_or_else(|| "le fichier de configuration n'a pas de répertoire parent".to_owned())?
+            .to_path_buf();
+        let magasin = crate::secrets::selectionner(&repertoire).map_err(|e| e.to_string())?;
+
+        let renommage = super::enregistrer::renommer_projet(
+            &mut projects,
+            &request.project,
+            &request.name,
+            magasin.store.as_ref(),
+            &mut |projets| store.save(projets).map_err(|erreur| erreur.to_string()),
+        )
+        .map_err(|erreur| erreur.to_string())?;
+
+        (projects, renommage)
+    };
+
+    for cle in &renommage.cles_a_fermer {
+        registry.fermer(cle).await;
+    }
+
+    log::info!(
+        "rename_project ← {} → {} : {} connexion(s) fermée(s), {} secret(s) absent(s), {} résidu(s)",
+        request.project,
+        request.name,
+        renommage.cles_a_fermer.len(),
+        renommage.secrets_absents.len(),
+        renommage.residus.len()
+    );
+
+    Ok(RenameProjectResult {
+        projects,
+        missing_secrets: renommage.secrets_absents,
+        leftover_secrets: renommage.residus,
+    })
 }
 
 /// Ajoute une base et sa variante à un projet, et range son mot de passe.
