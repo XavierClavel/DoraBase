@@ -356,7 +356,7 @@ propres critères de vérification.
 | [`08g`](08g-modifier-une-connexion.md) | A2 | Modifier une connexion — `update_variant`, menu de la pastille | **fait** |
 | [`08h`](08h-menu-de-ligne-dans-l-arbre.md) | A4 | Le menu « … » des lignes projet et base de l'arbre | **fait** |
 | [`08i`](08i-renommer-un-projet.md) | A4 | Renommer un projet — `rename_project`, migration des secrets | **fait** |
-| [`08j`](08j-supprimer-une-connexion-ou-un-projet.md) | A4 | Supprimer une déclaration de connexion, ou un projet | à faire |
+| [`08j`](08j-supprimer-une-connexion-ou-un-projet.md) | A4 | Retirer une déclaration de connexion, ou un projet | **fait** |
 | [`09a`](09a-primitives-de-tableau.md) | — | Primitives : `SegmentedControl`, `StatTile`, `DataTable` | **fait** |
 | [`09b`](09b-cablage-des-donnees.md) | — | Câblage : `load_config` au démarrage, registre de connexions, introspection | **fait** (redémarrage non observé) |
 | [`09c`](09c-a4-barre-de-titre.md) | A4 | Barre de titre : pastille projet, fil d'Ariane, sélecteur d'environnement | **fait** (clic vs glissement non observé) |

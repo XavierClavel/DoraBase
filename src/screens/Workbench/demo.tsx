@@ -312,6 +312,9 @@ export function WorkbenchDemo() {
         // La démo renomme **pour de faux** : le pont ne répond pas en Chromium. Ce qui se vérifie ici
         // est le chemin jusqu'à la modale, et le rapport qu'elle sait afficher — d'où un secret
         // introuvable annoncé, cas que la commande réelle produit sur un Trousseau nettoyé à la main.
+        // La démo retire **pour de faux** — le pont ne répond pas en Chromium. Un mot de passe
+        // résiduel est annoncé : le cas que la commande réelle produit sur un Trousseau verrouillé.
+        onDelete={async () => ({ leftoverSecrets: ['Atelier Nord/analytics/prod'] })}
         onRenameProject={async (projet) => ({
           missingSecrets: [`${projet}/analytics/prod`],
           leftoverSecrets: [],

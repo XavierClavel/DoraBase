@@ -106,7 +106,7 @@ test('le « … » reste visible quand la souris passe du bouton à son panneau'
   // descendant de l'enveloppe, donc le survoler survole encore la ligne, et le focus y est de toute
   // façon. Une règle `:has([aria-expanded='true'])' avait été ajoutée « en ceinture » ; la retirer
   // ne changeait rien à cette mesure, donc elle n'est pas là.
-  await page.getByRole('button', { name: 'Supprimer…' }).hover()
+  await page.getByRole('button', { name: 'Retirer de DoraBase…' }).hover()
 
   const visibilite = await page.evaluate(() => {
     const bouton = document.querySelector('[aria-label="Actions de Atelier Nord"]')

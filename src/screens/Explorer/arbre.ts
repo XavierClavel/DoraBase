@@ -46,6 +46,11 @@ export type Noeud = {
   announce?: string
   /** Une ligne de message — chargement, échec, vide — non sélectionnable. */
   message?: boolean
+  /**
+   * Le nombre de connexions que ce nœud représente : les bases d'un projet, les environnements
+   * d'une base. Sert à la confirmation de retrait de `08j`, qui compte ce qui part.
+   */
+  connexions?: number
   /** Les coordonnées, pour que l'écran sache quoi demander au dépliage. */
   project?: string
   database?: string
@@ -103,6 +108,9 @@ export function aplatir(
         : `${projet.databases.length} base${projet.databases.length > 1 ? 's' : ''}`,
       metaVariant: 'caps',
       project: projet.name,
+      // Combien de connexions déclarées : la confirmation de retrait (`08j`) les compte, et un menu
+      // qui recalculerait ce nombre à partir des projets aurait besoin de la liste entière.
+      connexions: projet.databases.length,
     })
 
     if (!projetDeplie) continue
@@ -127,6 +135,9 @@ export function aplatir(
         project: projet.name,
         database: base.name,
         environment: projet.activeEnvironment,
+        // Les environnements déclarés pour cette base : c'est ce que le retrait efface, et non la
+        // seule variante courante.
+        connexions: base.variants.length,
       })
 
       if (!baseDepliee) continue

@@ -15,6 +15,7 @@ import { TitleBar } from '../../shell/TitleBar/TitleBar'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
 import { idSchema, type Noeud } from '../Explorer/arbre'
 import { BreadcrumbBar, type TypeObjet } from '../Explorer/BreadcrumbBar'
+import type { CibleDeSuppression } from '../Explorer/DeleteConnectionDialog'
 import { DetailPanel } from '../Explorer/DetailPanel'
 import { ExplorerSidebar } from '../Explorer/ExplorerSidebar'
 import { ObjectTable } from '../Explorer/ObjectTable'
@@ -24,7 +25,16 @@ import { RowPanel } from '../TableView/RowPanel'
 import { TableStatusBar } from '../TableView/TableStatusBar'
 import { TableView } from '../TableView/TableView'
 import { PASSERELLE_LIGNES, type PasserelleLignes } from '../TableView/useLignes'
-import { AUCUN_ONGLET, fermer, idOnglet, ongletActif, ouvrir, reordonner } from './onglets'
+import {
+  AUCUN_ONGLET,
+  type EtatOnglets,
+  fermer,
+  idOnglet,
+  ongletActif,
+  ouvrir,
+  reordonner,
+  viseeParLId,
+} from './onglets'
 import { ProjectMenu } from './ProjectMenu'
 import { PASSERELLE_TAURI, type PasserelleArbre, useArbre } from './useArbre'
 import { PASSERELLE_DETAIL, type PasserelleDetail, useDetailTable } from './useDetailTable'
@@ -46,6 +56,8 @@ type WorkbenchProps = {
     project: string,
     nom: string,
   ) => Promise<{ missingSecrets: string[]; leftoverSecrets: string[] }>
+  /** Retirer une déclaration de connexion, ou un projet (`08j`). */
+  onDelete?: (cible: CibleDeSuppression) => Promise<{ leftoverSecrets: string[] }>
   /** Ouvre l'écran en mode édition au montage — la démo s'en sert (`11a`). */
   edition?: boolean
 }
@@ -68,6 +80,7 @@ export function Workbench({
   onNewDatabase,
   onEditDatabase,
   onRenameProject,
+  onDelete,
   edition = false,
 }: WorkbenchProps) {
   const { deplies, charge, etatDeBase, basculer, rafraichir } = useArbre(projects, passerelle)
@@ -272,6 +285,28 @@ export function Workbench({
                 if (base) onEditDatabase?.(nomProjet, base)
               }}
               onRenameProject={onRenameProject}
+              // **Retirer une base ferme ses onglets**, et l'écran de travail est le seul à pouvoir
+              // le faire : un onglet survivant lirait une base dont la déclaration est partie.
+              onDelete={
+                onDelete === undefined
+                  ? undefined
+                  : async (cible) => {
+                      const issue = await onDelete(cible)
+                      setEtatOnglets((etat) => sansLesOngletsDe(etat, cible))
+                      setAttentes((precedent) =>
+                        Object.fromEntries(
+                          Object.entries(precedent).filter(([id]) => !viseeParLId(cible, id)),
+                        ),
+                      )
+                      return issue
+                    }
+              }
+              // Ce qui serait perdu, compté **avant** de le perdre : la confirmation le dit.
+              modificationsEnAttenteDe={(cible) =>
+                Object.entries(attentes)
+                  .filter(([id]) => viseeParLId(cible, id))
+                  .reduce((total, [, enAttente]) => total + enAttente.length, 0)
+              }
               selectedId={selection?.id ?? null}
               onSelect={(noeud) => {
                 setSelection(noeud)
@@ -470,4 +505,12 @@ function comptes(objets: readonly TableSummary[]): Record<TypeObjet, number> {
     functions: objets.filter((o) => o.kind === 'function').length,
     indexes: objets.filter((o) => o.kind === 'index').length,
   }
+}
+
+/** L'état des onglets débarrassé de ceux qui lisaient la cible du retrait. */
+function sansLesOngletsDe(etat: EtatOnglets, cible: CibleDeSuppression): EtatOnglets {
+  return etat.onglets
+    .map(idOnglet)
+    .filter((id) => viseeParLId(cible, id))
+    .reduce(fermer, etat)
 }
