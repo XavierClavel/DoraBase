@@ -351,7 +351,7 @@ des tests verts au moment où il a été introduit.
 
 ## Ce qu'a trouvé le premier usage réel, les 9 et 10 août 2026
 
-Quatorze défauts, tous sur une suite verte, et **onze signalés par l'utilisateur** — pas par nous. Le
+Quinze défauts, tous sur une suite verte, et **douze signalés par l'utilisateur** — pas par nous. Le
 point commun : le décor de test était trop régulier pour les produire, ou l'assertion mesurait
 autre chose que ce qu'elle prétendait.
 
@@ -451,6 +451,13 @@ autre chose que ce qu'elle prétendait.
    signalé sur une base de 37 colonnes dans WKWebView, que rien ici ne reproduit. Ce qui est prouvé
    est la disparition des deux causes, pas celle du symptôme — et le dire autrement serait
    présenter un raisonnement comme une vérification.
+
+40. **Deux modales oubliaient leur propre remplissage.** Le corps de `Modal` n'en pose aucun — une
+   décision assumée d'`08a`, `A2` posant des marges différentes par bloc — donc c'est au contenu de
+   le faire. Les modales de renommage (`08i`) et de retrait (`08j`) ne l'avaient pas fait : leurs
+   blocs colorés touchaient les deux bords. Signalé à l'écran le 11 août 2026. Aucun test ne
+   mesurait le retrait du contenu d'une modale ; deux e2e le font, en le comparant à l'en-tête plutôt
+   qu'à une valeur en dur — et **pas au titre**, décalé de 33 px par la pastille d'icône.
 
 **Ce que ces neuf défauts disent du décor de test.** Aucun n'était un défaut de logique : tous
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros

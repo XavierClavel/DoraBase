@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Button } from '../../ui/Button/Button'
+import { cx } from '../../ui/cx'
 import { Field } from '../../ui/Field/Field'
 import { Modal } from '../../ui/Modal/Modal'
 import styles from './RenameProjectDialog.module.css'
@@ -95,7 +96,7 @@ export function RenameProjectDialog({ projet, onClose, onRename }: RenameProject
       }
     >
       {etat.phase === 'fait' ? (
-        <div className={styles.rapport} role="status">
+        <div className={cx(styles.corps, styles.rapport)} role="status">
           <p className={styles.titre}>Le projet est renommé.</p>
           {etat.missingSecrets.length > 0 && (
             <p>
@@ -111,7 +112,7 @@ export function RenameProjectDialog({ projet, onClose, onRename }: RenameProject
           )}
         </div>
       ) : (
-        <>
+        <div className={styles.corps}>
           <Field
             label="Nom du projet"
             value={nom}
@@ -136,7 +137,7 @@ export function RenameProjectDialog({ projet, onClose, onRename }: RenameProject
               {etat.message}
             </p>
           )}
-        </>
+        </div>
       )}
     </Modal>
   )

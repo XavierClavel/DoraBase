@@ -49,6 +49,44 @@ test('les deux faits ont le même poids visuel', async ({ page }) => {
   expect(intact?.largeur).toBe(efface?.largeur)
 })
 
+test('le contenu s’aligne sur le titre et ne touche pas les bords', async ({ page }) => {
+  const mesures = await page.evaluate(() => {
+    const modale = document.querySelector('[role=dialog][aria-label^="Retirer"]')
+    // **Le premier élément de l'en-tête, pas le titre** : celui-ci est décalé par la pastille
+    // d'icône, et s'aligner dessus mettrait le corps 33 px trop à droite. Le repère est le bord du
+    // remplissage de l'en-tête, que la pastille occupe.
+    const titre = modale?.querySelector('[data-testid=modal-footer]')?.firstElementChild
+      ? modale.querySelector('[data-testid=modal-footer]')?.firstElementChild
+      : null
+    const blocs = [...(modale?.querySelectorAll('p') ?? [])]
+    if (!modale || !titre || blocs.length === 0) return null
+    const boiteModale = modale.getBoundingClientRect()
+    const boiteTitre = titre.getBoundingClientRect()
+    return {
+      gaucheModale: Math.round(boiteModale.left),
+      droiteModale: Math.round(boiteModale.right),
+      gaucheEntete: Math.round(boiteTitre.left),
+      blocs: blocs.map((bloc) => {
+        const boite = bloc.getBoundingClientRect()
+        return { gauche: Math.round(boite.left), droite: Math.round(boite.right) }
+      }),
+    }
+  })
+  expect(mesures).not.toBeNull()
+  const m = mesures as NonNullable<typeof mesures>
+
+  // **Le corps de `Modal` n'a aucun remplissage** (`08a`, décision assumée : `A2` pose des marges
+  // différentes par bloc). C'est donc au contenu de poser le sien, et celui-ci l'avait oublié : ses
+  // blocs colorés touchaient les deux bords de la modale. Signalé à l'écran le 11 août 2026.
+  for (const bloc of m.blocs) {
+    expect(bloc.gauche).toBeGreaterThan(m.gaucheModale)
+    expect(bloc.droite).toBeLessThan(m.droiteModale)
+  }
+  // Et ils s'alignent sur le titre, pas seulement « quelque part en retrait » : c'est l'alignement
+  // qui se voit, un retrait approximatif se lit comme un défaut.
+  expect(m.blocs[0]?.gauche).toBe(m.gaucheEntete)
+})
+
 test('le bouton porte le verbe du geste, jamais « OK »', async ({ page }) => {
   const pied = page.getByRole('dialog', { name: /Retirer Atelier Nord/ })
   await expect(pied.getByRole('button', { name: 'Retirer le projet' })).toBeVisible()
