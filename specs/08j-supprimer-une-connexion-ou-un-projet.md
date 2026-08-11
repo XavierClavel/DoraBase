@@ -42,6 +42,14 @@ subsister. Trois décisions en découlent :
 - **Le bouton porte le verbe du geste** — « Retirer la connexion » — et non « OK ». Un bouton qui
   nomme son acte est la dernière chance de lire ce qu'on fait.
 
+### La configuration est écrite d'abord, les secrets effacés ensuite
+
+L'ordre inverse a été écrit puis corrigé, et la raison vaut d'être notée : si l'écriture échouait
+**après** l'effacement, la base restait *déclarée sans son mot de passe*, et le redemandait à la
+prochaine connexion sans que rien l'explique. Dans cet ordre, une écriture qui échoue ne laisse rien
+derrière ; un secret qui résiste après coup est un orphelin **signalé**. Même arbitrage qu'en `08i` :
+la phase destructive en dernier.
+
 ### Le mot de passe part avec la déclaration
 
 Décision prise le 10 août 2026 : un secret laissé derrière serait **invisible depuis

@@ -535,6 +535,157 @@ pub fn creer_projet(
     Ok(suivants)
 }
 
+/// Ce qu'une suppression a fait, et ce qu'elle laisse à faire à l'appelant (`08j`).
+#[derive(Debug)]
+pub struct Suppression {
+    /// La configuration après suppression.
+    pub projects: Vec<Project>,
+    /// Les clés de registre des connexions à fermer.
+    pub cles_a_fermer: Vec<String>,
+    /// Les mots de passe que le magasin n'a pas su effacer. **Dits, jamais tus.**
+    pub secrets_residuels: Vec<String>,
+}
+
+/// L'échec d'une suppression.
+#[derive(Debug)]
+pub enum DeleteError {
+    Inconnu { project: String },
+    BaseInconnue { project: String, database: String },
+    Config { reason: String },
+}
+
+impl std::fmt::Display for DeleteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Inconnu { project } => write!(f, "le projet « {project} » n'existe pas"),
+            Self::BaseInconnue { project, database } => {
+                write!(f, "« {database} » n'existe pas dans « {project} »")
+            }
+            Self::Config { reason } => {
+                write!(f, "la configuration n'a pas pu être écrite : {reason}")
+            }
+        }
+    }
+}
+
+/// Retire d'une configuration la **déclaration de connexion** d'une base, et son mot de passe.
+///
+/// **Rien n'est supprimé dans la base distante, et cette fonction ne peut pas l'être** : elle ne
+/// reçoit aucun moteur, n'ouvre aucune connexion et n'émet aucun SQL. C'est l'ambiguïté qui peut
+/// coûter des données à quelqu'un, et la signature elle-même y répond — un test le vérifie plutôt
+/// que de s'en remettre à la relecture.
+///
+/// **Un secret introuvable n'est pas un échec.** Il peut avoir été effacé à la main, ou n'avoir
+/// jamais existé pour un moteur qui n'en demande pas. Refuser de retirer une déclaration parce que
+/// son mot de passe manque déjà rendrait certaines entrées **indélébiles** — le même arbitrage qu'en
+/// `08i` pour un secret absent.
+///
+/// **La configuration est écrite d'abord, les secrets effacés ensuite** — la phase destructive en
+/// dernier, comme en `08i`. L'ordre inverse a été écrit puis corrigé : si l'écriture échouait après
+/// l'effacement, la base restait **déclarée sans son mot de passe**, et le redemandait à la
+/// prochaine connexion sans que rien l'explique. Dans cet ordre, une écriture qui échoue ne laisse
+/// rien derrière, et un secret qui résiste après coup est un orphelin *signalé*.
+pub fn supprimer_base(
+    projects: &[Project],
+    project: &str,
+    database: &str,
+    magasin: &dyn SecretStore,
+    ecrire: &mut dyn FnMut(&[Project]) -> Result<(), String>,
+) -> Result<Suppression, DeleteError> {
+    let index = projects
+        .iter()
+        .position(|projet| projet.name == project)
+        .ok_or_else(|| DeleteError::Inconnu {
+            project: project.to_owned(),
+        })?;
+    let rang = projects[index]
+        .databases
+        .iter()
+        .position(|base| base.name == database)
+        .ok_or_else(|| DeleteError::BaseInconnue {
+            project: project.to_owned(),
+            database: database.to_owned(),
+        })?;
+
+    let mut suivants = projects.to_vec();
+    let base = suivants[index].databases.remove(rang);
+
+    ecrire(&suivants).map_err(|reason| DeleteError::Config { reason })?;
+
+    let (cles_a_fermer, secrets_residuels) = oublier(&base, project, magasin);
+
+    Ok(Suppression {
+        projects: suivants,
+        cles_a_fermer,
+        secrets_residuels,
+    })
+}
+
+/// Retire un projet entier : chaque base, chaque secret, puis le projet.
+///
+/// **Rien de spécifique**, sinon la répétition — et c'est voulu : deux chemins de suppression
+/// différents finiraient par diverger. Comme `supprimer_base`, elle ne touche aucune base distante.
+pub fn supprimer_projet(
+    projects: &[Project],
+    project: &str,
+    magasin: &dyn SecretStore,
+    ecrire: &mut dyn FnMut(&[Project]) -> Result<(), String>,
+) -> Result<Suppression, DeleteError> {
+    let index = projects
+        .iter()
+        .position(|projet| projet.name == project)
+        .ok_or_else(|| DeleteError::Inconnu {
+            project: project.to_owned(),
+        })?;
+
+    let mut suivants = projects.to_vec();
+    let projet = suivants.remove(index);
+
+    ecrire(&suivants).map_err(|reason| DeleteError::Config { reason })?;
+
+    let mut cles_a_fermer = Vec::new();
+    let mut secrets_residuels = Vec::new();
+    for base in &projet.databases {
+        let (cles, residus) = oublier(base, project, magasin);
+        cles_a_fermer.extend(cles);
+        secrets_residuels.extend(residus);
+    }
+
+    Ok(Suppression {
+        projects: suivants,
+        cles_a_fermer,
+        secrets_residuels,
+    })
+}
+
+/// Efface les secrets d'une base et relève les clés de ses connexions.
+///
+/// Rend `(clés à fermer, secrets non effacés)`. Un secret qui résiste **ne fait pas échouer** la
+/// suppression : la déclaration est partie, la refuser laisserait l'entrée indélébile.
+fn oublier(
+    base: &Database,
+    project: &str,
+    magasin: &dyn SecretStore,
+) -> (Vec<String>, Vec<String>) {
+    let mut cles = Vec::new();
+    let mut residus = Vec::new();
+    for variante in base.variants() {
+        cles.push(crate::engine::registry::cle(
+            project,
+            &base.name,
+            variante.environment.slug(),
+        ));
+        // La référence **déclarée**, pas une recalculée : une variante dont la référence a été posée
+        // autrement garderait sinon son secret.
+        if let Some(reference) = &variante.password {
+            if magasin.delete(reference).is_err() {
+                residus.push(reference.as_str().to_owned());
+            }
+        }
+    }
+    (cles, residus)
+}
+
 /// Les deux refus de `creer_projet`.
 #[derive(Debug, PartialEq, Eq)]
 pub enum CreateError {
@@ -1433,6 +1584,12 @@ mod tests_renommage {
         }
     }
 
+    /// Le décor, partagé avec les tests de suppression (`08j`) : les deux specs ont besoin du même
+    /// projet à deux bases et trois secrets, et deux copies divergeraient.
+    pub(super) fn decor_partage() -> Vec<Project> {
+        decor()
+    }
+
     /// Un projet à **deux bases et trois secrets** : le décor décide de ce que le test peut voir.
     /// Avec une seule base et un seul secret, une migration qui s'arrête à mi-parcours serait
     /// indiscernable d'une migration complète — la leçon de la règle 7 de `REPRISE.md`.
@@ -1892,5 +2049,200 @@ mod tests_renommage {
             .retrieve(&reference_de("Atelier", "shop", "prod"))
             .expect("relecture")
             .is_some());
+    }
+}
+
+// --- Supprimer une déclaration de connexion (`08j`) ---
+
+#[cfg(test)]
+mod tests_suppression {
+    use super::tests::{magasin, magasin_defaillant};
+    use super::tests_renommage::decor_partage;
+    use super::*;
+
+    #[test]
+    fn supprimer_une_base_retire_sa_declaration_et_son_secret() {
+        let projets = decor_partage();
+        let m = magasin();
+        for (base, env) in [
+            ("analytics", "dev"),
+            ("analytics", "prod"),
+            ("shop", "prod"),
+        ] {
+            m.poser(&reference_de("Print", base, env), "mdp");
+        }
+        let mut ecrits = 0;
+
+        let issue = supprimer_base(&projets, "Print", "analytics", &m, &mut |_| {
+            ecrits += 1;
+            Ok(())
+        })
+        .expect("suppression");
+
+        assert_eq!(ecrits, 1);
+        assert_eq!(issue.projects[0].databases.len(), 1);
+        assert_eq!(issue.projects[0].databases[0].name, "shop");
+        // Les deux variantes de la base retirée : une seule effacée laisserait un secret orphelin.
+        for env in ["dev", "prod"] {
+            assert!(
+                m.retrieve(&reference_de("Print", "analytics", env))
+                    .expect("relecture")
+                    .is_none(),
+                "analytics/{env} doit être effacé"
+            );
+        }
+        // **Le voisin est intact** : sans lui dans le décor, « supprimer la bonne base » serait
+        // indiscernable de « tout supprimer ».
+        assert!(m
+            .retrieve(&reference_de("Print", "shop", "prod"))
+            .expect("relecture")
+            .is_some());
+        assert_eq!(issue.cles_a_fermer.len(), 2);
+        assert!(issue.secrets_residuels.is_empty());
+    }
+
+    #[test]
+    fn supprimer_un_projet_retire_toutes_ses_bases_et_leurs_secrets() {
+        let projets = decor_partage();
+        let m = magasin();
+        for (base, env) in [
+            ("analytics", "dev"),
+            ("analytics", "prod"),
+            ("shop", "prod"),
+        ] {
+            m.poser(&reference_de("Print", base, env), "mdp");
+        }
+
+        let issue = supprimer_projet(&projets, "Print", &m, &mut |_| Ok(())).expect("suppression");
+
+        assert_eq!(issue.projects.len(), 1);
+        assert_eq!(issue.projects[0].name, "Outils", "le voisin reste");
+        assert_eq!(issue.cles_a_fermer.len(), 3);
+        for (base, env) in [
+            ("analytics", "dev"),
+            ("analytics", "prod"),
+            ("shop", "prod"),
+        ] {
+            assert!(m
+                .retrieve(&reference_de("Print", base, env))
+                .expect("relecture")
+                .is_none());
+        }
+    }
+
+    #[test]
+    fn un_secret_deja_absent_ne_fait_pas_echouer_la_suppression() {
+        let projets = decor_partage();
+        // Magasin vide : les mots de passe ont été effacés à la main dans le Trousseau.
+        let m = magasin();
+
+        let issue = supprimer_base(&projets, "Print", "analytics", &m, &mut |_| Ok(()))
+            .expect("un mot de passe déjà absent ne doit pas rendre l'entrée indélébile");
+
+        assert_eq!(issue.projects[0].databases.len(), 1);
+        // `delete` d'une référence absente réussit : rien à signaler.
+        assert!(issue.secrets_residuels.is_empty());
+    }
+
+    #[test]
+    fn un_secret_qui_resiste_est_dit_mais_n_empeche_pas_la_suppression() {
+        let projets = decor_partage();
+        let m = magasin_defaillant(false, true);
+        for env in ["dev", "prod"] {
+            m.poser(&reference_de("Print", "analytics", env), "mdp");
+        }
+
+        let issue = supprimer_base(&projets, "Print", "analytics", &m, &mut |_| Ok(()))
+            .expect("un magasin qui refuse d'effacer ne doit pas rendre l'entrée indélébile");
+
+        assert_eq!(issue.projects[0].databases.len(), 1);
+        // **Dit, jamais tu** : deux mots de passe restent dans le Trousseau, et l'écran doit pouvoir
+        // l'annoncer plutôt que de laisser croire à un nettoyage complet.
+        assert_eq!(issue.secrets_residuels.len(), 2);
+    }
+
+    #[test]
+    fn une_ecriture_impossible_fait_echouer_la_suppression() {
+        let projets = decor_partage();
+        let m = magasin();
+        m.poser(&reference_de("Print", "shop", "prod"), "mdp");
+
+        let erreur = supprimer_base(&projets, "Print", "shop", &m, &mut |_| {
+            Err("disque plein".to_owned())
+        })
+        .expect_err("la suppression doit échouer");
+
+        assert!(matches!(erreur, DeleteError::Config { .. }));
+        // Le modèle reçu n'est pas modifié — la fonction travaille sur une copie.
+        assert_eq!(projets[0].databases.len(), 2);
+    }
+
+    #[test]
+    fn une_ecriture_impossible_laisse_le_mot_de_passe_intact() {
+        let projets = decor_partage();
+        let m = magasin();
+        m.poser(&reference_de("Print", "shop", "prod"), "mdp");
+
+        supprimer_base(&projets, "Print", "shop", &m, &mut |_| {
+            Err("disque plein".to_owned())
+        })
+        .expect_err("la suppression doit échouer");
+
+        // **La phase destructive vient en dernier, et c'est ce test qui l'exige.** Dans l'ordre
+        // inverse — secrets d'abord — la base restait déclarée sans son mot de passe, et le
+        // redemandait à la prochaine connexion sans que rien l'explique.
+        assert!(
+            m.retrieve(&reference_de("Print", "shop", "prod"))
+                .expect("relecture")
+                .is_some(),
+            "une configuration non écrite ne doit rien avoir effacé"
+        );
+    }
+
+    #[test]
+    fn une_base_ou_un_projet_inconnu_est_refuse() {
+        let projets = decor_partage();
+        let m = magasin();
+        assert!(matches!(
+            supprimer_base(&projets, "Print", "absente", &m, &mut |_| Ok(())),
+            Err(DeleteError::BaseInconnue { .. })
+        ));
+        assert!(matches!(
+            supprimer_projet(&projets, "Absent", &m, &mut |_| Ok(())),
+            Err(DeleteError::Inconnu { .. })
+        ));
+    }
+
+    /// **La garantie centrale de `08j`, vérifiée et non supposée.**
+    ///
+    /// Un magasin qui *panique* si on lui demande autre chose qu'une suppression, et l'absence de
+    /// tout moteur dans la signature : si une future version de ces fonctions ouvrait une connexion
+    /// ou émettait un `DROP`, elle ne compilerait pas — il n'y a rien pour le faire. Ce test fixe
+    /// l'autre moitié : aucune lecture de secret, aucune écriture, seulement des suppressions.
+    #[test]
+    fn supprimer_n_emet_aucun_sql_et_ne_lit_aucun_secret() {
+        struct Vigile(std::sync::Mutex<Vec<String>>);
+        impl SecretStore for Vigile {
+            fn store(&self, _: &SecretRef, _: &Secret) -> Result<(), SecretError> {
+                panic!("supprimer une déclaration ne doit rien écrire dans le magasin")
+            }
+            fn retrieve(&self, _: &SecretRef) -> Result<Option<Secret>, SecretError> {
+                panic!("supprimer une déclaration ne doit lire aucun mot de passe")
+            }
+            fn delete(&self, reference: &SecretRef) -> Result<(), SecretError> {
+                self.0
+                    .lock()
+                    .expect("vigile")
+                    .push(reference.as_str().to_owned());
+                Ok(())
+            }
+        }
+
+        let projets = decor_partage();
+        let vigile = Vigile(std::sync::Mutex::new(Vec::new()));
+        supprimer_projet(&projets, "Print", &vigile, &mut |_| Ok(())).expect("suppression");
+
+        let vus = vigile.0.lock().expect("vigile").clone();
+        assert_eq!(vus.len(), 3, "trois secrets déclarés, trois suppressions");
     }
 }

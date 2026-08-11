@@ -1,0 +1,64 @@
+/*
+ * La confirmation de retrait (`08j`). Le handoff ne la maquette pas : elle emprunte la coquille de
+ * `08a` et l'échelle typographique des blocs de `A2`.
+ *
+ * **Les deux faits ont le même poids visuel.** Mettre en avant ce qui inquiète et reléguer ce qui
+ * rassure en petit gris ferait lire « vous allez perdre votre base » — l'inverse exact du message.
+ */
+
+.corps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.corps p {
+  margin: 0;
+}
+
+.efface,
+.intact {
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-field);
+}
+
+.efface {
+  background: var(--warn-bg-2);
+}
+
+/* Le vert du succès, et non le rouge du danger : cette phrase est une **bonne** nouvelle, et la
+ * peindre comme un avertissement la ferait lire de travers. */
+.intact {
+  background: var(--success-bg);
+}
+
+.attention {
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-field);
+  background: var(--danger-bg);
+  font-weight: var(--weight-semibold);
+  color: var(--danger-ink);
+}
+
+.definitif {
+  color: var(--ink-meta);
+}
+
+.refus {
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-field);
+  background: var(--danger-bg);
+  font-weight: var(--weight-semibold);
+  color: var(--danger-ink);
+}
+
+.titre {
+  font-size: var(--text-dense);
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+}

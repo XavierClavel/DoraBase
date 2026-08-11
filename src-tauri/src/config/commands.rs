@@ -181,6 +181,34 @@ pub struct RenameProjectResult {
     pub leftover_secrets: Vec<String>,
 }
 
+/// Ce que `08j` envoie pour retirer une déclaration de connexion.
+#[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct DeleteDatabaseRequest {
+    pub project: String,
+    pub database: String,
+}
+
+/// Ce que `08j` envoie pour retirer un projet entier.
+#[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct DeleteProjectRequest {
+    pub project: String,
+}
+
+/// Ce qu'une suppression rend à l'écran (`08j`).
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct DeleteResult {
+    pub projects: Vec<Project>,
+    /// Les mots de passe que le magasin n'a pas su effacer : ils restent dans le Trousseau, et
+    /// l'utilisateur a le droit de le savoir.
+    pub leftover_secrets: Vec<String>,
+}
+
 /// Ce que `A2` envoie pour créer un projet.
 #[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -294,6 +322,114 @@ pub async fn rename_project(
         projects,
         missing_secrets: renommage.secrets_absents,
         leftover_secrets: renommage.residus,
+    })
+}
+
+/// Retire la **déclaration de connexion** d'une base, et son mot de passe (`08j`).
+///
+/// **Aucune donnée n'est touchée sur le serveur, et cette commande ne peut pas en toucher** : elle
+/// ne reçoit aucun moteur, n'ouvre aucune connexion et n'émet aucun SQL. Elle en *ferme*, au
+/// contraire — les connexions de la base retirée, dont la clé de registre n'a plus de déclaration.
+#[tauri::command]
+pub async fn delete_database(
+    request: DeleteDatabaseRequest,
+    state: State<'_, ConfigState>,
+    registry: State<'_, crate::engine::registry::ConnectionRegistry>,
+) -> Result<DeleteResult, String> {
+    let suppression = {
+        let garde = state
+            .0
+            .lock()
+            .map_err(|_| "état de configuration corrompu".to_owned())?;
+        let store = garde
+            .as_ref()
+            .ok_or_else(|| "la configuration doit être lue avant d'être écrite".to_owned())?;
+        let projects: Vec<Project> = store.load_projects()?;
+        let repertoire = store
+            .path()
+            .parent()
+            .ok_or_else(|| "le fichier de configuration n'a pas de répertoire parent".to_owned())?
+            .to_path_buf();
+        let magasin = crate::secrets::selectionner(&repertoire).map_err(|e| e.to_string())?;
+
+        super::enregistrer::supprimer_base(
+            &projects,
+            &request.project,
+            &request.database,
+            magasin.store.as_ref(),
+            &mut |projets| store.save(projets).map_err(|erreur| erreur.to_string()),
+        )
+        .map_err(|erreur| erreur.to_string())?
+    };
+
+    // Hors du verrou : `fermer` attend la libération du port d'un éventuel tunnel.
+    for cle in &suppression.cles_a_fermer {
+        registry.fermer(cle).await;
+    }
+
+    log::info!(
+        "delete_database ← {} / {} : {} connexion(s) fermée(s), {} secret(s) résiduel(s)",
+        request.project,
+        request.database,
+        suppression.cles_a_fermer.len(),
+        suppression.secrets_residuels.len()
+    );
+
+    Ok(DeleteResult {
+        projects: suppression.projects,
+        leftover_secrets: suppression.secrets_residuels,
+    })
+}
+
+/// Retire un projet et toutes ses déclarations de connexion (`08j`).
+///
+/// Même garantie que `delete_database`, et pour la même raison : aucun moteur dans la signature,
+/// donc aucune donnée distante atteignable.
+#[tauri::command]
+pub async fn delete_project(
+    request: DeleteProjectRequest,
+    state: State<'_, ConfigState>,
+    registry: State<'_, crate::engine::registry::ConnectionRegistry>,
+) -> Result<DeleteResult, String> {
+    let suppression = {
+        let garde = state
+            .0
+            .lock()
+            .map_err(|_| "état de configuration corrompu".to_owned())?;
+        let store = garde
+            .as_ref()
+            .ok_or_else(|| "la configuration doit être lue avant d'être écrite".to_owned())?;
+        let projects: Vec<Project> = store.load_projects()?;
+        let repertoire = store
+            .path()
+            .parent()
+            .ok_or_else(|| "le fichier de configuration n'a pas de répertoire parent".to_owned())?
+            .to_path_buf();
+        let magasin = crate::secrets::selectionner(&repertoire).map_err(|e| e.to_string())?;
+
+        super::enregistrer::supprimer_projet(
+            &projects,
+            &request.project,
+            magasin.store.as_ref(),
+            &mut |projets| store.save(projets).map_err(|erreur| erreur.to_string()),
+        )
+        .map_err(|erreur| erreur.to_string())?
+    };
+
+    for cle in &suppression.cles_a_fermer {
+        registry.fermer(cle).await;
+    }
+
+    log::info!(
+        "delete_project ← {} : {} connexion(s) fermée(s), {} secret(s) résiduel(s)",
+        request.project,
+        suppression.cles_a_fermer.len(),
+        suppression.secrets_residuels.len()
+    );
+
+    Ok(DeleteResult {
+        projects: suppression.projects,
+        leftover_secrets: suppression.secrets_residuels,
     })
 }
 

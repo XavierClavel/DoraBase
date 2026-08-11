@@ -78,3 +78,22 @@ export function reordonner(etat: EtatOnglets, ids: readonly string[]): EtatOngle
 export function ongletActif(etat: EtatOnglets): Onglet | null {
   return etat.onglets.find((onglet) => idOnglet(onglet) === etat.actif) ?? null
 }
+
+/**
+ * Vrai quand un identifiant d'onglet appartient à la cible d'un retrait (`08j`).
+ *
+ * **Sur les coordonnées, pas sur le préfixe de la chaîne.** `idOnglet` compose
+ * `projet/base/env::schema.table`, et un test de préfixe ferait de « Print » un préfixe de
+ * « Printemps » — deux projets distincts dont l'un emporterait les onglets de l'autre.
+ */
+export function viseeParLId(
+  cible: { kind: 'database' | 'project'; project: string; database?: string },
+  id: string,
+): boolean {
+  // `??` plutôt qu'un `!` : `split` rend toujours au moins un élément, mais l'affirmer au
+  // compilateur pour une ligne n'apprend rien à personne — la valeur par défaut est vraie.
+  const [coordonnees = ''] = id.split('::')
+  const [projet, base] = coordonnees.split('/')
+  if (projet !== cible.project) return false
+  return cible.kind === 'project' || base === cible.database
+}

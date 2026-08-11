@@ -308,6 +308,48 @@ describe('mode édition', () => {
     await utilisateur.type(champ, `${valeur}{Enter}`)
   }
 
+  it('la confirmation de retrait compte les modifications réellement en attente', async () => {
+    const utilisateur = userEvent.setup()
+    monter({ onDelete: async () => ({ leftoverSecrets: [] }) })
+    await ouvrirEtEditer(utilisateur)
+    await modifier(utilisateur)
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+    await utilisateur.click(screen.getByRole('button', { name: 'Retirer de DoraBase…' }))
+
+    // **Le compte vient de l'état réel des onglets**, pas d'une valeur injectée : c'est ce calcul
+    // qui décide si l'utilisateur est averti d'une perte, et une prop de test ne l'exerce pas.
+    expect(screen.getByRole('dialog', { name: /Retirer analytics/ })).toHaveTextContent(
+      '1 modification en attente sera perdue',
+    )
+  })
+
+  it('retirer la base efface aussi ses modifications en attente', async () => {
+    const utilisateur = userEvent.setup()
+    monter({ onDelete: async () => ({ leftoverSecrets: [] }) })
+    await ouvrirEtEditer(utilisateur)
+    await modifier(utilisateur)
+    expect(screen.getByRole('status', { name: 'Modifications en attente' })).toBeInTheDocument()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+    await utilisateur.click(screen.getByRole('button', { name: 'Retirer de DoraBase…' }))
+    await utilisateur.click(screen.getByRole('button', { name: 'Retirer la connexion' }))
+
+    expect(
+      screen.queryByRole('status', { name: 'Modifications en attente' }),
+    ).not.toBeInTheDocument()
+
+    // **Et elles ne reviennent pas si l'on rouvre le même chemin.** C'est la vraie raison de purger
+    // l'état : la disparition du bandeau ne prouve rien, l'onglet actif ayant changé. Des
+    // modifications fantômes sur une base redéclarée s'appliqueraient à des lignes qu'on n'a jamais
+    // vues.
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
+    await screen.findByRole('grid')
+    expect(
+      screen.queryByRole('status', { name: 'Modifications en attente' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('⌘E bascule, et le rappel de la barre d’état suit', async () => {
     const utilisateur = userEvent.setup()
     monter()
@@ -419,5 +461,36 @@ describe('mode édition', () => {
     await utilisateur.click(screen.getByRole('treeitem', { name: /order_items/ }))
     await screen.findByRole('grid')
     expect(screen.queryByRole('button', { name: /Modifier/ })).not.toBeInTheDocument()
+  })
+
+  it('retirer une base ferme ses onglets, et seulement les siens', async () => {
+    const utilisateur = userEvent.setup()
+    monter({ onDelete: async () => ({ leftoverSecrets: [] }) })
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /order_items/ }))
+    expect(screen.getAllByRole('tab')).toHaveLength(2)
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+    await utilisateur.click(screen.getByRole('button', { name: 'Retirer de DoraBase…' }))
+    await utilisateur.click(screen.getByRole('button', { name: 'Retirer la connexion' }))
+
+    // **Un onglet survivant lirait une base dont la déclaration est partie** : au mieux une erreur,
+    // au pire une lecture sur une connexion que le registre ne sait plus nommer.
+    expect(screen.queryAllByRole('tab')).toHaveLength(0)
+  })
+
+  it('annuler la confirmation ne ferme aucun onglet', async () => {
+    const utilisateur = userEvent.setup()
+    monter({ onDelete: async () => ({ leftoverSecrets: [] }) })
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+    await utilisateur.click(screen.getByRole('button', { name: 'Retirer de DoraBase…' }))
+    await utilisateur.click(screen.getByRole('button', { name: 'Annuler' }))
+
+    // Annuler ne ferme rien : la confirmation est la dernière chance de renoncer.
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
   })
 })

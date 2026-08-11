@@ -5,6 +5,7 @@ import { Sprite } from '../../design/icons/Sprite'
 import type { Environment, Project } from '../../domain/config'
 import type { ConnectionState, SchemaInfo, TableSummary } from '../../domain/engine'
 import { type Charge, idBase, idProjet, idSchema, type Noeud } from './arbre'
+import type { CibleDeSuppression } from './DeleteConnectionDialog'
 import { ExplorerSidebar, filtrer } from './ExplorerSidebar'
 
 const PROJETS: Project[] = [
@@ -42,6 +43,8 @@ function Piloté({
   onToggleSpy,
   onEditDatabase,
   onRenameProject,
+  onDelete,
+  modificationsEnAttenteDe,
 }: {
   charge?: Charge
   initial?: string[]
@@ -52,6 +55,8 @@ function Piloté({
     project: string,
     nom: string,
   ) => Promise<{ missingSecrets: string[]; leftoverSecrets: string[] }>
+  onDelete?: (cible: CibleDeSuppression) => Promise<{ leftoverSecrets: string[] }>
+  modificationsEnAttenteDe?: (cible: CibleDeSuppression) => number
 }) {
   const [deplies, setDeplies] = useState(new Set(initial))
   const [choisi, setChoisi] = useState<string | null>(null)
@@ -66,6 +71,8 @@ function Piloté({
         selectedId={choisi}
         onEditDatabase={onEditDatabase}
         onRenameProject={onRenameProject}
+        onDelete={onDelete}
+        modificationsEnAttenteDe={modificationsEnAttenteDe}
         onSelect={(n) => setChoisi(n.id)}
         onToggle={(n) => {
           onToggleSpy?.(n)
@@ -247,6 +254,9 @@ test('le pied porte les deux actions du handoff', () => {
 /** Un renommage sans rien à signaler — le cas courant. */
 const VIDE = { missingSecrets: [], leftoverSecrets: [] }
 
+/** Un retrait qui n'a rien laissé dans le Trousseau. */
+const AUCUN_RESIDU = { leftoverSecrets: [] }
+
 const TOUT_DEPLIE = [
   idProjet('Atelier Nord'),
   idBase('Atelier Nord', 'analytics'),
@@ -292,15 +302,113 @@ test('« Modifier… » porte les coordonnées du nœud, pas une déduction sur 
   expect(vues).toEqual([['Atelier Nord', 'shop', 'prod']])
 })
 
-test('la suppression, à venir, est présente mais désactivée et dit pourquoi', async () => {
+test('le retrait se désactive quand l’écran ne le relie à rien', async () => {
   render(<Piloté initial={TOUT_DEPLIE} onEditDatabase={() => {}} />)
   await userEvent.click(screen.getByRole('button', { name: 'Actions de Atelier Nord' }))
-
-  const supprimer = screen.getByRole('button', { name: 'Supprimer…' })
   // **Présente et désactivée**, pas absente : la cacher ferait croire qu'elle n'existera jamais, la
   // laisser cliquable et inerte ferait croire à une panne (défaut n° 36).
-  expect(supprimer).toBeDisabled()
-  expect(supprimer).toHaveAttribute('title', expect.stringContaining('08j'))
+  expect(screen.getByRole('button', { name: 'Retirer de DoraBase…' })).toBeDisabled()
+})
+
+test('l’entrée du menu dit « Retirer de DoraBase », jamais « supprimer »', async () => {
+  render(<Piloté initial={TOUT_DEPLIE} onDelete={async () => AUCUN_RESIDU} />)
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+
+  const menu = screen.getByRole('dialog', { name: 'Actions' })
+  // **Le mot compte, et c'est toute la décision de `08j`** : ce qui part est une déclaration sur cet
+  // ordinateur, pas une base de données. « Supprimer analytics » dans un client de bases se lit
+  // comme un `DROP DATABASE`.
+  expect(menu).toHaveTextContent('Retirer de DoraBase…')
+  expect(menu.textContent?.toLowerCase()).not.toContain('supprimer')
+})
+
+test('la confirmation nomme ce qui part et ce qui n’est pas touché', async () => {
+  render(<Piloté initial={TOUT_DEPLIE} onDelete={async () => AUCUN_RESIDU} />)
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Retirer de DoraBase…' }))
+
+  const modale = screen.getByRole('dialog', { name: /Retirer analytics de DoraBase/ })
+  expect(modale).toHaveTextContent('effacé de cet ordinateur')
+  expect(modale).toHaveTextContent('mots de passe enregistrés dans le Trousseau')
+  // **Le fait qui rassure, dit aussi clairement que celui qui inquiète.** C'est la seule chose ici
+  // qui pourrait coûter des données à quelqu'un : croire qu'on efface son serveur.
+  expect(modale).toHaveTextContent('n’est pas touché : le serveur et ses données')
+  expect(modale).toHaveTextContent('n’envoie aucune commande à la base')
+  // Pas d'annulation : la configuration est un fichier, la restaurer relève d'une sauvegarde.
+  expect(modale).toHaveTextContent('pas d’annulation')
+  // Le bouton porte le verbe du geste, jamais « OK ».
+  expect(screen.getByRole('button', { name: 'Retirer la connexion' })).toBeInTheDocument()
+})
+
+test('retirer un projet compte ses connexions et porte son propre verbe', async () => {
+  const vues: unknown[] = []
+  render(
+    <Piloté
+      initial={TOUT_DEPLIE}
+      onDelete={async (cible) => {
+        vues.push(cible)
+        return AUCUN_RESIDU
+      }}
+    />,
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de Atelier Nord' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Retirer de DoraBase…' }))
+
+  const modale = screen.getByRole('dialog', { name: /Retirer Atelier Nord de DoraBase/ })
+  // Deux bases dans le décor : la confirmation compte ce qui part plutôt que de rester vague.
+  expect(modale).toHaveTextContent('ses 2 connexions déclarées')
+  await userEvent.click(screen.getByRole('button', { name: 'Retirer le projet' }))
+  expect(vues).toEqual([{ kind: 'project', project: 'Atelier Nord', connexions: 2 }])
+})
+
+test('les modifications en attente perdues sont comptées dans la confirmation', async () => {
+  render(
+    <Piloté
+      initial={TOUT_DEPLIE}
+      onDelete={async () => AUCUN_RESIDU}
+      modificationsEnAttenteDe={() => 3}
+    />,
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Retirer de DoraBase…' }))
+
+  // **Une confirmation qui tairait cette perte serait un piège** : les onglets se ferment, et ce qui
+  // attendait d'être écrit disparaît.
+  expect(screen.getByRole('dialog', { name: /Retirer analytics/ })).toHaveTextContent(
+    '3 modifications en attente seront perdues',
+  )
+})
+
+test('un mot de passe resté dans le Trousseau est dit, et la modale attend', async () => {
+  render(
+    <Piloté
+      initial={TOUT_DEPLIE}
+      onDelete={async () => ({ leftoverSecrets: ['Atelier Nord/analytics/prod'] })}
+    />,
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Retirer de DoraBase…' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Retirer la connexion' }))
+
+  expect(await screen.findByRole('status')).toHaveTextContent('n’a pas pu être effacé')
+  expect(screen.getByRole('dialog', { name: /Retirer analytics/ })).toBeInTheDocument()
+})
+
+test('un refus s’affiche dans la confirmation, qui reste ouverte', async () => {
+  render(
+    <Piloté
+      initial={TOUT_DEPLIE}
+      onDelete={async () => {
+        throw new Error('la configuration n’a pas pu être écrite')
+      }}
+    />,
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Retirer de DoraBase…' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Retirer la connexion' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('pas pu être écrite')
+  expect(screen.getByRole('dialog', { name: /Retirer analytics/ })).toBeInTheDocument()
 })
 
 test('« Renommer… » ouvre la modale de renommage, sur ce projet', async () => {

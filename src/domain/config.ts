@@ -32,6 +32,26 @@ activeEnvironment: Environment, };
 export type Database = { name: string, engine: Engine, variants: Array<EnvironmentVariant>, };
 
 /**
+ * Ce que `08j` envoie pour retirer une déclaration de connexion.
+ */
+export type DeleteDatabaseRequest = { project: string, database: string, };
+
+/**
+ * Ce que `08j` envoie pour retirer un projet entier.
+ */
+export type DeleteProjectRequest = { project: string, };
+
+/**
+ * Ce qu'une suppression rend à l'écran (`08j`).
+ */
+export type DeleteResult = { projects: Array<Project>, 
+/**
+ * Les mots de passe que le magasin n'a pas su effacer : ils restent dans le Trousseau, et
+ * l'utilisateur a le droit de le savoir.
+ */
+leftoverSecrets: Array<string>, };
+
+/**
  * Les sept moteurs du handoff, et rien d'autre : un moteur inconnu ne compile pas.
  */
 export type Engine = "postgresql" | "mysql" | "sqlite" | "mongodb" | "redis" | "snowflake" | "bigquery";

@@ -1,6 +1,9 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
   CreateProjectRequest,
+  DeleteDatabaseRequest,
+  DeleteProjectRequest,
+  DeleteResult,
   Project,
   RenameProjectRequest,
   RenameProjectResult,
@@ -122,4 +125,20 @@ export function draftToSaveRequest(draft: ConnectionDraft): SaveDatabaseRequest 
     },
     password: draft.password === '' ? null : draft.password,
   }
+}
+
+/**
+ * Retire la **déclaration de connexion** d'une base, et son mot de passe (`08j`).
+ *
+ * **Rien n'est supprimé sur le serveur.** La commande ne reçoit aucun moteur, n'ouvre aucune
+ * connexion et n'émet aucun SQL — elle en ferme, au contraire. Le nom de cette fonction dit ce
+ * qu'elle fait : `supprimerLaBase` aurait laissé planer exactement l'ambiguïté que `08j` combat.
+ */
+export async function retirerLaConnexion(request: DeleteDatabaseRequest): Promise<DeleteResult> {
+  return invoke<DeleteResult>('delete_database', { request })
+}
+
+/** Retire un projet et toutes ses déclarations de connexion (`08j`). Même garantie. */
+export async function retirerLeProjet(request: DeleteProjectRequest): Promise<DeleteResult> {
+  return invoke<DeleteResult>('delete_project', { request })
 }

@@ -8,6 +8,7 @@ import {
   ongletActif,
   ouvrir,
   reordonner,
+  viseeParLId,
 } from './onglets'
 
 const analytics: DatabaseKey = {
@@ -75,5 +76,34 @@ describe('onglets', () => {
 
     const ampute = reordonner(etat, [idOnglet(items)])
     expect(ampute.onglets.map((o) => o.table)).toEqual(['orders', 'order_items'])
+  })
+})
+
+describe('la cible d’un retrait (`08j`)', () => {
+  const idDe = (projet: string, base: string) => `${projet}/${base}/prod::public.orders`
+
+  it('vise les onglets de la base nommée, et pas ceux d’une voisine', () => {
+    const cible = { kind: 'database' as const, project: 'Print', database: 'analytics' }
+    expect(viseeParLId(cible, idDe('Print', 'analytics'))).toBe(true)
+    expect(viseeParLId(cible, idDe('Print', 'shop'))).toBe(false)
+  })
+
+  it('ne confond pas deux noms dont l’un est le préfixe de l’autre', () => {
+    // **Un test de préfixe de chaîne emporterait les onglets du voisin.** `Print` est un préfixe de
+    // `Printemps`, et `analytics` de `analytics_old` : deux projets ou deux bases distincts dont
+    // l'un ferait disparaître les onglets de l'autre. La comparaison porte sur les coordonnées
+    // découpées, jamais sur le début de la chaîne.
+    const projet = { kind: 'project' as const, project: 'Print' }
+    expect(viseeParLId(projet, idDe('Printemps', 'analytics'))).toBe(false)
+
+    const base = { kind: 'database' as const, project: 'Print', database: 'analytics' }
+    expect(viseeParLId(base, idDe('Print', 'analytics_old'))).toBe(false)
+  })
+
+  it('un projet vise toutes ses bases', () => {
+    const cible = { kind: 'project' as const, project: 'Print' }
+    expect(viseeParLId(cible, idDe('Print', 'analytics'))).toBe(true)
+    expect(viseeParLId(cible, idDe('Print', 'shop'))).toBe(true)
+    expect(viseeParLId(cible, idDe('Outils', 'analytics'))).toBe(false)
   })
 })

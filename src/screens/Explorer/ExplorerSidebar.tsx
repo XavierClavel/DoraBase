@@ -9,6 +9,7 @@ import { SidebarFilterBar } from '../../ui/SidebarFilterBar/SidebarFilterBar'
 import { SidebarSectionTitle } from '../../ui/SidebarSectionTitle/SidebarSectionTitle'
 import { TreeRow } from '../../ui/TreeRow/TreeRow'
 import { aplatir, type Charge, type Deplies, type Noeud } from './arbre'
+import { type CibleDeSuppression, DeleteConnectionDialog } from './DeleteConnectionDialog'
 import styles from './ExplorerSidebar.module.css'
 import { RenameProjectDialog } from './RenameProjectDialog'
 import { RowMenu } from './RowMenu'
@@ -43,6 +44,20 @@ type ExplorerSidebarProps = {
     project: string,
     nom: string,
   ) => Promise<{ missingSecrets: string[]; leftoverSecrets: string[] }>
+  /**
+   * Retirer la déclaration d'une base, ou un projet entier (`08j`).
+   *
+   * Une seule prop pour les deux : la cible dit lequel, et deux props jumelles se seraient
+   * désynchronisées.
+   */
+  onDelete?: (cible: CibleDeSuppression) => Promise<{ leftoverSecrets: string[] }>
+  /**
+   * Les modifications en attente (`11b`) que la fermeture des onglets ferait perdre.
+   *
+   * L'arbre ne connaît pas les onglets : seul l'écran de travail sait ce qui attend d'être écrit, et
+   * une confirmation qui tairait cette perte serait un piège.
+   */
+  modificationsEnAttenteDe?: (cible: CibleDeSuppression) => number
   /**
    * La section contextuelle « Colonnes de *table* » des écrans de travail (`A5` → `A9`).
    *
@@ -95,6 +110,8 @@ export function ExplorerSidebar({
   onRefresh,
   onEditDatabase,
   onRenameProject,
+  onDelete,
+  modificationsEnAttenteDe,
   columns,
   width = 'wide',
   modifications,
@@ -105,6 +122,8 @@ export function ExplorerSidebar({
   // répéter le même montage.
   const [aRenommer, setARenommer] = useState<string | null>(null)
   const demanderLeRenommage = onRenameProject === undefined ? undefined : setARenommer
+  const [aRetirer, setARetirer] = useState<CibleDeSuppression | null>(null)
+  const demanderLeRetrait = onDelete === undefined ? undefined : setARetirer
 
   const noeuds = useMemo(
     () => aplatir(projects, deplies, charge, etatDe),
@@ -115,6 +134,14 @@ export function ExplorerSidebar({
 
   return (
     <>
+      {aRetirer !== null && onDelete !== undefined && (
+        <DeleteConnectionDialog
+          cible={aRetirer}
+          modificationsEnAttente={modificationsEnAttenteDe?.(aRetirer) ?? 0}
+          onClose={() => setARetirer(null)}
+          onDelete={() => onDelete(aRetirer)}
+        />
+      )}
       {aRenommer !== null && onRenameProject !== undefined && (
         <RenameProjectDialog
           projet={aRenommer}
@@ -199,7 +226,7 @@ export function ExplorerSidebar({
                     </Badge>
                   ) : undefined
                 }
-                actions={menuDe(noeud, onEditDatabase, demanderLeRenommage)}
+                actions={menuDe(noeud, onEditDatabase, demanderLeRenommage, demanderLeRetrait)}
                 onClick={() => {
                   // Un clic sur une ligne dépliable fait les deux : il sélectionne *et* déplie. Le
                   // mockup ne montre pas de zone de clic distincte pour le chevron, et en inventer
@@ -323,6 +350,7 @@ function menuDe(
   noeud: Noeud,
   onEditDatabase: ExplorerSidebarProps['onEditDatabase'],
   demanderLeRenommage: ((projet: string) => void) | undefined,
+  demanderLeRetrait: ((cible: CibleDeSuppression) => void) | undefined,
 ): ReactNode | undefined {
   if (noeud.kind === 'project') {
     return (
@@ -335,7 +363,21 @@ function menuDe(
             onClick: demanderLeRenommage ? () => demanderLeRenommage(noeud.label) : undefined,
             raison: demanderLeRenommage ? undefined : RAISONS.renommerIndisponible,
           },
-          { libelle: 'Supprimer…', icone: 'trash', raison: RAISONS.supprimer },
+          {
+            // **« Retirer… » et non « Supprimer… »** : le mot compte, et c'est toute la décision de
+            // `08j`. Ce qui part est une déclaration sur cet ordinateur, pas une base de données.
+            libelle: 'Retirer de DoraBase…',
+            icone: 'trash',
+            onClick: demanderLeRetrait
+              ? () =>
+                  demanderLeRetrait({
+                    kind: 'project',
+                    project: noeud.label,
+                    connexions: noeud.connexions ?? 0,
+                  })
+              : undefined,
+            raison: demanderLeRetrait ? undefined : RAISONS.retirerIndisponible,
+          },
         ]}
       />
     )
@@ -361,7 +403,21 @@ function menuDe(
             : undefined,
           raison: modifiable ? undefined : RAISONS.modifierIndisponible,
         },
-        { libelle: 'Supprimer…', icone: 'trash', raison: RAISONS.supprimer },
+        {
+          libelle: 'Retirer de DoraBase…',
+          icone: 'trash',
+          onClick:
+            demanderLeRetrait && project !== undefined
+              ? () =>
+                  demanderLeRetrait({
+                    kind: 'database',
+                    project,
+                    database: label,
+                    connexions: noeud.connexions ?? 1,
+                  })
+              : undefined,
+          raison: demanderLeRetrait ? undefined : RAISONS.retirerIndisponible,
+        },
       ]}
     />
   )
@@ -373,7 +429,6 @@ function menuDe(
  */
 const RAISONS = {
   renommerIndisponible: 'Cet écran n’est pas relié à la commande de renommage.',
-  supprimer:
-    'Retirer une connexion efface aussi son mot de passe enregistré : cela arrive avec 08j.',
+  retirerIndisponible: 'Cet écran n’est pas relié à la commande de retrait.',
   modifierIndisponible: 'Cet écran n’est pas relié à la modale de modification.',
 }
