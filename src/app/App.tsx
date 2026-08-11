@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { useConfiguration } from '../data/useConfiguration'
 import { Sprite } from '../design/icons/Sprite'
 import type { Database, Project } from '../domain/config'
+import { renommerLeProjet } from '../screens/NewConnection/enregistrerLaBase'
 import { NewConnection } from '../screens/NewConnection/NewConnection'
 import { WelcomeScreen } from '../screens/Welcome/WelcomeScreen'
 import { Workbench } from '../screens/Workbench/Workbench'
@@ -83,6 +84,13 @@ export function App() {
             projects={projects}
             onNewDatabase={() => setConnexionOuverte(true)}
             onEditDatabase={(project, database) => setEdition({ project, database })}
+            // Le renommage rend les projets à jour : les reposer ici évite un second aller-retour,
+            // et supprime la fenêtre pendant laquelle l'arbre montrerait l'ancien nom.
+            onRenameProject={async (project, nom) => {
+              const issue = await renommerLeProjet({ project, name: nom })
+              setProjects(issue.projects)
+              return issue
+            }}
           />
           {(connexionOuverte || edition) && (
             <NewConnection

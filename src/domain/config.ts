@@ -72,6 +72,20 @@ export type Project = { name: string,
 activeEnvironment: Environment, databases: Array<Database>, };
 
 /**
+ * Ce que `08i` envoie pour renommer un projet.
+ */
+export type RenameProjectRequest = { project: string, name: string, };
+
+/**
+ * Ce qu'un renommage réussi rend à l'écran (`08i`).
+ *
+ * **Pas seulement les projets.** Deux faits méritent d'être dits plutôt que tus : des mots de passe
+ * déclarés mais introuvables — les bases les redemanderont — et des originaux que le magasin n'a
+ * pas su effacer. Les taire laisserait l'utilisateur découvrir l'un ou l'autre bien plus tard.
+ */
+export type RenameProjectResult = { projects: Array<Project>, missingSecrets: Array<string>, leftoverSecrets: Array<string>, };
+
+/**
  * Ce que `A2` envoie en cliquant « Enregistrer & ouvrir ».
  *
  * Le mot de passe est **en clair et séparé**, comme dans `ConnectionRequest` de `08d` : aucune

@@ -36,13 +36,26 @@ le Trousseau (`05c`) — une seule identité, décision de `05a`. Renommer un pr
 
 Trois effets, dans cet ordre, et l'ordre compte :
 
-1. **Déplacer les secrets d'abord.** Un secret par base et par environnement. Écrire le nouveau,
-   vérifier qu'il se relit, puis supprimer l'ancien. L'inverse laisserait une base sans mot de passe
-   si l'écriture échouait.
+1. **Écrire les nouveaux secrets d'abord, sans rien supprimer.** Un secret par base et par
+   environnement : écrire le nouveau, vérifier qu'il se relit. **Aucun original n'est effacé à ce
+   stade** — une première version les supprimait au fur et à mesure, et un magasin tombant en panne
+   d'écriture à mi-parcours rendait alors la restauration impossible : les originaux étaient partis,
+   et on ne pouvait plus les réécrire. Deux mots de passe perdus dans le pire cas.
 2. **Fermer les connexions ouvertes** du projet : leur clé de registre n'existe plus. Elles se
    rouvriront sous la nouvelle, à la demande.
-3. **Écrire la configuration** en dernier — c'est elle qui rend le renommage visible, et elle ne
-   doit devenir vraie qu'une fois les secrets en place.
+3. **Écrire la configuration** — c'est elle qui rend le renommage visible, et elle ne doit devenir
+   vraie qu'une fois les secrets en place.
+4. **Supprimer les originaux en dernier.** Un échec ici ne compromet rien : le renommage a eu lieu,
+   et il reste un doublon dans le magasin — bénin, et bien préférable à un secret perdu. Dit à
+   l'utilisateur plutôt qu'omis.
+
+### Un secret absent n'est pas un secret illisible, et la distinction décide du sort du renommage
+
+Un magasin qui **refuse** annule tout : quelque chose ne fonctionne pas, et continuer produirait un
+état inconnu. Un secret simplement **introuvable** — effacé à la main, ou jamais écrit — laisse le
+renommage se poursuivre : l'interrompre rendrait le projet *irrenommable*, exactement le piège qui
+rendrait une déclaration indélébile en `08j`. La référence suit le nouveau nom, la base redemandera
+son mot de passe, et l'écran le **dit** plutôt que de le taire.
 
 ### Un échec en cours de route ne doit pas laisser un projet à moitié renommé
 
@@ -62,9 +75,13 @@ Renommer un projet en son propre nom est accepté sans rien faire, plutôt que r
 ## Terminé quand
 
 - [ ] `rename_project` déplace les secrets, ferme les connexions, puis écrit la configuration.
-- [ ] Un secret indisponible **annule** le renommage, et les secrets déjà déplacés sont remis.
+- [ ] Un magasin qui **refuse** annule le renommage, et ce qui a déjà été écrit est retiré ; un
+      secret simplement **introuvable** ne bloque pas, et est rapporté à l'écran.
 - [ ] Un nom déjà pris est refusé, et la modale le dit ; le même nom est accepté sans effet.
-- [ ] Après renommage, une base du projet **se connecte encore** — le secret est retrouvé. Vérifié
-      sur PostgreSQL réel, pas sur une simulation du magasin.
+- [ ] Après renommage, le secret **se relit sous le nouveau nom dans le vrai magasin chiffré**, pas
+      seulement dans une `HashMap` de test. Formulé « vérifié sur PostgreSQL réel » à l'écriture de
+      cette spec, ce qui visait à côté : la connexion ne dépend pas du renommage, seul le secret
+      retrouvé en dépend — et un renommage qui passe sur une simulation et échoue sur le magasin
+      réel est un renommage qui ne marche pas.
 - [ ] Le projet renommé survit à un redémarrage.
 - [ ] Un sabotage inversant l'ordre écriture/migration fait échouer un test.
