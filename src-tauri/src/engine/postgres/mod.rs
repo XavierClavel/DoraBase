@@ -214,6 +214,126 @@ impl EngineAdapter for PostgresAdapter {
         // s'apprêtait à écrire.
         rows::updates_de(plan)
     }
+
+    async fn apply_updates(
+        &self,
+        plan: &crate::engine::UpdatePlan,
+    ) -> Result<crate::engine::ApplyOutcome, EngineError> {
+        let instructions = rows::instructions_de(plan)?;
+        // Calculé **avant** d'écrire : le patch inverse part des valeurs attendues, celles que la
+        // base contient encore à cet instant. Le produire après l'application demanderait de relire,
+        // et une relecture peut déjà voir l'écriture d'un tiers.
+        let inverse_sql = rows::texte_de(&rows::instructions_inverses(plan)?);
+
+        // **La transaction est conduite à la main**, `Transaction` de `tokio_postgres` exigeant un
+        // client mutable que l'adaptateur ne peut pas offrir derrière `&self`. Le risque de sortir
+        // sans annuler est écarté par la forme : tout le travail est dans une fonction qui rend un
+        // `Result`, et c'est l'appelant — ici — qui décide de valider ou d'annuler. Aucun chemin de
+        // sortie ne contourne ce point.
+        // **L'échappement des apostrophes est la seule protection du SQL littéral, alors il est
+        // vérifié.** Sous `standard_conforming_strings = off`, un antislash échappe l'apostrophe et
+        // défait le doublement : une valeur saisie pourrait alors sortir de sa chaîne. Le réglage est
+        // à `on` depuis PostgreSQL 9.1, mais une écriture ne se fonde pas sur un « normalement ».
+        let conforme: String = self
+            .client
+            .query_one("show standard_conforming_strings", &[])
+            .await
+            .map_err(|e| EngineError::local(format!("réglage de chaînes illisible : {e}")))?
+            .get(0);
+        if conforme != "on" {
+            return Err(EngineError::local(
+                "cette connexion a `standard_conforming_strings` à `off` : DoraBase refuse d'écrire, \
+                 l'échappement des valeurs n'y est pas fiable."
+                    .to_owned(),
+            ));
+        }
+
+        self.client
+            .batch_execute("BEGIN")
+            .await
+            .map_err(|e| EngineError::local(format!("la transaction n'a pas pu s'ouvrir : {e}")))?;
+
+        let issue = self.executer(&instructions).await;
+
+        let applied = match issue {
+            Ok(applied) => applied,
+            Err(erreur) => {
+                if let Err(annulation) = self.client.batch_execute("ROLLBACK").await {
+                    // Le dire : une transaction restée ouverte bloque des verrous côté serveur, et
+                    // l'utilisateur doit savoir que la connexion est à rouvrir.
+                    log::error!("ROLLBACK impossible après un échec d'écriture : {annulation}");
+                    return Err(EngineError::local(format!(
+                        "{erreur} — et la transaction n'a pas pu être annulée : rouvrez la connexion."
+                    )));
+                }
+                return Err(erreur);
+            }
+        };
+
+        self.client.batch_execute("COMMIT").await.map_err(|e| {
+            EngineError::local(format!("la transaction n'a pas pu être validée : {e}"))
+        })?;
+
+        Ok(crate::engine::ApplyOutcome {
+            applied,
+            inverse_sql,
+        })
+    }
+}
+
+impl PostgresAdapter {
+    /// Exécute les instructions d'une application, dans une transaction déjà ouverte.
+    ///
+    /// **Séparée de `apply_updates` exprès** : elle n'a le droit ni de valider ni d'annuler, ce qui
+    /// laisse un seul endroit où cette décision se prend. Un `return` ajouté ici plus tard ne pourra
+    /// pas sauter par-dessus l'annulation.
+    async fn executer(&self, instructions: &[rows::Instruction]) -> Result<u64, EngineError> {
+        let mut applied = 0u64;
+        for instruction in instructions {
+            // **Le texte est exécuté tel qu'il a été montré.** Voir `Instruction` pour pourquoi le
+            // chemin paramétré a été abandonné : le pilote type les paramètres depuis la colonne, et
+            // un paramètre non typé n'est pas transmissible au format binaire.
+            //
+            // `query` et non `execute` : le `RETURNING 1` de l'instruction rend une ligne par ligne
+            // touchée, ce qui donne le compte sans second aller-retour.
+            let touchees = self
+                .client
+                .query(instruction.sql.as_str(), &[])
+                .await
+                .map_err(|e| {
+                    // `{e}` seul donne « db error » : le détail est dans la source, et sans lui on
+                    // débogue à l'aveugle. Vu en écrivant ces tests.
+                    let detail = e
+                        .as_db_error()
+                        .map(|db| db.message().to_owned())
+                        .unwrap_or_else(|| e.to_string());
+                    EngineError::local(format!("l'écriture a été refusée : {detail}"))
+                })?
+                .len() as u64;
+
+            if touchees == 0 {
+                return Err(EngineError::local(format!(
+                    "la ligne a changé depuis la lecture : « {} » n'a plus la valeur attendue. \
+                     Rien n'a été écrit.",
+                    instruction_colonne(&instruction.sql)
+                )));
+            }
+            applied += touchees;
+        }
+        Ok(applied)
+    }
+}
+
+/// Le nom de colonne lu dans une instruction, pour nommer la ligne en conflit.
+///
+/// **Extrait du SQL plutôt que passé à côté** : l'instruction est la seule chose que la boucle
+/// possède, et lui adjoindre le nom demanderait de le porter dans `Instruction` pour un message
+/// d'erreur. Le format est produit juste au-dessus, il n'y a rien à deviner.
+fn instruction_colonne(sql: &str) -> String {
+    sql.split_once(" SET ")
+        .and_then(|(_, reste)| reste.split_once(" = "))
+        .map(|(colonne, _)| colonne.trim().trim_matches('"').to_owned())
+        .unwrap_or_else(|| "cette colonne".to_owned())
 }
 
 #[cfg(test)]
@@ -690,16 +810,21 @@ mod tests_db {
     #[tokio::test]
     async fn les_horodatages_et_le_json_ne_sont_pas_lus_comme_null() {
         let adaptateur = adaptateur().await;
-        // La ligne aux colonnes exotiques non nulles est la dernière : un tri décroissant la
-        // ramène dans la fenêtre, là où un `LIMIT 100` sur l'ordre naturel ne l'atteindrait pas.
+        // **La ligne est désignée par son contenu, pas par son rang.** Elle l'était par « la
+        // dernière insérée » : les tests d'écriture de `11d`, qui insèrent leurs propres lignes et
+        // tournent en parallèle, en créaient de plus récentes — et ce test échouait par
+        // intermittence, le pire mode d'échec. Un filtre sur `metadata` désigne exactement ce que le
+        // test cherche. L'`uuid` du décor est littéral dans `schema-test-pg.sql` : c'est une identité,
+        // là où « la dernière » n'en est pas une.
         let mut requete = RowQuery::new(
             "introspection",
             "orders",
             crate::engine::RowLimit::OneHundred,
         );
-        requete.sort = vec![crate::engine::SortKey {
-            column: "id".into(),
-            direction: crate::engine::SortDirection::Descending,
+        requete.filters = vec![crate::engine::Filter {
+            column: "ref".into(),
+            operator: crate::engine::FilterOperator::Eq,
+            value: Some("11111111-2222-3333-4444-555555555555".into()),
         }];
         let f = adaptateur.rows(&requete).await.expect("lecture");
         let ligne = f.rows.first().expect("orders est peuplée");
@@ -780,26 +905,20 @@ mod tests_db {
         );
     }
 
-    /// Le SQL prévisualisé de `11c` **s'exécute réellement**, et modifie la bonne ligne.
+    /// Le SQL prévisualisé de `11c` **s'exécute tel quel**, et modifie la bonne ligne.
     ///
     /// **La leçon de `10f`** : un SQL qui *paraît* correct peut être refusé par la base. L'`INSERT`
     /// reconstruit passait tous les tests d'inspection et échouait sur une contrainte `not null`.
     /// Ici, le panneau annonce « SQL qui sera exécuté » — si cette chaîne ne tourne pas, la promesse
     /// est fausse au moment le plus coûteux.
     ///
-    /// La transaction est annulée : rien n'est laissé derrière. Le `BEGIN` du script généré est
-    /// remplacé, faute de quoi PostgreSQL avertirait d'une transaction imbriquée.
+    /// **C'est le texte montré qui est exécuté, sans retouche** : depuis `11d`, la même chaîne sert
+    /// à l'affichage et à l'écriture, `BEGIN`/`COMMIT` compris. La transaction est jouée puis
+    /// annulée, sur une ligne créée pour ce test.
     #[tokio::test]
     async fn le_sql_previsualise_s_execute_et_touche_la_bonne_ligne() {
         let adaptateur = adaptateur().await;
-        let fenetre = fenetre("orders", crate::engine::RowLimit::OneHundred).await;
-        let ligne = fenetre
-            .rows
-            .first()
-            .expect("le schéma de test peuple orders");
-        let crate::engine::Value::Int { value: id } = ligne[0] else {
-            panic!("la première colonne d'orders est son id")
-        };
+        let id = ligne_a_moi(&adaptateur, "prévu").await;
 
         let plan = crate::engine::UpdatePlan {
             schema: "introspection".into(),
@@ -810,6 +929,7 @@ mod tests_db {
                 column: "status".into(),
                 // Une apostrophe dans la valeur : le cas qui casse un SQL mal échappé.
                 value: Some("l'attente".into()),
+                expected: Some("prévu".into()),
             }],
         };
 
@@ -818,50 +938,229 @@ mod tests_db {
             .await
             .expect("prévisualisation");
 
-        let script = format!(
-            "begin;\n{}\nselect status from introspection.orders where id = {id};\nrollback;",
-            sql.replace("BEGIN;\n", "").replace("\nCOMMIT;", "")
-        );
+        // Le texte est joué **tel qu'il est montré**, y compris ses délimiteurs de transaction.
         adaptateur
             .client
-            .batch_execute(&script)
+            .batch_execute(&sql)
             .await
             .unwrap_or_else(|e| panic!("le SQL prévisualisé ne s'exécute pas : {e:?}\n{sql}"));
 
-        // **Et il touche la bonne ligne.** Un `UPDATE` qui s'exécute sans erreur peut n'avoir
-        // modifié aucune ligne — ou toutes. On le vérifie dans une transaction annulée.
-        adaptateur
-            .client
-            .batch_execute("begin")
-            .await
-            .expect("transaction");
-        let touchees = adaptateur
-            .client
-            .execute(
-                sql.replace("BEGIN;\n", "")
-                    .replace("\nCOMMIT;", "")
-                    .trim_end_matches(';'),
-                &[],
-            )
-            .await
-            .expect("update");
-        let vue: String = adaptateur
+        // **Et il touche la bonne ligne.** Un `UPDATE` qui s'exécute sans erreur peut n'avoir modifié
+        // aucune ligne — ou toutes.
+        assert_eq!(
+            lire(&adaptateur, id, "status").await.as_deref(),
+            Some("l'attente")
+        );
+        let autres: i64 = adaptateur
             .client
             .query_one(
-                "select status from introspection.orders where id = $1",
+                "select count(*) from introspection.orders where status = 'l''attente' and id <> $1",
+                &[&id],
+            )
+            .await
+            .expect("comptage")
+            .get(0);
+        assert_eq!(autres, 0, "aucune autre ligne ne doit avoir été touchée");
+
+        retirer_ligne(&adaptateur, id).await;
+    }
+
+    /// Un plan d'application sur `orders`, prêt à être joué contre la base de test.
+    fn plan_de(
+        id: i64,
+        colonne: &str,
+        valeur: Option<&str>,
+        attendu: Option<&str>,
+    ) -> crate::engine::UpdatePlan {
+        crate::engine::UpdatePlan {
+            schema: "introspection".into(),
+            table: "orders".into(),
+            key_column: "id".into(),
+            changes: vec![crate::engine::PendingUpdate {
+                key: id.to_string(),
+                column: colonne.into(),
+                value: valeur.map(str::to_owned),
+                expected: attendu.map(str::to_owned),
+            }],
+        }
+    }
+
+    /// Lit une colonne texte d'`orders`.
+    async fn lire(adaptateur: &PostgresAdapter, id: i64, colonne: &str) -> Option<String> {
+        adaptateur
+            .client
+            .query_one(
+                &format!("select {colonne}::text from introspection.orders where id = $1"),
                 &[&id],
             )
             .await
             .expect("relecture")
-            .get(0);
+            .get(0)
+    }
+
+    /// Insère une ligne **à soi** dans `orders`, et rend son `id`.
+    ///
+    /// **Chaque test d'écriture travaille sur sa propre ligne.** Une première version prenait la
+    /// première ligne de la table : `cargo test` exécute les tests en parallèle, et trois tests qui
+    /// écrivent la même ligne échouaient les uns à cause des autres — de façon intermittente, le
+    /// pire mode d'échec. La ligne est retirée à la fin, `orders` étant lue par d'autres tests qui
+    /// comptent ses lignes.
+    async fn ligne_a_moi(adaptateur: &PostgresAdapter, statut: &str) -> i64 {
         adaptateur
             .client
-            .batch_execute("rollback")
+            .query_one(
+                "insert into introspection.orders (user_id, status, total_cents)
+                 select id, $1, 100 from introspection.users order by id limit 1
+                 returning id",
+                &[&statut],
+            )
             .await
-            .expect("annulation");
+            .expect("insertion de la ligne de test")
+            .get(0)
+    }
 
-        assert_eq!(touchees, 1, "exactement une ligne doit être modifiée");
-        assert_eq!(vue, "l'attente");
+    async fn retirer_ligne(adaptateur: &PostgresAdapter, id: i64) {
+        adaptateur
+            .client
+            .execute("delete from introspection.orders where id = $1", &[&id])
+            .await
+            .expect("nettoyage");
+    }
+
+    /// **La première écriture réelle du projet, vérifiée contre PostgreSQL.**
+    #[tokio::test]
+    async fn appliquer_ecrit_la_valeur_et_rend_le_patch_inverse() {
+        let adaptateur = adaptateur().await;
+        let id = ligne_a_moi(&adaptateur, "avant").await;
+
+        let issue = adaptateur
+            .apply_updates(&plan_de(id, "status", Some("appliqué"), Some("avant")))
+            .await
+            .expect("l'application doit réussir");
+
+        assert_eq!(issue.applied, 1);
+        assert_eq!(
+            lire(&adaptateur, id, "status").await.as_deref(),
+            Some("appliqué")
+        );
+        // **Le patch inverse défait exactement ce qui a été fait** : il remet l'ancienne valeur, et
+        // son `WHERE` porte la nouvelle.
+        assert!(issue.inverse_sql.contains("'avant'"));
+        assert!(issue.inverse_sql.contains("'appliqué'"));
+
+        // Le patch inverse **s'exécute**, ce qui est la seule preuve qu'il vaut quelque chose.
+        adaptateur
+            .client
+            .batch_execute(&issue.inverse_sql)
+            .await
+            .unwrap_or_else(|e| panic!("le patch inverse ne s'exécute pas : {e:?}"));
+        assert_eq!(
+            lire(&adaptateur, id, "status").await.as_deref(),
+            Some("avant")
+        );
+
+        retirer_ligne(&adaptateur, id).await;
+    }
+
+    #[tokio::test]
+    async fn trois_modifications_partent_ensemble_ou_pas_du_tout() {
+        let adaptateur = adaptateur().await;
+        let mut ids = Vec::new();
+        for _ in 0..3 {
+            ids.push(ligne_a_moi(&adaptateur, "groupe").await);
+        }
+
+        let mut plan = plan_de(ids[0], "status", None, None);
+        plan.changes = ids
+            .iter()
+            .map(|id| crate::engine::PendingUpdate {
+                key: id.to_string(),
+                column: "status".into(),
+                value: Some("groupé".into()),
+                expected: Some("groupe".into()),
+            })
+            .collect();
+        // **La deuxième modification est vouée à l'échec** : sa valeur attendue est fausse, donc son
+        // `UPDATE` ne touchera aucune ligne. La première, elle, aura déjà réussi.
+        plan.changes[1].expected = Some("valeur qui n'existe pas".into());
+
+        let erreur = adaptateur
+            .apply_updates(&plan)
+            .await
+            .expect_err("un conflit doit faire échouer l'application");
+        assert!(
+            erreur.to_string().contains("changé depuis la lecture"),
+            "le message doit dire que la ligne a changé : {erreur}"
+        );
+
+        // **Et la base est inchangée**, y compris la ligne dont l'`UPDATE` avait réussi. C'est tout
+        // l'intérêt de la transaction : un rapport partiel laisserait des données incohérentes que
+        // rien ne signalerait.
+        for id in &ids {
+            assert_eq!(
+                lire(&adaptateur, *id, "status").await.as_deref(),
+                Some("groupe"),
+                "la ligne {id} doit être intacte"
+            );
+            retirer_ligne(&adaptateur, *id).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn une_valeur_changee_par_un_tiers_fait_echouer_l_application() {
+        let adaptateur = adaptateur().await;
+        let id = ligne_a_moi(&adaptateur, "lue").await;
+
+        // Un tiers écrit entre la lecture et l'application — le scénario que le `WHERE` sur
+        // l'ancienne valeur existe pour attraper.
+        adaptateur
+            .client
+            .execute(
+                "update introspection.orders set status = 'par un tiers' where id = $1",
+                &[&id],
+            )
+            .await
+            .expect("écriture du tiers");
+
+        let erreur = adaptateur
+            .apply_updates(&plan_de(id, "status", Some("le mien"), Some("lue")))
+            .await
+            .expect_err("l'application doit être refusée");
+        assert!(erreur.to_string().contains("changé depuis la lecture"));
+        // **Le travail du tiers n'est pas écrasé.** L'écraser en silence est précisément ce que ce
+        // garde-fou empêche.
+        assert_eq!(
+            lire(&adaptateur, id, "status").await.as_deref(),
+            Some("par un tiers")
+        );
+
+        retirer_ligne(&adaptateur, id).await;
+    }
+
+    #[tokio::test]
+    async fn une_cellule_nulle_est_modifiable() {
+        let adaptateur = adaptateur().await;
+        let id = ligne_a_moi(&adaptateur, "nulle").await;
+
+        // **`NULL = NULL` vaut `NULL` en SQL** : un `WHERE colonne = …` sur une ancienne valeur nulle
+        // ne trouverait jamais sa ligne, et modifier une cellule vide — cas courant — échouerait
+        // toujours. D'où `is not distinct from`. `metadata` est nullable et vide sur cette ligne.
+        let issue = adaptateur
+            .apply_updates(&plan_de(id, "metadata", Some(r#"{"a": 1}"#), None))
+            .await
+            .expect("modifier une cellule vide doit marcher");
+        assert_eq!(issue.applied, 1);
+        assert!(lire(&adaptateur, id, "metadata").await.is_some());
+
+        // Et le patch inverse la remet à `NULL`, ce qu'un `= NULL` ne saurait pas faire non plus.
+        adaptateur
+            .client
+            .batch_execute(&issue.inverse_sql)
+            .await
+            .unwrap_or_else(|e| panic!("le patch inverse ne s'exécute pas : {e:?}"));
+        assert!(lire(&adaptateur, id, "metadata").await.is_none());
+
+        retirer_ligne(&adaptateur, id).await;
     }
 
     /// Une apostrophe dans une valeur ne doit pas casser le SQL — le cas classique.

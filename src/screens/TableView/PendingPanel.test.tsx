@@ -164,14 +164,36 @@ test('l’encart de production n’existe que pour une variante prod', () => {
   expect(screen.queryByText(/production/)).not.toBeInTheDocument()
 })
 
-test('en production, l’encart annonce les garde-fous au futur', () => {
+test('en production, l’encart dit ce qui existe, pas ce qui est promis', () => {
   monter({ environment: 'prod' })
   const encart = screen.getByText(/Cette base est en/)
   expect(encart).toHaveTextContent('production')
-  // **Au futur, parce que c'est vrai** : `11d` livre ces deux garde-fous. Les annoncer au présent
-  // avant qu'ils existent serait une promesse fausse.
-  expect(encart).toHaveTextContent('demandera une confirmation supplémentaire')
-  expect(encart).toHaveTextContent('gardera le patch inverse pendant 24 h')
+  // **Au présent depuis `11d`, qui livre la confirmation** — l'annoncer au futur quand elle existe
+  // serait aussi trompeur que l'inverse.
+  expect(encart).toHaveTextContent('demande une confirmation avant d’écrire')
+  // **Et sans la promesse des 24 h** : `11d` ne persiste pas le patch inverse. Annoncer une
+  // conservation qui n'existe pas est le genre de promesse que ce projet s'interdit — `A10` la
+  // livrera.
+  expect(encart.textContent).not.toContain('24 h')
+})
+
+test('après une écriture, le panneau montre de quoi défaire et non des cartes vides', () => {
+  monter({ attente: [], patchInverse: 'BEGIN;\nUPDATE t SET a = 1;\nCOMMIT;' })
+  // **Le panneau survit au vidage du modèle.** Une première version le démontait avec la dernière
+  // carte, emportant le patch inverse : l'utilisateur perdait le seul moyen d'annuler, à l'instant
+  // précis où il pouvait en avoir besoin.
+  expect(screen.getByText(/SQL qui annule cette écriture/)).toBeInTheDocument()
+  expect(screen.queryByText(/SQL qui sera exécuté/)).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /Appliquer/ })).not.toBeInTheDocument()
+  // Ce qu'il est vraiment : disponible dans la session, pas enregistré.
+  expect(screen.getByText(/ne l’a pas enregistré/)).toBeInTheDocument()
+})
+
+test('l’encart de production disparaît après l’écriture', () => {
+  monter({ attente: [], patchInverse: 'BEGIN;\nCOMMIT;', environment: 'prod' })
+  // Annoncer « DoraBase demande une confirmation avant d'écrire » **après** avoir écrit se lirait
+  // comme un avertissement resté en place par erreur.
+  expect(screen.queryByText(/demande une confirmation/)).not.toBeInTheDocument()
 })
 
 test('« Appliquer » est désactivé et dit pourquoi tant que rien n’écrit', () => {

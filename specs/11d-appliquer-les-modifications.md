@@ -29,8 +29,19 @@ du projet** — tout le reste, depuis `01`, est en lecture.
 
 ### Une transaction, et le `WHERE` vient de la clé primaire
 
-Chaque modification devient `UPDATE <table> SET <colonne> = $1 WHERE <clé> = $2`, les valeurs liées
-en paramètres. Le tout entre `BEGIN` et `COMMIT` : trois modifications qui s'appliquent à moitié
+Chaque modification devient `UPDATE <table> SET <colonne> = … WHERE <clé> = … AND <colonne> is not
+distinct from …`, avec les valeurs **littéralisées et échappées**.
+
+**Les paramètres liés ont été essayés puis abandonnés**, pour une raison technique : le pilote déduit
+le type de chaque paramètre de la colonne visée, donc envoyer du texte pour une clé `bigint` échoue à
+la sérialisation ; et un paramètre déclaré non typé n'est pas transmissible au format binaire du
+pilote. Un littéral, lui, est résolu par le serveur comme n'importe quelle constante — pour toute
+colonne, sans perdre l'index de la clé. C'est aussi ce qui permet d'exécuter *littéralement* le texte
+montré, ce que la section suivante exige.
+
+L'échappement devient alors la seule protection, alors il est **vérifié** : la commande refuse
+d'écrire si `standard_conforming_strings` est à `off`, réglage sous lequel un antislash pourrait
+défaire le doublement des apostrophes. Le tout entre `BEGIN` et `COMMIT` : trois modifications qui s'appliquent à moitié
 laisseraient des données incohérentes que rien ne signalerait.
 
 **Un `UPDATE` sans `WHERE` est impossible par construction**, pas par vérification : la commande
@@ -45,15 +56,22 @@ type, ce qui vaut mieux qu'un test de chaîne sur du SQL généré.
 divergeraient, et l'écart tomberait précisément sur les cas rares — citation d'un nom, valeur
 contenant une apostrophe.
 
-Une seule fonction produit donc les instructions ; la prévisualisation les rend en texte, l'exécution
-les envoie paramétrées. Le test qui compte compare les deux sorties de la même entrée.
+Une seule fonction produit donc les instructions, et il n'y a qu'**un seul texte** : celui que le
+panneau affiche est celui que le moteur envoie. Rien à faire correspondre, donc rien qui puisse
+diverger.
+
+Corollaire assumé : le `RETURNING 1` qui sert à compter les lignes touchées — donc à détecter le
+conflit — apparaît dans le bloc affiché. Un affichage plus joli que ce qui part serait une promesse
+fausse sous un titre qui dit « SQL qui sera exécuté ».
 
 ### Le conflit se détecte sur l'ancienne valeur
 
 Entre la lecture et l'application, quelqu'un d'autre a pu modifier la ligne. Écrire quand même
 écraserait son travail en silence.
 
-Le `WHERE` porte donc aussi l'ancienne valeur : `WHERE id = $1 AND colonne = $2`. Zéro ligne affectée
+Le `WHERE` porte donc aussi l'ancienne valeur, comparée avec `is not distinct from` et non `=` :
+`NULL = NULL` vaut `NULL` en SQL, donc un `=` sur une ancienne valeur nulle ne trouverait jamais sa
+ligne — et modifier une cellule vide, cas courant, échouerait toujours. Zéro ligne affectée
 signifie « la valeur a changé sous vos pieds », et la transaction est **annulée entièrement** — un
 `ROLLBACK`, pas un rapport partiel.
 

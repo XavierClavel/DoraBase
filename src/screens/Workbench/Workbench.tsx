@@ -19,12 +19,14 @@ import type { CibleDeSuppression } from '../Explorer/DeleteConnectionDialog'
 import { DetailPanel } from '../Explorer/DetailPanel'
 import { ExplorerSidebar } from '../Explorer/ExplorerSidebar'
 import { ObjectTable } from '../Explorer/ObjectTable'
+import { ApplyConfirm } from '../TableView/ApplyConfirm'
 import { EditBanner } from '../TableView/EditBanner'
 import { type EnAttente, retirer } from '../TableView/modifications'
 import { PendingPanel } from '../TableView/PendingPanel'
 import { RowPanel } from '../TableView/RowPanel'
 import { TableStatusBar } from '../TableView/TableStatusBar'
 import { TableView } from '../TableView/TableView'
+import { PASSERELLE_APPLY, type PasserelleApply, useApplication } from '../TableView/useApplication'
 import { PASSERELLE_LIGNES, type PasserelleLignes } from '../TableView/useLignes'
 import { PASSERELLE_PREVIEW, type PasserellePreview, useSqlPrevu } from '../TableView/useSqlPrevu'
 import {
@@ -60,6 +62,8 @@ type WorkbenchProps = {
   ) => Promise<{ missingSecrets: string[]; leftoverSecrets: string[] }>
   /** Le pont vers `preview_updates` (`11c`). Injectable : il ne répond pas hors de la webview. */
   passerellePreview?: PasserellePreview
+  /** Le pont vers `apply_changes` (`11d`), la seule commande qui **écrit**. */
+  passerelleApply?: PasserelleApply
   /** Retirer une déclaration de connexion, ou un projet (`08j`). */
   onDelete?: (cible: CibleDeSuppression) => Promise<{ leftoverSecrets: string[] }>
   /** Ouvre l'écran en mode édition au montage — la démo s'en sert (`11a`). */
@@ -86,6 +90,7 @@ export function Workbench({
   onRenameProject,
   onDelete,
   passerellePreview,
+  passerelleApply,
   edition = false,
 }: WorkbenchProps) {
   const { deplies, charge, etatDeBase, basculer, rafraichir } = useArbre(projects, passerelle)
@@ -184,6 +189,21 @@ export function Workbench({
 
   // Le SQL de `11c` vient du **moteur**, jamais de l'écran : composer un équivalent ici produirait
   // un texte *ressemblant* à celui qui partira, sous un titre qui promet l'exactitude.
+  const [rafraichissement, setRafraichissement] = useState(0)
+  const application = useApplication(cle, actif, attente, detail?.columns ?? [], {
+    passerelle: passerelleApply ?? PASSERELLE_APPLY,
+    // **Après le succès, la grille est relue et le modèle vidé.** Les valeurs écrites peuvent
+    // différer de celles saisies — un `trigger`, une valeur par défaut, une troncature — et
+    // afficher la saisie donnerait un écran qui ne reflète plus la base. Vider le modèle fait
+    // disparaître d'un coup toutes les marques de `11b`, sans en effacer aucune à la main.
+    surSucces: () => {
+      onAttenteChange([])
+      // Un compteur qui descend jusqu'à la grille, plutôt qu'une fonction de relecture remontée
+      // depuis elle : l'écriture part du panneau droit, la lecture vit dans le centre.
+      setRafraichissement((tour) => tour + 1)
+    },
+  })
+
   const sqlPrevu = useSqlPrevu(
     cle,
     actif,
@@ -264,6 +284,15 @@ export function Workbench({
       />
       {/* Le bandeau du mode édition, **sous la barre de titre** et au-dessus du corps : c'est là que
           le mockup le place, et il court sur toute la largeur. */}
+      {application.confirmation && actif && (
+        <ApplyConfirm
+          attente={attente}
+          table={`${actif.schema}.${actif.table}`}
+          enCours={application.enCours}
+          onClose={application.annulerLaConfirmation}
+          onConfirmer={application.appliquer}
+        />
+      )}
       {actif && (
         <EditBanner
           compte={attente.length}
@@ -404,6 +433,7 @@ export function Workbench({
                       rang={rangChoisi}
                       onRangChange={setRangChoisi}
                       edition={enEdition}
+                      rafraichissement={rafraichissement}
                       attente={attente}
                       onAttenteChange={onAttenteChange}
                     />
@@ -438,7 +468,9 @@ export function Workbench({
                 // **En édition avec des modifications, ce panneau prend la place du détail** —
                 // conséquence assumée de `11c` : en éditant, ce qu'on veut voir est ce qu'on a
                 // changé, pas la ligne sélectionnée.
-                actif && cle && attente.length > 0 ? (
+                // Le panneau reste après une écriture réussie, pour montrer de quoi la défaire : le
+                // démonter avec la dernière carte emporterait le patch inverse.
+                actif && cle && (attente.length > 0 || application.patchInverse !== null) ? (
                   <PendingPanel
                     attente={attente}
                     table={`${actif.schema}.${actif.table}`}
@@ -451,6 +483,19 @@ export function Workbench({
                       onAttenteChange(retirer(attente, cleLigne, column))
                     }
                     onToutAnnuler={() => onAttenteChange([])}
+                    enCours={application.enCours}
+                    refus={application.refus}
+                    patchInverse={application.patchInverse}
+                    onCopierLePatch={
+                      application.patchInverse === null
+                        ? undefined
+                        : () => {
+                            const texte = application.patchInverse
+                            if (texte) void navigator.clipboard?.writeText(texte)
+                          }
+                    }
+                    onAppliquer={application.demander}
+                    onEcarterLePatch={application.ecarterLePatch}
                     onCopierLeSQL={
                       sqlPrevu.sql === null
                         ? undefined

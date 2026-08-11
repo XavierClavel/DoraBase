@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { previewUpdates } from '../../data/commandes'
-import type { ColumnInfo, DatabaseKey, UpdatePlan } from '../../domain/engine'
-import type { EnAttente } from './modifications'
+import type { ColumnInfo, DatabaseKey, PendingUpdate, UpdatePlan } from '../../domain/engine'
+import { type EnAttente, type Modification, texteBrutDe } from './modifications'
 
 /** Ce qui appelle la commande. Injectable, le pont ne répondant pas hors de la webview. */
 export type PasserellePreview = {
@@ -40,7 +40,7 @@ export function useSqlPrevu(
     cle,
     cible,
     cleColonne,
-    changes: attente.map((m) => [m.cle, m.column, m.apres]),
+    changes: attente.map((m) => [m.cle, m.column, m.apres, m.avant]),
   })
 
   // `signature` sérialise tout ce qui entre dans le plan — clé, cible, colonne d'identité,
@@ -59,12 +59,7 @@ export function useSqlPrevu(
       schema: cible.schema,
       table: cible.table,
       keyColumn: cleColonne,
-      changes: attente.map((modification) => ({
-        key: modification.cle,
-        column: modification.column,
-        // `null` **et** chaîne vide sont deux valeurs distinctes jusqu'au SQL.
-        value: modification.apres.kind === 'null' ? null : modification.apres.texte,
-      })),
+      changes: attente.map((modification) => planDe(modification)),
     }
 
     passerelle
@@ -93,4 +88,24 @@ function messageDe(erreur: unknown): string {
     return String((erreur as { message: unknown }).message)
   }
   return 'la requête n’a pas pu être préparée'
+}
+
+/**
+ * Une modification du modèle traduite pour le moteur.
+ *
+ * **Exportée, et c'est le point de `11d`** : la prévisualisation et l'application partent de la même
+ * traduction. Deux conversions divergeraient, et l'écart tomberait sur les cas rares — une valeur
+ * attendue nulle, une chaîne vide.
+ */
+export function planDe(modification: Modification): PendingUpdate {
+  return {
+    key: modification.cle,
+    column: modification.column,
+    // `null` **et** chaîne vide sont deux valeurs distinctes jusqu'au SQL.
+    value: modification.apres.kind === 'null' ? null : modification.apres.texte,
+    // La valeur attendue entre dans le `WHERE` : c'est la détection de conflit de `11d`. Elle vient
+    // du **texte brut** de l'origine, celui que la base a rendu — pas du rendu formaté de la grille,
+    // qui grouperait les milliers et ne comparerait plus rien.
+    expected: modification.avant.kind === 'null' ? null : texteBrutDe(modification.avant),
+  }
 }

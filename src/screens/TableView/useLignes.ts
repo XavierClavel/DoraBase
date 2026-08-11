@@ -31,6 +31,16 @@ export function useLignes(
   key: DatabaseKey | null,
   query: RowQuery | null,
   passerelle: PasserelleLignes = PASSERELLE_LIGNES,
+  /**
+   * Un compteur **externe** de relecture, pour les écrans qui savent que la base a changé.
+   *
+   * `11d` en a besoin : après une écriture, la grille doit relire — les valeurs écrites peuvent
+   * différer de celles saisies (un `trigger`, une valeur par défaut, une troncature). L'écriture est
+   * déclenchée depuis le panneau droit, que l'écran de travail monte, alors que la lecture vit ici.
+   * Un compteur qui descend est plus simple qu'une fonction qui remonte, et ne crée pas de référence
+   * mutable partagée entre deux composants.
+   */
+  tourExterne = 0,
 ): EtatLignes {
   const [fenetre, setFenetre] = useState<RowWindow | null>(null)
   const [loading, setLoading] = useState(false)
@@ -79,7 +89,7 @@ export function useLignes(
     return () => {
       vivant = false
     }
-  }, [project, database, environment, query, passerelle, tour])
+  }, [project, database, environment, query, passerelle, tour, tourExterne])
 
   const relire = useCallback(() => setTour((precedent) => precedent + 1), [])
 

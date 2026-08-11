@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { ConfigLoad, EnvironmentVariant, Project } from '../domain/config'
 import type {
+  ApplyOutcome,
   ConnectionState,
   ConnectionStateEntry,
   DatabaseKey,
@@ -105,6 +106,16 @@ export async function rowAsInsert(
  */
 export async function previewUpdates(key: DatabaseKey, plan: UpdatePlan): Promise<string> {
   return invoke<string>('preview_updates', { key, plan })
+}
+
+/**
+ * **La première écriture du projet** (`11d`). Tout le reste, depuis `01`, est en lecture.
+ *
+ * Le SQL exécuté est celui que `11c` a montré — la même fonction le produit côté moteur, et il n'y a
+ * qu'un texte. Rend le nombre de lignes écrites et le SQL qui les défait.
+ */
+export async function applyChanges(key: DatabaseKey, plan: UpdatePlan): Promise<ApplyOutcome> {
+  return invoke<ApplyOutcome>('apply_changes', { key, plan })
 }
 
 /**

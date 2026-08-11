@@ -31,8 +31,8 @@ pub use introspection::{
     RelationDirection, RowCount, SchemaInfo, TableDetail, TableSummary, TriggerInfo, TypeCategory,
 };
 pub use rows::{
-    Filter, FilterOperator, PendingUpdate, RowLimit, RowQuery, RowWindow, SortDirection, SortKey,
-    UpdatePlan, Value,
+    ApplyOutcome, Filter, FilterOperator, PendingUpdate, RowLimit, RowQuery, RowWindow,
+    SortDirection, SortKey, UpdatePlan, Value,
 };
 
 /// Ce que chaque moteur doit savoir faire.
@@ -91,6 +91,18 @@ pub trait EngineAdapter {
         &self,
         plan: &UpdatePlan,
     ) -> impl Future<Output = Result<String, EngineError>> + Send;
+
+    /// **La première écriture du projet** (`11d`). Tout le reste, depuis `01`, est en lecture.
+    ///
+    /// Une transaction : `BEGIN`, un `UPDATE` par modification, `COMMIT`. Trois modifications qui
+    /// s'appliqueraient à moitié laisseraient des données incohérentes que rien ne signalerait.
+    ///
+    /// Le `WHERE` porte l'ancienne valeur : zéro ligne affectée signifie que la ligne a changé depuis
+    /// la lecture, et **toute** la transaction est annulée — pas un rapport partiel.
+    fn apply_updates(
+        &self,
+        plan: &UpdatePlan,
+    ) -> impl Future<Output = Result<ApplyOutcome, EngineError>> + Send;
 }
 
 /// Le moteur actif, réparti statiquement.
@@ -140,6 +152,12 @@ impl AnyEngine {
     pub async fn preview_updates(&self, plan: &UpdatePlan) -> Result<String, EngineError> {
         match self {
             Self::Postgres(adaptateur) => adaptateur.preview_updates(plan).await,
+        }
+    }
+
+    pub async fn apply_updates(&self, plan: &UpdatePlan) -> Result<ApplyOutcome, EngineError> {
+        match self {
+            Self::Postgres(adaptateur) => adaptateur.apply_updates(plan).await,
         }
     }
 
@@ -206,6 +224,13 @@ mod tests {
 
         async fn preview_updates(&self, _plan: &UpdatePlan) -> Result<String, EngineError> {
             Ok(String::new())
+        }
+
+        async fn apply_updates(&self, _plan: &UpdatePlan) -> Result<ApplyOutcome, EngineError> {
+            Ok(ApplyOutcome {
+                applied: 0,
+                inverse_sql: String::new(),
+            })
         }
 
         async fn rows(&self, _query: &RowQuery) -> Result<RowWindow, EngineError> {

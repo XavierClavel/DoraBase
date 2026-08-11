@@ -121,6 +121,16 @@ pub struct PendingUpdate {
     /// La nouvelle valeur, ou `None` pour `NULL`. La distinction est l'une des rares qu'un client de
     /// bases ne doit pas brouiller : une chaîne vide n'est pas `NULL`.
     pub value: Option<String>,
+    /// La valeur **attendue** dans la base — celle qui était affichée quand on a saisi.
+    ///
+    /// Elle entre dans le `WHERE` : entre la lecture et l'écriture, quelqu'un d'autre a pu modifier
+    /// la ligne, et écrire quand même écraserait son travail en silence. Zéro ligne affectée signifie
+    /// « la valeur a changé sous vos pieds », et toute la transaction est annulée.
+    ///
+    /// Plus faible qu'un numéro de version, et c'est ce que le schéma permet : toutes les tables n'en
+    /// ont pas, et en exiger un réduirait l'édition à celles qui en ont. **Limite connue** : deux
+    /// modifications successives ramenant la même valeur passeraient inaperçues.
+    pub expected: Option<String>,
 }
 
 /// Ce qu'il faut pour prévisualiser — ou plus tard exécuter — une suite de modifications.
@@ -135,6 +145,22 @@ pub struct UpdatePlan {
     /// aller-retour pour une information déjà affichée.
     pub key_column: String,
     pub changes: Vec<PendingUpdate>,
+}
+
+/// Ce qu'une application de modifications a produit (`11d`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub struct ApplyOutcome {
+    /// Le nombre de lignes effectivement écrites — une par modification quand tout va bien.
+    #[ts(type = "number")]
+    pub applied: u64,
+    /// Le SQL qui **défait** ce qui vient d'être fait, à montrer et à copier.
+    ///
+    /// Disponible dans la session, pas persisté : `A10` en fait une préférence à 24 h, ce qui
+    /// suppose de décider où le garder, sous quelle forme, et ce qu'il advient d'un patch dont la
+    /// base a changé entre-temps. Trois questions qui appartiennent à `15`.
+    pub inverse_sql: String,
 }
 
 /// L'intention d'une lecture, que l'adaptateur traduit en SQL paramétré.
