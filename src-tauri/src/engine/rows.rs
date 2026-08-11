@@ -103,6 +103,40 @@ pub struct SortKey {
     pub direction: SortDirection,
 }
 
+/// Une modification en attente, telle que `A6` la retient (`11a`).
+///
+/// **La valeur est du texte, ou `None` pour `NULL`.** C'est exactement ce que l'utilisateur a tapé :
+/// inventer un type à partir de la chaîne — « 0012 est un nombre » — changerait la valeur avant même
+/// de l'écrire. Le littéral produit est cité, et le moteur le convertit vers le type de la colonne.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub struct PendingUpdate {
+    /// La valeur de la **clé primaire** de la ligne, en texte — le `WHERE` de l'`UPDATE`.
+    ///
+    /// Pas un rang : un rang change au moindre tri, et l'`UPDATE` frapperait une autre ligne
+    /// (`11a`).
+    pub key: String,
+    pub column: String,
+    /// La nouvelle valeur, ou `None` pour `NULL`. La distinction est l'une des rares qu'un client de
+    /// bases ne doit pas brouiller : une chaîne vide n'est pas `NULL`.
+    pub value: Option<String>,
+}
+
+/// Ce qu'il faut pour prévisualiser — ou plus tard exécuter — une suite de modifications.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub struct UpdatePlan {
+    pub schema: String,
+    pub table: String,
+    /// La colonne qui identifie une ligne. **Fournie par l'écran**, qui la connaît par
+    /// l'introspection : la redemander à la base à chaque prévisualisation coûterait un
+    /// aller-retour pour une information déjà affichée.
+    pub key_column: String,
+    pub changes: Vec<PendingUpdate>,
+}
+
 /// L'intention d'une lecture, que l'adaptateur traduit en SQL paramétré.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]

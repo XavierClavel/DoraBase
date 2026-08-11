@@ -9,6 +9,7 @@ import type {
   SchemaInfo,
   TableDetail,
   TableSummary,
+  UpdatePlan,
   Value,
 } from '../domain/engine'
 
@@ -93,6 +94,17 @@ export async function rowAsInsert(
   values: readonly Value[],
 ): Promise<string> {
   return invoke<string>('row_as_insert', { key, schema, table, values })
+}
+
+/**
+ * Le SQL qu'`Appliquer` exécutera, rendu par le moteur (`11c`).
+ *
+ * **Même arbitrage que `rowAsInsert`, et une raison de plus** : le panneau annonce « SQL qui sera
+ * exécuté ». S'il n'est pas exactement celui qui partira, il est pire qu'absent — c'est le dernier
+ * endroit où l'on vérifie avant d'écrire en production. `11d` exécutera cette suite.
+ */
+export async function previewUpdates(key: DatabaseKey, plan: UpdatePlan): Promise<string> {
+  return invoke<string>('preview_updates', { key, plan })
 }
 
 /**

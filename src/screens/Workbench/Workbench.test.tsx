@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { Project } from '../../domain/config'
-import type { SchemaInfo, TableDetail, TableSummary } from '../../domain/engine'
+import type { SchemaInfo, TableDetail, TableSummary, UpdatePlan } from '../../domain/engine'
 import type { PasserelleLignes } from '../TableView/useLignes'
 import type { PasserelleArbre } from './useArbre'
 import type { PasserelleDetail } from './useDetailTable'
@@ -113,6 +113,9 @@ async function ouvrirLArbreJusquAuSchema(utilisateur: ReturnType<typeof userEven
   await utilisateur.click(await screen.findByRole('treeitem', { name: /analytics/ }))
   await utilisateur.click(await screen.findByRole('treeitem', { name: 'public' }))
 }
+
+/** Une prévisualisation qui répond, pour les tests qui ne portent pas sur elle. */
+const PREVIEW = { previewUpdates: async () => 'BEGIN;\nCOMMIT;' }
 
 function monter(over: Partial<Parameters<typeof Workbench>[0]> = {}) {
   const { passerelle, detail, lignes } = passerelles()
@@ -308,6 +311,77 @@ describe('mode édition', () => {
     await utilisateur.type(champ, `${valeur}{Enter}`)
   }
 
+  it('le panneau des modifications prend la place du détail de la ligne', async () => {
+    const utilisateur = userEvent.setup()
+    monter({ passerellePreview: PREVIEW })
+    await ouvrirEtEditer(utilisateur)
+    // Avant toute modification, c'est le panneau de `10f` qui occupe la place.
+    expect(screen.getByLabelText('Détail de la ligne')).toBeInTheDocument()
+
+    await modifier(utilisateur)
+
+    // **Un seul panneau droit, dont le contenu suit l'écran** (`10f`). Les empiler donnerait deux
+    // panneaux là où le mockup n'en montre qu'un ; en éditant, ce qu'on veut voir est ce qu'on a
+    // changé.
+    expect(await screen.findByLabelText('Modifications en attente de la table')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Détail de la ligne')).not.toBeInTheDocument()
+  })
+
+  it('le SQL du panneau vient du moteur, avec la clé primaire de l’introspection', async () => {
+    const utilisateur = userEvent.setup()
+    const previsualise = vi.fn(async () => 'BEGIN;\nUPDATE ...;\nCOMMIT;')
+    monter({ passerellePreview: { previewUpdates: previsualise } })
+    await ouvrirEtEditer(utilisateur)
+    await modifier(utilisateur)
+
+    await waitFor(() => expect(previsualise).toHaveBeenCalled())
+    const [, plan] = previsualise.mock.calls[0] as unknown as [unknown, UpdatePlan]
+    expect(plan.schema).toBe('public')
+    expect(plan.table).toBe('orders')
+    // **La clé vient de l'introspection**, pas d'une convention sur le nom : une table dont la clé
+    // s'appelle `uuid` produirait sinon un `WHERE` sur une colonne qui n'identifie rien.
+    expect(plan.keyColumn).toBe('id')
+    expect(plan.changes).toHaveLength(1)
+    expect(plan.changes[0]?.column).toBe('created_at')
+  })
+
+  it('la clé du plan est celle de l’introspection, même quand elle ne s’appelle pas « id »', async () => {
+    const utilisateur = userEvent.setup()
+    const previsualise = vi.fn(async () => 'BEGIN;\nCOMMIT;')
+    // **Le décor courant nomme sa clé `id`**, ce qui rend « deviner » et « lire l'introspection »
+    // indistinguables — la règle 7 de `REPRISE.md`. Ici la clé s'appelle `uuid` : une table dont la
+    // clé porte un autre nom n'est pas plus rare qu'une autre, et un `WHERE "id" = …` frapperait une
+    // colonne qui n'existe pas.
+    const premiere = DETAIL.columns[0]
+    if (!premiere) throw new Error('le décor doit avoir une première colonne')
+    const detailAvecUuid: TableDetail = {
+      ...DETAIL,
+      columns: [{ ...premiere, name: 'uuid' }, ...DETAIL.columns.slice(1)],
+    }
+    monter({
+      passerelleDetail: { describeTable: vi.fn(async () => detailAvecUuid) },
+      passerellePreview: { previewUpdates: previsualise },
+    })
+    await ouvrirEtEditer(utilisateur)
+    await modifier(utilisateur)
+
+    await waitFor(() => expect(previsualise).toHaveBeenCalled())
+    const [, plan] = previsualise.mock.calls[0] as unknown as [unknown, UpdatePlan]
+    expect(plan.keyColumn).toBe('uuid')
+  })
+
+  it('sans SQL revenu, le panneau le dit au lieu d’en fabriquer un', async () => {
+    const utilisateur = userEvent.setup()
+    // La commande ne répond jamais : c'est l'état d'attente réel, pas une simulation d'échec.
+    monter({ passerellePreview: { previewUpdates: () => new Promise(() => {}) } })
+    await ouvrirEtEditer(utilisateur)
+    await modifier(utilisateur)
+
+    const panneau = await screen.findByLabelText('Modifications en attente de la table')
+    expect(panneau).toHaveTextContent('prépare la requête')
+    expect(panneau).not.toHaveTextContent('UPDATE')
+  })
+
   it('la confirmation de retrait compte les modifications réellement en attente', async () => {
     const utilisateur = userEvent.setup()
     monter({ onDelete: async () => ({ leftoverSecrets: [] }) })
@@ -418,7 +492,11 @@ describe('mode édition', () => {
     await modifier(utilisateur)
     await screen.findByText(/1 modification en attente sur/)
 
-    await utilisateur.click(screen.getByRole('button', { name: 'Tout annuler' }))
+    // **Deux boutons portent ce nom depuis `11c`** — celui du bandeau et celui du pied du panneau —
+    // et le mockup montre bien les deux. On cible celui du bandeau ; l'autre est couvert par les
+    // tests de `PendingPanel`.
+    const bandeau = screen.getByRole('status', { name: 'Modifications en attente' })
+    await utilisateur.click(within(bandeau).getByRole('button', { name: 'Tout annuler' }))
 
     await waitFor(() =>
       expect(screen.queryByText(/modification.* en attente sur/)).not.toBeInTheDocument(),

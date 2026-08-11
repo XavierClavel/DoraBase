@@ -24,7 +24,8 @@ use dorabase_lib::engine::commands::{
 };
 use dorabase_lib::engine::registry::ConnectionState;
 use dorabase_lib::engine::{
-    ConnectionProbe, EngineError, RowQuery, RowWindow, SchemaInfo, TableDetail, TableSummary,
+    ConnectionProbe, EngineError, PendingUpdate, RowQuery, RowWindow, SchemaInfo, TableDetail,
+    TableSummary, UpdatePlan,
 };
 use dorabase_lib::secrets::SecretMechanism;
 use ts_rs::TS;
@@ -66,6 +67,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     TableSummary::export_all(&config)?;
     TableDetail::export_all(&config)?;
     RowQuery::export_all(&config)?;
+    UpdatePlan::export_all(&config)?;
+    PendingUpdate::export_all(&config)?;
     RowWindow::export_all(&config)?;
 
     // Les deux types du pont IPC de `08d`. `ConnectionRequest` entraîne `EnvironmentVariant`

@@ -203,6 +203,17 @@ impl EngineAdapter for PostgresAdapter {
         let detail = introspect::table_detail(&self.client, schema, table).await?;
         rows::insert_de(schema, table, &detail.columns, values)
     }
+
+    async fn preview_updates(
+        &self,
+        plan: &crate::engine::UpdatePlan,
+    ) -> Result<String, EngineError> {
+        // **Aucun aller-retour vers la base.** La prévisualisation est du texte : la demander au
+        // serveur serait payer une latence pour une chaîne que l'on sait composer, et la rendre
+        // indisponible dès que la connexion tombe — au moment précis où l'on veut relire ce qu'on
+        // s'apprêtait à écrire.
+        rows::updates_de(plan)
+    }
 }
 
 #[cfg(test)]
@@ -767,6 +778,90 @@ mod tests_db {
             1,
             "le rollback n'a pas défait le delete"
         );
+    }
+
+    /// Le SQL prévisualisé de `11c` **s'exécute réellement**, et modifie la bonne ligne.
+    ///
+    /// **La leçon de `10f`** : un SQL qui *paraît* correct peut être refusé par la base. L'`INSERT`
+    /// reconstruit passait tous les tests d'inspection et échouait sur une contrainte `not null`.
+    /// Ici, le panneau annonce « SQL qui sera exécuté » — si cette chaîne ne tourne pas, la promesse
+    /// est fausse au moment le plus coûteux.
+    ///
+    /// La transaction est annulée : rien n'est laissé derrière. Le `BEGIN` du script généré est
+    /// remplacé, faute de quoi PostgreSQL avertirait d'une transaction imbriquée.
+    #[tokio::test]
+    async fn le_sql_previsualise_s_execute_et_touche_la_bonne_ligne() {
+        let adaptateur = adaptateur().await;
+        let fenetre = fenetre("orders", crate::engine::RowLimit::OneHundred).await;
+        let ligne = fenetre
+            .rows
+            .first()
+            .expect("le schéma de test peuple orders");
+        let crate::engine::Value::Int { value: id } = ligne[0] else {
+            panic!("la première colonne d'orders est son id")
+        };
+
+        let plan = crate::engine::UpdatePlan {
+            schema: "introspection".into(),
+            table: "orders".into(),
+            key_column: "id".into(),
+            changes: vec![crate::engine::PendingUpdate {
+                key: id.to_string(),
+                column: "status".into(),
+                // Une apostrophe dans la valeur : le cas qui casse un SQL mal échappé.
+                value: Some("l'attente".into()),
+            }],
+        };
+
+        let sql = adaptateur
+            .preview_updates(&plan)
+            .await
+            .expect("prévisualisation");
+
+        let script = format!(
+            "begin;\n{}\nselect status from introspection.orders where id = {id};\nrollback;",
+            sql.replace("BEGIN;\n", "").replace("\nCOMMIT;", "")
+        );
+        adaptateur
+            .client
+            .batch_execute(&script)
+            .await
+            .unwrap_or_else(|e| panic!("le SQL prévisualisé ne s'exécute pas : {e:?}\n{sql}"));
+
+        // **Et il touche la bonne ligne.** Un `UPDATE` qui s'exécute sans erreur peut n'avoir
+        // modifié aucune ligne — ou toutes. On le vérifie dans une transaction annulée.
+        adaptateur
+            .client
+            .batch_execute("begin")
+            .await
+            .expect("transaction");
+        let touchees = adaptateur
+            .client
+            .execute(
+                sql.replace("BEGIN;\n", "")
+                    .replace("\nCOMMIT;", "")
+                    .trim_end_matches(';'),
+                &[],
+            )
+            .await
+            .expect("update");
+        let vue: String = adaptateur
+            .client
+            .query_one(
+                "select status from introspection.orders where id = $1",
+                &[&id],
+            )
+            .await
+            .expect("relecture")
+            .get(0);
+        adaptateur
+            .client
+            .batch_execute("rollback")
+            .await
+            .expect("annulation");
+
+        assert_eq!(touchees, 1, "exactement une ligne doit être modifiée");
+        assert_eq!(vue, "l'attente");
     }
 
     /// Une apostrophe dans une valeur ne doit pas casser le SQL — le cas classique.

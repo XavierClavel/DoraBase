@@ -465,6 +465,23 @@ pub async fn row_as_insert(
         .await
 }
 
+/// Le SQL que `Appliquer` exécutera, pour le panneau de `11c`.
+///
+/// **Rendu par le moteur, jamais composé par l'écran.** Le bloc annonce « SQL qui sera exécuté » :
+/// s'il n'est pas exactement celui qui partira, il est pire qu'absent. `11d` exécutera cette suite.
+#[tauri::command]
+pub async fn preview_updates(
+    key: DatabaseKey,
+    plan: crate::engine::UpdatePlan,
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<String, EngineError> {
+    registry
+        .avec(&key.cle(), move |adaptateur| {
+            Box::pin(async move { adaptateur.preview_updates(&plan).await })
+        })
+        .await
+}
+
 fn repertoire_de_configuration(app: &tauri::AppHandle) -> Result<std::path::PathBuf, EngineError> {
     use tauri::Manager;
     app.path()

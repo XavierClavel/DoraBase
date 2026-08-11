@@ -148,6 +148,27 @@ export type ObjectCounts = { tables: number, views: number, functions: number, i
 export type ObjectKind = "table" | "view" | "function" | "index";
 
 /**
+ * Une modification en attente, telle que `A6` la retient (`11a`).
+ *
+ * **La valeur est du texte, ou `None` pour `NULL`.** C'est exactement ce que l'utilisateur a tapé :
+ * inventer un type à partir de la chaîne — « 0012 est un nombre » — changerait la valeur avant même
+ * de l'écrire. Le littéral produit est cité, et le moteur le convertit vers le type de la colonne.
+ */
+export type PendingUpdate = { 
+/**
+ * La valeur de la **clé primaire** de la ligne, en texte — le `WHERE` de l'`UPDATE`.
+ *
+ * Pas un rang : un rang change au moindre tri, et l'`UPDATE` frapperait une autre ligne
+ * (`11a`).
+ */
+key: string, column: string, 
+/**
+ * La nouvelle valeur, ou `None` pour `NULL`. La distinction est l'une des rares qu'un client de
+ * bases ne doit pas brouiller : une chaîne vide n'est pas `NULL`.
+ */
+value: string | null, };
+
+/**
  * Une clé étrangère, dans un sens ou dans l'autre.
  *
  * `A4` montre un bloc « Relations » ; `A5` un aperçu de « ligne liée ». Les deux sens
@@ -249,6 +270,17 @@ export type TriggerInfo = { name: string, definition: string, };
  * connaître les types de sept moteurs ; c'est donc l'adaptateur qui la détermine.
  */
 export type TypeCategory = "text" | "number" | "timestamp" | "json" | "uuid" | "boolean" | "binary" | "other";
+
+/**
+ * Ce qu'il faut pour prévisualiser — ou plus tard exécuter — une suite de modifications.
+ */
+export type UpdatePlan = { schema: string, table: string, 
+/**
+ * La colonne qui identifie une ligne. **Fournie par l'écran**, qui la connaît par
+ * l'introspection : la redemander à la base à chaque prévisualisation coûterait un
+ * aller-retour pour une information déjà affichée.
+ */
+keyColumn: string, changes: Array<PendingUpdate>, };
 
 /**
  * Une valeur de cellule, **typée** et non préformatée.

@@ -1,0 +1,46 @@
+/*
+ * Le bloc « SQL qui sera exécuté » de A6 : fond sombre, quatre couleurs de syntaxe.
+ *
+ *   mots-clés      --syn-keyword   #F5B335
+ *   chaînes        --syn-string    #9BD68C
+ *   nombres        --syn-number    #7FB8E8
+ *   BEGIN/COMMIT   --syn-comment   #8E877A
+ *   le reste       --syn-ident     #EDE7DA
+ *
+ * Les six jetons `--syn-*` existent depuis `02` et n'avaient jamais servi : ils sont faits pour un
+ * fond sombre, ce qui confirme que le mockup en attend un ici.
+ */
+
+.root {
+  margin: 0;
+  padding: var(--space-5);
+  border-radius: var(--radius-control-2);
+  background: var(--dark);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-code-tight);
+  /* `pre-wrap` : un `UPDATE` long doit se replier plutôt que forcer un défilement horizontal dans
+   * un panneau de 330 px. `anywhere` casse aussi les identifiants sans espace. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--syn-ident);
+}
+
+.motCle {
+  color: var(--syn-keyword);
+}
+
+.chaine {
+  color: var(--syn-string);
+}
+
+.nombre {
+  color: var(--syn-number);
+}
+
+/* Les bornes de la transaction, atténuées : ce ne sont pas les instructions qu'on relit avant
+ * d'écrire, mais l'assurance qu'elles partent ensemble ou pas du tout. */
+.transaction {
+  color: var(--syn-comment);
+}

@@ -31,8 +31,13 @@ remplace en mode édition).
 ### Le panneau de `10f` cède la place, il ne se superpose pas
 
 `10f` a posé qu'il y a **un** panneau droit dont le contenu suit l'écran — détail de l'objet en `A4`,
-ligne sélectionnée en `A5`. En `A6`, c'est celui-ci. La règle tient, et sa largeur change : 330 px
-contre 296, valeur du mockup.
+ligne sélectionnée en `A5`. En `A6`, c'est celui-ci. La règle tient.
+
+**La largeur, elle, ne change pas : elle reste celle que l'utilisateur a réglée.** Le mockup donne
+330 px contre 296 pour `A5`, mais le panneau droit est un `SplitPane` à largeur mémorisée : la faire
+sauter de 34 px à l'apparition des modifications reprendrait le défaut écarté pour la sidebar en
+`10b`, où le handoff donne 252 px à `A4` et 212 aux écrans de travail. Un mockup figé ne peut pas
+exprimer une colonne que l'utilisateur déplace. Écart assumé, comme celui de la sidebar.
 
 Conséquence : en mode édition, on ne voit plus le détail de la ligne sélectionnée. C'est ce que le
 mockup montre, et c'est défendable — en éditant, ce qu'on veut voir est ce qu'on a changé.
