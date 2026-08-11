@@ -301,3 +301,28 @@
   font-weight: var(--weight-medium);
   opacity: 0.7;
 }
+
+/* Le refus d'une application : conflit, contrainte violée. Près du diff, pas dans une alerte
+ * système — c'est là qu'on relit ce qu'on voulait écrire. */
+.refus {
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-control-2);
+  background: var(--danger-bg);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  line-height: 1.45;
+  color: var(--danger-ink);
+}
+
+/* **Ce que le patch inverse est vraiment**, dit sous lui : disponible dans la session, pas
+ * enregistré. `A10` en fera une préférence à 24 h ; promettre cette garantie avant qu'elle existe
+ * serait pire que se taire. */
+.rappelPatch {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-medium);
+  color: var(--ink-meta);
+}

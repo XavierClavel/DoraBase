@@ -436,25 +436,45 @@ pub fn insert_de(
 ///
 /// **`NULL` sans guillemets** : `'NULL'` est la chaîne « NULL », pas l'absence de valeur, et les
 /// confondre insérerait un texte là où la colonne devait rester vide.
-/// La suite d'instructions qu'`Appliquer` exécutera (`11c`).
+/// Une instruction à exécuter : **le SQL complet, littéraux compris**.
 ///
-/// **Une transaction, un `UPDATE` par modification.** `BEGIN` et `COMMIT` encadrent le tout : c'est
-/// ce que le mockup montre, et c'est la seule façon de garantir que dix corrections partent ensemble
-/// ou pas du tout.
+/// **Une seule chaîne, montrée et exécutée.** `11c` annonce « SQL qui sera exécuté » ; deux
+/// représentations — l'une pour l'œil, l'autre paramétrée pour le serveur — divergeraient sur les cas
+/// rares, citation d'un nom ou valeur contenant une apostrophe. Ici il n'y a rien à faire
+/// correspondre : c'est le même texte.
+///
+/// Le chemin paramétré a été essayé et abandonné pour une raison technique, pas par préférence : le
+/// pilote déduit le type de chaque paramètre de la colonne visée, donc envoyer du texte pour une clé
+/// `bigint` échoue à la sérialisation ; et un paramètre déclaré non typé n'est pas transmissible au
+/// format binaire du pilote. Un littéral, lui, est résolu par le serveur comme n'importe quelle
+/// constante — pour toute colonne, sans perdre l'index de la clé.
+///
+/// **L'échappement est donc la seule protection, et il est vérifié** : `apply_updates` refuse
+/// d'écrire si `standard_conforming_strings` est à `off`, réglage sous lequel un antislash pourrait
+/// défaire le doublement des apostrophes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Instruction {
+    pub sql: String,
+}
+
+/// Les instructions d'une suite de modifications.
+///
+/// **Un `UPDATE` sans `WHERE` est impossible par construction, pas par vérification.** Chaque
+/// instruction porte la clé de sa ligne, et une table sans clé primaire est refusée plus haut. Le
+/// garde-fou de `A10` (« refuser DELETE/UPDATE sans WHERE ») est donc tenu par le type, ce qui vaut
+/// mieux qu'un test de chaîne sur du SQL généré.
+///
+/// **Le `WHERE` porte aussi l'ancienne valeur** : c'est la détection de conflit. Zéro ligne rendue
+/// signifie que la ligne a changé depuis la lecture.
 ///
 /// **Un `UPDATE` par cellule, et non un par ligne.** Regrouper les colonnes d'une même ligne
 /// donnerait un SQL plus court mais illisible en regard des cartes du panneau, où chaque
 /// modification est une entrée. La lisibilité du dernier écran avant écriture passe devant la
 /// concision.
-///
-/// **Les valeurs sont citées, jamais devinées.** L'utilisateur a tapé du texte ; en déduire un type
-/// — « 0012 est le nombre 12 » — changerait la valeur avant de l'écrire. PostgreSQL convertit un
-/// littéral de chaîne vers le type de la colonne, ce qui est exactement le comportement voulu : la
-/// base tranche, pas nous.
-pub fn updates_de(plan: &crate::engine::UpdatePlan) -> Result<String, EngineError> {
+pub fn instructions_de(plan: &crate::engine::UpdatePlan) -> Result<Vec<Instruction>, EngineError> {
     if plan.changes.is_empty() {
         return Err(EngineError::local(
-            "aucune modification à prévisualiser".to_owned(),
+            "aucune modification à appliquer".to_owned(),
         ));
     }
     if plan.key_column.is_empty() {
@@ -469,17 +489,72 @@ pub fn updates_de(plan: &crate::engine::UpdatePlan) -> Result<String, EngineErro
     let cible = format!("{}.{}", identifiant(&plan.schema), identifiant(&plan.table));
     let cle = identifiant(&plan.key_column);
 
+    Ok(plan
+        .changes
+        .iter()
+        .map(|changement| {
+            let colonne = identifiant(&changement.column);
+            // `is not distinct from` et non `=` : `NULL = NULL` vaut `NULL` en SQL, donc un `WHERE`
+            // sur une ancienne valeur nulle ne trouverait jamais sa ligne. Cette forme traite `NULL`
+            // comme une valeur comparable — modifier une cellule vide est un cas courant.
+            //
+            // **`RETURNING 1` fait partie du SQL, montré comme exécuté.** Il sert à compter les
+            // lignes touchées, donc à détecter le conflit. Le retirer de l'affichage rendrait le bloc
+            // plus joli et la promesse fausse.
+            Instruction {
+                sql: format!(
+                    "UPDATE {cible} SET {colonne} = {} WHERE {cle} = {} AND {colonne} is not distinct from {} RETURNING 1",
+                    litteral_saisi(changement.value.as_deref()),
+                    litteral_saisi(Some(&changement.key)),
+                    litteral_saisi(changement.expected.as_deref()),
+                ),
+            }
+        })
+        .collect())
+}
+
+/// Les instructions **inversées** : celles qui défont l'application (`11d`).
+///
+/// Le patch inverse n'est pas un second générateur : c'est le même plan, valeurs et attendus
+/// échangés. Deux chemins de génération divergeraient — et un patch inverse qui ne défait pas
+/// exactement ce qui a été fait est pire qu'absent.
+pub fn instructions_inverses(
+    plan: &crate::engine::UpdatePlan,
+) -> Result<Vec<Instruction>, EngineError> {
+    let inverse = crate::engine::UpdatePlan {
+        schema: plan.schema.clone(),
+        table: plan.table.clone(),
+        key_column: plan.key_column.clone(),
+        changes: plan
+            .changes
+            .iter()
+            .map(|changement| crate::engine::PendingUpdate {
+                key: changement.key.clone(),
+                column: changement.column.clone(),
+                value: changement.expected.clone(),
+                expected: changement.value.clone(),
+            })
+            .collect(),
+    };
+    instructions_de(&inverse)
+}
+
+/// Les instructions encadrées par la transaction, pour l'affichage de `11c`.
+///
+/// **Une transaction, annoncée.** `BEGIN` et `COMMIT` encadrent le tout : dix corrections partent
+/// ensemble ou pas du tout, et le lecteur doit le voir avant de cliquer.
+pub fn texte_de(instructions: &[Instruction]) -> String {
     let mut lignes = vec!["BEGIN;".to_owned()];
-    for changement in &plan.changes {
-        lignes.push(format!(
-            "UPDATE {cible} SET {} = {} WHERE {cle} = {};",
-            identifiant(&changement.column),
-            litteral_saisi(changement.value.as_deref()),
-            litteral_saisi(Some(&changement.key)),
-        ));
+    for instruction in instructions {
+        lignes.push(format!("{};", instruction.sql));
     }
     lignes.push("COMMIT;".to_owned());
-    Ok(lignes.join("\n"))
+    lignes.join("\n")
+}
+
+/// La suite d'instructions qu'`Appliquer` exécutera, en texte (`11c`).
+pub fn updates_de(plan: &crate::engine::UpdatePlan) -> Result<String, EngineError> {
+    Ok(texte_de(&instructions_de(plan)?))
 }
 
 /// Un texte saisi rendu en littéral SQL, ou `NULL`.
@@ -768,10 +843,22 @@ mod tests_previsualisation {
     }
 
     fn changement(key: &str, column: &str, value: Option<&str>) -> PendingUpdate {
+        attendu(key, column, value, Some("ancienne"))
+    }
+
+    /// Un changement dont on précise la valeur **attendue** — celle du `WHERE` de détection de
+    /// conflit.
+    fn attendu(
+        key: &str,
+        column: &str,
+        value: Option<&str>,
+        expected: Option<&str>,
+    ) -> PendingUpdate {
         PendingUpdate {
             key: key.into(),
             column: column.into(),
             value: value.map(str::to_owned),
+            expected: expected.map(str::to_owned),
         }
     }
 
@@ -789,9 +876,14 @@ mod tests_previsualisation {
         // **Un `UPDATE` par cellule** : le panneau montre une carte par modification, et un SQL
         // regroupé ne se relirait plus en regard de ces cartes.
         assert_eq!(lignes.len(), 4);
+        // Le `WHERE` porte la clé **et** l'ancienne valeur : c'est la détection de conflit de `11d`,
+        // montrée dès la prévisualisation puisque c'est ce qui sera exécuté.
         assert_eq!(
             lignes[1],
-            r#"UPDATE "public"."orders" SET "status" = 'shipped' WHERE "id" = '184219';"#
+            // `RETURNING 1` fait partie du SQL exécuté : il compte les lignes touchées, donc détecte
+            // le conflit. Il est **montré** aussi — un affichage plus joli que ce qui part serait une
+            // promesse fausse sous un titre qui dit « SQL qui sera exécuté ».
+            r#"UPDATE "public"."orders" SET "status" = 'shipped' WHERE "id" = '184219' AND "status" is not distinct from 'ancienne' RETURNING 1;"#
         );
         // L'ordre du modèle est conservé : le panneau les liste dans l'ordre de saisie.
         assert!(lignes[2].contains("refunded"));
@@ -814,10 +906,11 @@ mod tests_previsualisation {
 
     #[test]
     fn une_apostrophe_est_doublee_dans_la_valeur_comme_dans_la_cle() {
-        let sql = updates_de(&plan(vec![changement(
+        let sql = updates_de(&plan(vec![attendu(
             "O'Brien",
             "note",
             Some("l'été n'est pas fini"),
+            Some("d'avant"),
         )]))
         .expect("prévisualisation");
 

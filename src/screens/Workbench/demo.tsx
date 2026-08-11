@@ -309,6 +309,26 @@ export function WorkbenchDemo() {
         // La démo rend un SQL **de la forme exacte** que le moteur produit (`11c`) : le pont ne
         // répond pas en Chromium, et un texte d'une autre forme ne prouverait rien de la coloration
         // ni du repli dans un panneau de 330 px.
+        // La démo **n'écrit rien** : elle rend un patch inverse plausible pour que `11d` soit visible
+        // sans base réelle. Une écriture simulée qui « réussit » toujours ne prouve rien du moteur —
+        // c'est ce que les tests Rust sur PostgreSQL vérifient.
+        passerelleApply={{
+          applyChanges: async (_cle, plan) => ({
+            applied: plan.changes.length,
+            inverseSql: [
+              'BEGIN;',
+              ...plan.changes.map(
+                (changement) =>
+                  `UPDATE "${plan.schema}"."${plan.table}" SET "${changement.column}" = ${
+                    changement.expected === null
+                      ? 'NULL'
+                      : `'${changement.expected.replace(/'/g, "''")}'`
+                  } WHERE "${plan.keyColumn}" = '${changement.key}';`,
+              ),
+              'COMMIT;',
+            ].join('\n'),
+          }),
+        }}
         passerellePreview={{
           previewUpdates: async (_cle, plan) =>
             [

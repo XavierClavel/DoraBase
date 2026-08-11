@@ -2,6 +2,23 @@
 import type { EnvironmentVariant } from "./config";
 
 /**
+ * Ce qu'une application de modifications a produit (`11d`).
+ */
+export type ApplyOutcome = { 
+/**
+ * Le nombre de lignes effectivement écrites — une par modification quand tout va bien.
+ */
+applied: number, 
+/**
+ * Le SQL qui **défait** ce qui vient d'être fait, à montrer et à copier.
+ *
+ * Disponible dans la session, pas persisté : `A10` en fait une préférence à 24 h, ce qui
+ * suppose de décider où le garder, sous quelle forme, et ce qu'il advient d'un patch dont la
+ * base a changé entre-temps. Trois questions qui appartiennent à `15`.
+ */
+inverseSql: string, };
+
+/**
  * Une colonne, telle que `A9` la tabule et `A5` la liste.
  */
 export type ColumnInfo = { 
@@ -166,7 +183,19 @@ key: string, column: string,
  * La nouvelle valeur, ou `None` pour `NULL`. La distinction est l'une des rares qu'un client de
  * bases ne doit pas brouiller : une chaîne vide n'est pas `NULL`.
  */
-value: string | null, };
+value: string | null, 
+/**
+ * La valeur **attendue** dans la base — celle qui était affichée quand on a saisi.
+ *
+ * Elle entre dans le `WHERE` : entre la lecture et l'écriture, quelqu'un d'autre a pu modifier
+ * la ligne, et écrire quand même écraserait son travail en silence. Zéro ligne affectée signifie
+ * « la valeur a changé sous vos pieds », et toute la transaction est annulée.
+ *
+ * Plus faible qu'un numéro de version, et c'est ce que le schéma permet : toutes les tables n'en
+ * ont pas, et en exiger un réduirait l'édition à celles qui en ont. **Limite connue** : deux
+ * modifications successives ramenant la même valeur passeraient inaperçues.
+ */
+expected: string | null, };
 
 /**
  * Une clé étrangère, dans un sens ou dans l'autre.

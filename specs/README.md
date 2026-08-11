@@ -372,7 +372,7 @@ propres critères de vérification.
 | [`11a`](11a-cellule-editable.md) | A6 | Cellule éditable et modifications en attente | **fait** |
 | [`11b`](11b-marques-du-mode-edition.md) | A6 | Bandeau, badge, teintes, annotations, barre d'état | **fait** |
 | [`11c`](11c-panneau-des-modifications.md) | A6 | Panneau droit : cartes, diff, SQL prévisualisé | **fait** |
-| [`11d`](11d-appliquer-les-modifications.md) | A6 | Appliquer : transaction, garde-fous, conflit | à faire |
+| [`11d`](11d-appliquer-les-modifications.md) | A6 | Appliquer : transaction, garde-fous, conflit | **fait** |
 | `12` | A7 | Console SQL : éditeur, autocomplétion, onglets de résultat | à écrire |
 | `13` | A8 | Console MongoDB et vue JSON | à écrire |
 | `14` | A9 | Structure et DDL | à écrire |

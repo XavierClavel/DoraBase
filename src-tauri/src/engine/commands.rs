@@ -482,6 +482,33 @@ pub async fn preview_updates(
         .await
 }
 
+/// **La première écriture du projet** (`11d`). Tout le reste, depuis `01`, est en lecture.
+///
+/// Le SQL exécuté est celui que `11c` a montré — la même fonction le produit, et il n'y a qu'un
+/// texte. Une transaction : dix corrections partent ensemble ou pas du tout.
+#[tauri::command]
+pub async fn apply_changes(
+    key: DatabaseKey,
+    plan: crate::engine::UpdatePlan,
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<crate::engine::ApplyOutcome, EngineError> {
+    let resultat = registry
+        .avec(&key.cle(), move |adaptateur| {
+            Box::pin(async move { adaptateur.apply_updates(&plan).await })
+        })
+        .await;
+
+    // Journalisé dans les deux cas : c'est la seule commande qui **modifie** des données de
+    // l'utilisateur, et savoir après coup ce qui est parti — ou n'est pas parti — vaut la ligne de
+    // log. Aucune valeur n'y figure : un journal ne doit pas devenir une copie des données.
+    match &resultat {
+        Ok(issue) => log::info!("apply_changes → {} ligne(s) écrite(s)", issue.applied),
+        Err(erreur) => log::warn!("apply_changes → refusé : {erreur}"),
+    }
+
+    resultat
+}
+
 fn repertoire_de_configuration(app: &tauri::AppHandle) -> Result<std::path::PathBuf, EngineError> {
     use tauri::Manager;
     app.path()

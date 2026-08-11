@@ -77,6 +77,13 @@ type TableViewProps = {
    * divergerait, et l'a fait : vider depuis le bandeau était aussitôt écrasé par la vue qui
    * repoussait son propre état. Un seul état, plusieurs lecteurs.
    */
+  /**
+   * Compteur de relecture piloté par l'écran (`11d`) : après une écriture, la grille doit relire.
+   *
+   * Un nombre qui change plutôt qu'une fonction remontée : l'écriture est déclenchée depuis le
+   * panneau droit, que l'écran de travail monte, alors que la lecture vit ici.
+   */
+  rafraichissement?: number
   attente?: EnAttente
   onAttenteChange?: (attente: EnAttente) => void
 }
@@ -111,6 +118,7 @@ export function TableView({
   rang = null,
   onRangChange,
   edition = false,
+  rafraichissement = 0,
   attente = [],
   onAttenteChange,
 }: TableViewProps) {
@@ -145,7 +153,7 @@ export function TableView({
     [schema, table, filters, sort, limite],
   )
 
-  const { fenetre, loading, error, relire } = useLignes(cle, query, passerelle)
+  const { fenetre, loading, error, relire } = useLignes(cle, query, passerelle, rafraichissement)
 
   // **Un bloc, pas une flèche concise** : une flèche concise *retourne* la valeur du rappel, et
   // React la prend pour une fonction de nettoyage — « destroy is not a function » au démontage dès

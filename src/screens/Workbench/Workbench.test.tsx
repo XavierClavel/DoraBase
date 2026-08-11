@@ -75,6 +75,19 @@ const DETAIL: TableDetail = {
       key: null,
       comment: null,
     },
+    // **Une colonne dont la valeur n'est pas nulle**, et c'est délibéré : avec `created_at` nulle
+    // partout, un test sur la valeur attendue d'une modification était satisfait par `null` — donc
+    // vert même quand le code cessait de l'envoyer. Le décor décidait du résultat (règle 7).
+    {
+      position: 3,
+      name: 'status',
+      typeName: 'text',
+      category: 'text',
+      nullable: false,
+      default: null,
+      key: null,
+      comment: null,
+    },
   ],
   indexes: [],
   constraints: [],
@@ -99,7 +112,13 @@ function passerelles() {
   const lignes: PasserelleLignes = {
     readRows: vi.fn(async () => ({
       offset: 0,
-      rows: [[{ kind: 'int' as const, value: 184_220 }, { kind: 'null' as const }]],
+      rows: [
+        [
+          { kind: 'int' as const, value: 184_220 },
+          { kind: 'null' as const },
+          { kind: 'text' as const, value: 'pending' },
+        ],
+      ],
       total: null,
       sql: 'select * from public.orders limit 500 offset 0',
       durationMs: 41,
@@ -116,6 +135,23 @@ async function ouvrirLArbreJusquAuSchema(utilisateur: ReturnType<typeof userEven
 
 /** Une prévisualisation qui répond, pour les tests qui ne portent pas sur elle. */
 const PREVIEW = { previewUpdates: async () => 'BEGIN;\nCOMMIT;' }
+
+/**
+ * Le même décor, mais en `dev`.
+ *
+ * **Le décor par défaut est en `prod`**, ce qui est utile ailleurs et trompeur ici : les tests
+ * d'écriture qui ne portent pas sur la confirmation passeraient par elle sans le dire.
+ */
+const PROJETS_DEV: Project[] = PROJETS.map((projet) => ({
+  ...projet,
+  activeEnvironment: 'dev' as const,
+  // La **variante** suit l'environnement actif : sans elle, la base n'est joignable dans aucun
+  // environnement et l'arbre ne déplie rien — l'écran de test n'irait même pas jusqu'à la grille.
+  databases: projet.databases.map((base) => ({
+    ...base,
+    variants: [{ ...variante, environment: 'dev' as const }],
+  })),
+}))
 
 function monter(over: Partial<Parameters<typeof Workbench>[0]> = {}) {
   const { passerelle, detail, lignes } = passerelles()
@@ -299,12 +335,9 @@ describe('mode édition', () => {
     await utilisateur.keyboard('{Meta>}e{/Meta}')
   }
 
-  /** Modifie la colonne `created_at` de la première ligne. */
-  async function modifier(
-    utilisateur: ReturnType<typeof userEvent.setup>,
-    valeur = '2026-08-01 08:00:00',
-  ) {
-    const cellules = await screen.findAllByRole('button', { name: 'Modifier created_at' })
+  /** Modifie la colonne `status` de la première ligne — non nulle, donc l'attendu est renseigné. */
+  async function modifier(utilisateur: ReturnType<typeof userEvent.setup>, valeur = 'shipped') {
+    const cellules = await screen.findAllByRole('button', { name: 'Modifier status' })
     await utilisateur.click(cellules[0] as HTMLElement)
     const champ = screen.getByLabelText('Nouvelle valeur')
     await utilisateur.clear(champ)
@@ -342,7 +375,7 @@ describe('mode édition', () => {
     // s'appelle `uuid` produirait sinon un `WHERE` sur une colonne qui n'identifie rien.
     expect(plan.keyColumn).toBe('id')
     expect(plan.changes).toHaveLength(1)
-    expect(plan.changes[0]?.column).toBe('created_at')
+    expect(plan.changes[0]?.column).toBe('status')
   })
 
   it('la clé du plan est celle de l’introspection, même quand elle ne s’appelle pas « id »', async () => {
@@ -422,6 +455,151 @@ describe('mode édition', () => {
     expect(
       screen.queryByRole('status', { name: 'Modifications en attente' }),
     ).not.toBeInTheDocument()
+  })
+
+  it('hors production, « Appliquer » écrit sans confirmation intermédiaire', async () => {
+    const utilisateur = userEvent.setup()
+    const ecrire = vi.fn(async () => ({ applied: 1, inverseSql: 'BEGIN;\nUPDATE …;\nCOMMIT;' }))
+    monter({
+      projects: PROJETS_DEV,
+      passerellePreview: PREVIEW,
+      passerelleApply: { applyChanges: ecrire },
+    })
+    await ouvrirEtEditer(utilisateur)
+    await modifier(utilisateur)
+
+    const panneau = await screen.findByLabelText('Modifications en attente de la table')
+    await utilisateur.click(within(panneau).getByRole('button', { name: /Appliquer/ }))
+
+    await waitFor(() => expect(ecrire).toHaveBeenCalledOnce())
+    // Une confirmation sur chaque écriture de développement se transformerait en clic réflexe, et
+    // c'est ainsi qu'une confirmation cesse de protéger quoi que ce soit.
+    expect(screen.queryByRole('dialog', { name: /production/i })).not.toBeInTheDocument()
+  })
+
+  it('le plan envoyé porte la valeur attendue, qui détecte le conflit', async () => {
+    const utilisateur = userEvent.setup()
+    const ecrire = vi.fn(async () => ({ applied: 1, inverseSql: '' }))
+    monter({
+      projects: PROJETS_DEV,
+      passerellePreview: PREVIEW,
+      passerelleApply: { applyChanges: ecrire },
+    })
+    await ouvrirEtEditer(utilisateur)
+    await modifier(utilisateur)
+    const panneau = await screen.findByLabelText('Modifications en attente de la table')
+    await utilisateur.click(within(panneau).getByRole('button', { name: /Appliquer/ }))
+
+    await waitFor(() => expect(ecrire).toHaveBeenCalled())
+    const [, plan] = ecrire.mock.calls[0] as unknown as [unknown, UpdatePlan]
+    // **Sans la clé `expected`, le `WHERE` ne détecte aucun conflit** et l'écriture écraserait le
+    // travail d'un tiers en silence. C'est la garantie centrale de `11d`, et elle se joue ici.
+    //
+    // La valeur est `null` dans ce décor, et ce n'est pas un défaut : `created_at` y est nulle, et
+    // `null` est une valeur attendue légitime — c'est même le cas que `is not distinct from` existe
+    // pour traiter. On vérifie donc que la **clé est présente**, pas qu'elle est renseignée : un
+    // `toBeTruthy` aurait exigé le contraire de ce que le décor contient.
+    // La colonne modifiée porte `pending` : la valeur attendue est donc **renseignée**, et un code
+    // qui cesserait de l'envoyer ferait tomber ce test.
+    expect(plan.changes[0]?.expected).toBe('pending')
+    expect(plan.keyColumn).toBe('id')
+  })
+
+  it('après succès, la grille est relue et les marques disparaissent', async () => {
+    const utilisateur = userEvent.setup()
+    const ecrire = vi.fn(async () => ({
+      applied: 1,
+      inverseSql: 'BEGIN;\nUPDATE inverse;\nCOMMIT;',
+    }))
+    const { lignes } = monter({
+      projects: PROJETS_DEV,
+
+      passerellePreview: PREVIEW,
+      passerelleApply: { applyChanges: ecrire },
+    })
+    await ouvrirEtEditer(utilisateur)
+    await modifier(utilisateur)
+    const readRows = lignes.readRows as unknown as ReturnType<typeof vi.fn>
+    const lecturesAvant = readRows.mock.calls.length
+
+    const panneau = await screen.findByLabelText('Modifications en attente de la table')
+    await utilisateur.click(within(panneau).getByRole('button', { name: /Appliquer/ }))
+
+    // **La valeur affichée doit venir de la base, pas de la saisie** : un `trigger`, une valeur par
+    // défaut ou une troncature rendraient l'écran faux.
+    await waitFor(() => expect(readRows.mock.calls.length).toBeGreaterThan(lecturesAvant))
+    // Et le modèle vidé fait disparaître toutes les marques de `11b` d'un coup.
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('status', { name: 'Modifications en attente' }),
+      ).not.toBeInTheDocument(),
+    )
+    // À la place, de quoi défaire — et non un panneau vide.
+    expect(screen.getByText(/SQL qui annule cette écriture/)).toBeInTheDocument()
+  })
+
+  it('un refus s’affiche dans le panneau et ne vide pas le modèle', async () => {
+    const utilisateur = userEvent.setup()
+    monter({
+      projects: PROJETS_DEV,
+
+      passerellePreview: PREVIEW,
+      passerelleApply: {
+        applyChanges: async () => {
+          throw new Error('la ligne a changé depuis la lecture')
+        },
+      },
+    })
+    await ouvrirEtEditer(utilisateur)
+    await modifier(utilisateur)
+    const panneau = await screen.findByLabelText('Modifications en attente de la table')
+    await utilisateur.click(within(panneau).getByRole('button', { name: /Appliquer/ }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('changé depuis la lecture')
+    // **Les modifications restent** : les perdre sur un conflit obligerait à tout retaper, alors que
+    // rien n'a été écrit.
+    expect(screen.getByRole('status', { name: 'Modifications en attente' })).toBeInTheDocument()
+  })
+
+  it('en production, « Appliquer » demande une confirmation et n’écrit pas encore', async () => {
+    const utilisateur = userEvent.setup()
+    const ecrire = vi.fn(async () => ({ applied: 1, inverseSql: '' }))
+    // Le décor par défaut est en `prod` : c'est le cas qui compte ici.
+    monter({ passerellePreview: PREVIEW, passerelleApply: { applyChanges: ecrire } })
+    await ouvrirEtEditer(utilisateur)
+    await modifier(utilisateur)
+
+    const panneau = await screen.findByLabelText('Modifications en attente de la table')
+    await utilisateur.click(within(panneau).getByRole('button', { name: /Appliquer/ }))
+
+    // **Rien n'est parti.** C'est le garde-fou central de `11d`, et aucun test ne le couvrait : le
+    // désactiver laissait la suite entièrement verte.
+    expect(ecrire).not.toHaveBeenCalled()
+    const confirmation = screen.getByRole('dialog', { name: 'Écrire en production' })
+    // Elle **récapitule** au lieu de demander « êtes-vous sûr ? » : c'est ce qui permet de
+    // s'apercevoir qu'on s'est trompé de table, ou qu'on touche vingt lignes au lieu d'une.
+    expect(confirmation).toHaveTextContent('public.orders')
+    expect(confirmation).toHaveTextContent('status')
+    expect(confirmation).toHaveTextContent('1 UPDATE')
+  })
+
+  it('la confirmation de production écrit, et l’annuler n’écrit rien', async () => {
+    const utilisateur = userEvent.setup()
+    const ecrire = vi.fn(async () => ({ applied: 1, inverseSql: '' }))
+    monter({ passerellePreview: PREVIEW, passerelleApply: { applyChanges: ecrire } })
+    await ouvrirEtEditer(utilisateur)
+    await modifier(utilisateur)
+    const panneau = await screen.findByLabelText('Modifications en attente de la table')
+
+    await utilisateur.click(within(panneau).getByRole('button', { name: /Appliquer/ }))
+    await utilisateur.click(screen.getByRole('button', { name: 'Annuler' }))
+    expect(ecrire).not.toHaveBeenCalled()
+    // Les modifications survivent au renoncement : rien n'a été écrit, rien n'a été perdu.
+    expect(screen.getByRole('status', { name: 'Modifications en attente' })).toBeInTheDocument()
+
+    await utilisateur.click(within(panneau).getByRole('button', { name: /Appliquer/ }))
+    await utilisateur.click(screen.getByRole('button', { name: 'Écrire en production' }))
+    await waitFor(() => expect(ecrire).toHaveBeenCalledOnce())
   })
 
   it('⌘E bascule, et le rappel de la barre d’état suit', async () => {
