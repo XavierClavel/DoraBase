@@ -3,6 +3,13 @@
  * `08a` et l'espacement des blocs de `A2`, plutôt que d'inventer une mise en page.
  */
 
+/* Même oubli, même correctif que la confirmation de retrait : le corps de `Modal` n'a aucun
+ * remplissage (`08a`), donc c'est au contenu de poser le sien. `--space-7` aligne sur l'en-tête et
+ * le pied. */
+.corps {
+  padding: var(--space-7);
+}
+
 /* Ce que le renommage entraîne, dit **avant** de le faire : déplacer des mots de passe et fermer
  * des connexions n'est pas ce qu'on attend d'un changement de nom. */
 .avertissement {

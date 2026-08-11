@@ -32,6 +32,27 @@ test('la modale s’ouvre sur le projet, et dit ce que le renommage entraîne', 
   expect(auPoint).toBe(true)
 })
 
+test('le contenu s’aligne sur l’en-tête et ne touche pas les bords', async ({ page }) => {
+  // Même oubli que la confirmation de retrait, même mesure : le corps de `Modal` n'a aucun
+  // remplissage (`08a`), c'est au contenu de poser le sien.
+  const mesures = await page.evaluate(() => {
+    const modale = document.querySelector('[role=dialog][aria-label^="Renommer"]')
+    const repere = modale?.querySelector('[data-testid=modal-footer]')?.firstElementChild
+    const champ = modale?.querySelector('label')
+    if (!modale || !repere || !champ) return null
+    return {
+      gaucheModale: Math.round(modale.getBoundingClientRect().left),
+      droiteModale: Math.round(modale.getBoundingClientRect().right),
+      gaucheRepere: Math.round(repere.getBoundingClientRect().left),
+      gaucheChamp: Math.round(champ.getBoundingClientRect().left),
+      droiteChamp: Math.round(champ.getBoundingClientRect().right),
+    }
+  })
+  const m = mesures as NonNullable<typeof mesures>
+  expect(m.gaucheChamp).toBe(m.gaucheRepere)
+  expect(m.droiteChamp).toBeLessThan(m.droiteModale)
+})
+
 test('un nom vide désactive « Renommer » et dit pourquoi', async ({ page }) => {
   await page.getByLabel('Nom du projet').fill('   ')
   const bouton = page.getByRole('button', { name: 'Renommer', exact: true })
