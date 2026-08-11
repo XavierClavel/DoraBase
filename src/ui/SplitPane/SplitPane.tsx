@@ -2,6 +2,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
+  useRef,
   useState,
 } from 'react'
 import { cx } from '../cx'
@@ -71,48 +72,105 @@ export function SplitPane({
   end,
 }: SplitPaneProps) {
   const [size, setSize] = useState(() => readStoredSize(storageKey, defaultSize, min, max))
+  /** Le panneau qui porte la largeur : écrit directement pendant le glissement. */
+  const dimensionne = useRef<HTMLDivElement>(null)
 
-  function commit(next: number) {
-    const clamped = clamp(next, min, max)
-    setSize(clamped)
+  /** Écrit la taille dans le stockage. **Appelée à la fin d'un geste, jamais pendant.** */
+  function memoriser(taille: number) {
     try {
-      localStorage.setItem(storageKeyFor(storageKey), String(clamped))
+      localStorage.setItem(storageKeyFor(storageKey), String(taille))
     } catch {
       // Stockage indisponible : la taille reste en mémoire pour la session.
     }
   }
 
   // Événements pointeur plutôt que souris : ils couvrent aussi le trackpad et le tactile
-  // sans code supplémentaire. L'écoute se fait sur `window`, pas sur la poignée, pour que
-  // le glissement survive à un curseur qui sort de ses 5 px de large.
+  // sans code supplémentaire.
   function handlePointerDown(event: ReactPointerEvent) {
+    // **`preventDefault` : sans lui, le navigateur commence une sélection de texte.** Glisser la
+    // poignée surlignait les lignes de la grille sur tout le passage du curseur. Signalé à l'usage
+    // le 11 août 2026.
+    event.preventDefault()
+
     const originX = event.clientX
     const originSize = size
+    // La poignée capture le pointeur : le glissement survit à un curseur qui sort de ses 5 px, sans
+    // écouter sur `window` — et les événements cessent d'être dirigés vers les éléments survolés,
+    // ce qui supprime au passage l'autre source de sélection.
+    const poignee = event.currentTarget as HTMLElement
+    // Le garde n'est pas de la prudence rituelle : jsdom ne l'implémente pas, et un environnement
+    // sans capture de pointeur doit rester utilisable — le glissement y reste correct, il cesse
+    // seulement de survivre à un curseur sorti de la poignée.
+    poignee.setPointerCapture?.(event.pointerId)
+
+    // **`user-select: none` sur le document, le temps du geste.** `preventDefault` suffit pour la
+    // sélection qui *démarre* sur la poignée ; il ne fait rien contre une sélection déjà en cours
+    // ni contre les moteurs qui la relancent. La classe est retirée au relâchement, pour ne pas
+    // rendre la page inélectable après coup.
+    document.body.classList.add(styles.pendantLeGlissement as string)
+
+    // **Aucun rendu React pendant le geste.** La largeur est écrite directement dans le style du
+    // panneau ; `setSize` n'a lieu qu'au relâchement. Chaque `setSize` intermédiaire faisait
+    // retraverser la grille virtualisée — vingt-six lignes fois trente-sept colonnes chez
+    // l'utilisateur qui a signalé la latence, à chaque trame du glissement.
+    //
+    // Le compromis : entre le premier mouvement et le relâchement, le DOM est en avance sur l'état
+    // React. Un rendu venu d'ailleurs pendant ce court instant remettrait la largeur d'avant — c'est
+    // sans conséquence, le mouvement suivant la corrige, et rien d'autre ne rend pendant qu'on
+    // glisse une poignée.
+    let derniere = originSize
 
     function onMove(moveEvent: PointerEvent) {
       // Vers la droite agrandit le panneau de gauche et **rétrécit** celui de droite : le geste
       // suit toujours la poignée, quel que soit le panneau dimensionné.
       const delta = moveEvent.clientX - originX
-      commit(originSize + (sized === 'start' ? delta : -delta))
-    }
-    function onUp() {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
+      derniere = clamp(originSize + (sized === 'start' ? delta : -delta), min, max)
+      // Écrit à chaque événement, sans `requestAnimationFrame`. Une trame de regroupement avait été
+      // ajoutée en ceinture : elle ne changeait aucune mesure, et pour une raison de fond — écrire
+      // une propriété de style ne force pas de recalcul, seul le *lire* le ferait. Le navigateur
+      // groupe déjà les changements avant la peinture. Retirée, comme les trois autres ceintures de
+      // ce projet.
+      if (dimensionne.current) dimensionne.current.style.width = `${derniere}px`
     }
 
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
+    function onUp() {
+      poignee.removeEventListener('pointermove', onMove)
+      poignee.removeEventListener('pointerup', onUp)
+      poignee.removeEventListener('pointercancel', onUp)
+      document.body.classList.remove(styles.pendantLeGlissement as string)
+      setSize(derniere)
+      // **Une seule écriture, à la fin.** Elle avait lieu à *chaque* `pointermove` :
+      // `localStorage.setItem` est synchrone, et soixante écritures par seconde suffisaient à
+      // rendre le glissement saccadé. C'était la cause de la latence signalée le 11 août 2026.
+      memoriser(derniere)
+    }
+
+    poignee.addEventListener('pointermove', onMove)
+    poignee.addEventListener('pointerup', onUp)
+    // Un geste interrompu par le système — changement de fenêtre, geste tactile — passe par
+    // `pointercancel` et non `pointerup` : sans lui, la page resterait inélectable.
+    poignee.addEventListener('pointercancel', onUp)
   }
 
   function handleKeyDown(event: ReactKeyboardEvent) {
     const pas = sized === 'start' ? KEYBOARD_STEP : -KEYBOARD_STEP
-    if (event.key === 'ArrowLeft') commit(size - pas)
-    if (event.key === 'ArrowRight') commit(size + pas)
+    // Au clavier, un pas est un geste complet : la mémorisation immédiate est juste ici.
+    if (event.key === 'ArrowLeft') {
+      const suivante = clamp(size - pas, min, max)
+      setSize(suivante)
+      memoriser(suivante)
+    }
+    if (event.key === 'ArrowRight') {
+      const suivante = clamp(size + pas, min, max)
+      setSize(suivante)
+      memoriser(suivante)
+    }
   }
 
   return (
     <div className={styles.root}>
       <div
+        ref={sized === 'start' ? dimensionne : undefined}
         className={sized === 'start' ? styles.pane : styles.end}
         style={sized === 'start' ? { width: size } : undefined}
       >
@@ -137,6 +195,7 @@ export function SplitPane({
         <div className={styles.grip} />
       </div>
       <div
+        ref={sized === 'end' ? dimensionne : undefined}
         className={sized === 'end' ? styles.pane : styles.end}
         style={sized === 'end' ? { width: size } : undefined}
       >
