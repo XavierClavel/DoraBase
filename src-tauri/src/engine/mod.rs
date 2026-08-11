@@ -31,7 +31,8 @@ pub use introspection::{
     RelationDirection, RowCount, SchemaInfo, TableDetail, TableSummary, TriggerInfo, TypeCategory,
 };
 pub use rows::{
-    Filter, FilterOperator, RowLimit, RowQuery, RowWindow, SortDirection, SortKey, Value,
+    Filter, FilterOperator, PendingUpdate, RowLimit, RowQuery, RowWindow, SortDirection, SortKey,
+    UpdatePlan, Value,
 };
 
 /// Ce que chaque moteur doit savoir faire.
@@ -77,6 +78,19 @@ pub trait EngineAdapter {
         table: &str,
         values: &[Value],
     ) -> impl Future<Output = Result<String, EngineError>> + Send;
+
+    /// Le SQL qu'`Appliquer` exécutera, **rendu par le moteur** (`11c`).
+    ///
+    /// Sur l'adaptateur pour la même raison que `row_as_insert`, et une de plus : le bloc annonce
+    /// « SQL qui sera exécuté ». S'il n'est pas exactement celui qui partira, il est **pire
+    /// qu'absent** — c'est le dernier endroit où l'on vérifie avant d'écrire en production. `11d`
+    /// exécutera cette suite, pas une reconstruction.
+    ///
+    /// N'ouvre aucune transaction et n'exécute rien : elle rend du texte.
+    fn preview_updates(
+        &self,
+        plan: &UpdatePlan,
+    ) -> impl Future<Output = Result<String, EngineError>> + Send;
 }
 
 /// Le moteur actif, réparti statiquement.
@@ -120,6 +134,12 @@ impl AnyEngine {
     pub async fn rows(&self, query: &RowQuery) -> Result<RowWindow, EngineError> {
         match self {
             Self::Postgres(adaptateur) => adaptateur.rows(query).await,
+        }
+    }
+
+    pub async fn preview_updates(&self, plan: &UpdatePlan) -> Result<String, EngineError> {
+        match self {
+            Self::Postgres(adaptateur) => adaptateur.preview_updates(plan).await,
         }
     }
 
@@ -181,6 +201,10 @@ mod tests {
             _table: &str,
             _values: &[Value],
         ) -> Result<String, EngineError> {
+            Ok(String::new())
+        }
+
+        async fn preview_updates(&self, _plan: &UpdatePlan) -> Result<String, EngineError> {
             Ok(String::new())
         }
 

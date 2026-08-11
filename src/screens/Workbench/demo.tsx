@@ -306,6 +306,22 @@ export function WorkbenchDemo() {
         passerelleDetail={PASSERELLE_DETAIL}
         passerelleLignes={PASSERELLE_LIGNES}
         rowAsInsert={rowAsInsert}
+        // La démo rend un SQL **de la forme exacte** que le moteur produit (`11c`) : le pont ne
+        // répond pas en Chromium, et un texte d'une autre forme ne prouverait rien de la coloration
+        // ni du repli dans un panneau de 330 px.
+        passerellePreview={{
+          previewUpdates: async (_cle, plan) =>
+            [
+              'BEGIN;',
+              ...plan.changes.map(
+                (changement) =>
+                  `UPDATE "${plan.schema}"."${plan.table}" SET "${changement.column}" = ${
+                    changement.value === null ? 'NULL' : `'${changement.value.replace(/'/g, "''")}'`
+                  } WHERE "${plan.keyColumn}" = '${changement.key}';`,
+              ),
+              'COMMIT;',
+            ].join('\n'),
+        }}
         // `?demo` ouvre l'écran en **mode édition** : c'est le seul moyen de voir `A6` sans base
         // réelle, Playwright ne pilotant pas le pont Tauri.
         onEditDatabase={(projet, base) => setEdition({ project: projet, database: base })}

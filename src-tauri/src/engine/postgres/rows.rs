@@ -436,6 +436,64 @@ pub fn insert_de(
 ///
 /// **`NULL` sans guillemets** : `'NULL'` est la chaîne « NULL », pas l'absence de valeur, et les
 /// confondre insérerait un texte là où la colonne devait rester vide.
+/// La suite d'instructions qu'`Appliquer` exécutera (`11c`).
+///
+/// **Une transaction, un `UPDATE` par modification.** `BEGIN` et `COMMIT` encadrent le tout : c'est
+/// ce que le mockup montre, et c'est la seule façon de garantir que dix corrections partent ensemble
+/// ou pas du tout.
+///
+/// **Un `UPDATE` par cellule, et non un par ligne.** Regrouper les colonnes d'une même ligne
+/// donnerait un SQL plus court mais illisible en regard des cartes du panneau, où chaque
+/// modification est une entrée. La lisibilité du dernier écran avant écriture passe devant la
+/// concision.
+///
+/// **Les valeurs sont citées, jamais devinées.** L'utilisateur a tapé du texte ; en déduire un type
+/// — « 0012 est le nombre 12 » — changerait la valeur avant de l'écrire. PostgreSQL convertit un
+/// littéral de chaîne vers le type de la colonne, ce qui est exactement le comportement voulu : la
+/// base tranche, pas nous.
+pub fn updates_de(plan: &crate::engine::UpdatePlan) -> Result<String, EngineError> {
+    if plan.changes.is_empty() {
+        return Err(EngineError::local(
+            "aucune modification à prévisualiser".to_owned(),
+        ));
+    }
+    if plan.key_column.is_empty() {
+        // Sans clé, le `WHERE` viserait toutes les lignes. Refuser plutôt que produire un SQL qui
+        // récrirait la table entière.
+        return Err(EngineError::local(
+            "la table n'a pas de clé primaire : une modification ne peut pas viser une ligne"
+                .to_owned(),
+        ));
+    }
+
+    let cible = format!("{}.{}", identifiant(&plan.schema), identifiant(&plan.table));
+    let cle = identifiant(&plan.key_column);
+
+    let mut lignes = vec!["BEGIN;".to_owned()];
+    for changement in &plan.changes {
+        lignes.push(format!(
+            "UPDATE {cible} SET {} = {} WHERE {cle} = {};",
+            identifiant(&changement.column),
+            litteral_saisi(changement.value.as_deref()),
+            litteral_saisi(Some(&changement.key)),
+        ));
+    }
+    lignes.push("COMMIT;".to_owned());
+    Ok(lignes.join("\n"))
+}
+
+/// Un texte saisi rendu en littéral SQL, ou `NULL`.
+///
+/// **`None` et `Some("")` sont deux choses différentes**, et les confondre est l'erreur qu'un client
+/// de bases ne doit pas commettre : `NULL` et la chaîne vide ne se comparent pas, ne s'indexent pas
+/// et ne s'affichent pas pareil.
+fn litteral_saisi(texte: Option<&str>) -> String {
+    match texte {
+        None => "NULL".to_owned(),
+        Some(valeur) => format!("'{}'", valeur.replace('\'', "''")),
+    }
+}
+
 fn litteral_de(valeur: &Value) -> String {
     match valeur {
         Value::Null => "NULL".to_owned(),
@@ -692,5 +750,112 @@ mod tests {
         assert_eq!(encoder_base64(b"foob"), "Zm9vYg==");
         assert_eq!(encoder_base64(b"fooba"), "Zm9vYmE=");
         assert_eq!(encoder_base64(b"foobar"), "Zm9vYmFy");
+    }
+}
+
+#[cfg(test)]
+mod tests_previsualisation {
+    use super::*;
+    use crate::engine::{PendingUpdate, UpdatePlan};
+
+    fn plan(changes: Vec<PendingUpdate>) -> UpdatePlan {
+        UpdatePlan {
+            schema: "public".into(),
+            table: "orders".into(),
+            key_column: "id".into(),
+            changes,
+        }
+    }
+
+    fn changement(key: &str, column: &str, value: Option<&str>) -> PendingUpdate {
+        PendingUpdate {
+            key: key.into(),
+            column: column.into(),
+            value: value.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn une_transaction_encadre_un_update_par_modification() {
+        let sql = updates_de(&plan(vec![
+            changement("184219", "status", Some("shipped")),
+            changement("184217", "status", Some("refunded")),
+        ]))
+        .expect("prévisualisation");
+
+        let lignes: Vec<&str> = sql.lines().collect();
+        assert_eq!(lignes[0], "BEGIN;");
+        assert_eq!(lignes[lignes.len() - 1], "COMMIT;");
+        // **Un `UPDATE` par cellule** : le panneau montre une carte par modification, et un SQL
+        // regroupé ne se relirait plus en regard de ces cartes.
+        assert_eq!(lignes.len(), 4);
+        assert_eq!(
+            lignes[1],
+            r#"UPDATE "public"."orders" SET "status" = 'shipped' WHERE "id" = '184219';"#
+        );
+        // L'ordre du modèle est conservé : le panneau les liste dans l'ordre de saisie.
+        assert!(lignes[2].contains("refunded"));
+    }
+
+    #[test]
+    fn null_n_est_pas_la_chaine_vide() {
+        let sql = updates_de(&plan(vec![
+            changement("1", "shipped_at", None),
+            changement("2", "note", Some("")),
+        ]))
+        .expect("prévisualisation");
+
+        // **La distinction que ce projet ne doit pas brouiller.** `NULL` et `''` ne se comparent pas,
+        // ne s'indexent pas et ne s'affichent pas pareil ; les rendre identiques ici écrirait l'un
+        // en croyant écrire l'autre.
+        assert!(sql.contains(r#"SET "shipped_at" = NULL"#));
+        assert!(sql.contains(r#"SET "note" = ''"#));
+    }
+
+    #[test]
+    fn une_apostrophe_est_doublee_dans_la_valeur_comme_dans_la_cle() {
+        let sql = updates_de(&plan(vec![changement(
+            "O'Brien",
+            "note",
+            Some("l'été n'est pas fini"),
+        )]))
+        .expect("prévisualisation");
+
+        // Sans doublement, `l'été` fermerait la chaîne et le reste de la ligne deviendrait du SQL —
+        // le mécanisme même d'une injection, ici sur un texte que l'utilisateur a tapé lui-même.
+        assert!(sql.contains(r#"SET "note" = 'l''été n''est pas fini'"#));
+        assert!(sql.contains(r#"WHERE "id" = 'O''Brien'"#));
+    }
+
+    #[test]
+    fn un_identifiant_a_guillemets_est_echappe() {
+        let mut p = plan(vec![changement("1", r#"col"bizarre"#, Some("x"))]);
+        p.table = r#"ta"ble"#.into();
+        let sql = updates_de(&p).expect("prévisualisation");
+        assert!(sql.contains(r#""ta""ble""#));
+        assert!(sql.contains(r#""col""bizarre""#));
+    }
+
+    #[test]
+    fn un_texte_numerique_reste_du_texte_cite() {
+        let sql = updates_de(&plan(vec![changement("1", "code", Some("0012"))]))
+            .expect("prévisualisation");
+        // **En déduire un nombre changerait la valeur** : `0012` deviendrait `12`. PostgreSQL
+        // convertit le littéral vers le type de la colonne — la base tranche, pas nous.
+        assert!(sql.contains(r#"SET "code" = '0012'"#));
+    }
+
+    #[test]
+    fn sans_cle_primaire_la_previsualisation_est_refusee() {
+        let mut p = plan(vec![changement("1", "status", Some("x"))]);
+        p.key_column = String::new();
+        // Un `WHERE` sans clé viserait **toutes** les lignes : mieux vaut refuser que produire un
+        // SQL qui récrirait la table entière.
+        assert!(updates_de(&p).is_err());
+    }
+
+    #[test]
+    fn sans_modification_il_n_y_a_rien_a_previsualiser() {
+        assert!(updates_de(&plan(Vec::new())).is_err());
     }
 }

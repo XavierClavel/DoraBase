@@ -1,0 +1,303 @@
+/*
+ * Le panneau droit du mode édition (A6), 330 px.
+ *
+ * `10f` avait posé 296 px pour le détail d'une ligne ; le mockup de A6 en donne 330 au panneau des
+ * modifications. La largeur suit donc le contenu, comme le contenu suit l'écran.
+ */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background: var(--paper);
+  border-left: 1px solid var(--divider);
+}
+
+.entete {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  box-sizing: content-box;
+  height: var(--h-bar);
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--divider);
+  background: var(--bar);
+}
+
+.icone {
+  flex: none;
+  color: var(--warn-ink);
+}
+
+.titre {
+  margin: 0;
+  flex: 1;
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+}
+
+/* Le corps défile ; l'en-tête et le pied restent. Dix modifications ne doivent pas repousser
+ * « Appliquer » hors de vue — c'est le bouton qu'on cherche après avoir relu le diff. */
+.corps {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.cartes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.carte {
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-control-2);
+  background: var(--warn-bg-2);
+  border: 1px solid var(--warn-bg);
+}
+
+.carteEntete {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.position {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-medium);
+  color: var(--ink-meta);
+}
+
+.retirer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-chip);
+  background: transparent;
+  cursor: pointer;
+  color: var(--ink-4);
+}
+
+.retirer:hover {
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+}
+
+.retirer:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.colonne {
+  margin-top: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+}
+
+.diff {
+  margin-top: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.fleche {
+  flex: none;
+  color: var(--ink-4);
+}
+
+.jeton {
+  padding: 1px var(--space-3);
+  border-radius: var(--radius-chip);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  overflow-wrap: anywhere;
+}
+
+/* **Rouge et vert ne disent pas « mauvais » et « bon » ici, mais « avant » et « après ».**
+ * `10c` avait écarté ces couleurs pour les valeurs d'une colonne d'état, où elles auraient porté un
+ * jugement métier — `paid` n'est pas meilleur que `refunded`. Dans un diff, elles portent une
+ * information de position dans le temps, ce qui est leur usage établi. La flèche les redouble, pour
+ * qui ne les distingue pas. */
+.avant {
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+  text-decoration: line-through;
+}
+
+.apres {
+  background: var(--success-bg);
+  color: var(--success-ink);
+}
+
+/* `NULL` en italique atténué : ce n'est pas une valeur qu'on a tapée, c'est l'absence de valeur. */
+.nul {
+  font-style: italic;
+  opacity: 0.75;
+}
+
+/* La chaîne vide se voit, au lieu de laisser une pastille vide qu'on lirait comme un défaut. */
+.vide {
+  opacity: 0.7;
+}
+
+.bloc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.blocEntete {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.blocTitre {
+  flex: 1;
+  font-family: var(--font-ui);
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps-sm);
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+.copier {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chip);
+  background: var(--field);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-2);
+}
+
+.copier:hover {
+  background: var(--hover-row);
+}
+
+.absent {
+  margin: 0;
+  padding: var(--space-5);
+  border-radius: var(--radius-control-2);
+  background: var(--field);
+  border: 1px dashed var(--border);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  color: var(--ink-meta);
+}
+
+/* L'encart de production : rouge, et rédigé au futur — les deux garde-fous qu'il annonce arrivent
+ * avec `11d`. Le dire au présent avant qu'ils existent serait une promesse fausse. */
+.production {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  margin: 0;
+  padding: var(--space-5);
+  border-radius: var(--radius-control-2);
+  background: var(--danger-bg);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: 1.45;
+  color: var(--danger-ink);
+}
+
+.productionIcone {
+  flex: none;
+  margin-top: 1px;
+}
+
+.pied {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  box-sizing: content-box;
+  padding: var(--space-5) var(--space-6);
+  border-top: 1px solid var(--divider);
+  background: var(--bar);
+}
+
+.cible {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-medium);
+  color: var(--ink-meta);
+}
+
+.annuler {
+  padding: var(--space-3) var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--field);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-2);
+}
+
+.annuler:hover {
+  background: var(--hover-row);
+}
+
+.appliquer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border: none;
+  border-radius: var(--radius-field);
+  background: var(--dark);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  color: var(--paper-bright);
+}
+
+.appliquer:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.raccourci {
+  font-family: var(--font-mono);
+  font-weight: var(--weight-medium);
+  opacity: 0.7;
+}

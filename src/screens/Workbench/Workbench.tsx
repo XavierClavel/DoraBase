@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { rowAsInsert as rowAsInsertTauri } from '../../data/commandes'
 import type { Database, Environment, Project } from '../../domain/config'
 import type {
@@ -20,11 +20,13 @@ import { DetailPanel } from '../Explorer/DetailPanel'
 import { ExplorerSidebar } from '../Explorer/ExplorerSidebar'
 import { ObjectTable } from '../Explorer/ObjectTable'
 import { EditBanner } from '../TableView/EditBanner'
-import type { EnAttente } from '../TableView/modifications'
+import { type EnAttente, retirer } from '../TableView/modifications'
+import { PendingPanel } from '../TableView/PendingPanel'
 import { RowPanel } from '../TableView/RowPanel'
 import { TableStatusBar } from '../TableView/TableStatusBar'
 import { TableView } from '../TableView/TableView'
 import { PASSERELLE_LIGNES, type PasserelleLignes } from '../TableView/useLignes'
+import { PASSERELLE_PREVIEW, type PasserellePreview, useSqlPrevu } from '../TableView/useSqlPrevu'
 import {
   AUCUN_ONGLET,
   type EtatOnglets,
@@ -56,6 +58,8 @@ type WorkbenchProps = {
     project: string,
     nom: string,
   ) => Promise<{ missingSecrets: string[]; leftoverSecrets: string[] }>
+  /** Le pont vers `preview_updates` (`11c`). Injectable : il ne répond pas hors de la webview. */
+  passerellePreview?: PasserellePreview
   /** Retirer une déclaration de connexion, ou un projet (`08j`). */
   onDelete?: (cible: CibleDeSuppression) => Promise<{ leftoverSecrets: string[] }>
   /** Ouvre l'écran en mode édition au montage — la démo s'en sert (`11a`). */
@@ -81,6 +85,7 @@ export function Workbench({
   onEditDatabase,
   onRenameProject,
   onDelete,
+  passerellePreview,
   edition = false,
 }: WorkbenchProps) {
   const { deplies, charge, etatDeBase, basculer, rafraichir } = useArbre(projects, passerelle)
@@ -167,6 +172,25 @@ export function Workbench({
   const idActif = actif ? idOnglet(actif) : null
   const enEdition = edition || (idActif !== null && ongletsEnEdition.has(idActif))
   const attente = idActif === null ? [] : (attentes[idActif] ?? [])
+
+  /** Pose l'attente de l'onglet actif. Un seul propriétaire de cet état, décidé en `11b`. */
+  const onAttenteChange = useCallback(
+    (suivante: EnAttente) => {
+      if (idActif === null) return
+      setAttentes((precedent) => ({ ...precedent, [idActif]: suivante }))
+    },
+    [idActif],
+  )
+
+  // Le SQL de `11c` vient du **moteur**, jamais de l'écran : composer un équivalent ici produirait
+  // un texte *ressemblant* à celui qui partira, sous un titre qui promet l'exactitude.
+  const sqlPrevu = useSqlPrevu(
+    cle,
+    actif,
+    attente,
+    detail?.columns ?? [],
+    passerellePreview ?? PASSERELLE_PREVIEW,
+  )
 
   /**
    * `⌘E` bascule le mode édition de l'onglet actif.
@@ -381,9 +405,7 @@ export function Workbench({
                       onRangChange={setRangChoisi}
                       edition={enEdition}
                       attente={attente}
-                      onAttenteChange={(a) =>
-                        setAttentes((precedent) => ({ ...precedent, [idActif as string]: a }))
-                      }
+                      onAttenteChange={onAttenteChange}
                     />
                   ) : (
                     <>
@@ -410,9 +432,35 @@ export function Workbench({
               }
               end={
                 // **Un seul panneau droit, dont le contenu suit l'écran** : le détail de l'objet
-                // en `A4`, la ligne sélectionnée en `A5`. Les empiler donnerait deux panneaux là
-                // où le mockup n'en montre qu'un.
-                actif && cle ? (
+                // en `A4`, la ligne sélectionnée en `A5`, les modifications en attente en `A6`.
+                // Les empiler donnerait deux panneaux là où le mockup n'en montre qu'un.
+                //
+                // **En édition avec des modifications, ce panneau prend la place du détail** —
+                // conséquence assumée de `11c` : en éditant, ce qu'on veut voir est ce qu'on a
+                // changé, pas la ligne sélectionnée.
+                actif && cle && attente.length > 0 ? (
+                  <PendingPanel
+                    attente={attente}
+                    table={`${actif.schema}.${actif.table}`}
+                    // `DatabaseKey.environment` est une chaîne côté IPC ; l'encart de production
+                    // veut l'environnement **déclaré** du projet, qui est typé.
+                    environment={environnement}
+                    sql={sqlPrevu.sql}
+                    erreurSql={sqlPrevu.erreur}
+                    onRetirer={(cleLigne, column) =>
+                      onAttenteChange(retirer(attente, cleLigne, column))
+                    }
+                    onToutAnnuler={() => onAttenteChange([])}
+                    onCopierLeSQL={
+                      sqlPrevu.sql === null
+                        ? undefined
+                        : () => {
+                            const texte = sqlPrevu.sql
+                            if (texte) void navigator.clipboard?.writeText(texte)
+                          }
+                    }
+                  />
+                ) : actif && cle ? (
                   <RowPanel
                     cle={cle}
                     columns={detail?.columns ?? []}
