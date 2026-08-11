@@ -57,3 +57,23 @@
   background: var(--field);
   transform: translateY(-50%);
 }
+
+/*
+ * Posée sur `<body>` le temps d'un glissement de poignée.
+ *
+ * `preventDefault` sur `pointerdown` empêche la sélection de *démarrer* sur la poignée, mais ne fait
+ * rien contre une sélection déjà en cours ni contre les moteurs qui la relancent au mouvement.
+ * Glisser la poignée surlignait les lignes de la grille sur tout le passage du curseur — signalé à
+ * l'usage le 11 août 2026.
+ *
+ * `:global` : la classe est appliquée à `document.body`, hors de l'arbre React de ce module.
+ */
+:global(body).pendantLeGlissement {
+  /* **Héritée, donc posée une seule fois.** Un sélecteur descendant (`… *`) avait été ajouté en
+   * ceinture ; le retirer ne changeait aucune mesure — `user-select` se transmet, et aucune règle du
+   * projet ne la redéfinit. Retiré plutôt que gardé sans rien défendre, comme l'`align-items:
+   * stretch` de la grille et la règle `:has` du menu de ligne. */
+  user-select: none;
+  /* Le curseur ne doit pas clignoter en passant sur du texte pendant le geste. */
+  cursor: col-resize;
+}

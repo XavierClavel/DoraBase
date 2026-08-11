@@ -351,7 +351,7 @@ des tests verts au moment où il a été introduit.
 
 ## Ce qu'a trouvé le premier usage réel, les 9 et 10 août 2026
 
-Douze défauts, tous sur une suite verte, et **neuf signalés par l'utilisateur** — pas par nous. Le
+Quatorze défauts, tous sur une suite verte, et **onze signalés par l'utilisateur** — pas par nous. Le
 point commun : le décor de test était trop régulier pour les produire, ou l'assertion mesurait
 autre chose que ce qu'elle prétendait.
 
@@ -433,6 +433,24 @@ autre chose que ce qu'elle prétendait.
    cran, un défaut pire que celui qu'il réparait. Au passage, un `align-items: stretch` ajouté « en
    ceinture » ne changeait rien à la mesure une fois la hauteur de ligne corrigée : il a été retiré
    plutôt que gardé sans rien défendre.
+
+38. **Glisser une poignée de panneau sélectionnait le texte alentour.** `pointerdown` sur la poignée
+   n'appelait pas `preventDefault`, et le navigateur démarrait une sélection qui surlignait les
+   lignes de la grille sur tout le passage du curseur. Deux correctifs, parce que l'un ne suffit
+   pas : `preventDefault` empêche la sélection de *démarrer*, et une classe posée sur `<body>` le
+   temps du geste couvre celles que les moteurs relancent au mouvement. Aucun test ne pouvait le
+   voir — jsdom n'a pas de sélection — d'où un e2e qui mesure `user-select` sur une cellule pendant
+   le glissement. **Sa première version comparait `getSelection()` et restait verte sans le
+   correctif** : Chromium ne produit pas de sélection dans ce scénario piloté.
+39. **La latence du glissement : deux causes trouvées, aucune mesurée.** L'écriture dans
+   `localStorage` avait lieu à *chaque* `pointermove` — synchrone, soixante fois par seconde — et
+   chaque mouvement provoquait un rendu React qui faisait retraverser la grille virtualisée entière.
+   Les deux sont corrigés et vérifiés par test : une seule écriture au relâchement, zéro rendu
+   pendant le geste. **Mais le gain n'est pas mesurable dans Chromium** avec le décor de démo : 8,3
+   ms par mouvement avant comme après, chiffre dominé par le protocole Playwright. Le défaut est
+   signalé sur une base de 37 colonnes dans WKWebView, que rien ici ne reproduit. Ce qui est prouvé
+   est la disparition des deux causes, pas celle du symptôme — et le dire autrement serait
+   présenter un raisonnement comme une vérification.
 
 **Ce que ces neuf défauts disent du décor de test.** Aucun n'était un défaut de logique : tous
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros
