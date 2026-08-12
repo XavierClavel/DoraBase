@@ -36,7 +36,8 @@ pub fn run() {
             engine::commands::read_rows,
             engine::commands::row_as_insert,
             engine::commands::preview_updates,
-            engine::commands::apply_changes
+            engine::commands::apply_changes,
+            engine::commands::run_sql
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

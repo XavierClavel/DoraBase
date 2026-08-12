@@ -509,6 +509,46 @@ pub async fn apply_changes(
     resultat
 }
 
+/// Exécute le SQL **écrit par l'utilisateur** (`12c`).
+///
+/// **Première commande où le SQL ne vient pas de DoraBase.** Elle ne juge pas ce qu'on lui donne : la
+/// confirmation des requêtes destructives vit à l'écran, avant l'appel — un garde-fou ici serait
+/// contourné par la prochaine console, et celui-ci protège de la faute de frappe, pas d'une
+/// intention.
+///
+/// La limite ajoutée est **rendue**, jamais tue : une limite silencieuse ferait croire à une table de
+/// mille lignes.
+#[tauri::command]
+pub async fn run_sql(
+    key: DatabaseKey,
+    sql: String,
+    limit: crate::engine::RowLimit,
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<crate::engine::QueryResult, EngineError> {
+    let resultat = registry
+        .avec(&key.cle(), move |adaptateur| {
+            Box::pin(async move { adaptateur.run_sql(&sql, limit).await })
+        })
+        .await;
+
+    match &resultat {
+        Ok(issue) => log::info!(
+            "run_sql → {} ligne(s), {} ms{}",
+            issue.rows.len(),
+            issue.duration_ms,
+            issue
+                .applied_limit
+                .map(|n| format!(", limite {n} ajoutée"))
+                .unwrap_or_default()
+        ),
+        // Le SQL n'est **pas** journalisé : il peut contenir des valeurs de l'utilisateur, et un
+        // journal ne doit pas devenir une copie des données. Même règle qu'en `11d`.
+        Err(erreur) => log::warn!("run_sql → refusé : {erreur}"),
+    }
+
+    resultat
+}
+
 fn repertoire_de_configuration(app: &tauri::AppHandle) -> Result<std::path::PathBuf, EngineError> {
     use tauri::Manager;
     app.path()

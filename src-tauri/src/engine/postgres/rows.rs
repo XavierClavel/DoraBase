@@ -299,6 +299,70 @@ fn valeurs_de(ligne: &Row, colonnes: &[ColumnInfo]) -> Result<Vec<Value>, Engine
         .collect()
 }
 
+/// Les valeurs d'une ligne de requête libre, **rendues en texte par le serveur** (`12c`).
+///
+/// Le protocole simple ne rend que du texte : c'est ce qui permet de lire un `jsonb` ou un `uuid`
+/// sans transtyper le SQL de l'utilisateur. La catégorie, elle, vient de `prepare` — donc le
+/// `Value` reste typé pour l'alignement et les glyphes, et un nombre ne s'affiche pas comme du texte.
+///
+/// **Un texte que la catégorie ne permet pas de convertir reste du texte.** Refuser la ligne, ou
+/// rendre `Null`, serait le défaut de `06d` sous une autre forme : la valeur existe, elle doit
+/// s'afficher.
+pub fn valeurs_textuelles(
+    ligne: &tokio_postgres::SimpleQueryRow,
+    colonnes: &[(String, crate::engine::TypeCategory)],
+) -> Vec<Value> {
+    colonnes
+        .iter()
+        .enumerate()
+        .map(|(index, (_, categorie))| match ligne.get(index) {
+            None => Value::Null,
+            Some(texte) => valeur_textuelle(texte, *categorie),
+        })
+        .collect()
+}
+
+/// Un texte du serveur converti selon la catégorie de sa colonne.
+fn valeur_textuelle(texte: &str, categorie: crate::engine::TypeCategory) -> Value {
+    use crate::engine::TypeCategory;
+    match categorie {
+        TypeCategory::Boolean => match texte {
+            // Le protocole simple rend `t` et `f`, pas `true` et `false`.
+            "t" => Value::Bool { value: true },
+            "f" => Value::Bool { value: false },
+            _ => Value::Text {
+                value: texte.to_owned(),
+            },
+        },
+        TypeCategory::Number => {
+            if let Ok(value) = texte.parse::<i64>() {
+                Value::Int { value }
+            } else if texte.contains('.') || texte.contains('e') || texte.contains('E') {
+                // **Un décimal reste du texte exact.** `12345678.91` en `f64` vaut
+                // 12345678.909999999… : la précision compte plus que le type, décision de `06d`.
+                Value::Decimal {
+                    value: texte.to_owned(),
+                }
+            } else {
+                Value::Text {
+                    value: texte.to_owned(),
+                }
+            }
+        }
+        TypeCategory::Timestamp => Value::Timestamp {
+            value: texte.to_owned(),
+        },
+        TypeCategory::Json => Value::Json {
+            value: texte.to_owned(),
+        },
+        // Le binaire arrive en `\x…` : gardé tel quel, la grille l'abrège de toute façon. Le décoder
+        // pour le réencoder en base64 coûterait sans rien apporter à l'affichage.
+        _ => Value::Text {
+            value: texte.to_owned(),
+        },
+    }
+}
+
 fn valeur_de(ligne: &Row, index: usize, colonne: &ColumnInfo) -> Result<Value, EngineError> {
     // Chaque catégorie est lue dans son type Rust naturel, puis repliée sur du texte si la
     // conversion échoue — un type exotique ne doit pas empêcher d'afficher une ligne.
@@ -436,6 +500,63 @@ pub fn insert_de(
 ///
 /// **`NULL` sans guillemets** : `'NULL'` est la chaîne « NULL », pas l'absence de valeur, et les
 /// confondre insérerait un texte là où la colonne devait rester vide.
+/// La limite à ajouter à une requête libre, **ou rien** (`12c`).
+///
+/// **Rien pour ce qui n'est pas une lecture.** Un `insert`, un `update`, un `create` ne rendent pas
+/// de lignes : leur coller un `limit` serait une erreur de syntaxe. Rien non plus pour une requête
+/// qui porte déjà une limite — l'utilisateur a dit ce qu'il voulait.
+///
+/// **La reconnaissance est syntaxique, donc approximative.** Elle lit le premier mot significatif et
+/// cherche un `limit` de premier niveau. Un `limit` dans une sous-requête suivi d'un `select` externe
+/// sans limite passerait pour limité : cas rare, et l'erreur va dans le sens le moins nuisible —
+/// aucune limite ajoutée, donc aucun mensonge sur les données. L'inverse, ajouter une limite à une
+/// requête qui en a une, produirait un SQL invalide.
+pub fn limite_a_ajouter(sql: &str, limite: crate::engine::RowLimit) -> Option<u32> {
+    let nu = sans_commentaires(sql);
+    let debut = nu.trim_start().to_ascii_lowercase();
+    let lecture = ["select", "with", "table", "values", "show", "explain"]
+        .iter()
+        .any(|mot| debut.starts_with(mot));
+    if !lecture {
+        return None;
+    }
+    // `limit` ou `fetch first` : les deux formes du standard, et PostgreSQL accepte les deux.
+    let minuscule = nu.to_ascii_lowercase();
+    if minuscule.contains(" limit ")
+        || minuscule.contains("\nlimit ")
+        || minuscule.contains(" fetch ")
+    {
+        return None;
+    }
+    Some(limite.value())
+}
+
+/// Le SQL débarrassé de ses commentaires, pour l'analyse seulement.
+///
+/// **Jamais pour l'exécution** : c'est le texte de l'utilisateur qui part, commentaires compris. Ici
+/// on veut seulement éviter qu'un `-- limit 10` en fin de ligne fasse croire à une limite.
+fn sans_commentaires(sql: &str) -> String {
+    let mut sortie = String::with_capacity(sql.len());
+    let mut reste = sql;
+    while let Some(debut) = reste.find("--") {
+        sortie.push_str(&reste[..debut]);
+        match reste[debut..].find('\n') {
+            Some(fin) => reste = &reste[debut + fin..],
+            None => return sortie,
+        }
+    }
+    sortie.push_str(reste);
+    sortie
+}
+
+/// Le SQL avec sa limite, sous une forme **visible** dans le texte exécuté.
+pub fn avec_limite(sql: &str, limite: u32) -> String {
+    // Le point-virgule final est retiré : `select 1; limit 10` n'est pas du SQL. Il est rare dans une
+    // console mais fréquent quand on copie une requête depuis ailleurs.
+    let nu = sql.trim().trim_end_matches(';');
+    format!("{nu}\nlimit {limite}")
+}
+
 /// Une instruction à exécuter : **le SQL complet, littéraux compris**.
 ///
 /// **Une seule chaîne, montrée et exécutée.** `11c` annonce « SQL qui sera exécuté » ; deux
@@ -950,5 +1071,82 @@ mod tests_previsualisation {
     #[test]
     fn sans_modification_il_n_y_a_rien_a_previsualiser() {
         assert!(updates_de(&plan(Vec::new())).is_err());
+    }
+}
+
+#[cfg(test)]
+mod tests_limite {
+    use super::*;
+    use crate::engine::RowLimit;
+
+    #[test]
+    fn une_lecture_sans_limite_en_recoit_une() {
+        assert_eq!(
+            limite_a_ajouter("select * from orders", RowLimit::OneThousand),
+            Some(1000)
+        );
+        // `with`, `table` et `values` rendent aussi des lignes.
+        assert_eq!(
+            limite_a_ajouter("with x as (select 1) select * from x", RowLimit::OneHundred),
+            Some(100)
+        );
+        assert_eq!(
+            limite_a_ajouter("table orders", RowLimit::OneHundred),
+            Some(100)
+        );
+    }
+
+    #[test]
+    fn une_lecture_qui_porte_sa_limite_n_est_pas_touchee() {
+        // **L'utilisateur a dit ce qu'il voulait.** Ajouter une seconde limite produirait un SQL
+        // invalide, ce qui est la pire des deux erreurs possibles ici.
+        assert_eq!(
+            limite_a_ajouter("select 1 limit 5", RowLimit::OneThousand),
+            None
+        );
+        assert_eq!(
+            limite_a_ajouter("select 1\nlimit 5", RowLimit::OneThousand),
+            None
+        );
+        // `fetch first` est l'autre forme du standard, et PostgreSQL l'accepte.
+        assert_eq!(
+            limite_a_ajouter("select 1 fetch first 5 rows only", RowLimit::OneThousand),
+            None
+        );
+    }
+
+    #[test]
+    fn ce_qui_ne_rend_pas_de_lignes_n_est_jamais_limite() {
+        // **Coller un `limit` à un `insert` serait une erreur de syntaxe**, pas une protection.
+        for sql in [
+            "insert into orders (id) values (1)",
+            "update orders set status = 'x'",
+            "delete from orders",
+            "create table t (id int)",
+            "truncate orders",
+            "begin",
+        ] {
+            assert_eq!(limite_a_ajouter(sql, RowLimit::OneThousand), None, "{sql}");
+        }
+    }
+
+    #[test]
+    fn un_limit_en_commentaire_ne_compte_pas() {
+        // Sans retirer les commentaires, `-- limit 10` ferait croire à une limite et laisserait
+        // passer un `select *` sans borne — un million de lignes vers l'IPC.
+        assert_eq!(
+            limite_a_ajouter("select * from orders -- limit 10\n", RowLimit::OneThousand),
+            Some(1000)
+        );
+    }
+
+    #[test]
+    fn la_limite_est_visible_dans_le_sql_execute() {
+        // **Elle doit se lire.** Le panneau montre le SQL exécuté, et une limite invisible ferait
+        // douter du nombre de lignes affiché.
+        assert_eq!(avec_limite("select 1", 500), "select 1\nlimit 500");
+        // Un point-virgule final vient souvent d'un copier-coller : `select 1; limit 500` n'est pas
+        // du SQL.
+        assert_eq!(avec_limite("select 1;", 500), "select 1\nlimit 500");
     }
 }

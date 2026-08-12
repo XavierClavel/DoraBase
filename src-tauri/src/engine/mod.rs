@@ -31,8 +31,8 @@ pub use introspection::{
     RelationDirection, RowCount, SchemaInfo, TableDetail, TableSummary, TriggerInfo, TypeCategory,
 };
 pub use rows::{
-    ApplyOutcome, Filter, FilterOperator, PendingUpdate, RowLimit, RowQuery, RowWindow,
-    SortDirection, SortKey, UpdatePlan, Value,
+    ApplyOutcome, Filter, FilterOperator, PendingUpdate, QueryResult, RowLimit, RowQuery,
+    RowWindow, SortDirection, SortKey, UpdatePlan, Value,
 };
 
 /// Ce que chaque moteur doit savoir faire.
@@ -103,6 +103,19 @@ pub trait EngineAdapter {
         &self,
         plan: &UpdatePlan,
     ) -> impl Future<Output = Result<ApplyOutcome, EngineError>> + Send;
+
+    /// Exécute le SQL **écrit par l'utilisateur** (`12c`).
+    ///
+    /// C'est la première fois que le SQL ne vient pas de DoraBase. Deux conséquences portées ici :
+    /// une limite est ajoutée aux requêtes qui rendent des lignes et n'en portent pas — sinon
+    /// `select * from orders` ferait traverser l'IPC à 1,9 million de lignes, ce que la contrainte
+    /// transverse du projet interdit — et elle est **rendue** dans `applied_limit` pour que l'écran
+    /// puisse le dire.
+    fn run_sql(
+        &self,
+        sql: &str,
+        limite: RowLimit,
+    ) -> impl Future<Output = Result<QueryResult, EngineError>> + Send;
 }
 
 /// Le moteur actif, réparti statiquement.
@@ -158,6 +171,12 @@ impl AnyEngine {
     pub async fn apply_updates(&self, plan: &UpdatePlan) -> Result<ApplyOutcome, EngineError> {
         match self {
             Self::Postgres(adaptateur) => adaptateur.apply_updates(plan).await,
+        }
+    }
+
+    pub async fn run_sql(&self, sql: &str, limite: RowLimit) -> Result<QueryResult, EngineError> {
+        match self {
+            Self::Postgres(adaptateur) => adaptateur.run_sql(sql, limite).await,
         }
     }
 
@@ -224,6 +243,16 @@ mod tests {
 
         async fn preview_updates(&self, _plan: &UpdatePlan) -> Result<String, EngineError> {
             Ok(String::new())
+        }
+
+        async fn run_sql(&self, _sql: &str, _limite: RowLimit) -> Result<QueryResult, EngineError> {
+            Ok(QueryResult {
+                columns: Vec::new(),
+                rows: Vec::new(),
+                sql: String::new(),
+                duration_ms: 0,
+                applied_limit: None,
+            })
         }
 
         async fn apply_updates(&self, _plan: &UpdatePlan) -> Result<ApplyOutcome, EngineError> {

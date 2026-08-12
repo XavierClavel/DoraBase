@@ -198,6 +198,33 @@ value: string | null,
 expected: string | null, };
 
 /**
+ * Le résultat d'une requête libre de la console (`12c`).
+ *
+ * **Distinct de `RowWindow`**, qui décrit une fenêtre de lecture d'une table connue : ici les
+ * colonnes ne viennent pas du catalogue mais du résultat, et il n'y a ni décalage ni total — une
+ * requête arbitraire n'a pas de « page suivante » définissable.
+ */
+export type QueryResult = { 
+/**
+ * Les noms des colonnes rendues, dans l'ordre.
+ */
+columns: Array<string>, rows: Array<Array<Value>>, 
+/**
+ * Le SQL **réellement exécuté**, limite comprise s'il y en a une.
+ *
+ * Montré à l'écran : une requête affichée différente de celle qui a tourné serait un piège pour
+ * qui débogue — le même arbitrage que `RowWindow.sql` en `10c`.
+ */
+sql: string, durationMs: number, 
+/**
+ * La limite que **DoraBase** a ajoutée, quand la requête n'en portait pas.
+ *
+ * **Annoncée, jamais silencieuse.** Une limite tue ferait croire à une table de mille lignes —
+ * un mensonge sur les données, la pire catégorie de défaut pour cet outil.
+ */
+appliedLimit: number | null, };
+
+/**
  * Une clé étrangère, dans un sens ou dans l'autre.
  *
  * `A4` montre un bloc « Relations » ; `A5` un aperçu de « ligne liée ». Les deux sens
