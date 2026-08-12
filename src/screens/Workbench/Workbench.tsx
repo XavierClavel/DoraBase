@@ -318,6 +318,98 @@ export function Workbench({
     )
   }
 
+  /**
+   * Le centre de l'écran : la bande d'onglets, puis ce que l'onglet actif ouvre.
+   *
+   * **Extrait dans une variable, et c'est un correctif.** `12a` l'avait *copié* dans les deux
+   * branches — console pleine largeur, ou partage avec le panneau droit — et les deux copies avaient
+   * déjà divergé de seize lignes : les ajouts de `12c` à `12e` n'étaient allés que dans la première.
+   * Un bloc dupliqué se répare une fois sur deux.
+   */
+  const centre = (
+    <div className={styles.centre}>
+      <WorkbenchTabs
+        etat={etatOnglets}
+        onSelect={(id) => setEtatOnglets((etat) => ({ ...etat, actif: id }))}
+        onClose={(id) => setEtatOnglets((etat) => fermer(etat, id))}
+        onReorder={(ids) => setEtatOnglets((etat) => reordonner(etat, ids))}
+      />
+      {consoleActive && cle ? (
+        // La console SQL (`12a`). Elle occupe la largeur du centre ; le panneau droit
+        // reste celui de l'écran, et `12c` lui donnera un contenu utile.
+        <ConsoleView
+          // **Une instance par console, et `12b` lui donne sa raison** : CodeMirror tient
+          // son propre document, donc sans remontage la seconde console afficherait le
+          // texte de la première. `12a` avait retiré cette `key` faute de garantie
+          // mesurable — elle en a une maintenant.
+          key={idOnglet(consoleActive)}
+          texte={textes[idOnglet(consoleActive)] ?? ''}
+          onTexteChange={(texte) =>
+            setTextes((precedent) => ({
+              ...precedent,
+              [idOnglet(consoleActive)]: texte,
+            }))
+          }
+          contexte={contexte ? `${contexte.database} · ${contexte.schema}` : undefined}
+          onExecuter={cle === null ? undefined : execution.demander}
+          onExecuterLaSelection={cle === null ? undefined : execution.demander}
+          enCours={execution.enCours}
+          resultat={execution.resultat}
+          erreur={execution.erreur}
+          // **Une fonction, pas une valeur** : elle est lue au moment de la frappe, donc une
+          // table ouverte après le montage de la console voit ses colonnes proposées.
+          catalogue={catalogue}
+          onExpliquer={cle === null ? undefined : execution.expliquer}
+          plan={execution.plan}
+          planEnCours={execution.planEnCours}
+          vue={execution.vue}
+          onVueChange={execution.setVue}
+        />
+      ) : table && cle ? (
+        // Les lignes de la table ouverte (`10c`). La toolbar (`10e`) et le panneau
+        // de ligne (`10f`) viendront l'entourer.
+        <TableView
+          // Une instance par onglet : changer de table remonte la vue, donc remet
+          // filtres et tri à zéro sans effet de nettoyage.
+          key={`${table.key.project}/${table.key.database}/${table.schema}.${table.table}`}
+          cle={cle}
+          schema={table.schema}
+          table={table.table}
+          columns={detail?.columns ?? []}
+          passerelle={passerelleLignes}
+          onEtatChange={setEtatRequete}
+          onLectureChange={setLecture}
+          rang={rangChoisi}
+          onRangChange={setRangChoisi}
+          edition={enEdition}
+          rafraichissement={rafraichissement}
+          attente={attente}
+          onAttenteChange={onAttenteChange}
+        />
+      ) : (
+        <>
+          <BreadcrumbBar
+            database={contexte?.database ?? '—'}
+            schema={contexte?.schema ?? '—'}
+            counts={comptes(objets)}
+            type={type}
+            onTypeChange={setType}
+            filter={filtre}
+            onFilterChange={setFiltre}
+          />
+          <ObjectTable
+            schema={contexte?.schema ?? ''}
+            objects={visibles}
+            type={type}
+            selectedName={objetChoisi}
+            onSelect={(objet) => setObjetChoisi(objet.name)}
+            onOpen={ouvrirTable}
+          />
+        </>
+      )}
+    </div>
+  )
+
   return (
     <div className={styles.root}>
       <TitleBar
@@ -486,82 +578,7 @@ export function Workbench({
             // résultat qui n'existe pas encore. Le centre est donc rendu seul ou dans le partage
             // selon ce que l'onglet ouvre. Vu à l'écran en assemblant `12a`.
             consoleActive ? (
-              <div className={styles.centre}>
-                <WorkbenchTabs
-                  etat={etatOnglets}
-                  onSelect={(id) => setEtatOnglets((etat) => ({ ...etat, actif: id }))}
-                  onClose={(id) => setEtatOnglets((etat) => fermer(etat, id))}
-                  onReorder={(ids) => setEtatOnglets((etat) => reordonner(etat, ids))}
-                />
-                {consoleActive && cle ? (
-                  // La console SQL (`12a`). Elle occupe la largeur du centre ; le panneau droit
-                  // reste celui de l'écran, et `12c` lui donnera un contenu utile.
-                  <ConsoleView
-                    // **Une instance par console, et `12b` lui donne sa raison** : CodeMirror tient
-                    // son propre document, donc sans remontage la seconde console afficherait le
-                    // texte de la première. `12a` avait retiré cette `key` faute de garantie
-                    // mesurable — elle en a une maintenant.
-                    key={idOnglet(consoleActive)}
-                    texte={textes[idOnglet(consoleActive)] ?? ''}
-                    onTexteChange={(texte) =>
-                      setTextes((precedent) => ({
-                        ...precedent,
-                        [idOnglet(consoleActive)]: texte,
-                      }))
-                    }
-                    contexte={contexte ? `${contexte.database} · ${contexte.schema}` : undefined}
-                    onExecuter={cle === null ? undefined : execution.demander}
-                    onExecuterLaSelection={cle === null ? undefined : execution.demander}
-                    enCours={execution.enCours}
-                    resultat={execution.resultat}
-                    erreur={execution.erreur}
-                    // **Une fonction, pas une valeur** : elle est lue au moment de la frappe, donc une
-                    // table ouverte après le montage de la console voit ses colonnes proposées.
-                    catalogue={catalogue}
-                  />
-                ) : table && cle ? (
-                  // Les lignes de la table ouverte (`10c`). La toolbar (`10e`) et le panneau
-                  // de ligne (`10f`) viendront l'entourer.
-                  <TableView
-                    // Une instance par onglet : changer de table remonte la vue, donc remet
-                    // filtres et tri à zéro sans effet de nettoyage.
-                    key={`${table.key.project}/${table.key.database}/${table.schema}.${table.table}`}
-                    cle={cle}
-                    schema={table.schema}
-                    table={table.table}
-                    columns={detail?.columns ?? []}
-                    passerelle={passerelleLignes}
-                    onEtatChange={setEtatRequete}
-                    onLectureChange={setLecture}
-                    rang={rangChoisi}
-                    onRangChange={setRangChoisi}
-                    edition={enEdition}
-                    rafraichissement={rafraichissement}
-                    attente={attente}
-                    onAttenteChange={onAttenteChange}
-                  />
-                ) : (
-                  <>
-                    <BreadcrumbBar
-                      database={contexte?.database ?? '—'}
-                      schema={contexte?.schema ?? '—'}
-                      counts={comptes(objets)}
-                      type={type}
-                      onTypeChange={setType}
-                      filter={filtre}
-                      onFilterChange={setFiltre}
-                    />
-                    <ObjectTable
-                      schema={contexte?.schema ?? ''}
-                      objects={visibles}
-                      type={type}
-                      selectedName={objetChoisi}
-                      onSelect={(objet) => setObjetChoisi(objet.name)}
-                      onOpen={ouvrirTable}
-                    />
-                  </>
-                )}
-              </div>
+              centre
             ) : (
               <SplitPane
                 storageKey="workbench:detail"
@@ -573,73 +590,7 @@ export function Workbench({
                 // recevait 296 px et la grille tombait à zéro pixel de large — défaut de `10b`,
                 // constaté en mesurant `A5` le 10 août 2026.
                 sized="end"
-                start={
-                  <div className={styles.centre}>
-                    <WorkbenchTabs
-                      etat={etatOnglets}
-                      onSelect={(id) => setEtatOnglets((etat) => ({ ...etat, actif: id }))}
-                      onClose={(id) => setEtatOnglets((etat) => fermer(etat, id))}
-                      onReorder={(ids) => setEtatOnglets((etat) => reordonner(etat, ids))}
-                    />
-                    {consoleActive && cle ? (
-                      // La console SQL (`12a`). Elle occupe la largeur du centre ; le panneau droit
-                      // reste celui de l'écran, et `12c` lui donnera un contenu utile.
-                      <ConsoleView
-                        texte={textes[idOnglet(consoleActive)] ?? ''}
-                        onTexteChange={(texte) =>
-                          setTextes((precedent) => ({
-                            ...precedent,
-                            [idOnglet(consoleActive)]: texte,
-                          }))
-                        }
-                        contexte={
-                          contexte ? `${contexte.database} · ${contexte.schema}` : undefined
-                        }
-                      />
-                    ) : table && cle ? (
-                      // Les lignes de la table ouverte (`10c`). La toolbar (`10e`) et le panneau
-                      // de ligne (`10f`) viendront l'entourer.
-                      <TableView
-                        // Une instance par onglet : changer de table remonte la vue, donc remet
-                        // filtres et tri à zéro sans effet de nettoyage.
-                        key={`${table.key.project}/${table.key.database}/${table.schema}.${table.table}`}
-                        cle={cle}
-                        schema={table.schema}
-                        table={table.table}
-                        columns={detail?.columns ?? []}
-                        passerelle={passerelleLignes}
-                        onEtatChange={setEtatRequete}
-                        onLectureChange={setLecture}
-                        rang={rangChoisi}
-                        onRangChange={setRangChoisi}
-                        edition={enEdition}
-                        rafraichissement={rafraichissement}
-                        attente={attente}
-                        onAttenteChange={onAttenteChange}
-                      />
-                    ) : (
-                      <>
-                        <BreadcrumbBar
-                          database={contexte?.database ?? '—'}
-                          schema={contexte?.schema ?? '—'}
-                          counts={comptes(objets)}
-                          type={type}
-                          onTypeChange={setType}
-                          filter={filtre}
-                          onFilterChange={setFiltre}
-                        />
-                        <ObjectTable
-                          schema={contexte?.schema ?? ''}
-                          objects={visibles}
-                          type={type}
-                          selectedName={objetChoisi}
-                          onSelect={(objet) => setObjetChoisi(objet.name)}
-                          onOpen={ouvrirTable}
-                        />
-                      </>
-                    )}
-                  </div>
-                }
+                start={centre}
                 end={
                   // **Un seul panneau droit, dont le contenu suit l'écran** : le détail de l'objet
                   // en `A4`, la ligne sélectionnée en `A5`, les modifications en attente en `A6`.

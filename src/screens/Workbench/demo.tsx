@@ -316,6 +316,17 @@ export function WorkbenchDemo() {
         // base réelle. Une exécution simulée ne prouve rien du moteur — c'est ce que les tests Rust sur
         // PostgreSQL vérifient. La limite ajoutée est annoncée, comme le fait la commande réelle.
         passerelleExecution={{
+          explainSql: async (_cle, sql) => ({
+            lines: [
+              'Sort  (cost=1834.21..1836.71 rows=1000 width=44)',
+              "  Sort Key: (date_trunc('day'::text, created_at)) DESC",
+              '  ->  HashAggregate  (cost=1784.00..1809.00 rows=1000 width=44)',
+              '        ->  Seq Scan on orders o  (cost=0.00..1584.00 rows=40000 width=20)',
+              "              Filter: (status = 'paid'::text)",
+            ],
+            sql: `explain ${sql}`,
+            durationMs: 2,
+          }),
           runSql: async (_cle, sql) => ({
             columns: ['jour', 'commandes', 'ca_eur'],
             rows: [

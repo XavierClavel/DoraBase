@@ -351,7 +351,7 @@ des tests verts au moment où il a été introduit.
 
 ## Ce qu'a trouvé le premier usage réel, les 9 et 10 août 2026
 
-Vingt-deux défauts, tous sur une suite verte, et **douze signalés par l'utilisateur** — pas par nous. Le
+Vingt-trois défauts, tous sur une suite verte, et **douze signalés par l'utilisateur** — pas par nous. Le
 point commun : le décor de test était trop régulier pour les produire, ou l'assertion mesurait
 autre chose que ce qu'elle prétendait.
 
@@ -500,6 +500,13 @@ autre chose que ce qu'elle prétendait.
    mesure. Le premier parce que l'ordre d'affichage portait déjà la garantie ; le second parce que le
    texte venait de l'état — jusqu'à `12b`, où CodeMirror a rendu la `key` nécessaire. Retirer ce qui
    ne défend rien reste juste, **et il faut le remettre quand une dépendance change les règles**.
+
+48. **Un bloc JSX dupliqué, et déjà divergent.** `12a` avait « extrait » le centre de l'écran pour le
+   rendre seul en console — en réalité il l'avait **copié** dans les deux branches. Seize lignes plus
+   tard, les ajouts de `12c` à `12e` n'étaient allés que dans la première copie, et l'écran de travail
+   rendait deux centres différents selon le chemin. Trouvé en comptant les `<ConsoleView>` : il y en
+   avait deux. **Un bloc dupliqué se répare une fois sur deux.** L'extraction, elle, a demandé quatre
+   tentatives : `{centre}` en position d'expression est un objet vide, non un enfant JSX.
 
 **Ce que ces neuf défauts disent du décor de test.** Aucun n'était un défaut de logique : tous
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros

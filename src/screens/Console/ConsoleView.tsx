@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
-import type { QueryResult } from '../../domain/engine'
+import type { QueryPlan, QueryResult } from '../../domain/engine'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
-import { ConsoleResult } from './ConsoleResult'
+import { ConsoleResult, type VueResultat } from './ConsoleResult'
 import styles from './ConsoleView.module.css'
 import type { Catalogue } from './completion'
 import { SqlEditor } from './SqlEditor'
@@ -25,6 +25,12 @@ type ConsoleViewProps = {
   erreur?: string | null
   /** Ce que l'autocomplétion propose (`12d`), lu au moment de la frappe. */
   catalogue?: () => Catalogue
+  /** Demande le plan de la requête (`12e`) — sans l'exécuter. */
+  onExpliquer?: (sql: string) => void
+  plan?: QueryPlan | null
+  planEnCours?: boolean
+  vue?: VueResultat
+  onVueChange?: (vue: VueResultat) => void
 }
 
 /**
@@ -44,6 +50,11 @@ export function ConsoleView({
   resultat = null,
   erreur = null,
   catalogue,
+  onExpliquer,
+  plan = null,
+  planEnCours = false,
+  vue,
+  onVueChange,
 }: ConsoleViewProps) {
   // La sélection courante, publiée par l'éditeur : « Sélection » l'exécute, et se replie sur la
   // requête entière quand il n'y a rien de sélectionné — un bouton qui ne ferait rien sur une
@@ -56,9 +67,12 @@ export function ConsoleView({
       ? undefined
       : () => onExecuterLaSelection(selection.trim() === '' ? texte : selection)
 
+  const expliquer = onExpliquer === undefined ? undefined : () => onExpliquer(texte)
+
   const actions = ACTIONS.map((action) => {
     if (action.libelle === 'Exécuter') return { ...action, onClick: executer }
     if (action.libelle === 'Sélection') return { ...action, onClick: executerLaSelection }
+    if (action.libelle === 'Expliquer') return { ...action, onClick: expliquer }
     return action
   })
 
@@ -108,7 +122,17 @@ export function ConsoleView({
               />
             </div>
           }
-          end={<ConsoleResult resultat={resultat} erreur={erreur} enCours={enCours} />}
+          end={
+            <ConsoleResult
+              resultat={resultat}
+              erreur={erreur}
+              enCours={enCours}
+              vue={vue}
+              onVueChange={onVueChange}
+              plan={plan}
+              planEnCours={planEnCours}
+            />
+          }
         />
       </div>
 
@@ -139,7 +163,7 @@ const ACTIONS = [
   {
     libelle: 'Expliquer',
     icone: 'plan' as const,
-    raison: 'Le plan d’exécution arrive avec 12e.',
+    raison: 'Aucune base n’est ouverte : il n’y a rien à expliquer.',
   },
   {
     libelle: 'Enregistrer',

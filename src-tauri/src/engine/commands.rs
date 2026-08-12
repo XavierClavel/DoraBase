@@ -549,6 +549,23 @@ pub async fn run_sql(
     resultat
 }
 
+/// Le plan d'exécution d'une requête (`12e`), **sans l'exécuter**.
+///
+/// `EXPLAIN` et non `EXPLAIN ANALYZE` : voir `explain_sql`. Sur une console où l'on écrit aussi des
+/// `UPDATE`, « Expliquer » deviendrait un bouton qui écrit.
+#[tauri::command]
+pub async fn explain_sql(
+    key: DatabaseKey,
+    sql: String,
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<crate::engine::QueryPlan, EngineError> {
+    registry
+        .avec(&key.cle(), move |adaptateur| {
+            Box::pin(async move { adaptateur.explain_sql(&sql).await })
+        })
+        .await
+}
+
 fn repertoire_de_configuration(app: &tauri::AppHandle) -> Result<std::path::PathBuf, EngineError> {
     use tauri::Manager;
     app.path()

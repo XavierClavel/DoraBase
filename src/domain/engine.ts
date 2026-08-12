@@ -198,6 +198,19 @@ value: string | null,
 expected: string | null, };
 
 /**
+ * Le plan d'exécution d'une requête (`12e`).
+ */
+export type QueryPlan = { 
+/**
+ * Le plan tel que le serveur le rend, ligne par ligne.
+ */
+lines: Array<string>, 
+/**
+ * Le SQL d'explication réellement envoyé — `explain <requête>`, montré à l'écran.
+ */
+sql: string, durationMs: number, };
+
+/**
  * Le résultat d'une requête libre de la console (`12c`).
  *
  * **Distinct de `RowWindow`**, qui décrit une fenêtre de lecture d'une table connue : ici les

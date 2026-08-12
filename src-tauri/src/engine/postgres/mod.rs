@@ -279,6 +279,41 @@ impl EngineAdapter for PostgresAdapter {
         })
     }
 
+    async fn explain_sql(&self, sql: &str) -> Result<crate::engine::QueryPlan, EngineError> {
+        // **`EXPLAIN` sans `ANALYZE`, et la limite n'a pas de sens ici** : un plan ne rend pas les
+        // lignes de la requête, seulement sa forme d'exécution.
+        // Le point-virgule final est **gardé** : `explain select 1;` est valide, et le retirer ne
+        // changeait aucune mesure — contrairement à `avec_limite`, où `select 1; limit 500` ne serait
+        // pas du SQL.
+        let explique = format!("explain {}", sql.trim());
+
+        let depart = Instant::now();
+        // `simple_query` pour la même raison qu'en `12c` : le plan arrive en texte, et le protocole
+        // simple évite tout transtypage.
+        let messages = self
+            .client
+            .simple_query(explique.as_str())
+            .await
+            .map_err(|e| error::traduire(&e))?;
+        let duration_ms = depart.elapsed().as_millis() as u64;
+
+        let lines = messages
+            .iter()
+            .filter_map(|message| match message {
+                tokio_postgres::SimpleQueryMessage::Row(ligne) => {
+                    ligne.get(0).map(|texte| texte.to_owned())
+                }
+                _ => None,
+            })
+            .collect();
+
+        Ok(crate::engine::QueryPlan {
+            lines,
+            sql: explique,
+            duration_ms,
+        })
+    }
+
     async fn apply_updates(
         &self,
         plan: &crate::engine::UpdatePlan,
@@ -1387,6 +1422,66 @@ mod tests_db {
             issue.rows.first().and_then(|l| l.first()),
             Some(crate::engine::Value::Bool { value: true })
         ));
+    }
+
+    /// **Le plan est estimé, jamais mesuré** (`12e`).
+    #[tokio::test]
+    async fn expliquer_rend_un_plan_sans_executer_la_requete() {
+        let adaptateur = adaptateur().await;
+        let id = ligne_a_moi(&adaptateur, "à-expliquer").await;
+
+        // On explique un `delete` : s'il était **exécuté** pour produire le plan, la ligne
+        // disparaîtrait. C'est tout l'enjeu du choix `EXPLAIN` contre `EXPLAIN ANALYZE` — sur une
+        // console où l'on écrit aussi, « Expliquer » deviendrait un bouton qui écrit.
+        let plan = adaptateur
+            .explain_sql(&format!("delete from introspection.orders where id = {id}"))
+            .await
+            .expect("le plan doit être rendu");
+
+        assert!(!plan.lines.is_empty(), "le plan doit avoir des lignes");
+        // Le SQL d'explication est **montré** : « explain … », sans `analyze`.
+        assert!(plan.sql.starts_with("explain "), "{}", plan.sql);
+        assert!(
+            !plan.sql.to_lowercase().contains("analyze"),
+            "`EXPLAIN ANALYZE` exécuterait la requête : {}",
+            plan.sql
+        );
+
+        // **La ligne est toujours là.** C'est la preuve que le plan n'a rien exécuté.
+        assert_eq!(
+            lire(&adaptateur, id, "status").await.as_deref(),
+            Some("à-expliquer")
+        );
+        retirer_ligne(&adaptateur, id).await;
+    }
+
+    #[tokio::test]
+    async fn un_plan_de_lecture_nomme_le_parcours_et_son_cout() {
+        let adaptateur = adaptateur().await;
+        let plan = adaptateur
+            .explain_sql("select * from introspection.orders where status = 'paid'")
+            .await
+            .expect("le plan doit être rendu");
+
+        let texte = plan.lines.join("\n");
+        // Un plan sans coût ne sert à rien : c'est le chiffre qu'on vient lire.
+        assert!(texte.contains("cost="), "{texte}");
+        assert!(
+            texte.to_lowercase().contains("scan"),
+            "un parcours doit être nommé : {texte}"
+        );
+    }
+
+    #[tokio::test]
+    async fn un_point_virgule_final_ne_casse_pas_l_explication() {
+        let adaptateur = adaptateur().await;
+        // `explain select 1;` est valide, mais un point-virgule au milieu — `explain select 1; ` suivi
+        // d'autre chose — ne l'est pas. Le copier-coller en amène souvent.
+        let plan = adaptateur
+            .explain_sql("select 1;")
+            .await
+            .expect("le plan doit être rendu");
+        assert!(!plan.lines.is_empty());
     }
 
     /// Une apostrophe dans une valeur ne doit pas casser le SQL — le cas classique.

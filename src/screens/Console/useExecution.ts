@@ -1,14 +1,16 @@
 import { useCallback, useState } from 'react'
-import { runSql } from '../../data/commandes'
-import type { DatabaseKey, QueryResult, RowLimit } from '../../domain/engine'
+import { explainSql, runSql } from '../../data/commandes'
+import type { DatabaseKey, QueryPlan, QueryResult, RowLimit } from '../../domain/engine'
+import type { VueResultat } from './ConsoleResult'
 import { demandeConfirmation, natureDe, sansRestriction } from './nature'
 
 /** Ce qui appelle la commande. Injectable : le pont ne répond pas hors de la webview. */
 export type PasserelleExecution = {
   runSql: (key: DatabaseKey, sql: string, limit: RowLimit) => Promise<QueryResult>
+  explainSql: (key: DatabaseKey, sql: string) => Promise<QueryPlan>
 }
 
-export const PASSERELLE_EXECUTION: PasserelleExecution = { runSql }
+export const PASSERELLE_EXECUTION: PasserelleExecution = { runSql, explainSql }
 
 /** La limite par défaut de la console, celle du mockup. */
 export const LIMITE_CONSOLE: RowLimit = 'oneThousand'
@@ -24,6 +26,12 @@ export type Execution = {
   enCours: boolean
   resultat: QueryResult | null
   erreur: string | null
+  /** Demande le plan de la requête (`12e`) — sans l'exécuter. */
+  expliquer: (sql: string) => void
+  plan: QueryPlan | null
+  planEnCours: boolean
+  vue: VueResultat
+  setVue: (vue: VueResultat) => void
 }
 
 /**
@@ -38,6 +46,9 @@ export function useExecution(cle: DatabaseKey | null, passerelle: PasserelleExec
   const [enCours, setEnCours] = useState(false)
   const [resultat, setResultat] = useState<QueryResult | null>(null)
   const [erreur, setErreur] = useState<string | null>(null)
+  const [plan, setPlan] = useState<QueryPlan | null>(null)
+  const [planEnCours, setPlanEnCours] = useState(false)
+  const [vue, setVue] = useState<VueResultat>('resultat')
 
   const lancer = useCallback(
     (sql: string) => {
@@ -77,8 +88,44 @@ export function useExecution(cle: DatabaseKey | null, passerelle: PasserelleExec
     [lancer],
   )
 
+  /**
+   * Demande le plan, et bascule sur sa vue.
+   *
+   * **Basculer fait partie de l'action** : « Expliquer » sans changer de vue laisserait croire que
+   * rien ne s'est passé, et il faudrait deviner qu'un onglet s'est rempli.
+   */
+  const expliquer = useCallback(
+    (sql: string) => {
+      if (cle === null || sql.trim() === '') return
+      setPlanEnCours(true)
+      setErreur(null)
+      setVue('plan')
+      passerelle
+        .explainSql(cle, sql)
+        .then((issue) => {
+          setPlanEnCours(false)
+          setPlan(issue)
+        })
+        .catch((raison: unknown) => {
+          setPlanEnCours(false)
+          setPlan(null)
+          // Le refus va au même endroit que celui d'une exécution : une requête invalide échoue à
+          // l'explication comme à l'exécution, et deux affichages différents pour la même faute
+          // obligeraient à chercher deux fois.
+          setVue('resultat')
+          setErreur(messageDe(raison))
+        })
+    },
+    [cle, passerelle],
+  )
+
   return {
     demander,
+    expliquer,
+    plan,
+    planEnCours,
+    vue,
+    setVue,
     executer: () => {
       if (aConfirmer) lancer(aConfirmer.sql)
     },

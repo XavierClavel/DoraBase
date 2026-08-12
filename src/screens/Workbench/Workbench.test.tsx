@@ -142,6 +142,13 @@ const PREVIEW = { previewUpdates: async () => 'BEGIN;\nCOMMIT;' }
  * **Le décor par défaut est en `prod`**, ce qui est utile ailleurs et trompeur ici : les tests
  * d'écriture qui ne portent pas sur la confirmation passeraient par elle sans le dire.
  */
+/** Un plan d'exécution minimal (`12e`). */
+const PLAN = {
+  lines: ['Seq Scan on orders  (cost=0.00..35.50 rows=2550 width=4)'],
+  sql: 'explain select 1',
+  durationMs: 2,
+}
+
 /** Un résultat de requête minimal, pour les tests qui ne portent pas sur son contenu. */
 const RESULTAT = {
   columns: ['n'],
@@ -431,18 +438,19 @@ describe('la console SQL (`12a`)', () => {
 
     // **Présentes et désactivées, pas absentes** : les cacher ferait croire qu'elles n'existeront
     // pas, les laisser cliquables et inertes ferait croire à une panne (défaut n° 36).
-    // « Exécuter » et « Sélection » répondent depuis `12c` : elles ne sont plus de cette liste.
-    for (const libelle of ['Expliquer', 'Enregistrer', 'Formater']) {
+    // « Exécuter » et « Sélection » répondent depuis `12c`, « Expliquer » depuis `12e` : elles ne
+    // sont plus de cette liste. Il ne reste que ce qui n'a pas encore de spec livrée.
+    for (const libelle of ['Enregistrer', 'Formater']) {
       const action = screen.getByRole('button', { name: new RegExp(libelle) })
       expect(action).toBeDisabled()
-      expect(action).toHaveAttribute('title', expect.stringMatching(/1[12][a-f]|formateur/))
+      expect(action).toHaveAttribute('title', expect.stringMatching(/12f|formateur/))
     }
   })
 
   it('« Exécuter » envoie le texte de la console au moteur (`12c`)', async () => {
     const utilisateur = userEvent.setup()
     const executer = vi.fn(async () => RESULTAT)
-    monter({ passerelleExecution: { runSql: executer } })
+    monter({ passerelleExecution: { runSql: executer, explainSql: async () => PLAN } })
     await ouvrirUneConsole(utilisateur)
     await saisir(utilisateur, 'select 1')
 
@@ -460,7 +468,10 @@ describe('la console SQL (`12a`)', () => {
   it('la limite ajoutée par DoraBase est annoncée', async () => {
     const utilisateur = userEvent.setup()
     monter({
-      passerelleExecution: { runSql: async () => ({ ...RESULTAT, appliedLimit: 1000 }) },
+      passerelleExecution: {
+        runSql: async () => ({ ...RESULTAT, appliedLimit: 1000 }),
+        explainSql: async () => PLAN,
+      },
     })
     await ouvrirUneConsole(utilisateur)
     await saisir(utilisateur, 'select 1')
@@ -476,7 +487,7 @@ describe('la console SQL (`12a`)', () => {
   it('une lecture ne demande aucune confirmation', async () => {
     const utilisateur = userEvent.setup()
     const executer = vi.fn(async () => RESULTAT)
-    monter({ passerelleExecution: { runSql: executer } })
+    monter({ passerelleExecution: { runSql: executer, explainSql: async () => PLAN } })
     await ouvrirUneConsole(utilisateur)
     await saisir(utilisateur, 'select 1')
     await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
@@ -490,7 +501,7 @@ describe('la console SQL (`12a`)', () => {
   it('un `delete` sans `where` demande confirmation, et la nomme', async () => {
     const utilisateur = userEvent.setup()
     const executer = vi.fn(async () => RESULTAT)
-    monter({ passerelleExecution: { runSql: executer } })
+    monter({ passerelleExecution: { runSql: executer, explainSql: async () => PLAN } })
     await ouvrirUneConsole(utilisateur)
     await saisir(utilisateur, 'delete from orders')
     await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
@@ -514,7 +525,7 @@ describe('la console SQL (`12a`)', () => {
   it('annuler la confirmation n’exécute rien et garde la requête', async () => {
     const utilisateur = userEvent.setup()
     const executer = vi.fn(async () => RESULTAT)
-    monter({ passerelleExecution: { runSql: executer } })
+    monter({ passerelleExecution: { runSql: executer, explainSql: async () => PLAN } })
     await ouvrirUneConsole(utilisateur)
     await saisir(utilisateur, 'drop table orders')
     await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
@@ -536,6 +547,7 @@ describe('la console SQL (`12a`)', () => {
           if (echoue) throw new Error('ERROR: relation "absente" does not exist')
           return RESULTAT
         },
+        explainSql: async () => PLAN,
       },
     })
     await ouvrirUneConsole(utilisateur)
@@ -559,6 +571,7 @@ describe('la console SQL (`12a`)', () => {
         runSql: async () => {
           throw new Error('ERROR: syntax error at or near "from"\nLINE 1: select from')
         },
+        explainSql: async () => PLAN,
       },
     })
     await ouvrirUneConsole(utilisateur)
@@ -572,6 +585,74 @@ describe('la console SQL (`12a`)', () => {
     expect(alerte).toHaveTextContent('LINE 1')
     // Et la requête reste : la perdre sur une faute de frappe obligerait à tout retaper.
     expect(texteDeLEditeur()).toBe('select from')
+  })
+
+  it('« Expliquer » demande le plan et bascule sur sa vue (`12e`)', async () => {
+    const utilisateur = userEvent.setup()
+    const expliquer = vi.fn(async () => PLAN)
+    const executer = vi.fn(async () => RESULTAT)
+    monter({ passerelleExecution: { runSql: executer, explainSql: expliquer } })
+    await ouvrirUneConsole(utilisateur)
+    await saisir(utilisateur, 'select 1')
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+    await screen.findByRole('grid', { name: /Résultat de la requête/ })
+
+    await utilisateur.click(screen.getByRole('button', { name: /Expliquer/ }))
+
+    await waitFor(() => expect(expliquer).toHaveBeenCalledOnce())
+    // **Basculer fait partie de l'action** : « Expliquer » sans changer de vue laisserait croire que
+    // rien ne s'est passé, et il faudrait deviner qu'un onglet s'est rempli.
+    expect(await screen.findByText(/Coûts/)).toBeInTheDocument()
+    // Et le plan dit qu'il est **estimé** : un plan dont on croirait les temps réels ferait prendre
+    // des décisions sur des chiffres qui n'en sont pas.
+    expect(screen.getByText(/n’a pas été exécutée/)).toBeInTheDocument()
+    // La requête n'a **pas** été exécutée par « Expliquer ».
+    expect(executer).toHaveBeenCalledOnce()
+  })
+
+  it('la vue JSON suit la ligne sélectionnée', async () => {
+    const utilisateur = userEvent.setup()
+    monter({
+      passerelleExecution: {
+        runSql: async () => RESULTAT,
+        explainSql: async () => PLAN,
+      },
+    })
+    await ouvrirUneConsole(utilisateur)
+    await saisir(utilisateur, 'select 1')
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+    await screen.findByRole('grid', { name: /Résultat de la requête/ })
+
+    await utilisateur.click(screen.getByRole('radio', { name: /JSON/ }))
+    // **Sans sélection, rien à montrer** : sérialiser mille lignes contredirait la contrainte
+    // transverse du projet, donc la vue suit la sélection comme le panneau de `10f`.
+    expect(screen.getByText(/Sélectionnez une ligne/)).toBeInTheDocument()
+
+    await utilisateur.click(screen.getByRole('radio', { name: /Résultat/ }))
+    await utilisateur.click(screen.getAllByRole('row')[1] as HTMLElement)
+    await utilisateur.click(screen.getByRole('radio', { name: /JSON/ }))
+    expect(screen.getByText(/"n"/)).toBeInTheDocument()
+  })
+
+  it('« Messages » dit ce que DoraBase a fait de son propre chef', async () => {
+    const utilisateur = userEvent.setup()
+    monter({
+      passerelleExecution: {
+        runSql: async () => ({ ...RESULTAT, appliedLimit: 1000 }),
+        explainSql: async () => PLAN,
+      },
+    })
+    await ouvrirUneConsole(utilisateur)
+    await saisir(utilisateur, 'select 1')
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+    await screen.findByRole('grid', { name: /Résultat de la requête/ })
+
+    await utilisateur.click(screen.getByRole('radio', { name: /Messages/ }))
+    // La barre disparaît du regard ; un journal se relit. Et c'est là qu'on cherche pourquoi un
+    // résultat s'arrête à mille lignes.
+    expect(screen.getByText(/a ajouté/)).toBeInTheDocument()
+    // Ce qui n'est pas capté est **dit**, plutôt que laissé croire à un serveur silencieux.
+    expect(screen.getByText(/ne sont pas encore captés/)).toBeInTheDocument()
   })
 
   it('fermer une console la retire, et le voisin reprend la main', async () => {
