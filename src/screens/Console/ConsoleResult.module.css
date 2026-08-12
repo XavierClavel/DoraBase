@@ -1,0 +1,73 @@
+/*
+ * La zone de résultat de la console (`12c`) : la grille, puis la barre de chiffres.
+ *
+ * La barre reprend la hauteur et l'échelle de celle de `A5` (`10c`) : deux barres d'état qui ne se
+ * ressembleraient pas obligeraient à relire la seconde comme si elle était nouvelle.
+ */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background: var(--paper);
+  border-top: 1px solid var(--divider);
+}
+
+.grille {
+  flex: 1;
+  min-height: 0;
+}
+
+.barre {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  box-sizing: content-box;
+  height: var(--h-status);
+  padding: 0 var(--space-6);
+  border-top: 1px solid var(--divider);
+  background: var(--bar);
+  font-family: var(--font-mono);
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-medium);
+  color: var(--ink-meta);
+}
+
+.compte {
+  font-weight: var(--weight-bold);
+  color: var(--ink-2);
+}
+
+/* La limite ajoutée par DoraBase, en accent : ce n'est pas un chiffre parmi d'autres mais un fait
+ * sur ce qui n'est **pas** affiché. */
+.limite {
+  color: var(--accent-deep);
+  font-weight: var(--weight-semibold);
+}
+
+.erreur,
+.attente,
+.vide {
+  margin: 0;
+  padding: var(--space-8);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: 1.5;
+}
+
+/* Le message du serveur, en entier et en mono : il porte souvent une position (`LINE 3:`) et un
+ * extrait de la requête, que la proportionnelle désalignerait. */
+.erreur {
+  font-family: var(--font-mono);
+  color: var(--danger-ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.attente,
+.vide {
+  text-align: center;
+  color: var(--ink-meta);
+}

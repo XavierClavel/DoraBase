@@ -47,6 +47,20 @@ confirmation pour une requête inoffensive (le mot `delete` dans une chaîne). L
 Ce n'est pas un garde-fou de sécurité : un utilisateur qui veut écrire écrira. C'est un garde-fou
 contre la faute de frappe, ce qui est le vrai risque d'une console.
 
+### Les valeurs arrivent par le protocole simple, pas par le protocole étendu
+
+Le protocole étendu rend les valeurs au format **binaire** : un `jsonb` y commence par un octet de
+version, un `uuid` fait seize octets bruts, et la lecture en texte échoue. C'est exactement le défaut
+de `06d`, où ces types se lisaient `NULL` — et il s'est reproduit ici au premier essai.
+
+La grille l'évite en transtypant dans le `select` qu'elle construit ; ici le SQL est celui de
+l'utilisateur, et le réécrire trahirait la section suivante. Le protocole simple rend tout en texte,
+ce que `psql` fait depuis toujours.
+
+**Les types viennent de `prepare`**, qui ne l'exécute pas. Deux bénéfices : une requête qui rend zéro
+ligne garde ses en-têtes — une grille sans en-tête laisserait croire à une erreur — et la catégorie de
+chaque colonne décide de l'alignement, ce qu'une valeur textuelle ne permet pas de deviner.
+
 ### Le SQL envoyé est celui qui est affiché
 
 Comme en `11c`/`11d` : la requête exécutée est le texte de l'éditeur, éventuellement complété d'une

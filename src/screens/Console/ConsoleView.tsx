@@ -1,5 +1,8 @@
+import { useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
+import type { QueryResult } from '../../domain/engine'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
+import { ConsoleResult } from './ConsoleResult'
 import styles from './ConsoleView.module.css'
 import { SqlEditor } from './SqlEditor'
 
@@ -12,6 +15,13 @@ type ConsoleViewProps = {
   onTexteChange: (texte: string) => void
   /** Le libellé de la base, pour le pied — `analytics · public`. */
   contexte?: string
+  /** Exécute la requête entière (`12c`). Absent, l'action est désactivée avec sa raison. */
+  onExecuter?: (sql: string) => void
+  /** Exécute la portion sélectionnée, ou la requête entière faute de sélection. */
+  onExecuterLaSelection?: (sql: string) => void
+  enCours?: boolean
+  resultat?: QueryResult | null
+  erreur?: string | null
 }
 
 /**
@@ -21,23 +31,50 @@ type ConsoleViewProps = {
  * **désactivées avec leur raison** : la règle de `09f`, et la leçon du défaut n° 36, où un bouton
  * cliquable et inerte s'est lu comme une panne.
  */
-export function ConsoleView({ texte, onTexteChange, contexte }: ConsoleViewProps) {
+export function ConsoleView({
+  texte,
+  onTexteChange,
+  contexte,
+  onExecuter,
+  onExecuterLaSelection,
+  enCours = false,
+  resultat = null,
+  erreur = null,
+}: ConsoleViewProps) {
+  // La sélection courante, publiée par l'éditeur : « Sélection » l'exécute, et se replie sur la
+  // requête entière quand il n'y a rien de sélectionné — un bouton qui ne ferait rien sur une
+  // sélection vide se lirait comme une panne.
+  const [selection, setSelection] = useState('')
+
+  const executer = onExecuter === undefined ? undefined : () => onExecuter(texte)
+  const executerLaSelection =
+    onExecuterLaSelection === undefined
+      ? undefined
+      : () => onExecuterLaSelection(selection.trim() === '' ? texte : selection)
+
+  const actions = ACTIONS.map((action) => {
+    if (action.libelle === 'Exécuter') return { ...action, onClick: executer }
+    if (action.libelle === 'Sélection') return { ...action, onClick: executerLaSelection }
+    return action
+  })
+
   return (
     <div className={styles.root}>
       {/* `role="toolbar"`, comme celle de `A5` (`10e`) : un groupe de commandes qui agissent sur la
           même chose. Le nom la distingue — « Exécuter » ici et une action homonyme ailleurs
           s'annonceraient à l'identique sans lui. */}
       <div className={styles.toolbar} role="toolbar" aria-label="Actions de la console">
-        {ACTIONS.map((action) => (
+        {actions.map((action) => (
           <button
             key={action.libelle}
             type="button"
             className={action.principale ? styles.principale : styles.action}
-            disabled
-            title={action.raison}
+            onClick={'onClick' in action ? action.onClick : undefined}
+            disabled={!('onClick' in action) || action.onClick === undefined || enCours}
+            title={'onClick' in action && action.onClick !== undefined ? undefined : action.raison}
           >
             {action.icone && <Icon name={action.icone} size={12} strokeWidth={2.1} />}
-            {action.libelle}
+            {enCours && action.principale ? 'Exécution…' : action.libelle}
             {action.raccourci && <span className={styles.raccourci}>{action.raccourci}</span>}
           </button>
         ))}
@@ -57,16 +94,16 @@ export function ConsoleView({ texte, onTexteChange, contexte }: ConsoleViewProps
           handleShadow="end"
           start={
             <div className={styles.editeur}>
-              <SqlEditor texteInitial={texte} onTexteChange={onTexteChange} />
+              <SqlEditor
+                texteInitial={texte}
+                onTexteChange={onTexteChange}
+                onSelectionChange={setSelection}
+                onExecuter={executer}
+                onExecuterLaSelection={executerLaSelection}
+              />
             </div>
           }
-          end={
-            <div className={styles.resultat}>
-              <p className={styles.vide}>
-                Aucun résultat : l’exécution des requêtes arrive avec la spec suivante.
-              </p>
-            </div>
-          }
+          end={<ConsoleResult resultat={resultat} erreur={erreur} enCours={enCours} />}
         />
       </div>
 
@@ -87,12 +124,12 @@ const ACTIONS = [
     icone: 'play' as const,
     raccourci: '⌘↩',
     principale: true,
-    raison: 'L’exécution des requêtes arrive avec 12c.',
+    raison: 'Aucune base n’est ouverte : il n’y a rien à interroger.',
   },
   {
     libelle: 'Sélection',
     raccourci: '⌥↩',
-    raison: 'Exécuter la sélection arrive avec 12c.',
+    raison: 'Aucune base n’est ouverte : il n’y a rien à interroger.',
   },
   {
     libelle: 'Expliquer',

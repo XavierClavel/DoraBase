@@ -351,7 +351,7 @@ des tests verts au moment où il a été introduit.
 
 ## Ce qu'a trouvé le premier usage réel, les 9 et 10 août 2026
 
-Vingt défauts, tous sur une suite verte, et **douze signalés par l'utilisateur** — pas par nous. Le
+Vingt-deux défauts, tous sur une suite verte, et **douze signalés par l'utilisateur** — pas par nous. Le
 point commun : le décor de test était trop régulier pour les produire, ou l'assertion mesurait
 autre chose que ce qu'elle prétendait.
 
@@ -489,6 +489,17 @@ autre chose que ce qu'elle prétendait.
    le run — mode d'échec déroutant, puisque le rapport affiche « 614 passed » juste au-dessus. Le
    setup rend un tableau **vide** plutôt qu'une mesure inventée : dire « aucun rectangle » est la
    vérité sous jsdom, et Playwright vérifie tout ce qui dépend d'une mesure réelle.
+
+46. **Le défaut de `06d` s'est reproduit à l'identique, trois specs plus tard.** `run_sql` lisait les
+   valeurs par le protocole étendu, comme le reste du moteur : `jsonb` s'est lu `NULL`. La cause est
+   la même — le format binaire — mais le remède de `06d` (transtyper dans le `select`) était
+   interdit ici, le SQL étant celui de l'utilisateur. Le protocole simple, qui rend tout en texte, a
+   résolu les deux. **Un défaut corrigé par un remède local revient dès que le contexte change.**
+47. **Deux gardes ajoutés « par prudence » qui ne gardaient rien.** `setResultat(null)` avant
+   d'afficher une erreur, et un `key` par console en `12a` : ni l'un ni l'autre ne changeait une
+   mesure. Le premier parce que l'ordre d'affichage portait déjà la garantie ; le second parce que le
+   texte venait de l'état — jusqu'à `12b`, où CodeMirror a rendu la `key` nécessaire. Retirer ce qui
+   ne défend rien reste juste, **et il faut le remettre quand une dépendance change les règles**.
 
 **Ce que ces neuf défauts disent du décor de test.** Aucun n'était un défaut de logique : tous
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros

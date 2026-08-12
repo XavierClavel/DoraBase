@@ -5,6 +5,8 @@ import type {
   ConnectionState,
   ConnectionStateEntry,
   DatabaseKey,
+  QueryResult,
+  RowLimit,
   RowQuery,
   RowWindow,
   SchemaInfo,
@@ -116,6 +118,16 @@ export async function previewUpdates(key: DatabaseKey, plan: UpdatePlan): Promis
  */
 export async function applyChanges(key: DatabaseKey, plan: UpdatePlan): Promise<ApplyOutcome> {
   return invoke<ApplyOutcome>('apply_changes', { key, plan })
+}
+
+/**
+ * Exécute le SQL **écrit par l'utilisateur** (`12c`).
+ *
+ * La limite est ajoutée par le moteur aux requêtes qui rendent des lignes et n'en portent pas, et
+ * **rendue** dans `appliedLimit` : une limite silencieuse ferait croire à une table de mille lignes.
+ */
+export async function runSql(key: DatabaseKey, sql: string, limit: RowLimit): Promise<QueryResult> {
+  return invoke<QueryResult>('run_sql', { key, sql, limit })
 }
 
 /**

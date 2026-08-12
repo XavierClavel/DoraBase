@@ -395,7 +395,7 @@ propres critères de vérification.
 | [`11d`](11d-appliquer-les-modifications.md) | A6 | Appliquer : transaction, garde-fous, conflit | **fait** |
 | [`12a`](12a-coquille-de-console.md) | A7 | Coquille de console : onglets, toolbar, partage vertical | **fait** |
 | [`12b`](12b-editeur-sql.md) | A7 | L'éditeur SQL — CodeMirror 6, thème du handoff | **fait** |
-| [`12c`](12c-executer-une-requete.md) | A7 | Exécuter : `run_sql`, auto-`LIMIT`, requêtes destructives | à faire |
+| [`12c`](12c-executer-une-requete.md) | A7 | Exécuter : `run_sql`, auto-`LIMIT`, requêtes destructives | **fait** |
 | [`12d`](12d-autocompletion.md) | A7 | Autocomplétion depuis le catalogue introspecté | à faire |
 | [`12e`](12e-onglets-de-resultat.md) | A7 | Résultat, JSON, Plan, Messages | à faire |
 | [`12f`](12f-requetes-enregistrees.md) | A7 | « Mes requêtes » : persistance, renommer, retirer | à faire |
