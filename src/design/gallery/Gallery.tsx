@@ -1287,6 +1287,7 @@ const PROJETS_DEMO = [
   {
     name: 'Atelier Nord',
     activeEnvironment: 'prod' as const,
+    queries: [],
     databases: [
       { name: 'analytics', engine: 'postgresql' as const, variants: [] },
       { name: 'shop', engine: 'mysql' as const, variants: [] },
@@ -1296,6 +1297,7 @@ const PROJETS_DEMO = [
   {
     name: 'Atelier Sud',
     activeEnvironment: 'dev' as const,
+    queries: [],
     databases: [{ name: 'tracking', engine: 'mongodb' as const, variants: [] }],
   },
 ]

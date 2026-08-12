@@ -27,7 +27,7 @@ test('un fichier lu remplit les projets', async () => {
     <Sonde
       charger={async () => ({
         kind: 'loaded',
-        projects: [{ name: 'Print', activeEnvironment: 'dev', databases: [] }],
+        projects: [{ name: 'Print', activeEnvironment: 'dev', databases: [], queries: [] }],
       })}
     />,
   )

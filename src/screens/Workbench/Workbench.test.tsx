@@ -26,6 +26,7 @@ const PROJETS: Project[] = [
   {
     name: 'Atelier Nord',
     activeEnvironment: 'prod',
+    queries: [],
     databases: [
       { name: 'analytics', engine: 'postgresql', variants: [variante] },
       { name: 'shop', engine: 'postgresql', variants: [variante] },
@@ -142,6 +143,12 @@ const PREVIEW = { previewUpdates: async () => 'BEGIN;\nCOMMIT;' }
  * **Le décor par défaut est en `prod`**, ce qui est utile ailleurs et trompeur ici : les tests
  * d'écriture qui ne portent pas sur la confirmation passeraient par elle sans le dire.
  */
+/** Une passerelle d'exécution complète, pour les tests qui ne portent pas sur elle. */
+const PASSERELLE_SQL = {
+  runSql: async () => RESULTAT,
+  explainSql: async () => PLAN,
+}
+
 /** Un plan d'exécution minimal (`12e`). */
 const PLAN = {
   lines: ['Seq Scan on orders  (cost=0.00..35.50 rows=2550 width=4)'],
@@ -161,6 +168,7 @@ const RESULTAT = {
 const PROJETS_DEV: Project[] = PROJETS.map((projet) => ({
   ...projet,
   activeEnvironment: 'dev' as const,
+  queries: [],
   // La **variante** suit l'environnement actif : sans elle, la base n'est joignable dans aucun
   // environnement et l'arbre ne déplie rien — l'écran de test n'irait même pas jusqu'à la grille.
   databases: projet.databases.map((base) => ({
@@ -438,12 +446,12 @@ describe('la console SQL (`12a`)', () => {
 
     // **Présentes et désactivées, pas absentes** : les cacher ferait croire qu'elles n'existeront
     // pas, les laisser cliquables et inertes ferait croire à une panne (défaut n° 36).
-    // « Exécuter » et « Sélection » répondent depuis `12c`, « Expliquer » depuis `12e` : elles ne
-    // sont plus de cette liste. Il ne reste que ce qui n'a pas encore de spec livrée.
-    for (const libelle of ['Enregistrer', 'Formater']) {
+    // Les cinq autres répondent depuis `12c` à `12f`. **Il ne reste que « Formater »**, seule action
+    // du mockup sans spec : elle demande un formateur SQL, donc une décision de dépendance.
+    for (const libelle of ['Formater']) {
       const action = screen.getByRole('button', { name: new RegExp(libelle) })
       expect(action).toBeDisabled()
-      expect(action).toHaveAttribute('title', expect.stringMatching(/12f|formateur/))
+      expect(action).toHaveAttribute('title', expect.stringMatching(/formateur/))
     }
   })
 
@@ -653,6 +661,77 @@ describe('la console SQL (`12a`)', () => {
     expect(screen.getByText(/a ajouté/)).toBeInTheDocument()
     // Ce qui n'est pas capté est **dit**, plutôt que laissé croire à un serveur silencieux.
     expect(screen.getByText(/ne sont pas encore captés/)).toBeInTheDocument()
+  })
+
+  it('« Enregistrer » nomme la requête, et « Remplacer » quand le nom est pris (`12f`)', async () => {
+    const utilisateur = userEvent.setup()
+    const enregistrer = vi.fn(async () => {})
+    monter({ passerelleExecution: PASSERELLE_SQL, onSaveQuery: enregistrer })
+    await ouvrirUneConsole(utilisateur)
+    await saisir(utilisateur, 'select 1')
+
+    // **Le bouton de la toolbar**, pas celui de la modale : deux boutons portent ce nom dès qu'elle
+    // est ouverte, et `getByRole` refuse l'ambiguïté — ce qui est ici un service.
+    const toolbar = screen.getByRole('toolbar', { name: 'Actions de la console' })
+    await utilisateur.click(within(toolbar).getByRole('button', { name: /Enregistrer/ }))
+    const modale = screen.getByRole('dialog', { name: /Enregistrer la requête/ })
+    // La requête appartient au **projet** : une requête écrite pour `prod` vaut le plus souvent pour
+    // la même base en `dev`, et changer d'environnement est le geste que `A4` rend courant.
+    expect(modale).toHaveTextContent('enregistrée dans le projet')
+
+    await utilisateur.type(screen.getByLabelText('Nom de la requête'), 'CA par jour')
+    // Le bouton de la modale, distingué de celui de la toolbar par son conteneur.
+    await utilisateur.click(within(modale).getByRole('button', { name: 'Enregistrer' }))
+    expect(enregistrer).toHaveBeenCalledWith('Atelier Nord', 'CA par jour', 'select 1')
+  })
+
+  it('un nom déjà pris annonce le remplacement avant de cliquer', async () => {
+    const utilisateur = userEvent.setup()
+    const avecRequete: Project[] = PROJETS.map((projet) => ({
+      ...projet,
+      queries: [{ name: 'CA par jour', sql: 'select 0' }],
+    }))
+    monter({
+      projects: avecRequete,
+      passerelleExecution: PASSERELLE_SQL,
+      onSaveQuery: async () => {},
+    })
+    await ouvrirUneConsole(utilisateur)
+    await saisir(utilisateur, 'select 1')
+    await utilisateur.click(
+      within(screen.getByRole('toolbar', { name: 'Actions de la console' })).getByRole('button', {
+        name: /Enregistrer/,
+      }),
+    )
+    await utilisateur.type(screen.getByLabelText('Nom de la requête'), 'CA par jour')
+
+    // **Le bouton dit ce qui va se passer** : enregistrer sous un nom pris écrase, et l'apprendre
+    // après coup serait perdre du travail.
+    expect(screen.getByRole('button', { name: 'Remplacer' })).toBeInTheDocument()
+    expect(screen.getByText(/son SQL sera remplacé/)).toBeInTheDocument()
+  })
+
+  it('« Mes requêtes » ouvre une console sur le texte enregistré', async () => {
+    const utilisateur = userEvent.setup()
+    const avecRequete: Project[] = PROJETS.map((projet) => ({
+      ...projet,
+      queries: [{ name: 'CA par jour', sql: 'select 42' }],
+    }))
+    monter({ projects: avecRequete, passerelleExecution: PASSERELLE_SQL })
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+
+    await utilisateur.click(screen.getByRole('button', { name: /CA par jour/ }))
+    // Une console est le seul endroit où l'on peut exécuter : ouvrir la requête ailleurs demanderait
+    // un second éditeur.
+    expect(texteDeLEditeur()).toBe('select 42')
+  })
+
+  it('la section « Mes requêtes » n’existe pas quand il n’y en a aucune', async () => {
+    const utilisateur = userEvent.setup()
+    monter({ passerelleExecution: PASSERELLE_SQL })
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    // Une section vide serait du bruit sur un écran déjà dense.
+    expect(screen.queryByText('Mes requêtes')).not.toBeInTheDocument()
   })
 
   it('fermer une console la retire, et le voisin reprend la main', async () => {

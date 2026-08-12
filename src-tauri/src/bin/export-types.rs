@@ -17,7 +17,8 @@
 
 use dorabase_lib::config::{
     ConfigLoad, CreateProjectRequest, DeleteDatabaseRequest, DeleteProjectRequest, DeleteResult,
-    Project, RenameProjectRequest, RenameProjectResult, SaveDatabaseRequest, UpdateVariantRequest,
+    Project, RenameProjectRequest, RenameProjectResult, SaveDatabaseRequest, SavedQuery,
+    SavedQueryRequest, UpdateVariantRequest,
 };
 use dorabase_lib::engine::commands::{
     ConnectionRequest, ConnectionStateEntry, ConnectionTest, DatabaseKey,
@@ -54,6 +55,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     SaveDatabaseRequest::export_all(&config)?;
     CreateProjectRequest::export_all(&config)?;
     RenameProjectRequest::export_all(&config)?;
+    SavedQuery::export_all(&config)?;
+    SavedQueryRequest::export_all(&config)?;
     DeleteDatabaseRequest::export_all(&config)?;
     DeleteProjectRequest::export_all(&config)?;
     DeleteResult::export_all(&config)?;

@@ -350,6 +350,7 @@ mod tests {
         Project {
             name: nom.into(),
             active_environment: Environment::Prod,
+            queries: Vec::new(),
             databases: vec![Database::new(
                 "analytics",
                 Engine::PostgreSql,
@@ -635,6 +636,7 @@ mod tests {
         let projet = Project {
             name: "Atelier Nord".into(),
             active_environment: Environment::Dev,
+            queries: Vec::new(),
             databases: vec![Database::new(
                 "analytics",
                 Engine::PostgreSql,
@@ -654,5 +656,52 @@ mod tests {
         );
         // Et le contrôle négatif : aucune valeur de secret nulle part.
         assert!(!brut.contains("motdepasse-en-clair"));
+    }
+
+    /// **Une configuration écrite avant `12f` se lit encore**, sans requêtes et sans erreur.
+    ///
+    /// C'est la garantie que le champ `queries` devait tenir, et la raison pour laquelle la version du
+    /// format n'a **pas** été montée : `serde(default)` suffit, et une migration qui ne migre rien
+    /// aurait ajouté un bras à la chaîne pour un changement rétrocompatible. La spec `12f` annonçait
+    /// l'inverse ; c'était une complication inutile.
+    #[test]
+    fn une_configuration_sans_requetes_se_lit_toujours() {
+        let dossier = tempfile::tempdir().expect("répertoire temporaire");
+        let cible = dossier.path().join("config.json");
+        // Le fichier tel que `05b` l'écrivait : version 1, aucun champ `queries`.
+        std::fs::write(
+            &cible,
+            r#"{"version":1,"projects":[{"name":"Print","activeEnvironment":"prod","databases":[]}]}"#,
+        )
+        .expect("écriture");
+
+        match load(&cible) {
+            LoadOutcome::Loaded(projects) => {
+                assert_eq!(projects.len(), 1);
+                // Vide, ce qui est l'état correct — et non une lecture qui échoue.
+                assert!(projects[0].queries.is_empty());
+            }
+            autre => panic!("la lecture doit réussir : {autre:?}"),
+        }
+    }
+
+    #[test]
+    fn les_requetes_enregistrees_survivent_a_un_aller_retour() {
+        let dossier = tempfile::tempdir().expect("répertoire temporaire");
+        let cible = dossier.path().join("config.json");
+        let mut projets = vec![projet_nomme("Print")];
+        projets[0].queries = vec![crate::config::model::SavedQuery {
+            name: "CA par jour".into(),
+            sql: "select 1".into(),
+        }];
+
+        save(&cible, &projets).expect("écriture");
+        match load(&cible) {
+            LoadOutcome::Loaded(projects) => {
+                assert_eq!(projects[0].queries.len(), 1);
+                assert_eq!(projects[0].queries[0].name, "CA par jour");
+            }
+            autre => panic!("la lecture doit réussir : {autre:?}"),
+        }
     }
 }

@@ -209,6 +209,19 @@ pub struct DeleteResult {
     pub leftover_secrets: Vec<String>,
 }
 
+/// Ce que `12f` envoie pour enregistrer, renommer ou retirer une requête.
+#[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct SavedQueryRequest {
+    pub project: String,
+    pub name: String,
+    /// Le SQL, pour l'enregistrement. Ignoré par le retrait.
+    pub sql: Option<String>,
+    /// Le nouveau nom, pour le renommage.
+    pub rename_to: Option<String>,
+}
+
 /// Ce que `A2` envoie pour créer un projet.
 #[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -431,6 +444,73 @@ pub async fn delete_project(
         projects: suppression.projects,
         leftover_secrets: suppression.secrets_residuels,
     })
+}
+
+/// Enregistre une requête, ou remplace celle qui porte ce nom (`12f`).
+#[tauri::command]
+pub fn save_query(
+    request: SavedQueryRequest,
+    state: State<'_, ConfigState>,
+) -> Result<Vec<Project>, String> {
+    ecrire_les_requetes(&state, |projects| {
+        super::enregistrer::enregistrer_requete(
+            projects,
+            &request.project,
+            &request.name,
+            request.sql.as_deref().unwrap_or_default(),
+        )
+        .map_err(|erreur| erreur.to_string())
+    })
+}
+
+/// Retire une requête enregistrée (`12f`).
+#[tauri::command]
+pub fn delete_query(
+    request: SavedQueryRequest,
+    state: State<'_, ConfigState>,
+) -> Result<Vec<Project>, String> {
+    ecrire_les_requetes(&state, |projects| {
+        super::enregistrer::retirer_requete(projects, &request.project, &request.name)
+            .map_err(|erreur| erreur.to_string())
+    })
+}
+
+/// Renomme une requête enregistrée (`12f`).
+#[tauri::command]
+pub fn rename_query(
+    request: SavedQueryRequest,
+    state: State<'_, ConfigState>,
+) -> Result<Vec<Project>, String> {
+    let nouveau = request
+        .rename_to
+        .clone()
+        .ok_or_else(|| "un renommage exige un nouveau nom".to_owned())?;
+    ecrire_les_requetes(&state, |projects| {
+        super::enregistrer::renommer_requete(projects, &request.project, &request.name, &nouveau)
+            .map_err(|erreur| erreur.to_string())
+    })
+}
+
+/// Le tronc commun des trois opérations sur les requêtes (`12f`).
+///
+/// **Les projets viennent du disque**, comme partout ailleurs : une liste envoyée par l'écran pourrait
+/// être périmée et écraser une écriture. Même arbitrage qu'en `08e`, `08f` et `08i`.
+fn ecrire_les_requetes(
+    state: &State<'_, ConfigState>,
+    operation: impl FnOnce(&[Project]) -> Result<Vec<Project>, String>,
+) -> Result<Vec<Project>, String> {
+    let garde = state
+        .0
+        .lock()
+        .map_err(|_| "état de configuration corrompu".to_owned())?;
+    let store = garde
+        .as_ref()
+        .ok_or_else(|| "la configuration doit être lue avant d'être écrite".to_owned())?;
+
+    let projects: Vec<Project> = store.load_projects()?;
+    let suivants = operation(&projects)?;
+    store.save(&suivants).map_err(|erreur| erreur.to_string())?;
+    Ok(suivants)
 }
 
 /// Ajoute une base et sa variante à un projet, et range son mot de passe.

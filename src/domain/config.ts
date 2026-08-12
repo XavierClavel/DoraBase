@@ -89,7 +89,20 @@ export type Project = { name: string,
  * Global au projet, et persisté (`05b`) : le handoff le traite comme une propriété
  * du projet, pas comme une préférence d'affichage.
  */
-activeEnvironment: Environment, databases: Array<Database>, };
+activeEnvironment: Environment, databases: Array<Database>, 
+/**
+ * Les requêtes enregistrées du projet (`12f`).
+ *
+ * **Au projet, pas à la base.** Une requête écrite pour `analytics` en `prod` vaut le plus
+ * souvent pour la même base en `dev` : la rattacher à une variante la rendrait inutilisable dès
+ * qu'on change d'environnement — et changer d'environnement est le geste que `A4` rend courant.
+ *
+ * **`default` plutôt qu'une migration.** Une configuration écrite avant `12f` n'a pas ce champ :
+ * `serde` le remplit par un vecteur vide, ce qui est l'état correct. Monter la version du format
+ * aurait forcé une migration qui ne migre rien — la spec l'annonçait, et c'était une complication
+ * inutile.
+ */
+queries: Array<SavedQuery>, };
 
 /**
  * Ce que `08i` envoie pour renommer un projet.
@@ -113,6 +126,24 @@ export type RenameProjectResult = { projects: Array<Project>, missingSecrets: Ar
  * commande. La variante reçue porte donc `password: null`, que `enregistrer` remplace.
  */
 export type SaveDatabaseRequest = { project: string, database: string, engine: Engine, variant: EnvironmentVariant, password: string | null, };
+
+/**
+ * Une requête enregistrée (`12f`).
+ */
+export type SavedQuery = { name: string, sql: string, };
+
+/**
+ * Ce que `12f` envoie pour enregistrer, renommer ou retirer une requête.
+ */
+export type SavedQueryRequest = { project: string, name: string, 
+/**
+ * Le SQL, pour l'enregistrement. Ignoré par le retrait.
+ */
+sql: string | null, 
+/**
+ * Le nouveau nom, pour le renommage.
+ */
+renameTo: string | null, };
 
 /**
  * Le mécanisme réellement employé, tel que le front l'apprend.

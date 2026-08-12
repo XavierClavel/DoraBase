@@ -31,14 +31,16 @@ courant.
 
 Elle porte donc `projet` + `nom` + `sql`, et rien de plus.
 
-### Le fichier de configuration accueille une nouvelle section, donc sa version change
+### Le fichier accueille une nouvelle section, et sa version **ne change pas**
 
-`05b` a posé une configuration versionnée avec quarantaine du fichier illisible. Ajouter les
-requêtes est un changement de schéma : la version monte, et une configuration d'une version
-antérieure se lit toujours — sans requêtes, ce qui est l'état correct.
+`05b` a posé une configuration versionnée avec quarantaine du fichier illisible. Cette spec
+annonçait d'abord une montée de version ; c'était une complication inutile. Le champ `queries` porte
+`serde(default)` : une configuration écrite avant `12f` se lit telle quelle, sans requêtes, ce qui est
+l'état correct. Monter la version aurait forcé une migration qui ne migre rien.
 
-C'est le premier vrai test de la migration de `05b`, écrite mais jamais exercée par un changement
-réel.
+La migration de `05b` reste donc écrite et jamais exercée par un changement réel. Ce qui est vérifié
+ici, c'est la **rétrocompatibilité** : un test lit un fichier v1 sans `queries` et attend une lecture
+qui réussit.
 
 ### Retirer une requête est destructif, mais sans ambiguïté
 
@@ -49,7 +51,8 @@ et ne récapitule rien.
 ## Done when
 
 - [ ] Une requête enregistrée survit à un redémarrage.
-- [ ] Une configuration écrite **avant** cette spec se lit encore, sans requêtes et sans erreur.
+- [ ] Une configuration écrite **avant** cette spec se lit encore, sans requêtes et sans erreur —
+      sans migration, le champ portant `serde(default)`.
 - [ ] Cliquer une entrée ouvre une console sur son texte ; la modifier puis « Enregistrer » met à
       jour l'entrée existante plutôt que d'en créer une seconde.
 - [ ] Renommer et retirer fonctionnent depuis le menu « … ».

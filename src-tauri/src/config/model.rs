@@ -267,6 +267,27 @@ pub struct Project {
     /// du projet, pas comme une préférence d'affichage.
     pub active_environment: Environment,
     pub databases: Vec<Database>,
+    /// Les requêtes enregistrées du projet (`12f`).
+    ///
+    /// **Au projet, pas à la base.** Une requête écrite pour `analytics` en `prod` vaut le plus
+    /// souvent pour la même base en `dev` : la rattacher à une variante la rendrait inutilisable dès
+    /// qu'on change d'environnement — et changer d'environnement est le geste que `A4` rend courant.
+    ///
+    /// **`default` plutôt qu'une migration.** Une configuration écrite avant `12f` n'a pas ce champ :
+    /// `serde` le remplit par un vecteur vide, ce qui est l'état correct. Monter la version du format
+    /// aurait forcé une migration qui ne migre rien — la spec l'annonçait, et c'était une complication
+    /// inutile.
+    #[serde(default)]
+    pub queries: Vec<SavedQuery>,
+}
+
+/// Une requête enregistrée (`12f`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct SavedQuery {
+    pub name: String,
+    pub sql: String,
 }
 
 #[cfg(test)]

@@ -8,7 +8,7 @@ test('un fichier absent donne un état neuf sans projet', () => {
 })
 
 test('un fichier lu rend ses projets', () => {
-  const projets = [{ name: 'Print', activeEnvironment: 'dev' as const, databases: [] }]
+  const projets = [{ name: 'Print', activeEnvironment: 'dev' as const, databases: [], queries: [] }]
   expect(interpreter({ kind: 'loaded', projects: projets })).toEqual({
     kind: 'loaded',
     projects: projets,
