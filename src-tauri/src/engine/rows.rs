@@ -174,6 +174,19 @@ pub struct QueryResult {
     pub applied_limit: Option<u32>,
 }
 
+/// Le plan d'exécution d'une requête (`12e`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub struct QueryPlan {
+    /// Le plan tel que le serveur le rend, ligne par ligne.
+    pub lines: Vec<String>,
+    /// Le SQL d'explication réellement envoyé — `explain <requête>`, montré à l'écran.
+    pub sql: String,
+    #[ts(type = "number")]
+    pub duration_ms: u64,
+}
+
 /// Ce qu'une application de modifications a produit (`11d`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]

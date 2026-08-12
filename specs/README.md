@@ -397,7 +397,7 @@ propres critères de vérification.
 | [`12b`](12b-editeur-sql.md) | A7 | L'éditeur SQL — CodeMirror 6, thème du handoff | **fait** |
 | [`12c`](12c-executer-une-requete.md) | A7 | Exécuter : `run_sql`, auto-`LIMIT`, requêtes destructives | **fait** |
 | [`12d`](12d-autocompletion.md) | A7 | Autocomplétion depuis le catalogue introspecté | **fait** |
-| [`12e`](12e-onglets-de-resultat.md) | A7 | Résultat, JSON, Plan, Messages | à faire |
+| [`12e`](12e-onglets-de-resultat.md) | A7 | Résultat, JSON, Plan, Messages | **fait** |
 | [`12f`](12f-requetes-enregistrees.md) | A7 | « Mes requêtes » : persistance, renommer, retirer | à faire |
 | `13` | A8 | Console MongoDB et vue JSON | à écrire |
 | `14` | A9 | Structure et DDL | à écrire |

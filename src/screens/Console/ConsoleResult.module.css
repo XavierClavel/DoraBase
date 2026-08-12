@@ -19,6 +19,22 @@
   min-height: 0;
 }
 
+/* La bande d'onglets du résultat (`12e`), au-dessus de la vue. */
+.vues {
+  display: flex;
+  align-items: center;
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--divider);
+  background: var(--bar);
+}
+
+/* Les vues non tabulaires défilent ; la grille gère son défilement elle-même. */
+.panneau {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
 .barre {
   display: flex;
   align-items: center;

@@ -1,13 +1,24 @@
-import type { QueryResult, Value } from '../../domain/engine'
+import { useState } from 'react'
+import type { QueryPlan, QueryResult, Value } from '../../domain/engine'
 import { formatInteger } from '../../ui/format'
+import { SegmentedControl } from '../../ui/SegmentedControl/SegmentedControl'
 import { type GridColumn, VirtualGrid } from '../../ui/VirtualGrid/VirtualGrid'
 import { estNumerique, rendreValeur } from '../TableView/cellule'
 import styles from './ConsoleResult.module.css'
+import { VueJson, VueMessages, VuePlan } from './vues'
+
+/** Les quatre vues d'un résultat (`12e`). */
+export type VueResultat = 'resultat' | 'json' | 'plan' | 'messages'
 
 type ConsoleResultProps = {
   resultat: QueryResult | null
   erreur: string | null
   enCours: boolean
+  vue?: VueResultat
+  onVueChange?: (vue: VueResultat) => void
+  /** Le plan de la requête courante, ou `null` tant qu'il n'a pas été demandé. */
+  plan?: QueryPlan | null
+  planEnCours?: boolean
 }
 
 /**
@@ -18,7 +29,18 @@ type ConsoleResultProps = {
  * — dupliquer la grille pour lui donner une autre entrée serait deux grilles à maintenir, et deux
  * densités qui divergeraient au premier réglage.
  */
-export function ConsoleResult({ resultat, erreur, enCours }: ConsoleResultProps) {
+export function ConsoleResult({
+  resultat,
+  erreur,
+  enCours,
+  vue = 'resultat',
+  onVueChange,
+  plan = null,
+  planEnCours = false,
+}: ConsoleResultProps) {
+  // La ligne sélectionnée, pour la vue JSON : elle **suit la sélection**, comme le panneau de `10f`.
+  // Sérialiser mille lignes pour l'affichage contredirait la contrainte transverse du projet.
+  const [rangChoisi, setRangChoisi] = useState<number | null>(null)
   // **L'erreur passe avant tout le reste**, y compris un résultat précédent encore en mémoire :
   // l'afficher à côté d'une erreur le ferait lire comme le résultat de la requête qui vient
   // d'échouer — la lecture la plus naturelle, et la plus fausse.
@@ -64,8 +86,39 @@ export function ConsoleResult({ resultat, erreur, enCours }: ConsoleResultProps)
     cell: (ligne) => rendreValeur(ligne[index] ?? { kind: 'null' }),
   }))
 
+  const onglets = onVueChange && (
+    <div className={styles.vues}>
+      <SegmentedControl
+        label="Vue du résultat"
+        segments={[
+          { value: 'resultat' as const, label: 'Résultat', count: resultat.rows.length },
+          { value: 'json' as const, label: 'JSON' },
+          { value: 'plan' as const, label: 'Plan' },
+          { value: 'messages' as const, label: 'Messages' },
+        ]}
+        value={vue}
+        onValueChange={onVueChange}
+      />
+    </div>
+  )
+
+  if (vue !== 'resultat') {
+    return (
+      <div className={styles.root}>
+        {onglets}
+        <div className={styles.panneau}>
+          {vue === 'json' && <VueJson resultat={resultat} rang={rangChoisi} />}
+          {vue === 'plan' && <VuePlan plan={plan} enCours={planEnCours} />}
+          {vue === 'messages' && <VueMessages resultat={resultat} />}
+        </div>
+        <Barre resultat={resultat} plan={plan} />
+      </div>
+    )
+  }
+
   return (
     <div className={styles.root}>
+      {onglets}
       <div className={styles.grille}>
         <VirtualGrid
           label={`Résultat de la requête, ${resultat.rows.length} ligne${
@@ -74,26 +127,43 @@ export function ConsoleResult({ resultat, erreur, enCours }: ConsoleResultProps)
           columns={colonnes}
           rows={resultat.rows}
           rowId={(_, index) => String(index)}
+          selectedId={rangChoisi === null ? null : String(rangChoisi)}
+          onSelect={(_, index) => setRangChoisi(index)}
           viewportHeight={320}
           empty={<span>La requête n’a rendu aucune ligne.</span>}
         />
       </div>
-      <div className={styles.barre} role="status" aria-label="État du résultat">
-        <span className={styles.compte}>
-          {formatInteger(resultat.rows.length)} ligne{resultat.rows.length > 1 ? 's' : ''}
-        </span>
-        <span>·</span>
-        <span>{resultat.durationMs} ms</span>
-        {resultat.appliedLimit !== null && (
-          <>
-            <span>·</span>
-            {/* **La limite ajoutée est dite.** Une limite silencieuse ferait croire à une table de
+      <Barre resultat={resultat} plan={plan} />
+    </div>
+  )
+}
+
+/** La barre de chiffres, partagée par les quatre vues — ils décrivent la même exécution. */
+function Barre({ resultat, plan }: { resultat: QueryResult; plan: QueryPlan | null }) {
+  return (
+    <div className={styles.barre} role="status" aria-label="État du résultat">
+      <span className={styles.compte}>
+        {formatInteger(resultat.rows.length)} ligne{resultat.rows.length > 1 ? 's' : ''}
+      </span>
+      <span>·</span>
+      <span>{resultat.durationMs} ms</span>
+      {plan !== null && (
+        <>
+          <span>·</span>
+          {/* Le temps du plan, distinct de celui de la requête : le mockup les montre côte à côte,
+                et les confondre ferait croire qu'expliquer coûte le prix d'exécuter. */}
+          <span>plan {plan.durationMs} ms</span>
+        </>
+      )}
+      {resultat.appliedLimit !== null && (
+        <>
+          <span>·</span>
+          {/* **La limite ajoutée est dite.** Une limite silencieuse ferait croire à une table de
                 mille lignes — un mensonge sur les données, la pire catégorie de défaut pour cet
                 outil. Le mot « par DoraBase » distingue cette limite de celle qu'on aurait écrite. */}
-            <span className={styles.limite}>limité à {resultat.appliedLimit} par DoraBase</span>
-          </>
-        )}
-      </div>
+          <span className={styles.limite}>limité à {resultat.appliedLimit} par DoraBase</span>
+        </>
+      )}
     </div>
   )
 }

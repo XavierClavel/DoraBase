@@ -31,8 +31,8 @@ pub use introspection::{
     RelationDirection, RowCount, SchemaInfo, TableDetail, TableSummary, TriggerInfo, TypeCategory,
 };
 pub use rows::{
-    ApplyOutcome, Filter, FilterOperator, PendingUpdate, QueryResult, RowLimit, RowQuery,
-    RowWindow, SortDirection, SortKey, UpdatePlan, Value,
+    ApplyOutcome, Filter, FilterOperator, PendingUpdate, QueryPlan, QueryResult, RowLimit,
+    RowQuery, RowWindow, SortDirection, SortKey, UpdatePlan, Value,
 };
 
 /// Ce que chaque moteur doit savoir faire.
@@ -116,6 +116,15 @@ pub trait EngineAdapter {
         sql: &str,
         limite: RowLimit,
     ) -> impl Future<Output = Result<QueryResult, EngineError>> + Send;
+
+    /// Le plan d'exécution d'une requête (`12e`), **sans l'exécuter**.
+    ///
+    /// **`EXPLAIN` et non `EXPLAIN ANALYZE`.** `ANALYZE` donne les vrais temps, ce qui est précisément
+    /// ce qu'on veut d'un plan — et il *exécute* la requête. Sur une console où l'on écrit aussi des
+    /// `UPDATE`, « Expliquer » deviendrait un bouton qui écrit. Le plan est donc estimé, et l'écran le
+    /// dit.
+    fn explain_sql(&self, sql: &str)
+        -> impl Future<Output = Result<QueryPlan, EngineError>> + Send;
 }
 
 /// Le moteur actif, réparti statiquement.
@@ -177,6 +186,12 @@ impl AnyEngine {
     pub async fn run_sql(&self, sql: &str, limite: RowLimit) -> Result<QueryResult, EngineError> {
         match self {
             Self::Postgres(adaptateur) => adaptateur.run_sql(sql, limite).await,
+        }
+    }
+
+    pub async fn explain_sql(&self, sql: &str) -> Result<QueryPlan, EngineError> {
+        match self {
+            Self::Postgres(adaptateur) => adaptateur.explain_sql(sql).await,
         }
     }
 
@@ -243,6 +258,14 @@ mod tests {
 
         async fn preview_updates(&self, _plan: &UpdatePlan) -> Result<String, EngineError> {
             Ok(String::new())
+        }
+
+        async fn explain_sql(&self, _sql: &str) -> Result<QueryPlan, EngineError> {
+            Ok(QueryPlan {
+                lines: Vec::new(),
+                sql: String::new(),
+                duration_ms: 0,
+            })
         }
 
         async fn run_sql(&self, _sql: &str, _limite: RowLimit) -> Result<QueryResult, EngineError> {

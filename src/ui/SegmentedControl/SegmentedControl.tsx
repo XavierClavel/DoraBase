@@ -6,7 +6,13 @@ export type Segment<T extends string> = {
   value: T
   label: string
   /** Le compte affiché à droite du libellé, à `opacity .55`. */
-  count: number
+  /**
+   * Le compte accolé au libellé — « Tables 8 ».
+   *
+   * **Facultatif depuis `12e`** : les vues d'un résultat n'ont pas toutes un nombre à montrer, et le
+   * champ obligatoire produisait un `<span>` vide, donc une espace superflue dans le nom accessible.
+   */
+  count?: number
 }
 
 type SegmentedControlProps<T extends string> = {
@@ -62,7 +68,7 @@ export function SegmentedControl<T extends string>({
               monogramme de `RadioGroup`, mais l'inverse en conclusion — ici le compte **doit**
               faire partie du nom, parce que « Tables 8 » est l'information et qu'elle n'est
               écrite nulle part ailleurs. */}{' '}
-          <span className={styles.count}>{segment.count}</span>
+          {segment.count !== undefined && <span className={styles.count}>{segment.count}</span>}
         </label>
       ))}
     </fieldset>
