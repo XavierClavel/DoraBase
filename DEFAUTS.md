@@ -351,7 +351,7 @@ des tests verts au moment où il a été introduit.
 
 ## Ce qu'a trouvé le premier usage réel, les 9 et 10 août 2026
 
-Dix-sept défauts, tous sur une suite verte, et **douze signalés par l'utilisateur** — pas par nous. Le
+Vingt défauts, tous sur une suite verte, et **douze signalés par l'utilisateur** — pas par nous. Le
 point commun : le décor de test était trop régulier pour les produire, ou l'assertion mesurait
 autre chose que ce qu'elle prétendait.
 
@@ -471,6 +471,24 @@ autre chose que ce qu'elle prétendait.
    sont apparus **à l'écran**, jamais aux tests : chacun testait son composant isolément, et aucun ne
    regardait l'écran assemblé autour d'un onglet d'une autre nature. C'est le pendant du défaut n° 4,
    où `A4` n'existait que dans la galerie.
+
+43. **Un éditeur contrôlé perd des caractères, et deux gardes n'y changent rien.** `SqlEditor`
+   réinjectait le texte reçu par prop dans le document de CodeMirror. L'écran renvoyant la valeur en
+   retard d'un rendu, l'éditeur — déjà plus avancé — se voyait réécrire avec un texte plus ancien :
+   taper « select 1 » donnait « slc ». Comparer au document, puis à la dernière valeur notifiée, n'a
+   rien réglé — la course est structurelle. L'éditeur reçoit maintenant son texte **au montage**, et
+   un texte imposé demande un remontage, ce que la `key` par onglet fait déjà. Cette `key`, retirée en
+   `12a` faute de garantie mesurable, en a désormais une.
+44. **Du CSS pour une classe que rien ne produisait.** `theme.ts` habillait `.cm-activeLine` alors
+   qu'aucune extension ne la posait : `highlightActiveLine()` n'était pas chargée. Ni la ligne
+   courante ni le CSS n'existaient vraiment, et rien ne le disait. Trouvé par le test qui mesurait le
+   fond de cette ligne — un test écrit *après* le style, ce qui est l'ordre inverse de l'habitude et
+   ce qui l'a rendu utile.
+45. **Neuf exceptions non gérées, tous les tests verts, la suite en échec.** CodeMirror mesure son
+   texte via `Range.getClientRects()`, absent de jsdom. Vitest compte ces exceptions et fait échouer
+   le run — mode d'échec déroutant, puisque le rapport affiche « 614 passed » juste au-dessus. Le
+   setup rend un tableau **vide** plutôt qu'une mesure inventée : dire « aucun rectangle » est la
+   vérité sous jsdom, et Playwright vérifie tout ce qui dépend d'une mesure réelle.
 
 **Ce que ces neuf défauts disent du décor de test.** Aucun n'était un défaut de logique : tous
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros

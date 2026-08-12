@@ -349,22 +349,40 @@ describe('la console SQL (`12a`)', () => {
     expect(screen.queryByRole('button', { name: /Nouvelle console/ })).not.toBeInTheDocument()
   })
 
+  /**
+   * Le texte de l'éditeur.
+   *
+   * **Pas `toHaveValue`, et pas le `textContent` de l'hôte** : depuis `12b`, l'éditeur est CodeMirror
+   * — son document vit dans `.cm-content`, et lire l'hôte entier ramènerait aussi les **numéros de
+   * ligne** de la gouttière. Une première version rendait « 91 » pour deux lignes vides.
+   */
+  const texteDeLEditeur = () => document.querySelector('.cm-content')?.textContent
+
+  /** Saisit dans l'éditeur. Le clic va sur `.cm-content`, seul élément éditable. */
+  async function saisir(utilisateur: ReturnType<typeof userEvent.setup>, texte: string) {
+    await utilisateur.click(document.querySelector('.cm-content') as HTMLElement)
+    await utilisateur.keyboard(texte)
+  }
+
   it('deux consoles gardent chacune son texte', async () => {
     const utilisateur = userEvent.setup()
     monter()
     await ouvrirUneConsole(utilisateur)
-    await utilisateur.type(screen.getByLabelText('Requête SQL'), 'select 1')
+    await saisir(utilisateur, 'select 1')
 
     await utilisateur.click(screen.getByRole('button', { name: /Nouvelle console/ }))
-    expect(screen.getByLabelText('Requête SQL')).toHaveValue('')
-    await utilisateur.type(screen.getByLabelText('Requête SQL'), 'select 2')
+    // **Le nerf de ce test depuis `12b`** : CodeMirror tient son propre document, donc sans instance
+    // par onglet la seconde console afficherait le texte de la première. `12a` avait retiré la `key`
+    // faute de garantie mesurable ; elle en a une maintenant.
+    expect(texteDeLEditeur()).toBe('')
+    await saisir(utilisateur, 'select 2')
 
     // **Deux brouillons, pas un.** C'est la différence avec deux onglets sur la même table, qui n'en
     // font qu'un : on ouvre une seconde console parce qu'on veut garder la première.
     await utilisateur.click(screen.getByRole('tab', { name: /console 1/ }))
-    expect(screen.getByLabelText('Requête SQL')).toHaveValue('select 1')
+    expect(texteDeLEditeur()).toBe('select 1')
     await utilisateur.click(screen.getByRole('tab', { name: /console 2/ }))
-    expect(screen.getByLabelText('Requête SQL')).toHaveValue('select 2')
+    expect(texteDeLEditeur()).toBe('select 2')
   })
 
   it('une console et une table cohabitent dans la même bande', async () => {

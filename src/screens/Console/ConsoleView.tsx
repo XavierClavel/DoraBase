@@ -1,9 +1,13 @@
 import { Icon } from '../../design/icons/Icon'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
 import styles from './ConsoleView.module.css'
+import { SqlEditor } from './SqlEditor'
 
 type ConsoleViewProps = {
-  /** Le texte de la console. **L'écran le détient** : voir `12b` pour pourquoi. */
+  /**
+   * Le texte de la console. **L'écran le détient**, et l'éditeur le reçoit au montage seulement —
+   * voir `SqlEditor` pour pourquoi un éditeur contrôlé perd des caractères.
+   */
   texte: string
   onTexteChange: (texte: string) => void
   /** Le libellé de la base, pour le pied — `analytics · public`. */
@@ -13,8 +17,7 @@ type ConsoleViewProps = {
 /**
  * L'écran de console SQL (`12a`) : la toolbar, l'éditeur, le résultat.
  *
- * **Ce qui est livré ici est la coquille.** L'éditeur arrive en `12b` — la zone accepte du texte mais
- * n'a ni coloration ni numéros de ligne — et l'exécution en `12c`. Les actions qui en dépendent sont
+ * **L'éditeur est celui de `12b`** — CodeMirror 6, au thème du handoff. L'exécution arrive en `12c`. Les actions qui en dépendent sont
  * **désactivées avec leur raison** : la règle de `09f`, et la leçon du défaut n° 36, où un bouton
  * cliquable et inerte s'est lu comme une panne.
  */
@@ -53,18 +56,9 @@ export function ConsoleView({ texte, onTexteChange, contexte }: ConsoleViewProps
           max={520}
           handleShadow="end"
           start={
-            <textarea
-              className={styles.editeur}
-              aria-label="Requête SQL"
-              value={texte}
-              spellCheck={false}
-              // Les quatre attributs de `08a` : macOS corrigeait `localhost` en `Localhost`, et une
-              // requête SQL n'a pas plus à être corrigée qu'un nom d'hôte.
-              autoCapitalize="off"
-              autoCorrect="off"
-              autoComplete="off"
-              onChange={(evenement) => onTexteChange(evenement.target.value)}
-            />
+            <div className={styles.editeur}>
+              <SqlEditor texteInitial={texte} onTexteChange={onTexteChange} />
+            </div>
           }
           end={
             <div className={styles.resultat}>

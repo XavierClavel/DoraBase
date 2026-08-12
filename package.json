@@ -22,9 +22,15 @@
     "domain:check": "cargo run --quiet --manifest-path src-tauri/Cargo.toml --bin export-types && git diff --exit-code src/domain/"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.10.4",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.8",
     "@fontsource-variable/baloo-2": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@fontsource-variable/nunito": "^5.3.0",
+    "@lezer/highlight": "^1.2.3",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.2",
     "@tauri-apps/plugin-log": "^2.9.0",
