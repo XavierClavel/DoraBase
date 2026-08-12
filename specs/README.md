@@ -47,6 +47,26 @@ n'échoue pas silencieusement. Du code qui ne l'attrape pas plantera net.
 Points établis par les relectures d'implémentation, qui ne peuvent pas être décidés au
 moment où ils se posent sans coûter un retour en arrière.
 
+**L'éditeur de la console SQL — tranché le 12 août 2026 : CodeMirror 6.**
+
+`01` justifiait le choix de Tauri par « les deux composants les plus coûteux — grille dense et
+éditeur de code — déjà résolus par l'écosystème web ». La grille, elle, a été écrite à la main
+(`10a`) parce que la virtualisation d'un tableau dense est plus simple que ses dépendances. L'éditeur
+non : le placement du curseur, la sélection au clavier, l'annulation et la composition des caractères
+accentués sont quatre sujets où un éditeur maison se casse discrètement.
+
+Monaco a été écarté : ~2 Mo pour une console de requêtes, et une surface conçue pour un IDE. Voir
+`12b`.
+
+**Le SQL arbitraire de la console — tranché le 12 août 2026 : exécution libre, confirmation si
+destructif.**
+
+`DELETE`, `TRUNCATE`, `DROP`, `ALTER` et `UPDATE` sans `WHERE` demandent une confirmation qui
+récapitule, sur le modèle de `11d`. La détection est syntaxique donc approximative, et volontairement
+**large** : demander une confirmation de trop est un inconfort, manquer un `DROP` ne l'est pas. Ce
+n'est pas un garde-fou de sécurité — qui veut écrire écrira — mais contre la faute de frappe, qui est
+le vrai risque d'une console. Voir `12c`.
+
 **Signature de code et Trousseau — tranché : le stockage des identifiants sera abstrait.**
 
 Le problème : les ACL du Trousseau macOS sont liées à la **signature de code**. Le bundle
@@ -373,7 +393,12 @@ propres critères de vérification.
 | [`11b`](11b-marques-du-mode-edition.md) | A6 | Bandeau, badge, teintes, annotations, barre d'état | **fait** |
 | [`11c`](11c-panneau-des-modifications.md) | A6 | Panneau droit : cartes, diff, SQL prévisualisé | **fait** |
 | [`11d`](11d-appliquer-les-modifications.md) | A6 | Appliquer : transaction, garde-fous, conflit | **fait** |
-| `12` | A7 | Console SQL : éditeur, autocomplétion, onglets de résultat | à écrire |
+| [`12a`](12a-coquille-de-console.md) | A7 | Coquille de console : onglets, toolbar, partage vertical | à faire |
+| [`12b`](12b-editeur-sql.md) | A7 | L'éditeur SQL — CodeMirror 6, thème du handoff | à faire |
+| [`12c`](12c-executer-une-requete.md) | A7 | Exécuter : `run_sql`, auto-`LIMIT`, requêtes destructives | à faire |
+| [`12d`](12d-autocompletion.md) | A7 | Autocomplétion depuis le catalogue introspecté | à faire |
+| [`12e`](12e-onglets-de-resultat.md) | A7 | Résultat, JSON, Plan, Messages | à faire |
+| [`12f`](12f-requetes-enregistrees.md) | A7 | « Mes requêtes » : persistance, renommer, retirer | à faire |
 | `13` | A8 | Console MongoDB et vue JSON | à écrire |
 | `14` | A9 | Structure et DDL | à écrire |
 | `15` | A10 | Préférences | à écrire |
