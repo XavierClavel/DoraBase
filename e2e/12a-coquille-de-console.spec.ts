@@ -13,7 +13,10 @@ test.beforeEach(async ({ page }) => {
 
 test('l’éditeur est au-dessus du résultat, pas à côté', async ({ page }) => {
   const boites = await page.evaluate(() => {
-    const editeur = document.querySelector('[aria-label="Requête SQL"]')?.getBoundingClientRect()
+    // **`.cm-editor`, la zone entière — pas `.cm-content`.** Depuis `12b`, le texte est précédé
+    // d'une gouttière de numéros : comparer le bord gauche du *texte* à celui de la zone de résultat
+    // mesurerait la largeur de la gouttière, pas le partage.
+    const editeur = document.querySelector('.cm-editor')?.getBoundingClientRect()
     // **La zone, pas le texte** : le paragraphe est centré, donc son `left` ne dit rien de la
     // colonne qu'il occupe. Une première version comparait sa position et échouait pour cette
     // raison — elle mesurait le centrage, pas le partage.
@@ -52,7 +55,7 @@ test('glisser la poignée du bas redimensionne en hauteur, et la taille survit',
   if (!boite) throw new Error('la poignée doit être visible')
 
   const hauteurAvant = await page.evaluate(
-    () => document.querySelector('[aria-label="Requête SQL"]')?.clientHeight ?? 0,
+    () => document.querySelector('.cm-editor')?.clientHeight ?? 0,
   )
   await page.mouse.move(boite.x + boite.width / 2, boite.y + boite.height / 2)
   await page.mouse.down()
@@ -60,7 +63,7 @@ test('glisser la poignée du bas redimensionne en hauteur, et la taille survit',
   await page.mouse.up()
 
   const hauteurApres = await page.evaluate(
-    () => document.querySelector('[aria-label="Requête SQL"]')?.clientHeight ?? 0,
+    () => document.querySelector('.cm-editor')?.clientHeight ?? 0,
   )
   // Le geste suit la poignée : monter la poignée agrandit le résultat, donc rétrécit l'éditeur.
   expect(hauteurApres).toBeLessThan(hauteurAvant)
@@ -74,14 +77,14 @@ test('glisser la poignée du bas redimensionne en hauteur, et la taille survit',
   await page.getByRole('button', { name: /Nouvelle console/ }).click()
   await page.waitForSelector('[aria-label="Requête SQL"]')
   const hauteurRelue = await page.evaluate(
-    () => document.querySelector('[aria-label="Requête SQL"]')?.clientHeight ?? 0,
+    () => document.querySelector('.cm-editor')?.clientHeight ?? 0,
   )
   expect(Math.abs(hauteurRelue - hauteurApres)).toBeLessThanOrEqual(2)
 })
 
 test('la console occupe toute la largeur laissée par la sidebar', async ({ page }) => {
   const mesures = await page.evaluate(() => {
-    const editeur = document.querySelector('[aria-label="Requête SQL"]')
+    const editeur = document.querySelector('.cm-editor')
     const tree = document.querySelector('[role=tree]')
     if (!editeur || !tree) return null
     return {

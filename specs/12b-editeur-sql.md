@@ -38,17 +38,36 @@ Les six jetons `--syn-*` existent depuis `02` et servent déjà au bloc SQL de `
 l'éditeur les réemploie : un éditeur aux couleurs de CodeMirror à côté d'un bloc aux couleurs du
 handoff se lirait comme deux applications.
 
-### L'état du texte reste à l'écran
+**Écart assumé : le fond est sombre, là où le mockup montre un éditeur clair.** Les six jetons sont
+faits pour un fond sombre — c'est ce que leurs valeurs disent, et c'est ainsi que `11c` les emploie.
+Sur fond clair, ils seraient illisibles ; en inventer six clairs créerait un second jeu de jetons pour
+un seul écran, ce que `02` interdit. L'écart porte sur le fond, pas sur les couleurs de syntaxe, qui
+sont exactement celles du handoff.
+
+### L'état du texte reste à l'écran, mais l'éditeur n'est pas « contrôlé »
 
 CodeMirror gère son propre document, ce qui invite à lui laisser la vérité. Mais `12a` a besoin du
 texte pour le garder par onglet, et `12f` pour l'enregistrer. L'écran détient donc l'état, et
-l'éditeur le notifie — le même arbitrage qu'en `11b` pour les modifications en attente, où deux
-propriétaires ont produit un défaut réel.
+l'éditeur le notifie — le même arbitrage qu'en `11b`, où deux propriétaires ont produit un défaut
+réel.
+
+**Ce que l'écran ne fait pas, c'est réinjecter le texte à chaque rendu.** Un éditeur contrôlé perd des
+caractères : l'écran renvoie la valeur en retard d'un rendu, et l'éditeur, qui a déjà avancé, se voit
+réécrire avec un texte plus ancien. Taper « select 1 » donnait « slc ». Deux gardes successives —
+comparer au document, puis à la dernière valeur notifiée — n'y ont rien changé : la course est
+structurelle.
+
+L'éditeur reçoit donc son texte **au montage**, et un texte imposé de l'extérieur demande un
+remontage — ce que la `key` par onglet de `12a` fait déjà, et ce que `12f` fera pour charger une
+requête enregistrée.
 
 ## Done when
 
 - [ ] Taper du texte le colore selon les jetons du handoff, vérifié sur les couleurs calculées.
 - [ ] Les numéros de ligne suivent le contenu, et la gouttière ne se désaligne pas au défilement.
-- [ ] Le texte saisi remonte à l'écran, et un texte imposé par l'écran s'affiche.
+- [ ] Le texte saisi remonte à l'écran **sans perdre de caractères**, et un texte imposé au montage
+      s'affiche.
+- [ ] `⌘↩` et `⌥↩` répondent, et `⌘↩` n'insère pas de ligne — la carte par défaut de CodeMirror la
+      lie à cela.
 - [ ] Un caractère accentué composé (`option+e`, `e`) s'insère correctement.
 - [ ] Comparaison visuelle contre `A7`.

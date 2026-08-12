@@ -434,6 +434,11 @@ export function Workbench({
                   // La console SQL (`12a`). Elle occupe la largeur du centre ; le panneau droit
                   // reste celui de l'écran, et `12c` lui donnera un contenu utile.
                   <ConsoleView
+                    // **Une instance par console, et `12b` lui donne sa raison** : CodeMirror tient
+                    // son propre document, donc sans remontage la seconde console afficherait le
+                    // texte de la première. `12a` avait retiré cette `key` faute de garantie
+                    // mesurable — elle en a une maintenant.
+                    key={idOnglet(consoleActive)}
                     texte={textes[idOnglet(consoleActive)] ?? ''}
                     onTexteChange={(texte) =>
                       setTextes((precedent) => ({

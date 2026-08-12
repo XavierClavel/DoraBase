@@ -89,30 +89,17 @@
   min-height: 0;
 }
 
-/* L'éditeur provisoire de `12a` : une zone de saisie nue, en mono, sans coloration ni numéros de
- * ligne. `12b` la remplace par CodeMirror — la garder ici évite une console qu'on ne peut pas
- * essayer, et le `textarea` est ce qu'un navigateur fait de mieux sans dépendance. */
+/* L'hôte de CodeMirror (`12b`). Tout ce qui concerne l'apparence du texte — police, couleurs,
+ * gouttière, ligne courante — vit dans `theme.ts`, que CodeMirror applique lui-même : mélanger les
+ * deux donnerait deux endroits où régler la même chose. Ici, seule la boîte. */
 .editeur {
-  display: block;
-  box-sizing: border-box;
-  width: 100%;
   height: 100%;
-  padding: var(--space-5) var(--space-6);
-  border: none;
-  background: var(--paper);
-  resize: none;
-  font-family: var(--font-mono);
-  font-size: var(--text-dense);
-  font-weight: var(--weight-medium);
-  line-height: var(--leading-code);
-  color: var(--ink);
+  min-height: 0;
+  overflow: hidden;
 }
 
-/* Pas de liseré de focus sur la zone d'édition : le curseur clignotant le dit déjà, et un anneau
- * autour d'une zone qui remplit la moitié de l'écran serait du bruit. Même arbitrage qu'un éditeur
- * de code, qui n'en dessine pas. */
-.editeur:focus-visible {
-  outline: none;
+.editeur > * {
+  height: 100%;
 }
 
 .resultat {
