@@ -142,6 +142,15 @@ const PREVIEW = { previewUpdates: async () => 'BEGIN;\nCOMMIT;' }
  * **Le décor par défaut est en `prod`**, ce qui est utile ailleurs et trompeur ici : les tests
  * d'écriture qui ne portent pas sur la confirmation passeraient par elle sans le dire.
  */
+/** Un résultat de requête minimal, pour les tests qui ne portent pas sur son contenu. */
+const RESULTAT = {
+  columns: ['n'],
+  rows: [[{ kind: 'int' as const, value: 1 }]],
+  sql: 'select 1',
+  durationMs: 3,
+  appliedLimit: null,
+}
+
 const PROJETS_DEV: Project[] = PROJETS.map((projet) => ({
   ...projet,
   activeEnvironment: 'dev' as const,
@@ -422,11 +431,147 @@ describe('la console SQL (`12a`)', () => {
 
     // **Présentes et désactivées, pas absentes** : les cacher ferait croire qu'elles n'existeront
     // pas, les laisser cliquables et inertes ferait croire à une panne (défaut n° 36).
-    for (const libelle of ['Exécuter', 'Sélection', 'Expliquer', 'Enregistrer', 'Formater']) {
+    // « Exécuter » et « Sélection » répondent depuis `12c` : elles ne sont plus de cette liste.
+    for (const libelle of ['Expliquer', 'Enregistrer', 'Formater']) {
       const action = screen.getByRole('button', { name: new RegExp(libelle) })
       expect(action).toBeDisabled()
       expect(action).toHaveAttribute('title', expect.stringMatching(/1[12][a-f]|formateur/))
     }
+  })
+
+  it('« Exécuter » envoie le texte de la console au moteur (`12c`)', async () => {
+    const utilisateur = userEvent.setup()
+    const executer = vi.fn(async () => RESULTAT)
+    monter({ passerelleExecution: { runSql: executer } })
+    await ouvrirUneConsole(utilisateur)
+    await saisir(utilisateur, 'select 1')
+
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+
+    await waitFor(() => expect(executer).toHaveBeenCalledOnce())
+    const [, sql, limite] = executer.mock.calls[0] as unknown as [unknown, string, string]
+    expect(sql).toBe('select 1')
+    // La limite par défaut de la console, celle du mockup. Le moteur décide s'il l'applique.
+    expect(limite).toBe('oneThousand')
+    // Le résultat s'affiche dans la grille de `10a`, pas dans une seconde grille.
+    expect(await screen.findByRole('grid', { name: /Résultat de la requête/ })).toBeInTheDocument()
+  })
+
+  it('la limite ajoutée par DoraBase est annoncée', async () => {
+    const utilisateur = userEvent.setup()
+    monter({
+      passerelleExecution: { runSql: async () => ({ ...RESULTAT, appliedLimit: 1000 }) },
+    })
+    await ouvrirUneConsole(utilisateur)
+    await saisir(utilisateur, 'select 1')
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+
+    // **Une limite silencieuse ferait croire à une table de mille lignes** — un mensonge sur les
+    // données, la pire catégorie de défaut pour cet outil.
+    expect(await screen.findByRole('status', { name: 'État du résultat' })).toHaveTextContent(
+      'limité à 1000 par DoraBase',
+    )
+  })
+
+  it('une lecture ne demande aucune confirmation', async () => {
+    const utilisateur = userEvent.setup()
+    const executer = vi.fn(async () => RESULTAT)
+    monter({ passerelleExecution: { runSql: executer } })
+    await ouvrirUneConsole(utilisateur)
+    await saisir(utilisateur, 'select 1')
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+
+    // Une confirmation sur chaque `select` deviendrait un clic réflexe, et c'est ainsi qu'une
+    // confirmation cesse de protéger quoi que ce soit.
+    await waitFor(() => expect(executer).toHaveBeenCalledOnce())
+    expect(screen.queryByRole('dialog', { name: /Écrire dans la base/ })).not.toBeInTheDocument()
+  })
+
+  it('un `delete` sans `where` demande confirmation, et la nomme', async () => {
+    const utilisateur = userEvent.setup()
+    const executer = vi.fn(async () => RESULTAT)
+    monter({ passerelleExecution: { runSql: executer } })
+    await ouvrirUneConsole(utilisateur)
+    await saisir(utilisateur, 'delete from orders')
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+
+    // **Rien n'est parti.** C'est le garde-fou de `12c` : il protège de la faute de frappe, pas
+    // d'une intention.
+    expect(executer).not.toHaveBeenCalled()
+    const confirmation = screen.getByRole('dialog', { name: 'Écrire dans la base' })
+    // **Dans le récapitulatif, pas seulement dans le bouton** : une première version cherchait
+    // « DELETE » dans la modale entière, et le trouvait dans « Exécuter ce DELETE » — le test restait
+    // vert quand le récapitulatif cessait de nommer l'instruction.
+    const recap = confirmation.querySelector('dl')
+    expect(recap).toHaveTextContent('DELETE')
+    // Le fait le plus coûteux, dit en premier : sans `where`, toute la table est touchée.
+    expect(confirmation).toHaveTextContent('toutes les lignes')
+
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter ce DELETE/ }))
+    await waitFor(() => expect(executer).toHaveBeenCalledOnce())
+  })
+
+  it('annuler la confirmation n’exécute rien et garde la requête', async () => {
+    const utilisateur = userEvent.setup()
+    const executer = vi.fn(async () => RESULTAT)
+    monter({ passerelleExecution: { runSql: executer } })
+    await ouvrirUneConsole(utilisateur)
+    await saisir(utilisateur, 'drop table orders')
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+    // Une modification de structure porte son propre titre : elle ne se défait pas par une requête.
+    expect(screen.getByRole('dialog', { name: 'Modifier la structure' })).toBeInTheDocument()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Annuler' }))
+    expect(executer).not.toHaveBeenCalled()
+    // La requête survit au renoncement : rien n'a été exécuté, rien n'a été perdu.
+    expect(texteDeLEditeur()).toBe('drop table orders')
+  })
+
+  it('un échec efface le résultat précédent', async () => {
+    const utilisateur = userEvent.setup()
+    let echoue = false
+    monter({
+      passerelleExecution: {
+        runSql: async () => {
+          if (echoue) throw new Error('ERROR: relation "absente" does not exist')
+          return RESULTAT
+        },
+      },
+    })
+    await ouvrirUneConsole(utilisateur)
+    await saisir(utilisateur, 'select 1')
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+    expect(await screen.findByRole('grid', { name: /Résultat de la requête/ })).toBeInTheDocument()
+
+    echoue = true
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+
+    // **Garder l'ancien résultat à côté d'une erreur laisserait croire qu'il vient de la requête qui
+    // vient d'échouer** — la lecture la plus naturelle, et la plus fausse.
+    expect(await screen.findByRole('alert')).toHaveTextContent('does not exist')
+    expect(screen.queryByRole('grid', { name: /Résultat de la requête/ })).not.toBeInTheDocument()
+  })
+
+  it('une erreur SQL s’affiche en entier et ne vide pas l’éditeur', async () => {
+    const utilisateur = userEvent.setup()
+    monter({
+      passerelleExecution: {
+        runSql: async () => {
+          throw new Error('ERROR: syntax error at or near "from"\nLINE 1: select from')
+        },
+      },
+    })
+    await ouvrirUneConsole(utilisateur)
+    await saisir(utilisateur, 'select from')
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+
+    // **Le message du serveur, entier** : c'est lui qui dit *où* est la faute, et l'abréger enlèverait
+    // la ligne, qui est le plus utile.
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveTextContent('syntax error')
+    expect(alerte).toHaveTextContent('LINE 1')
+    // Et la requête reste : la perdre sur une faute de frappe obligerait à tout retaper.
+    expect(texteDeLEditeur()).toBe('select from')
   })
 
   it('fermer une console la retire, et le voisin reprend la main', async () => {

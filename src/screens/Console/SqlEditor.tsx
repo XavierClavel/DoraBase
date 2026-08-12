@@ -31,6 +31,13 @@ type SqlEditorProps = {
   onExecuter?: () => void
   /** `⌥↩` — exécuter la sélection, branché en `12c`. */
   onExecuterLaSelection?: () => void
+  /**
+   * La portion sélectionnée, publiée à chaque changement (`12c`).
+   *
+   * L'écran en a besoin pour « Sélection » : la sélection vit dans CodeMirror, et la lire au moment du
+   * clic obligerait à exposer la vue. La publier suit le même principe que le texte.
+   */
+  onSelectionChange?: (selection: string) => void
 }
 
 /**
@@ -51,13 +58,19 @@ export function SqlEditor({
   onTexteChange,
   onExecuter,
   onExecuterLaSelection,
+  onSelectionChange,
 }: SqlEditorProps) {
   const hote = useRef<HTMLDivElement>(null)
   const vue = useRef<EditorView | null>(null)
   // Les rappels sont lus par les extensions de CodeMirror, qui ne sont posées qu'une fois : les
   // garder dans une ref évite de reconstruire la vue quand l'appelant recrée ses fonctions.
-  const rappels = useRef({ onTexteChange, onExecuter, onExecuterLaSelection })
-  rappels.current = { onTexteChange, onExecuter, onExecuterLaSelection }
+  const rappels = useRef({
+    onTexteChange,
+    onExecuter,
+    onExecuterLaSelection,
+    onSelectionChange,
+  })
+  rappels.current = { onTexteChange, onExecuter, onExecuterLaSelection, onSelectionChange }
   // Aucune dépendance : la vue est montée une fois et vit jusqu'au démontage. Reconstruire à chaque
   // rendu perdrait le curseur et l'historique d'annulation, et `texteInitial` ne vaut qu'au montage.
   // biome-ignore lint/correctness/useExhaustiveDependencies: voir ci-dessus
@@ -108,6 +121,10 @@ export function SqlEditor({
           themeDuHandoff,
           EditorView.updateListener.of((maj) => {
             if (maj.docChanged) rappels.current.onTexteChange(maj.state.doc.toString())
+            if (maj.selectionSet || maj.docChanged) {
+              const plage = maj.state.selection.main
+              rappels.current.onSelectionChange?.(maj.state.doc.sliceString(plage.from, plage.to))
+            }
           }),
         ],
       }),

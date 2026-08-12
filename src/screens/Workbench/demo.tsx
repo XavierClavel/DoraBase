@@ -312,6 +312,29 @@ export function WorkbenchDemo() {
         // La démo **n'écrit rien** : elle rend un patch inverse plausible pour que `11d` soit visible
         // sans base réelle. Une écriture simulée qui « réussit » toujours ne prouve rien du moteur —
         // c'est ce que les tests Rust sur PostgreSQL vérifient.
+        // La démo **n'exécute rien** : elle rend un résultat plausible pour que `12c` soit visible sans
+        // base réelle. Une exécution simulée ne prouve rien du moteur — c'est ce que les tests Rust sur
+        // PostgreSQL vérifient. La limite ajoutée est annoncée, comme le fait la commande réelle.
+        passerelleExecution={{
+          runSql: async (_cle, sql) => ({
+            columns: ['jour', 'commandes', 'ca_eur'],
+            rows: [
+              [
+                { kind: 'timestamp', value: '2026-07-31' },
+                { kind: 'int', value: 1204 },
+                { kind: 'decimal', value: '184902.40' },
+              ],
+              [
+                { kind: 'timestamp', value: '2026-07-30' },
+                { kind: 'int', value: 1188 },
+                { kind: 'decimal', value: '176320.00' },
+              ],
+            ],
+            sql: `${sql}\nlimit 1000`,
+            durationMs: 128,
+            appliedLimit: 1000,
+          }),
+        }}
         passerelleApply={{
           applyChanges: async (_cle, plan) => ({
             applied: plan.changes.length,

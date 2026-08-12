@@ -14,6 +14,12 @@ import { ProjectPill } from '../../shell/ProjectPill/ProjectPill'
 import { TitleBar } from '../../shell/TitleBar/TitleBar'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
 import { ConsoleView } from '../Console/ConsoleView'
+import { RunConfirm } from '../Console/RunConfirm'
+import {
+  PASSERELLE_EXECUTION,
+  type PasserelleExecution,
+  useExecution,
+} from '../Console/useExecution'
 import { idSchema, type Noeud } from '../Explorer/arbre'
 import { BreadcrumbBar, type TypeObjet } from '../Explorer/BreadcrumbBar'
 import type { CibleDeSuppression } from '../Explorer/DeleteConnectionDialog'
@@ -66,6 +72,8 @@ type WorkbenchProps = {
   passerellePreview?: PasserellePreview
   /** Le pont vers `apply_changes` (`11d`), la seule commande qui **écrit**. */
   passerelleApply?: PasserelleApply
+  /** Le pont vers `run_sql` (`12c`) — le SQL de l'utilisateur. */
+  passerelleExecution?: PasserelleExecution
   /** Retirer une déclaration de connexion, ou un projet (`08j`). */
   onDelete?: (cible: CibleDeSuppression) => Promise<{ leftoverSecrets: string[] }>
   /** Ouvre l'écran en mode édition au montage — la démo s'en sert (`11a`). */
@@ -93,6 +101,7 @@ export function Workbench({
   onDelete,
   passerellePreview,
   passerelleApply,
+  passerelleExecution,
   edition = false,
 }: WorkbenchProps) {
   const { deplies, charge, etatDeBase, basculer, rafraichir } = useArbre(projects, passerelle)
@@ -198,6 +207,9 @@ export function Workbench({
   // Le SQL de `11c` vient du **moteur**, jamais de l'écran : composer un équivalent ici produirait
   // un texte *ressemblant* à celui qui partira, sous un titre qui promet l'exactitude.
   const [rafraichissement, setRafraichissement] = useState(0)
+  // L'exécution des requêtes de console (`12c`). Elle vit ici parce que la confirmation est une
+  // sous-modale de l'écran, comme celle de `11d`.
+  const execution = useExecution(cle, passerelleExecution ?? PASSERELLE_EXECUTION)
   // Le texte de chaque console, indexé par l'identité de l'onglet — comme les modifications en
   // attente de `11b`. Fermer une console perd son texte, et c'est `12f` qui donnera le moyen de le
   // garder pour les requêtes qu'on choisit d'enregistrer.
@@ -297,6 +309,17 @@ export function Workbench({
       />
       {/* Le bandeau du mode édition, **sous la barre de titre** et au-dessus du corps : c'est là que
           le mockup le place, et il court sur toute la largeur. */}
+      {execution.aConfirmer && (
+        <RunConfirm
+          nature={execution.aConfirmer.nature}
+          sansRestriction={execution.aConfirmer.sansWhere}
+          cible={contexte ? `${contexte.database} · ${contexte.schema}` : '—'}
+          production={environnement === 'prod'}
+          enCours={execution.enCours}
+          onClose={execution.annulerLaConfirmation}
+          onConfirmer={execution.executer}
+        />
+      )}
       {application.confirmation && table && (
         <ApplyConfirm
           attente={attente}
@@ -447,6 +470,11 @@ export function Workbench({
                       }))
                     }
                     contexte={contexte ? `${contexte.database} · ${contexte.schema}` : undefined}
+                    onExecuter={cle === null ? undefined : execution.demander}
+                    onExecuterLaSelection={cle === null ? undefined : execution.demander}
+                    enCours={execution.enCours}
+                    resultat={execution.resultat}
+                    erreur={execution.erreur}
                   />
                 ) : table && cle ? (
                   // Les lignes de la table ouverte (`10c`). La toolbar (`10e`) et le panneau
