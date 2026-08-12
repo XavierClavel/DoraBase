@@ -13,6 +13,7 @@ import { EnvironmentPicker } from '../../shell/EnvironmentPicker/EnvironmentPick
 import { ProjectPill } from '../../shell/ProjectPill/ProjectPill'
 import { TitleBar } from '../../shell/TitleBar/TitleBar'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
+import { ConsoleView } from '../Console/ConsoleView'
 import { idSchema, type Noeud } from '../Explorer/arbre'
 import { BreadcrumbBar, type TypeObjet } from '../Explorer/BreadcrumbBar'
 import type { CibleDeSuppression } from '../Explorer/DeleteConnectionDialog'
@@ -36,6 +37,7 @@ import {
   idOnglet,
   ongletActif,
   ouvrir,
+  ouvrirConsole,
   reordonner,
   viseeParLId,
 } from './onglets'
@@ -133,12 +135,18 @@ export function Workbench({
   const [attentes, setAttentes] = useState<Readonly<Record<string, EnAttente>>>({})
 
   const actif = ongletActif(etatOnglets)
+  // **Deux vues de l'onglet actif**, depuis que `12a` en fait une union. Tout ce qui parle de
+  // schéma, de table, de lignes ou de modifications concerne une *table* ; le reste — la barre de
+  // titre, la sidebar — se contente de la base. Distinguer ici évite de réinterroger `sorte` à
+  // vingt endroits, et laisse le compilateur refuser un accès à `.table` sur une console.
+  const table = actif?.sorte === 'table' ? actif : null
+  const consoleActive = actif?.sorte === 'console' ? actif : null
 
   // Le contexte du **centre** : le schéma de l'onglet actif, sinon celui que la sidebar désigne.
   // Distinct de la barre de titre, qui suit la base ouverte — `09e` a posé la distinction, et
   // elle ne devient visible qu'ici, avec plusieurs onglets.
-  const contexte = actif
-    ? { project: actif.key.project, database: actif.key.database, schema: actif.schema }
+  const contexte = table
+    ? { project: table.key.project, database: table.key.database, schema: table.schema }
     : selection?.schema && selection.project && selection.database
       ? { project: selection.project, database: selection.database, schema: selection.schema }
       : null
@@ -166,7 +174,7 @@ export function Workbench({
   // Le détail sert deux endroits : le panneau droit de `A4` (l'objet sélectionné) et la section
   // « Colonnes de *table* » de la sidebar (la table de l'onglet actif). Une seule lecture, deux
   // lecteurs — la table de l'onglet actif étant aussi celle qu'on vient de sélectionner.
-  const cible = actif?.table ?? objetChoisi
+  const cible = table?.table ?? objetChoisi
   const { detail, loading, error } = useDetailTable(
     cle,
     contexte?.schema ?? null,
@@ -190,7 +198,11 @@ export function Workbench({
   // Le SQL de `11c` vient du **moteur**, jamais de l'écran : composer un équivalent ici produirait
   // un texte *ressemblant* à celui qui partira, sous un titre qui promet l'exactitude.
   const [rafraichissement, setRafraichissement] = useState(0)
-  const application = useApplication(cle, actif, attente, detail?.columns ?? [], {
+  // Le texte de chaque console, indexé par l'identité de l'onglet — comme les modifications en
+  // attente de `11b`. Fermer une console perd son texte, et c'est `12f` qui donnera le moyen de le
+  // garder pour les requêtes qu'on choisit d'enregistrer.
+  const [textes, setTextes] = useState<Readonly<Record<string, string>>>({})
+  const application = useApplication(cle, table, attente, detail?.columns ?? [], {
     passerelle: passerelleApply ?? PASSERELLE_APPLY,
     // **Après le succès, la grille est relue et le modèle vidé.** Les valeurs écrites peuvent
     // différer de celles saisies — un `trigger`, une valeur par défaut, une troncature — et
@@ -206,7 +218,7 @@ export function Workbench({
 
   const sqlPrevu = useSqlPrevu(
     cle,
-    actif,
+    table,
     attente,
     detail?.columns ?? [],
     passerellePreview ?? PASSERELLE_PREVIEW,
@@ -241,6 +253,7 @@ export function Workbench({
     if (!contexte) return
     setEtatOnglets((etat) =>
       ouvrir(etat, {
+        sorte: 'table',
         key: {
           project: contexte.project,
           database: contexte.database,
@@ -284,19 +297,19 @@ export function Workbench({
       />
       {/* Le bandeau du mode édition, **sous la barre de titre** et au-dessus du corps : c'est là que
           le mockup le place, et il court sur toute la largeur. */}
-      {application.confirmation && actif && (
+      {application.confirmation && table && (
         <ApplyConfirm
           attente={attente}
-          table={`${actif.schema}.${actif.table}`}
+          table={`${table.schema}.${table.table}`}
           enCours={application.enCours}
           onClose={application.annulerLaConfirmation}
           onConfirmer={application.appliquer}
         />
       )}
-      {actif && (
+      {table && (
         <EditBanner
           compte={attente.length}
-          table={`${actif.schema}.${actif.table}`}
+          table={`${table.schema}.${table.table}`}
           onToutAnnuler={() =>
             setAttentes((precedent) => ({ ...precedent, [idActif as string]: [] }))
           }
@@ -323,8 +336,8 @@ export function Workbench({
               etatDe={etatDeBase}
               // La pastille de compte sur la table ouverte (`11b`) : le même modèle que le bandeau.
               modifications={
-                actif && attente.length > 0
-                  ? { table: actif.table, schema: actif.schema, compte: attente.length }
+                table && attente.length > 0
+                  ? { table: table.table, schema: table.schema, compte: attente.length }
                   : undefined
               }
               // Le « … » d'une ligne de base mène à la même modale que le menu de la pastille
@@ -338,6 +351,12 @@ export function Workbench({
                 if (base) onEditDatabase?.(nomProjet, base)
               }}
               onRenameProject={onRenameProject}
+              // **Une console s'ouvre sur la base du contexte.** Sans base, pas de console : elle
+              // n'aurait rien à interroger, et le bouton disparaît plutôt que d'ouvrir un onglet
+              // inerte.
+              onNewConsole={
+                cle === null ? undefined : () => setEtatOnglets((etat) => ouvrirConsole(etat, cle))
+              }
               // **Retirer une base ferme ses onglets**, et l'écran de travail est le seul à pouvoir
               // le faire : un onglet survivant lirait une base dont la déclaration est partie.
               onDelete={
@@ -370,6 +389,7 @@ export function Workbench({
                 if (noeud.kind === 'object' && noeud.project && noeud.database && noeud.schema) {
                   setEtatOnglets((etat) =>
                     ouvrir(etat, {
+                      sorte: 'table',
                       key: {
                         project: noeud.project as string,
                         database: noeud.database as string,
@@ -386,9 +406,9 @@ export function Workbench({
               onAddDatabase={onNewDatabase}
               onRefresh={rafraichir}
               columns={
-                actif
+                table
                   ? {
-                      table: actif.table,
+                      table: table.table,
                       columns: detail?.columns ?? [],
                       loading,
                       annotations: annotationsDe(etatRequete, attente),
@@ -398,156 +418,248 @@ export function Workbench({
             />
           }
           end={
-            <SplitPane
-              storageKey="workbench:detail"
-              defaultSize={296}
-              min={240}
-              max={420}
-              handleShadow="end"
-              // **Le panneau dimensionné est celui de droite.** Sans cela, c'est le centre qui
-              // recevait 296 px et la grille tombait à zéro pixel de large — défaut de `10b`,
-              // constaté en mesurant `A5` le 10 août 2026.
-              sized="end"
-              start={
-                <div className={styles.centre}>
-                  <WorkbenchTabs
-                    etat={etatOnglets}
-                    onSelect={(id) => setEtatOnglets((etat) => ({ ...etat, actif: id }))}
-                    onClose={(id) => setEtatOnglets((etat) => fermer(etat, id))}
-                    onReorder={(ids) => setEtatOnglets((etat) => reordonner(etat, ids))}
+            // **Une console occupe toute la largeur du centre.** Le mockup d'`A7` ne montre pas de
+            // panneau droit, et celui de `A5` proposerait ici de sélectionner une ligne d'un
+            // résultat qui n'existe pas encore. Le centre est donc rendu seul ou dans le partage
+            // selon ce que l'onglet ouvre. Vu à l'écran en assemblant `12a`.
+            consoleActive ? (
+              <div className={styles.centre}>
+                <WorkbenchTabs
+                  etat={etatOnglets}
+                  onSelect={(id) => setEtatOnglets((etat) => ({ ...etat, actif: id }))}
+                  onClose={(id) => setEtatOnglets((etat) => fermer(etat, id))}
+                  onReorder={(ids) => setEtatOnglets((etat) => reordonner(etat, ids))}
+                />
+                {consoleActive && cle ? (
+                  // La console SQL (`12a`). Elle occupe la largeur du centre ; le panneau droit
+                  // reste celui de l'écran, et `12c` lui donnera un contenu utile.
+                  <ConsoleView
+                    texte={textes[idOnglet(consoleActive)] ?? ''}
+                    onTexteChange={(texte) =>
+                      setTextes((precedent) => ({
+                        ...precedent,
+                        [idOnglet(consoleActive)]: texte,
+                      }))
+                    }
+                    contexte={contexte ? `${contexte.database} · ${contexte.schema}` : undefined}
                   />
-                  {actif && cle ? (
-                    // Les lignes de la table ouverte (`10c`). La toolbar (`10e`) et le panneau
-                    // de ligne (`10f`) viendront l'entourer.
-                    <TableView
-                      // Une instance par onglet : changer de table remonte la vue, donc remet
-                      // filtres et tri à zéro sans effet de nettoyage.
-                      key={`${actif.key.project}/${actif.key.database}/${actif.schema}.${actif.table}`}
-                      cle={cle}
-                      schema={actif.schema}
-                      table={actif.table}
-                      columns={detail?.columns ?? []}
-                      passerelle={passerelleLignes}
-                      onEtatChange={setEtatRequete}
-                      onLectureChange={setLecture}
-                      rang={rangChoisi}
-                      onRangChange={setRangChoisi}
-                      edition={enEdition}
-                      rafraichissement={rafraichissement}
-                      attente={attente}
-                      onAttenteChange={onAttenteChange}
-                    />
-                  ) : (
-                    <>
-                      <BreadcrumbBar
-                        database={contexte?.database ?? '—'}
-                        schema={contexte?.schema ?? '—'}
-                        counts={comptes(objets)}
-                        type={type}
-                        onTypeChange={setType}
-                        filter={filtre}
-                        onFilterChange={setFiltre}
-                      />
-                      <ObjectTable
-                        schema={contexte?.schema ?? ''}
-                        objects={visibles}
-                        type={type}
-                        selectedName={objetChoisi}
-                        onSelect={(objet) => setObjetChoisi(objet.name)}
-                        onOpen={ouvrirTable}
-                      />
-                    </>
-                  )}
-                </div>
-              }
-              end={
-                // **Un seul panneau droit, dont le contenu suit l'écran** : le détail de l'objet
-                // en `A4`, la ligne sélectionnée en `A5`, les modifications en attente en `A6`.
-                // Les empiler donnerait deux panneaux là où le mockup n'en montre qu'un.
-                //
-                // **En édition avec des modifications, ce panneau prend la place du détail** —
-                // conséquence assumée de `11c` : en éditant, ce qu'on veut voir est ce qu'on a
-                // changé, pas la ligne sélectionnée.
-                // Le panneau reste après une écriture réussie, pour montrer de quoi la défaire : le
-                // démonter avec la dernière carte emporterait le patch inverse.
-                actif && cle && (attente.length > 0 || application.patchInverse !== null) ? (
-                  <PendingPanel
-                    attente={attente}
-                    table={`${actif.schema}.${actif.table}`}
-                    // `DatabaseKey.environment` est une chaîne côté IPC ; l'encart de production
-                    // veut l'environnement **déclaré** du projet, qui est typé.
-                    environment={environnement}
-                    sql={sqlPrevu.sql}
-                    erreurSql={sqlPrevu.erreur}
-                    onRetirer={(cleLigne, column) =>
-                      onAttenteChange(retirer(attente, cleLigne, column))
-                    }
-                    onToutAnnuler={() => onAttenteChange([])}
-                    enCours={application.enCours}
-                    refus={application.refus}
-                    patchInverse={application.patchInverse}
-                    onCopierLePatch={
-                      application.patchInverse === null
-                        ? undefined
-                        : () => {
-                            const texte = application.patchInverse
-                            if (texte) void navigator.clipboard?.writeText(texte)
-                          }
-                    }
-                    onAppliquer={application.demander}
-                    onEcarterLePatch={application.ecarterLePatch}
-                    onCopierLeSQL={
-                      sqlPrevu.sql === null
-                        ? undefined
-                        : () => {
-                            const texte = sqlPrevu.sql
-                            if (texte) void navigator.clipboard?.writeText(texte)
-                          }
-                    }
-                  />
-                ) : actif && cle ? (
-                  <RowPanel
+                ) : table && cle ? (
+                  // Les lignes de la table ouverte (`10c`). La toolbar (`10e`) et le panneau
+                  // de ligne (`10f`) viendront l'entourer.
+                  <TableView
+                    // Une instance par onglet : changer de table remonte la vue, donc remet
+                    // filtres et tri à zéro sans effet de nettoyage.
+                    key={`${table.key.project}/${table.key.database}/${table.schema}.${table.table}`}
                     cle={cle}
+                    schema={table.schema}
+                    table={table.table}
                     columns={detail?.columns ?? []}
-                    relations={detail?.relations ?? []}
-                    ligne={lecture.ligne}
-                    rang={lecture.rang}
-                    total={lecture.total}
-                    onNavigate={setRangChoisi}
-                    onCopyInsert={
-                      lecture.ligne
-                        ? () => {
-                            const valeurs = lecture.ligne
-                            if (!valeurs) return
-                            void rowAsInsert(cle, actif.schema, actif.table, valeurs).then((sql) =>
-                              navigator.clipboard?.writeText(sql),
-                            )
-                          }
-                        : undefined
-                    }
-                    passerelleDetail={passerelleDetail}
-                    passerelleLignes={passerelleLignes ?? PASSERELLE_LIGNES}
+                    passerelle={passerelleLignes}
+                    onEtatChange={setEtatRequete}
+                    onLectureChange={setLecture}
+                    rang={rangChoisi}
+                    onRangChange={setRangChoisi}
+                    edition={enEdition}
+                    rafraichissement={rafraichissement}
+                    attente={attente}
+                    onAttenteChange={onAttenteChange}
                   />
                 ) : (
-                  <DetailPanel
-                    detail={detail}
-                    schema={contexte?.schema ?? ''}
-                    loading={loading}
-                    error={error}
-                    onOpenData={() => {
-                      const objet = objets.find((o) => o.name === objetChoisi)
-                      if (objet) ouvrirTable(objet)
-                    }}
-                  />
-                )
-              }
-            />
+                  <>
+                    <BreadcrumbBar
+                      database={contexte?.database ?? '—'}
+                      schema={contexte?.schema ?? '—'}
+                      counts={comptes(objets)}
+                      type={type}
+                      onTypeChange={setType}
+                      filter={filtre}
+                      onFilterChange={setFiltre}
+                    />
+                    <ObjectTable
+                      schema={contexte?.schema ?? ''}
+                      objects={visibles}
+                      type={type}
+                      selectedName={objetChoisi}
+                      onSelect={(objet) => setObjetChoisi(objet.name)}
+                      onOpen={ouvrirTable}
+                    />
+                  </>
+                )}
+              </div>
+            ) : (
+              <SplitPane
+                storageKey="workbench:detail"
+                defaultSize={296}
+                min={240}
+                max={420}
+                handleShadow="end"
+                // **Le panneau dimensionné est celui de droite.** Sans cela, c'est le centre qui
+                // recevait 296 px et la grille tombait à zéro pixel de large — défaut de `10b`,
+                // constaté en mesurant `A5` le 10 août 2026.
+                sized="end"
+                start={
+                  <div className={styles.centre}>
+                    <WorkbenchTabs
+                      etat={etatOnglets}
+                      onSelect={(id) => setEtatOnglets((etat) => ({ ...etat, actif: id }))}
+                      onClose={(id) => setEtatOnglets((etat) => fermer(etat, id))}
+                      onReorder={(ids) => setEtatOnglets((etat) => reordonner(etat, ids))}
+                    />
+                    {consoleActive && cle ? (
+                      // La console SQL (`12a`). Elle occupe la largeur du centre ; le panneau droit
+                      // reste celui de l'écran, et `12c` lui donnera un contenu utile.
+                      <ConsoleView
+                        texte={textes[idOnglet(consoleActive)] ?? ''}
+                        onTexteChange={(texte) =>
+                          setTextes((precedent) => ({
+                            ...precedent,
+                            [idOnglet(consoleActive)]: texte,
+                          }))
+                        }
+                        contexte={
+                          contexte ? `${contexte.database} · ${contexte.schema}` : undefined
+                        }
+                      />
+                    ) : table && cle ? (
+                      // Les lignes de la table ouverte (`10c`). La toolbar (`10e`) et le panneau
+                      // de ligne (`10f`) viendront l'entourer.
+                      <TableView
+                        // Une instance par onglet : changer de table remonte la vue, donc remet
+                        // filtres et tri à zéro sans effet de nettoyage.
+                        key={`${table.key.project}/${table.key.database}/${table.schema}.${table.table}`}
+                        cle={cle}
+                        schema={table.schema}
+                        table={table.table}
+                        columns={detail?.columns ?? []}
+                        passerelle={passerelleLignes}
+                        onEtatChange={setEtatRequete}
+                        onLectureChange={setLecture}
+                        rang={rangChoisi}
+                        onRangChange={setRangChoisi}
+                        edition={enEdition}
+                        rafraichissement={rafraichissement}
+                        attente={attente}
+                        onAttenteChange={onAttenteChange}
+                      />
+                    ) : (
+                      <>
+                        <BreadcrumbBar
+                          database={contexte?.database ?? '—'}
+                          schema={contexte?.schema ?? '—'}
+                          counts={comptes(objets)}
+                          type={type}
+                          onTypeChange={setType}
+                          filter={filtre}
+                          onFilterChange={setFiltre}
+                        />
+                        <ObjectTable
+                          schema={contexte?.schema ?? ''}
+                          objects={visibles}
+                          type={type}
+                          selectedName={objetChoisi}
+                          onSelect={(objet) => setObjetChoisi(objet.name)}
+                          onOpen={ouvrirTable}
+                        />
+                      </>
+                    )}
+                  </div>
+                }
+                end={
+                  // **Un seul panneau droit, dont le contenu suit l'écran** : le détail de l'objet
+                  // en `A4`, la ligne sélectionnée en `A5`, les modifications en attente en `A6`.
+                  // Les empiler donnerait deux panneaux là où le mockup n'en montre qu'un.
+                  //
+                  // **En édition avec des modifications, ce panneau prend la place du détail** —
+                  // conséquence assumée de `11c` : en éditant, ce qu'on veut voir est ce qu'on a
+                  // changé, pas la ligne sélectionnée.
+                  // Le panneau reste après une écriture réussie, pour montrer de quoi la défaire : le
+                  // démonter avec la dernière carte emporterait le patch inverse.
+                  table && cle && (attente.length > 0 || application.patchInverse !== null) ? (
+                    <PendingPanel
+                      attente={attente}
+                      table={`${table.schema}.${table.table}`}
+                      // `DatabaseKey.environment` est une chaîne côté IPC ; l'encart de production
+                      // veut l'environnement **déclaré** du projet, qui est typé.
+                      environment={environnement}
+                      sql={sqlPrevu.sql}
+                      erreurSql={sqlPrevu.erreur}
+                      onRetirer={(cleLigne, column) =>
+                        onAttenteChange(retirer(attente, cleLigne, column))
+                      }
+                      onToutAnnuler={() => onAttenteChange([])}
+                      enCours={application.enCours}
+                      refus={application.refus}
+                      patchInverse={application.patchInverse}
+                      onCopierLePatch={
+                        application.patchInverse === null
+                          ? undefined
+                          : () => {
+                              const texte = application.patchInverse
+                              if (texte) void navigator.clipboard?.writeText(texte)
+                            }
+                      }
+                      onAppliquer={application.demander}
+                      onEcarterLePatch={application.ecarterLePatch}
+                      onCopierLeSQL={
+                        sqlPrevu.sql === null
+                          ? undefined
+                          : () => {
+                              const texte = sqlPrevu.sql
+                              if (texte) void navigator.clipboard?.writeText(texte)
+                            }
+                      }
+                    />
+                  ) : actif && cle ? (
+                    <RowPanel
+                      cle={cle}
+                      columns={detail?.columns ?? []}
+                      relations={detail?.relations ?? []}
+                      ligne={lecture.ligne}
+                      rang={lecture.rang}
+                      total={lecture.total}
+                      onNavigate={setRangChoisi}
+                      onCopyInsert={
+                        lecture.ligne
+                          ? () => {
+                              const valeurs = lecture.ligne
+                              if (!valeurs) return
+                              // La constante fige le rétrécissement de type : dans une closure,
+                              // TypeScript ne peut pas savoir que `table` est encore non nul.
+                              const ouverte = table
+                              if (!ouverte) return
+                              void rowAsInsert(cle, ouverte.schema, ouverte.table, valeurs).then(
+                                (sql) => navigator.clipboard?.writeText(sql),
+                              )
+                            }
+                          : undefined
+                      }
+                      passerelleDetail={passerelleDetail}
+                      passerelleLignes={passerelleLignes ?? PASSERELLE_LIGNES}
+                    />
+                  ) : (
+                    <DetailPanel
+                      detail={detail}
+                      schema={contexte?.schema ?? ''}
+                      loading={loading}
+                      error={error}
+                      onOpenData={() => {
+                        const objet = objets.find((o) => o.name === objetChoisi)
+                        if (objet) ouvrirTable(objet)
+                      }}
+                    />
+                  )
+                }
+              />
+            )
           }
         />
       </div>
       {/* La barre d'état court sur toute la largeur, **sous les trois colonnes** — le mockup la
           place au niveau de la fenêtre, pas du centre. */}
-      {actif && (
+      {/* **Sur `table`, pas sur `actif`** : ses chiffres sont ceux d'une lecture de table, et les
+          afficher sous une console annoncerait « 500 lignes · limit 500 » pour une requête qui n'a
+          pas tourné. Vu à l'écran en assemblant `12a`. La console porte son propre pied. */}
+      {table && (
         <TableStatusBar
           fenetre={lecture.fenetre}
           loading={lecture.loading}

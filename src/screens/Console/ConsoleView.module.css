@@ -1,0 +1,150 @@
+/*
+ * La console SQL d'A7 : toolbar, éditeur, résultat.
+ *
+ * La toolbar reprend la géométrie de celle de A5 (`10e`) : **36 px**, chips à radius 8, action
+ * principale colorée. Deux toolbars aux hauteurs différentes sur deux écrans du même produit se
+ * verraient au basculement d'onglet — et c'est arrivé : `--h-bar` (34) avait été pris ici alors que
+ * `10e` pose 36 px en dur, écart de 2 px que seul un test comparant les deux barres a montré.
+ */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background: var(--paper);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex: none;
+  height: 36px;
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--divider);
+  background: var(--paper);
+}
+
+.action,
+.principale {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-field);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+.action {
+  border: 1px solid var(--border);
+  background: var(--field);
+  color: var(--ink-2);
+}
+
+.action:hover:not(:disabled) {
+  background: var(--hover-row);
+}
+
+.principale {
+  border: none;
+  background: var(--success);
+  color: var(--paper-bright);
+  font-weight: var(--weight-bold);
+}
+
+/* Une action désactivée reste **lisible** : elle annonce ce qui existera, et son infobulle dit
+ * pourquoi elle n'est pas là. La cacher ferait croire qu'elle n'existera jamais. */
+.action:disabled,
+.principale:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.raccourci {
+  font-family: var(--font-mono);
+  font-weight: var(--weight-medium);
+  opacity: 0.75;
+}
+
+.espace {
+  flex: 1;
+}
+
+.limite {
+  font-family: var(--font-ui);
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps-sm);
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+.corps {
+  flex: 1;
+  min-height: 0;
+}
+
+/* L'éditeur provisoire de `12a` : une zone de saisie nue, en mono, sans coloration ni numéros de
+ * ligne. `12b` la remplace par CodeMirror — la garder ici évite une console qu'on ne peut pas
+ * essayer, et le `textarea` est ce qu'un navigateur fait de mieux sans dépendance. */
+.editeur {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: var(--space-5) var(--space-6);
+  border: none;
+  background: var(--paper);
+  resize: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-code);
+  color: var(--ink);
+}
+
+/* Pas de liseré de focus sur la zone d'édition : le curseur clignotant le dit déjà, et un anneau
+ * autour d'une zone qui remplit la moitié de l'écran serait du bruit. Même arbitrage qu'un éditeur
+ * de code, qui n'en dessine pas. */
+.editeur:focus-visible {
+  outline: none;
+}
+
+.resultat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 0;
+  background: var(--paper-bright);
+  border-top: 1px solid var(--divider);
+}
+
+.vide {
+  margin: 0;
+  padding: var(--space-8);
+  text-align: center;
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  color: var(--ink-meta);
+}
+
+.pied {
+  box-sizing: content-box;
+  height: var(--h-status);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-6);
+  border-top: 1px solid var(--divider);
+  background: var(--bar);
+  font-family: var(--font-mono);
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-medium);
+  color: var(--ink-meta);
+}

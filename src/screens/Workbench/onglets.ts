@@ -11,7 +11,15 @@ import type { DatabaseKey } from '../../domain/engine'
  * Isolé du rendu pour la même raison qu'`arbre.ts` en `09d` : ces règles se testent sans DOM.
  */
 
-export type Onglet = {
+/**
+ * Une table ouverte dans un onglet.
+ *
+ * **`sorte` discrimine l'union, `kind` reste ce que le domaine appelle ainsi** — table ou vue, pour
+ * l'icône de la bande. Deux champs voisins, et c'est délibéré : renommer `kind` le désaccorderait de
+ * `TableSummary.kind`, qui vient des projections de `ts-rs` et n'est pas à nous.
+ */
+export type OngletTable = {
+  sorte: 'table'
   key: DatabaseKey
   schema: string
   table: string
@@ -19,10 +27,35 @@ export type Onglet = {
   kind: 'table' | 'view'
 }
 
-/** L'identité d'un onglet, **dérivée de la base et du chemin**. */
+/**
+ * Une console SQL ouverte dans un onglet (`12a`).
+ *
+ * **Le numéro fait partie de l'identité**, et pas seulement du libellé : deux consoles sur la même
+ * base sont deux consoles, contrairement à deux onglets sur la même table qui n'en font qu'un. On
+ * ouvre une seconde console *parce qu'on veut* garder la première.
+ */
+export type OngletConsole = {
+  sorte: 'console'
+  key: DatabaseKey
+  numero: number
+}
+
+/**
+ * Ce qu'un onglet de l'écran de travail peut être.
+ *
+ * **Une union, depuis `12a`.** L'onglet était « une table ouverte » ; `A7` en fait aussi une console,
+ * dans la **même bande** — un second système d'onglets à côté du premier doublerait la navigation
+ * pour un seul écran.
+ */
+export type Onglet = OngletTable | OngletConsole
+
+/** L'identité d'un onglet, **dérivée de la base et de ce qu'il ouvre**. */
 export function idOnglet(onglet: Onglet): string {
   const { project, database, environment } = onglet.key
-  return `${project}/${database}/${environment}::${onglet.schema}.${onglet.table}`
+  const coordonnees = `${project}/${database}/${environment}`
+  return onglet.sorte === 'console'
+    ? `${coordonnees}::console/${onglet.numero}`
+    : `${coordonnees}::${onglet.schema}.${onglet.table}`
 }
 
 export type EtatOnglets = {
@@ -39,7 +72,7 @@ export const AUCUN_ONGLET: EtatOnglets = { onglets: [], actif: null }
  * Deux onglets sur la même table donneraient deux états de filtres divergents pour une même
  * donnée. Aucun éditeur ne le fait par défaut, et le mockup ne montre pas de doublon.
  */
-export function ouvrir(etat: EtatOnglets, onglet: Onglet): EtatOnglets {
+export function ouvrir(etat: EtatOnglets, onglet: OngletTable): EtatOnglets {
   const id = idOnglet(onglet)
   if (etat.onglets.some((existant) => idOnglet(existant) === id)) {
     return { onglets: etat.onglets, actif: id }
@@ -65,6 +98,37 @@ export function fermer(etat: EtatOnglets, id: string): EtatOnglets {
   // éditeurs à onglets. Revenir au premier ferait sauter le regard à l'autre bout de la bande.
   const voisin = onglets[index] ?? onglets[index - 1]
   return { onglets, actif: voisin ? idOnglet(voisin) : null }
+}
+
+/**
+ * Ouvre une **nouvelle** console sur une base, et l'active.
+ *
+ * **Elle ne réutilise jamais une console existante**, contrairement à `ouvrir` : deux onglets sur la
+ * même table donneraient deux états de filtres divergents pour une même donnée, alors que deux
+ * consoles sont deux brouillons — c'est le but.
+ *
+ * Le numéro est le plus petit disponible **sur cette base**, et non un compteur qui monte : après
+ * avoir fermé « console 2 », la suivante reprend ce numéro plutôt que d'afficher « console 3 » à côté
+ * d'une « console 1 » solitaire.
+ */
+export function ouvrirConsole(etat: EtatOnglets, key: DatabaseKey): EtatOnglets {
+  const pris = new Set(
+    etat.onglets
+      .filter(
+        (onglet): onglet is OngletConsole =>
+          onglet.sorte === 'console' && memeBase(onglet.key, key),
+      )
+      .map((onglet) => onglet.numero),
+  )
+  let numero = 1
+  while (pris.has(numero)) numero += 1
+
+  const console: OngletConsole = { sorte: 'console', key, numero }
+  return { onglets: [...etat.onglets, console], actif: idOnglet(console) }
+}
+
+function memeBase(a: DatabaseKey, b: DatabaseKey): boolean {
+  return a.project === b.project && a.database === b.database && a.environment === b.environment
 }
 
 export function reordonner(etat: EtatOnglets, ids: readonly string[]): EtatOnglets {

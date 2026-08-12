@@ -393,7 +393,7 @@ propres critères de vérification.
 | [`11b`](11b-marques-du-mode-edition.md) | A6 | Bandeau, badge, teintes, annotations, barre d'état | **fait** |
 | [`11c`](11c-panneau-des-modifications.md) | A6 | Panneau droit : cartes, diff, SQL prévisualisé | **fait** |
 | [`11d`](11d-appliquer-les-modifications.md) | A6 | Appliquer : transaction, garde-fous, conflit | **fait** |
-| [`12a`](12a-coquille-de-console.md) | A7 | Coquille de console : onglets, toolbar, partage vertical | à faire |
+| [`12a`](12a-coquille-de-console.md) | A7 | Coquille de console : onglets, toolbar, partage vertical | **fait** |
 | [`12b`](12b-editeur-sql.md) | A7 | L'éditeur SQL — CodeMirror 6, thème du handoff | à faire |
 | [`12c`](12c-executer-une-requete.md) | A7 | Exécuter : `run_sql`, auto-`LIMIT`, requêtes destructives | à faire |
 | [`12d`](12d-autocompletion.md) | A7 | Autocomplétion depuis le catalogue introspecté | à faire |

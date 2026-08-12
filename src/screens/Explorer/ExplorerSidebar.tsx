@@ -4,6 +4,7 @@ import type { Environment, Project } from '../../domain/config'
 import type { ColumnInfo, ConnectionState } from '../../domain/engine'
 import { Badge } from '../../ui/Badge/Badge'
 import { ColumnRow } from '../../ui/ColumnRow/ColumnRow'
+import { ConsoleFooterButton } from '../../ui/ConsoleFooterButton/ConsoleFooterButton'
 import { Sidebar } from '../../ui/Sidebar/Sidebar'
 import { SidebarFilterBar } from '../../ui/SidebarFilterBar/SidebarFilterBar'
 import { SidebarSectionTitle } from '../../ui/SidebarSectionTitle/SidebarSectionTitle'
@@ -28,6 +29,8 @@ type ExplorerSidebarProps = {
   onSelect: (noeud: Noeud) => void
   onAddDatabase?: () => void
   onRefresh?: () => void
+  /** Ouvre une console SQL sur la base courante (`12a`). */
+  onNewConsole?: () => void
   /**
    * Modifier la configuration d'une base depuis son « … » (`08h`) — ouvre la modale de `08g`.
    *
@@ -108,6 +111,7 @@ export function ExplorerSidebar({
   onSelect,
   onAddDatabase,
   onRefresh,
+  onNewConsole,
   onEditDatabase,
   onRenameProject,
   onDelete,
@@ -162,25 +166,28 @@ export function ExplorerSidebar({
           />
         }
         footer={
-          // `ConsoleFooterButton` de `04` n'est pas réemployé : son libellé est figé
-          // (« Nouvelle console ») et sa hauteur est de 26 px, là où le pied de `A4` en fait 28 et
-          // porte deux actions. Trois écarts sur un composant de dix lignes — le dupliquer serait
-          // moins coûteux que le paramétrer, et `04` avait déjà noté sa dette de 26 px.
-          <div className={styles.footer}>
-            <button type="button" className={styles.add} onClick={onAddDatabase}>
-              <Icon name="plus" size={12} strokeWidth={2.2} />
-              Ajouter une base
-            </button>
-            <span className={styles.footerSpacer} />
-            <button
-              type="button"
-              className={styles.refresh}
-              onClick={onRefresh}
-              aria-label="Rafraîchir"
-            >
-              <Icon name="refresh" size={13} strokeWidth={2} />
-            </button>
-          </div>
+          // `ConsoleFooterButton` de `04` n'était pas réemployé pour le pied de `A4` : son libellé
+          // est figé (« Nouvelle console ») et sa hauteur est de 26 px, là où ce pied en fait 28 et
+          // porte deux actions. **`12a` lui donne enfin son usage**, juste au-dessus — c'est là que
+          // le mockup d'`A7` le place, et son libellé figé cesse d'être une limite.
+          <>
+            {onNewConsole && <ConsoleFooterButton onClick={onNewConsole} />}
+            <div className={styles.footer}>
+              <button type="button" className={styles.add} onClick={onAddDatabase}>
+                <Icon name="plus" size={12} strokeWidth={2.2} />
+                Ajouter une base
+              </button>
+              <span className={styles.footerSpacer} />
+              <button
+                type="button"
+                className={styles.refresh}
+                onClick={onRefresh}
+                aria-label="Rafraîchir"
+              >
+                <Icon name="refresh" size={13} strokeWidth={2} />
+              </button>
+            </div>
+          </>
         }
       >
         {/* `role="tree"` et `treeitem` : l'arbre est aplati dans le DOM, donc `aria-level` porte la

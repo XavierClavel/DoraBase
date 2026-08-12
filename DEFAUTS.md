@@ -351,7 +351,7 @@ des tests verts au moment où il a été introduit.
 
 ## Ce qu'a trouvé le premier usage réel, les 9 et 10 août 2026
 
-Quinze défauts, tous sur une suite verte, et **douze signalés par l'utilisateur** — pas par nous. Le
+Dix-sept défauts, tous sur une suite verte, et **douze signalés par l'utilisateur** — pas par nous. Le
 point commun : le décor de test était trop régulier pour les produire, ou l'assertion mesurait
 autre chose que ce qu'elle prétendait.
 
@@ -458,6 +458,19 @@ autre chose que ce qu'elle prétendait.
    blocs colorés touchaient les deux bords. Signalé à l'écran le 11 août 2026. Aucun test ne
    mesurait le retrait du contenu d'une modale ; deux e2e le font, en le comparant à l'en-tête plutôt
    qu'à une valeur en dur — et **pas au titre**, décalé de 33 px par la pastille d'icône.
+
+41. **Un `SplitPane` sans `width: 100%`, invisible pendant six specs.** Le composant avait un
+   `height: 100%` documenté par un défaut de `03` ; la largeur manquait. Personne ne l'a vu parce que
+   son contenu était toujours large — une grille dense et un panneau de 296 px réclament de la place.
+   La console de `12a`, dont le contenu ne réclame rien, n'a pris que 583 px sur 1183 et laissé un
+   vide à droite. **Un composant de disposition dont la taille dépend de son contenu ne se révèle
+   qu'avec un contenu qui n'en demande pas.**
+42. **Trois éléments de table restaient affichés sous une console.** Le panneau droit proposait de
+   « sélectionner une ligne », la barre d'état annonçait « 500 lignes · limit 500 » pour une requête
+   qui n'avait pas tourné, et « Données / Structure » proposait deux vues d'une requête. Les trois
+   sont apparus **à l'écran**, jamais aux tests : chacun testait son composant isolément, et aucun ne
+   regardait l'écran assemblé autour d'un onglet d'une autre nature. C'est le pendant du défaut n° 4,
+   où `A4` n'existait que dans la galerie.
 
 **Ce que ces neuf défauts disent du décor de test.** Aucun n'était un défaut de logique : tous
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros

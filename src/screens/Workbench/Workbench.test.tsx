@@ -326,6 +326,104 @@ describe('Workbench', () => {
 
 // --- Le mode édition (11b) ---
 
+describe('la console SQL (`12a`)', () => {
+  /** Ouvre l'arbre jusqu'à une base, puis une console. */
+  async function ouvrirUneConsole(utilisateur: ReturnType<typeof userEvent.setup>) {
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    await utilisateur.click(screen.getByRole('button', { name: /Nouvelle console/ }))
+  }
+
+  it('« Nouvelle console » ouvre un onglet de console', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await ouvrirUneConsole(utilisateur)
+
+    expect(screen.getByRole('tab', { name: /console 1/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByLabelText('Requête SQL')).toBeInTheDocument()
+  })
+
+  it('sans base ouverte, il n’y a pas de console à ouvrir', () => {
+    monter()
+    // Une console sans base n'aurait rien à interroger : le bouton disparaît plutôt que d'ouvrir un
+    // onglet inerte.
+    expect(screen.queryByRole('button', { name: /Nouvelle console/ })).not.toBeInTheDocument()
+  })
+
+  it('deux consoles gardent chacune son texte', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await ouvrirUneConsole(utilisateur)
+    await utilisateur.type(screen.getByLabelText('Requête SQL'), 'select 1')
+
+    await utilisateur.click(screen.getByRole('button', { name: /Nouvelle console/ }))
+    expect(screen.getByLabelText('Requête SQL')).toHaveValue('')
+    await utilisateur.type(screen.getByLabelText('Requête SQL'), 'select 2')
+
+    // **Deux brouillons, pas un.** C'est la différence avec deux onglets sur la même table, qui n'en
+    // font qu'un : on ouvre une seconde console parce qu'on veut garder la première.
+    await utilisateur.click(screen.getByRole('tab', { name: /console 1/ }))
+    expect(screen.getByLabelText('Requête SQL')).toHaveValue('select 1')
+    await utilisateur.click(screen.getByRole('tab', { name: /console 2/ }))
+    expect(screen.getByLabelText('Requête SQL')).toHaveValue('select 2')
+  })
+
+  it('une console et une table cohabitent dans la même bande', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
+    await utilisateur.click(screen.getByRole('button', { name: /Nouvelle console/ }))
+
+    // Un second système d'onglets à côté du premier doublerait la navigation pour un seul écran.
+    expect(screen.getAllByRole('tab')).toHaveLength(2)
+    // Et revenir à la table remet la grille, pas l'éditeur.
+    await utilisateur.click(screen.getByRole('tab', { name: /orders/ }))
+    expect(screen.getByRole('grid')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Requête SQL')).not.toBeInTheDocument()
+  })
+
+  it('l’onglet de console porte son icône, distincte de celle d’une table', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
+    await utilisateur.click(screen.getByRole('button', { name: /Nouvelle console/ }))
+
+    const icone = (nom: RegExp) =>
+      screen.getByRole('tab', { name: nom }).querySelector('use')?.getAttribute('href')
+    // Une console qui porterait l'icône d'une table serait indiscernable de ses voisines dans la
+    // bande — c'est le seul repère à côté du libellé.
+    expect(icone(/console 1/)).not.toBe(icone(/orders/))
+    expect(icone(/console 1/)).toBe('#i-term')
+  })
+
+  it('les actions non livrées sont désactivées et disent pourquoi', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await ouvrirUneConsole(utilisateur)
+
+    // **Présentes et désactivées, pas absentes** : les cacher ferait croire qu'elles n'existeront
+    // pas, les laisser cliquables et inertes ferait croire à une panne (défaut n° 36).
+    for (const libelle of ['Exécuter', 'Sélection', 'Expliquer', 'Enregistrer', 'Formater']) {
+      const action = screen.getByRole('button', { name: new RegExp(libelle) })
+      expect(action).toBeDisabled()
+      expect(action).toHaveAttribute('title', expect.stringMatching(/1[12][a-f]|formateur/))
+    }
+  })
+
+  it('fermer une console la retire, et le voisin reprend la main', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
+    await utilisateur.click(screen.getByRole('button', { name: /Nouvelle console/ }))
+    await utilisateur.click(screen.getByRole('button', { name: 'Fermer console 1' }))
+
+    expect(screen.queryByLabelText('Requête SQL')).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /orders/ })).toHaveAttribute('aria-selected', 'true')
+  })
+})
+
 describe('mode édition', () => {
   /** Ouvre l'arbre, une table, et bascule en édition. */
   async function ouvrirEtEditer(utilisateur: ReturnType<typeof userEvent.setup>) {
