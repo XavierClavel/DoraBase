@@ -150,6 +150,72 @@ test('la largeur suit le geste dans le DOM, sans que React rende', () => {
   expect(handle).toHaveAttribute('aria-valuenow', '240')
 })
 
+test('un partage empilé suit le geste en hauteur, pas en largeur', () => {
+  const { container } = render(
+    <SplitPane
+      storageKey="test-vertical"
+      orientation="vertical"
+      defaultSize={200}
+      min={100}
+      max={400}
+      start={<div>haut</div>}
+      end={<div>bas</div>}
+    />,
+  )
+  const handle = screen.getByRole('separator')
+  const panneau = container.firstElementChild?.firstElementChild as HTMLElement
+
+  fireEvent.pointerDown(handle, { clientX: 10, clientY: 100 })
+  fireEvent.pointerMove(handle, { clientX: 10, clientY: 140 })
+
+  // **La dimension pilotée pendant le geste suit l'axe.** Écrire `width` sur un partage empilé
+  // laisserait la poignée bouger sans que rien ne suive à l'écran jusqu'au relâchement — le retour
+  // visuel disparaîtrait, et seul un test mesurant *pendant* le geste le voit.
+  expect(panneau.style.height).toBe('240px')
+  expect(panneau.style.width).toBe('')
+
+  fireEvent.pointerUp(handle)
+  expect(handle).toHaveAttribute('aria-valuenow', '240')
+})
+
+test('le séparateur d’un partage empilé s’annonce horizontal', () => {
+  render(
+    <SplitPane
+      storageKey="test-aria"
+      orientation="vertical"
+      defaultSize={200}
+      min={100}
+      max={400}
+      start={<div />}
+      end={<div />}
+    />,
+  )
+  // L'orientation ARIA est celle du **séparateur**, pas celle du partage : une barre qui sépare deux
+  // lignes est horizontale. Confondre les deux mots annonce l'inverse de ce qu'on voit.
+  expect(screen.getByRole('separator')).toHaveAttribute('aria-orientation', 'horizontal')
+})
+
+test('les flèches haut et bas règlent un partage empilé', async () => {
+  render(
+    <SplitPane
+      storageKey="test-clavier-v"
+      orientation="vertical"
+      defaultSize={200}
+      min={100}
+      max={400}
+      start={<div />}
+      end={<div />}
+    />,
+  )
+  const handle = screen.getByRole('separator')
+  handle.focus()
+  await userEvent.keyboard('{ArrowDown}')
+  expect(handle).toHaveAttribute('aria-valuenow', '208')
+  // Une flèche latérale sur une poignée horizontale ne veut rien dire : elle ne fait rien.
+  await userEvent.keyboard('{ArrowRight}')
+  expect(handle).toHaveAttribute('aria-valuenow', '208')
+})
+
 test('le glissement empêche la sélection de démarrer sur la poignée', () => {
   render(
     <SplitPane

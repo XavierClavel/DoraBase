@@ -27,6 +27,13 @@ type SplitPaneProps = {
    * centre.
    */
   sized?: 'start' | 'end'
+  /**
+   * L'axe du partage. `vertical` empile les deux zones et la poignée se saisit en hauteur (`12a`).
+   *
+   * `03` n'avait posé que des colonnes, ce qui suffisait à une sidebar. La console d'`A7` demande
+   * deux **lignes** — éditeur au-dessus, résultat en dessous.
+   */
+  orientation?: 'horizontal' | 'vertical'
   start: ReactNode
   end: ReactNode
 }
@@ -68,6 +75,7 @@ export function SplitPane({
   max,
   handleShadow = 'start',
   sized = 'start',
+  orientation = 'horizontal',
   start,
   end,
 }: SplitPaneProps) {
@@ -92,7 +100,9 @@ export function SplitPane({
     // le 11 août 2026.
     event.preventDefault()
 
-    const originX = event.clientX
+    // L'axe décide de la coordonnée suivie : rien d'autre ne change dans le geste.
+    const vertical = orientation === 'vertical'
+    const originX = vertical ? event.clientY : event.clientX
     const originSize = size
     // La poignée capture le pointeur : le glissement survit à un curseur qui sort de ses 5 px, sans
     // écouter sur `window` — et les événements cessent d'être dirigés vers les éléments survolés,
@@ -123,14 +133,16 @@ export function SplitPane({
     function onMove(moveEvent: PointerEvent) {
       // Vers la droite agrandit le panneau de gauche et **rétrécit** celui de droite : le geste
       // suit toujours la poignée, quel que soit le panneau dimensionné.
-      const delta = moveEvent.clientX - originX
+      const delta = (vertical ? moveEvent.clientY : moveEvent.clientX) - originX
       derniere = clamp(originSize + (sized === 'start' ? delta : -delta), min, max)
       // Écrit à chaque événement, sans `requestAnimationFrame`. Une trame de regroupement avait été
       // ajoutée en ceinture : elle ne changeait aucune mesure, et pour une raison de fond — écrire
       // une propriété de style ne force pas de recalcul, seul le *lire* le ferait. Le navigateur
       // groupe déjà les changements avant la peinture. Retirée, comme les trois autres ceintures de
       // ce projet.
-      if (dimensionne.current) dimensionne.current.style.width = `${derniere}px`
+      if (dimensionne.current) {
+        dimensionne.current.style[vertical ? 'height' : 'width'] = `${derniere}px`
+      }
     }
 
     function onUp() {
@@ -154,25 +166,33 @@ export function SplitPane({
 
   function handleKeyDown(event: ReactKeyboardEvent) {
     const pas = sized === 'start' ? KEYBOARD_STEP : -KEYBOARD_STEP
+    // Les flèches suivent l'axe : haut/bas pour un partage empilé, gauche/droite sinon. Écouter les
+    // quatre serait plus permissif et moins prévisible — une flèche latérale sur une poignée
+    // horizontale ne veut rien dire.
+    const [avant, apres] =
+      orientation === 'vertical' ? ['ArrowUp', 'ArrowDown'] : ['ArrowLeft', 'ArrowRight']
     // Au clavier, un pas est un geste complet : la mémorisation immédiate est juste ici.
-    if (event.key === 'ArrowLeft') {
+    if (event.key === avant) {
       const suivante = clamp(size - pas, min, max)
       setSize(suivante)
       memoriser(suivante)
     }
-    if (event.key === 'ArrowRight') {
+    if (event.key === apres) {
       const suivante = clamp(size + pas, min, max)
       setSize(suivante)
       memoriser(suivante)
     }
   }
 
+  const taille = (portee: 'start' | 'end') =>
+    sized === portee ? (orientation === 'vertical' ? { height: size } : { width: size }) : undefined
+
   return (
-    <div className={styles.root}>
+    <div className={cx(styles.root, orientation === 'vertical' && styles.vertical)}>
       <div
         ref={sized === 'start' ? dimensionne : undefined}
         className={sized === 'start' ? styles.pane : styles.end}
-        style={sized === 'start' ? { width: size } : undefined}
+        style={taille('start')}
       >
         {start}
       </div>
@@ -182,9 +202,16 @@ export function SplitPane({
           WAI-ARIA « window splitter » prescrit exactement ce qui est écrit ici :
           `role="separator"` focalisable, avec `aria-valuenow`/`min`/`max`. */}
       <div
-        className={cx(styles.handle, handleShadow === 'end' && styles.handleEnd)}
+        className={cx(
+          styles.handle,
+          handleShadow === 'end' && styles.handleEnd,
+          orientation === 'vertical' && styles.handleH,
+        )}
         role="separator"
-        aria-orientation="vertical"
+        // **L'orientation ARIA est celle du séparateur, pas celle du partage** : un partage en
+        // colonnes est séparé par une barre *verticale*. Les deux mots désignent des choses
+        // opposées, et les confondre annoncerait l'inverse de ce qu'on voit.
+        aria-orientation={orientation === 'vertical' ? 'horizontal' : 'vertical'}
         aria-valuenow={size}
         aria-valuemin={min}
         aria-valuemax={max}
@@ -197,7 +224,7 @@ export function SplitPane({
       <div
         ref={sized === 'end' ? dimensionne : undefined}
         className={sized === 'end' ? styles.pane : styles.end}
-        style={sized === 'end' ? { width: size } : undefined}
+        style={taille('end')}
       >
         {end}
       </div>

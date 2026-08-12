@@ -14,6 +14,11 @@
      Non détectable en test unitaire : jsdom ne calcule aucune mise en page — d'où le test
      e2e qui mesure la hauteur réelle dans un navigateur. */
   height: 100%;
+  /* **`width: 100%` pour la même raison, et il manquait.** Un conteneur flex prend la largeur de son
+   * contenu quand il est lui-même enfant d'une rangée flex : tant que le contenu était large — une
+   * grille et un panneau de 296 px — cela ne se voyait pas. La console de `12a`, dont le contenu ne
+   * réclame aucune largeur, a laissé 583 px sur 1183 disponibles et un vide à droite. Vu à l'écran. */
+  width: 100%;
 }
 
 .pane {
@@ -76,4 +81,24 @@
   user-select: none;
   /* Le curseur ne doit pas clignoter en passant sur du texte pendant le geste. */
   cursor: col-resize;
+}
+
+/* Le partage empilé de `12a` : éditeur au-dessus, résultat en dessous. */
+.vertical {
+  flex-direction: column;
+  /* La largeur reprend le rôle que la hauteur tient dans l'autre axe : sans elle, une colonne flex
+   * imbriquée refuse de descendre sous la largeur de son contenu. */
+  width: 100%;
+}
+
+.vertical .pane {
+  /* `flex: none` est déjà posé ; c'est la hauteur qui devient la dimension pilotée. */
+  min-height: 0;
+}
+
+/* La poignée d'un partage empilé se saisit en hauteur, et son curseur suit l'axe. */
+.handleH {
+  width: auto;
+  height: 5px;
+  cursor: row-resize;
 }
