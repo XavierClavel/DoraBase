@@ -31,6 +31,8 @@ type ConsoleViewProps = {
   planEnCours?: boolean
   vue?: VueResultat
   onVueChange?: (vue: VueResultat) => void
+  /** Ouvre la modale d'enregistrement (`12f`) avec le texte courant. */
+  onEnregistrer?: (sql: string) => void
 }
 
 /**
@@ -55,6 +57,7 @@ export function ConsoleView({
   planEnCours = false,
   vue,
   onVueChange,
+  onEnregistrer,
 }: ConsoleViewProps) {
   // La sélection courante, publiée par l'éditeur : « Sélection » l'exécute, et se replie sur la
   // requête entière quand il n'y a rien de sélectionné — un bouton qui ne ferait rien sur une
@@ -73,6 +76,12 @@ export function ConsoleView({
     if (action.libelle === 'Exécuter') return { ...action, onClick: executer }
     if (action.libelle === 'Sélection') return { ...action, onClick: executerLaSelection }
     if (action.libelle === 'Expliquer') return { ...action, onClick: expliquer }
+    if (action.libelle === 'Enregistrer') {
+      return {
+        ...action,
+        onClick: onEnregistrer === undefined ? undefined : () => onEnregistrer(texte),
+      }
+    }
     return action
   })
 
@@ -168,7 +177,7 @@ const ACTIONS = [
   {
     libelle: 'Enregistrer',
     icone: 'save' as const,
-    raison: 'Les requêtes enregistrées arrivent avec 12f.',
+    raison: 'Aucun projet n’est ouvert : il n’y a nulle part où enregistrer.',
   },
   {
     libelle: 'Formater',

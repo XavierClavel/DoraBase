@@ -5,7 +5,7 @@
 //! `commands.rs` : la logique d'ordonnancement et de rattrapage se teste sans Tauri.
 
 use crate::config::model::{
-    Database, Engine, Environment, EnvironmentVariant, ModelError, Project, SecretRef,
+    Database, Engine, Environment, EnvironmentVariant, ModelError, Project, SavedQuery, SecretRef,
 };
 use crate::config::query::validate;
 use crate::secrets::{Secret, SecretError, SecretStore};
@@ -531,6 +531,7 @@ pub fn creer_projet(
         name: nom.to_owned(),
         active_environment,
         databases: Vec::new(),
+        queries: Vec::new(),
     });
     Ok(suivants)
 }
@@ -684,6 +685,120 @@ fn oublier(
         }
     }
     (cles, residus)
+}
+
+/// Enregistre une requête, ou **remplace** celle qui porte ce nom (`12f`).
+///
+/// **Le même nom remplace, il ne duplique pas.** Modifier une requête puis « Enregistrer » doit mettre
+/// à jour l'entrée, sinon la liste se remplirait de variantes homonymes qu'on ne saurait plus
+/// distinguer. C'est aussi ce que fait tout éditeur : enregistrer n'est pas « enregistrer sous ».
+pub fn enregistrer_requete(
+    projects: &[Project],
+    project: &str,
+    nom: &str,
+    sql: &str,
+) -> Result<Vec<Project>, QueryError> {
+    let nom = nom.trim();
+    if nom.is_empty() {
+        return Err(QueryError::NomVide);
+    }
+
+    let mut suivants = projects.to_vec();
+    let projet = suivants
+        .iter_mut()
+        .find(|projet| projet.name == project)
+        .ok_or_else(|| QueryError::ProjetInconnu {
+            project: project.to_owned(),
+        })?;
+
+    match projet.queries.iter_mut().find(|q| q.name == nom) {
+        Some(existante) => existante.sql = sql.to_owned(),
+        None => projet.queries.push(SavedQuery {
+            name: nom.to_owned(),
+            sql: sql.to_owned(),
+        }),
+    }
+    Ok(suivants)
+}
+
+/// Retire une requête enregistrée (`12f`).
+///
+/// **Une requête absente n'est pas un échec** : le geste a déjà eu son effet, et refuser rendrait la
+/// suppression dépendante d'un état qu'on ne voit plus — le même arbitrage qu'en `08j` pour un secret
+/// déjà effacé.
+pub fn retirer_requete(
+    projects: &[Project],
+    project: &str,
+    nom: &str,
+) -> Result<Vec<Project>, QueryError> {
+    let mut suivants = projects.to_vec();
+    let projet = suivants
+        .iter_mut()
+        .find(|projet| projet.name == project)
+        .ok_or_else(|| QueryError::ProjetInconnu {
+            project: project.to_owned(),
+        })?;
+    projet.queries.retain(|q| q.name != nom);
+    Ok(suivants)
+}
+
+/// Renomme une requête enregistrée (`12f`).
+///
+/// **Un nom déjà pris est refusé.** Deux requêtes homonymes dans un projet seraient indiscernables
+/// dans la liste, et « Enregistrer » ne saurait plus laquelle mettre à jour.
+pub fn renommer_requete(
+    projects: &[Project],
+    project: &str,
+    ancien: &str,
+    nouveau: &str,
+) -> Result<Vec<Project>, QueryError> {
+    let nouveau = nouveau.trim();
+    if nouveau.is_empty() {
+        return Err(QueryError::NomVide);
+    }
+
+    let mut suivants = projects.to_vec();
+    let projet = suivants
+        .iter_mut()
+        .find(|projet| projet.name == project)
+        .ok_or_else(|| QueryError::ProjetInconnu {
+            project: project.to_owned(),
+        })?;
+
+    if nouveau != ancien && projet.queries.iter().any(|q| q.name == nouveau) {
+        return Err(QueryError::NomDeja {
+            nom: nouveau.to_owned(),
+        });
+    }
+    let cible = projet
+        .queries
+        .iter_mut()
+        .find(|q| q.name == ancien)
+        .ok_or_else(|| QueryError::Inconnue {
+            nom: ancien.to_owned(),
+        })?;
+    cible.name = nouveau.to_owned();
+    Ok(suivants)
+}
+
+/// Les refus des opérations sur les requêtes enregistrées (`12f`).
+#[derive(Debug, PartialEq, Eq)]
+pub enum QueryError {
+    NomVide,
+    NomDeja { nom: String },
+    Inconnue { nom: String },
+    ProjetInconnu { project: String },
+}
+
+impl std::fmt::Display for QueryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NomVide => write!(f, "une requête enregistrée doit avoir un nom"),
+            Self::NomDeja { nom } => write!(f, "une requête nommée « {nom} » existe déjà"),
+            Self::Inconnue { nom } => write!(f, "aucune requête nommée « {nom} »"),
+            Self::ProjetInconnu { project } => write!(f, "le projet « {project} » n'existe pas"),
+        }
+    }
 }
 
 /// Les deux refus de `creer_projet`.
@@ -882,6 +997,7 @@ mod tests {
         vec![Project {
             name: "Atelier Nord".into(),
             active_environment: Environment::Dev,
+            queries: Vec::new(),
             databases: Vec::new(),
         }]
     }
@@ -1527,6 +1643,7 @@ mod tests_parcours {
         let mut projects = vec![Project {
             name: "Philippe".into(),
             active_environment: Environment::Dev,
+            queries: Vec::new(),
             databases: vec![crate::config::model::Database::new(
                 "analytics",
                 Engine::PostgreSql,
@@ -1598,6 +1715,7 @@ mod tests_renommage {
             Project {
                 name: "Print".into(),
                 active_environment: Environment::Prod,
+                queries: Vec::new(),
                 databases: vec![
                     Database::new(
                         "analytics",
@@ -1629,6 +1747,7 @@ mod tests_renommage {
             Project {
                 name: "Outils".into(),
                 active_environment: Environment::Dev,
+                queries: Vec::new(),
                 databases: Vec::new(),
             },
         ]
@@ -2244,5 +2363,108 @@ mod tests_suppression {
 
         let vus = vigile.0.lock().expect("vigile").clone();
         assert_eq!(vus.len(), 3, "trois secrets déclarés, trois suppressions");
+    }
+}
+
+// --- Les requêtes enregistrées (`12f`) ---
+
+#[cfg(test)]
+mod tests_requetes {
+    use super::*;
+
+    fn projets() -> Vec<Project> {
+        vec![Project {
+            name: "Print".into(),
+            active_environment: Environment::Prod,
+            databases: Vec::new(),
+            queries: Vec::new(),
+        }]
+    }
+
+    #[test]
+    fn enregistrer_ajoute_puis_remplace_sous_le_meme_nom() {
+        let p = enregistrer_requete(&projets(), "Print", "CA par jour", "select 1").expect("ajout");
+        assert_eq!(p[0].queries.len(), 1);
+
+        let p = enregistrer_requete(&p, "Print", "CA par jour", "select 2").expect("remplacement");
+        // **Le même nom remplace, il ne duplique pas.** Sinon la liste se remplirait de variantes
+        // homonymes qu'on ne saurait plus distinguer — et « Enregistrer » n'est pas
+        // « Enregistrer sous ».
+        assert_eq!(p[0].queries.len(), 1);
+        assert_eq!(p[0].queries[0].sql, "select 2");
+    }
+
+    #[test]
+    fn un_nom_vide_ou_blanc_est_refuse() {
+        assert_eq!(
+            enregistrer_requete(&projets(), "Print", "   ", "select 1"),
+            Err(QueryError::NomVide)
+        );
+    }
+
+    #[test]
+    fn le_nom_est_debarrasse_de_ses_espaces() {
+        let p = enregistrer_requete(&projets(), "Print", "  CA  ", "select 1").expect("ajout");
+        // Sinon « CA » et « CA » (avec espace) seraient deux entrées, indiscernables dans la liste.
+        assert_eq!(p[0].queries[0].name, "CA");
+    }
+
+    #[test]
+    fn retirer_une_requete_absente_n_est_pas_un_echec() {
+        // Le geste a déjà eu son effet. Refuser rendrait la suppression dépendante d'un état qu'on ne
+        // voit plus — même arbitrage qu'en `08j` pour un secret déjà effacé.
+        let p = retirer_requete(&projets(), "Print", "jamais écrite").expect("pas un échec");
+        assert!(p[0].queries.is_empty());
+    }
+
+    #[test]
+    fn renommer_refuse_un_nom_deja_pris() {
+        let p = enregistrer_requete(&projets(), "Print", "A", "select 1").expect("ajout");
+        let p = enregistrer_requete(&p, "Print", "B", "select 2").expect("ajout");
+        // Deux requêtes homonymes seraient indiscernables dans la liste, et « Enregistrer » ne saurait
+        // plus laquelle mettre à jour.
+        assert_eq!(
+            renommer_requete(&p, "Print", "A", "B"),
+            Err(QueryError::NomDeja { nom: "B".into() })
+        );
+        // Renommer en son propre nom est accepté sans rien faire.
+        let p = renommer_requete(&p, "Print", "A", "A").expect("le même nom est l'état voulu");
+        assert_eq!(p[0].queries[0].name, "A");
+    }
+
+    #[test]
+    fn renommer_une_requete_inconnue_est_refuse() {
+        assert_eq!(
+            renommer_requete(&projets(), "Print", "absente", "autre"),
+            Err(QueryError::Inconnue {
+                nom: "absente".into()
+            })
+        );
+    }
+
+    #[test]
+    fn un_projet_inconnu_est_refuse_par_les_trois() {
+        for issue in [
+            enregistrer_requete(&projets(), "Absent", "A", "select 1"),
+            retirer_requete(&projets(), "Absent", "A"),
+            renommer_requete(&projets(), "Absent", "A", "B"),
+        ] {
+            assert!(matches!(issue, Err(QueryError::ProjetInconnu { .. })));
+        }
+    }
+
+    #[test]
+    fn les_requetes_appartiennent_au_projet_visé_seulement() {
+        let mut deux = projets();
+        deux.push(Project {
+            name: "Outils".into(),
+            active_environment: Environment::Dev,
+            databases: Vec::new(),
+            queries: Vec::new(),
+        });
+        let p = enregistrer_requete(&deux, "Print", "A", "select 1").expect("ajout");
+        // Sans ce test, une écriture sur « le premier projet » passerait inaperçue.
+        assert_eq!(p[0].queries.len(), 1);
+        assert!(p[1].queries.is_empty());
     }
 }

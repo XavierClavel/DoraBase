@@ -14,7 +14,9 @@ import { ProjectPill } from '../../shell/ProjectPill/ProjectPill'
 import { TitleBar } from '../../shell/TitleBar/TitleBar'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
 import { ConsoleView } from '../Console/ConsoleView'
+import { RenameQueryDialog } from '../Console/RenameQueryDialog'
 import { RunConfirm } from '../Console/RunConfirm'
+import { SaveQueryDialog } from '../Console/SaveQueryDialog'
 import {
   PASSERELLE_EXECUTION,
   type PasserelleExecution,
@@ -76,6 +78,12 @@ type WorkbenchProps = {
   passerelleExecution?: PasserelleExecution
   /** Retirer une déclaration de connexion, ou un projet (`08j`). */
   onDelete?: (cible: CibleDeSuppression) => Promise<{ leftoverSecrets: string[] }>
+  /** Enregistre une requête (`12f`). Absent, l'action est désactivée avec sa raison. */
+  onSaveQuery?: (project: string, nom: string, sql: string) => Promise<void>
+  /** Retire une requête enregistrée (`12f`). */
+  onDeleteQuery?: (project: string, nom: string) => Promise<void>
+  /** Renomme une requête enregistrée (`12f`). */
+  onRenameQuery?: (project: string, ancien: string, nouveau: string) => Promise<void>
   /** Ouvre l'écran en mode édition au montage — la démo s'en sert (`11a`). */
   edition?: boolean
 }
@@ -99,6 +107,9 @@ export function Workbench({
   onEditDatabase,
   onRenameProject,
   onDelete,
+  onSaveQuery,
+  onDeleteQuery,
+  onRenameQuery,
   passerellePreview,
   passerelleApply,
   passerelleExecution,
@@ -207,6 +218,18 @@ export function Workbench({
   // Le SQL de `11c` vient du **moteur**, jamais de l'écran : composer un équivalent ici produirait
   // un texte *ressemblant* à celui qui partira, sous un titre qui promet l'exactitude.
   const [rafraichissement, setRafraichissement] = useState(0)
+  /** La requête dont on demande l'enregistrement (`12f`). */
+  const [aEnregistrer, setAEnregistrer] = useState<{ sql: string; nom: string } | null>(null)
+  /** La requête dont on demande le renommage (`12f`). */
+  const [aRenommerLaRequete, setARenommerLaRequete] = useState<string | null>(null)
+  /**
+   * Le nom de la requête ouverte dans chaque console, quand elle vient de « Mes requêtes ».
+   *
+   * **Sans lui, « Enregistrer » proposerait un nom vide** sur une requête qu'on vient d'ouvrir et de
+   * modifier : il faudrait retaper le nom exact pour mettre à jour l'entrée, ou créer un doublon sans
+   * le vouloir.
+   */
+  const [nomsDeRequetes, setNomsDeRequetes] = useState<Readonly<Record<string, string>>>({})
   // L'exécution des requêtes de console (`12c`). Elle vit ici parce que la confirmation est une
   // sous-modale de l'écran, comme celle de `11d`.
   const execution = useExecution(cle, passerelleExecution ?? PASSERELLE_EXECUTION)
@@ -364,6 +387,15 @@ export function Workbench({
           planEnCours={execution.planEnCours}
           vue={execution.vue}
           onVueChange={execution.setVue}
+          onEnregistrer={
+            onSaveQuery === undefined || projetActif === null
+              ? undefined
+              : (sql) =>
+                  setAEnregistrer({
+                    sql,
+                    nom: nomsDeRequetes[idOnglet(consoleActive)] ?? '',
+                  })
+          }
         />
       ) : table && cle ? (
         // Les lignes de la table ouverte (`10c`). La toolbar (`10e`) et le panneau
@@ -441,6 +473,32 @@ export function Workbench({
       />
       {/* Le bandeau du mode édition, **sous la barre de titre** et au-dessus du corps : c'est là que
           le mockup le place, et il court sur toute la largeur. */}
+      {aEnregistrer && projetActif && onSaveQuery && (
+        <SaveQueryDialog
+          nomInitial={aEnregistrer.nom}
+          existeDeja={(nom) => projetActif.queries.some((requete) => requete.name === nom)}
+          onClose={() => setAEnregistrer(null)}
+          onEnregistrer={async (nom) => {
+            await onSaveQuery(projetActif.name, nom, aEnregistrer.sql)
+            // La console retient le nom : « Enregistrer » à nouveau mettra à jour cette entrée plutôt
+            // que d'en proposer une seconde.
+            if (consoleActive) {
+              setNomsDeRequetes((precedent) => ({ ...precedent, [idOnglet(consoleActive)]: nom }))
+            }
+          }}
+        />
+      )}
+      {aRenommerLaRequete !== null && projetActif && onRenameQuery && (
+        <RenameQueryDialog
+          nomInitial={aRenommerLaRequete}
+          existeDeja={(nom) =>
+            nom !== aRenommerLaRequete &&
+            projetActif.queries.some((requete) => requete.name === nom)
+          }
+          onClose={() => setARenommerLaRequete(null)}
+          onRenommer={(nouveau) => onRenameQuery(projetActif.name, aRenommerLaRequete, nouveau)}
+        />
+      )}
       {execution.aConfirmer && (
         <RunConfirm
           nature={execution.aConfirmer.nature}
@@ -506,6 +564,30 @@ export function Workbench({
                 if (base) onEditDatabase?.(nomProjet, base)
               }}
               onRenameProject={onRenameProject}
+              requetes={
+                projetActif === null
+                  ? undefined
+                  : {
+                      liste: projetActif.queries,
+                      // Ouvrir une requête ouvre une **console** sur son texte : c'est le seul endroit
+                      // où l'on peut l'exécuter.
+                      onOuvrir: (requete) => {
+                        if (cle === null) return
+                        setEtatOnglets((etat) => {
+                          const suivant = ouvrirConsole(etat, cle)
+                          const id = suivant.actif as string
+                          setTextes((precedent) => ({ ...precedent, [id]: requete.sql }))
+                          setNomsDeRequetes((precedent) => ({ ...precedent, [id]: requete.name }))
+                          return suivant
+                        })
+                      },
+                      onRetirer:
+                        onDeleteQuery === undefined
+                          ? undefined
+                          : (nom) => void onDeleteQuery(projetActif.name, nom),
+                      onRenommer: onRenameQuery === undefined ? undefined : setARenommerLaRequete,
+                    }
+              }
               // **Une console s'ouvre sur la base du contexte.** Sans base, pas de console : elle
               // n'aurait rien à interroger, et le bouton disparaît plutôt que d'ouvrir un onglet
               // inerte.

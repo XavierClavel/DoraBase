@@ -24,6 +24,19 @@ const PROJETS: Project[] = [
   {
     name: 'Atelier Nord',
     activeEnvironment: 'prod',
+    // Trois requêtes enregistrées : la section « Mes requêtes » de `12f` n'existe pas quand la liste
+    // est vide, et une démo sans elles ne montrerait pas cette moitié de la spec.
+    queries: [
+      {
+        name: 'CA par jour',
+        sql: "select date_trunc('day', created_at), sum(total_cents)\nfrom orders\ngroup by 1",
+      },
+      {
+        name: 'Top coupons',
+        sql: 'select coupon_code, count(*)\nfrom orders\ngroup by 1 order by 2 desc',
+      },
+      { name: 'Paniers abandonnés', sql: "select * from orders where status = 'pending'" },
+    ],
     databases: [
       {
         name: 'analytics',
@@ -45,7 +58,7 @@ const PROJETS: Project[] = [
       },
     ],
   },
-  { name: 'Outils internes', activeEnvironment: 'dev', databases: [] },
+  { name: 'Outils internes', activeEnvironment: 'dev', databases: [], queries: [] },
 ]
 
 const SCHEMAS: SchemaInfo[] = [
@@ -296,12 +309,26 @@ export function WorkbenchDemo() {
   // dans la galerie. Les commandes du formulaire ne répondent pas en Chromium ; ce qui se vérifie
   // ici est qu'il s'ouvre, et sur la bonne base.
   const [edition, setEdition] = useState<{ project: string; database: Database } | null>(null)
+  // **Les requêtes de la démo vivent en mémoire.** Rien n'est persisté : le pont ne répond pas en
+  // Chromium, et une démo qui écrirait sur le disque de l'utilisateur serait une mauvaise surprise.
+  // Ce qui se vérifie ici est le parcours d'écran, pas la persistance — que les tests Rust couvrent.
+  const [projets, setProjets] = useState<Project[]>(PROJETS)
+
+  const surRequetes = (
+    nom: string,
+    transforme: (requetes: Project['queries']) => Project['queries'],
+  ) =>
+    setProjets((precedents) =>
+      precedents.map((projet) =>
+        projet.name === nom ? { ...projet, queries: transforme(projet.queries) } : projet,
+      ),
+    )
 
   return (
     <>
       {edition && <NewConnection edition={edition} onClose={() => setEdition(null)} />}
       <Workbench
-        projects={PROJETS}
+        projects={projets}
         passerelle={PASSERELLE}
         passerelleDetail={PASSERELLE_DETAIL}
         passerelleLignes={PASSERELLE_LIGNES}
@@ -379,6 +406,21 @@ export function WorkbenchDemo() {
         // `?demo` ouvre l'écran en **mode édition** : c'est le seul moyen de voir `A6` sans base
         // réelle, Playwright ne pilotant pas le pont Tauri.
         onEditDatabase={(projet, base) => setEdition({ project: projet, database: base })}
+        onSaveQuery={async (projet, nom, sql) =>
+          surRequetes(projet, (requetes) =>
+            requetes.some((r) => r.name === nom)
+              ? requetes.map((r) => (r.name === nom ? { ...r, sql } : r))
+              : [...requetes, { name: nom, sql }],
+          )
+        }
+        onDeleteQuery={async (projet, nom) =>
+          surRequetes(projet, (requetes) => requetes.filter((r) => r.name !== nom))
+        }
+        onRenameQuery={async (projet, ancien, nouveau) =>
+          surRequetes(projet, (requetes) =>
+            requetes.map((r) => (r.name === ancien ? { ...r, name: nouveau } : r)),
+          )
+        }
         // La démo renomme **pour de faux** : le pont ne répond pas en Chromium. Ce qui se vérifie ici
         // est le chemin jusqu'à la modale, et le rapport qu'elle sait afficher — d'où un secret
         // introuvable annoncé, cas que la commande réelle produit sur un Trousseau nettoyé à la main.

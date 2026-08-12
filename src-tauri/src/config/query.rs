@@ -72,6 +72,7 @@ mod tests {
         Project {
             name: "Atelier Nord".into(),
             active_environment: Environment::Prod,
+            queries: Vec::new(),
             databases: vec![
                 Database::new(
                     "analytics",
@@ -127,6 +128,7 @@ mod tests {
         let projet = Project {
             name: "Neuf".into(),
             active_environment: Environment::Dev,
+            queries: Vec::new(),
             databases: vec![],
         };
         assert!(validate(&projet).is_ok());
@@ -142,6 +144,7 @@ mod tests {
         let projet = Project {
             name: "Atelier Nord".into(),
             active_environment: Environment::Dev,
+            queries: Vec::new(),
             databases: vec![
                 Database::new(
                     "analytics",

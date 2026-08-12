@@ -12,6 +12,7 @@ const PROJETS: Project[] = [
   {
     name: 'Atelier Nord',
     activeEnvironment: 'prod',
+    queries: [],
     databases: [
       { name: 'analytics', engine: 'postgresql', variants: [] },
       { name: 'shop', engine: 'mysql', variants: [] },

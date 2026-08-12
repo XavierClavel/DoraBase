@@ -8,7 +8,9 @@ import { NewConnection } from './NewConnection'
 
 const PROJETS = [{ id: 'Atelier Nord', name: 'Atelier Nord' }]
 
-const APRES: Project[] = [{ name: 'Atelier Nord', activeEnvironment: 'dev', databases: [] }]
+const APRES: Project[] = [
+  { name: 'Atelier Nord', activeEnvironment: 'dev', databases: [], queries: [] },
+]
 
 type Espion = {
   requetes: SaveDatabaseRequest[]

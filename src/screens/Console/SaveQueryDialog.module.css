@@ -1,0 +1,68 @@
+/*
+ * La modale de renommage (`08i`). Le handoff ne la maquette pas : elle emprunte la coquille de
+ * `08a` et l'espacement des blocs de `A2`, plutôt que d'inventer une mise en page.
+ */
+
+/* Même oubli, même correctif que la confirmation de retrait : le corps de `Modal` n'a aucun
+ * remplissage (`08a`), donc c'est au contenu de poser le sien. `--space-7` aligne sur l'en-tête et
+ * le pied. */
+.corps {
+  padding: var(--space-7);
+}
+
+/* Ce que le renommage entraîne, dit **avant** de le faire : déplacer des mots de passe et fermer
+ * des connexions n'est pas ce qu'on attend d'un changement de nom. */
+.note {
+  margin: var(--space-5) 0 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: 1.45;
+  color: var(--ink-meta);
+}
+
+.refus {
+  margin: var(--space-5) 0 0;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-field);
+  background: var(--danger-bg);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  line-height: 1.45;
+  color: var(--danger-ink);
+}
+
+/* Le compte rendu d'un renommage qui a réussi **avec quelque chose à dire** : la modale reste
+ * ouverte, parce qu'un mot de passe introuvable se découvrirait sinon des semaines plus tard. */
+.rapport {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: 1.45;
+  color: var(--ink-meta);
+}
+
+.titre {
+  margin: 0;
+  font-size: var(--text-dense);
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+}
+
+.rapport p {
+  margin: 0;
+}
+
+/* **Le fait qui peut coûter du travail** : ce nom est déjà pris, et enregistrer écrasera. En ambre,
+ * pas en rouge : ce n'est pas une erreur, c'est un remplacement voulu qu'il faut voir. */
+.remplace {
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-field);
+  background: var(--warn-bg-2);
+  color: var(--warn-ink);
+  font-weight: var(--weight-semibold);
+}

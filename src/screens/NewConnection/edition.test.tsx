@@ -28,7 +28,9 @@ const BASE: Database = {
   ],
 }
 
-const APRES: Project[] = [{ name: 'Philippe', activeEnvironment: 'prod', databases: [BASE] }]
+const APRES: Project[] = [
+  { name: 'Philippe', activeEnvironment: 'prod', databases: [BASE], queries: [] },
+]
 
 function monter(over: { onUpdate?: (r: UpdateVariantRequest) => Promise<Project[]> } = {}) {
   const requetes: UpdateVariantRequest[] = []

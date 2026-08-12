@@ -1,6 +1,6 @@
 import { type ReactNode, useMemo, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
-import type { Environment, Project } from '../../domain/config'
+import type { Environment, Project, SavedQuery } from '../../domain/config'
 import type { ColumnInfo, ConnectionState } from '../../domain/engine'
 import { Badge } from '../../ui/Badge/Badge'
 import { ColumnRow } from '../../ui/ColumnRow/ColumnRow'
@@ -31,6 +31,18 @@ type ExplorerSidebarProps = {
   onRefresh?: () => void
   /** Ouvre une console SQL sur la base courante (`12a`). */
   onNewConsole?: () => void
+  /**
+   * Les requêtes enregistrées du projet courant (`12f`), et ce qu'on peut en faire.
+   *
+   * Absentes ou vides, la section « Mes requêtes » n'existe pas : une section vide serait du bruit sur
+   * un écran déjà dense.
+   */
+  requetes?: {
+    liste: readonly SavedQuery[]
+    onOuvrir: (requete: SavedQuery) => void
+    onRenommer?: (nom: string) => void
+    onRetirer?: (nom: string) => void
+  }
   /**
    * Modifier la configuration d'une base depuis son « … » (`08h`) — ouvre la modale de `08g`.
    *
@@ -112,6 +124,7 @@ export function ExplorerSidebar({
   onAddDatabase,
   onRefresh,
   onNewConsole,
+  requetes,
   onEditDatabase,
   onRenameProject,
   onDelete,
@@ -245,6 +258,49 @@ export function ExplorerSidebar({
             ),
           )}
         </div>
+        {requetes && requetes.liste.length > 0 && (
+          <section className={styles.colonnes}>
+            <SidebarSectionTitle>Mes requêtes</SidebarSectionTitle>
+            {requetes.liste.map((requete) => (
+              // **Le même `TreeRow` que l'arbre**, avec son menu « … » de `08h` : une seconde ligne
+              // cliquable aux mêmes dimensions mais au code différent divergerait au premier réglage
+              // de densité.
+              <TreeRow
+                key={requete.name}
+                depth={0}
+                label={requete.name}
+                icon="star"
+                iconColor="var(--gold)"
+                onClick={() => requetes.onOuvrir(requete)}
+                actions={
+                  requetes.onRenommer || requetes.onRetirer ? (
+                    <RowMenu
+                      cible={requete.name}
+                      entrees={[
+                        {
+                          libelle: 'Renommer…',
+                          icone: 'pencil',
+                          onClick: requetes.onRenommer
+                            ? () => requetes.onRenommer?.(requete.name)
+                            : undefined,
+                          raison: RAISONS.renommerIndisponible,
+                        },
+                        {
+                          libelle: 'Retirer…',
+                          icone: 'trash',
+                          onClick: requetes.onRetirer
+                            ? () => requetes.onRetirer?.(requete.name)
+                            : undefined,
+                          raison: RAISONS.retirerIndisponible,
+                        },
+                      ]}
+                    />
+                  ) : undefined
+                }
+              />
+            ))}
+          </section>
+        )}
         {columns && (
           <section className={styles.colonnes}>
             <SidebarSectionTitle>Colonnes de {columns.table}</SidebarSectionTitle>

@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { ConfigLoad, EnvironmentVariant, Project } from '../domain/config'
+import type { ConfigLoad, EnvironmentVariant, Project, SavedQueryRequest } from '../domain/config'
 import type {
   ApplyOutcome,
   ConnectionState,
@@ -127,6 +127,27 @@ export async function applyChanges(key: DatabaseKey, plan: UpdatePlan): Promise<
  * La limite est ajoutée par le moteur aux requêtes qui rendent des lignes et n'en portent pas, et
  * **rendue** dans `appliedLimit` : une limite silencieuse ferait croire à une table de mille lignes.
  */
+/**
+ * Enregistre une requête, ou **remplace** celle qui porte ce nom (`12f`).
+ *
+ * Rend les projets à jour, comme les autres écritures de configuration : sans cela l'écran devrait
+ * relire pour afficher la liste, ce qui ferait deux allers-retours et laisserait une fenêtre où
+ * l'écran et le disque divergent.
+ */
+export async function saveQuery(request: SavedQueryRequest): Promise<Project[]> {
+  return invoke<Project[]>('save_query', { request })
+}
+
+/** Retire une requête enregistrée (`12f`). */
+export async function deleteQuery(request: SavedQueryRequest): Promise<Project[]> {
+  return invoke<Project[]>('delete_query', { request })
+}
+
+/** Renomme une requête enregistrée (`12f`). */
+export async function renameQuery(request: SavedQueryRequest): Promise<Project[]> {
+  return invoke<Project[]>('rename_query', { request })
+}
+
 /**
  * Le plan d'exécution d'une requête (`12e`), **sans l'exécuter**.
  *
