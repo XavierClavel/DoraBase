@@ -22,6 +22,7 @@
     "domain:check": "cargo run --quiet --manifest-path src-tauri/Cargo.toml --bin export-types && git diff --exit-code src/domain/"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.10.4",
     "@codemirror/lang-sql": "^6.10.0",
     "@codemirror/language": "^6.12.4",

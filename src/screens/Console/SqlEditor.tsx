@@ -1,3 +1,4 @@
+import { acceptCompletion, autocompletion, completionKeymap } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { PostgreSQL, sql } from '@codemirror/lang-sql'
 import { EditorState } from '@codemirror/state'
@@ -9,7 +10,11 @@ import {
   lineNumbers,
 } from '@codemirror/view'
 import { useEffect, useRef } from 'react'
+import { type Catalogue, sourceDeCompletion } from './completion'
 import { themeDuHandoff } from './theme'
+
+/** Un catalogue vide : l'autocomplétion se replie alors sur les mots-clés, toujours sûrs. */
+const CATALOGUE_VIDE: Catalogue = { tables: [], colonnes: {} }
 
 type SqlEditorProps = {
   /**
@@ -38,6 +43,14 @@ type SqlEditorProps = {
    * clic obligerait à exposer la vue. La publier suit le même principe que le texte.
    */
   onSelectionChange?: (selection: string) => void
+  /**
+   * Ce que l'autocomplétion propose (`12d`), lu **au moment de la frappe**.
+   *
+   * Une fonction et non une valeur : les extensions de CodeMirror sont posées une fois au montage, et
+   * un catalogue capturé alors resterait celui du montage — les colonnes d'une table ouverte ensuite
+   * ne seraient jamais proposées.
+   */
+  catalogue?: () => Catalogue
 }
 
 /**
@@ -59,6 +72,7 @@ export function SqlEditor({
   onExecuter,
   onExecuterLaSelection,
   onSelectionChange,
+  catalogue,
 }: SqlEditorProps) {
   const hote = useRef<HTMLDivElement>(null)
   const vue = useRef<EditorView | null>(null)
@@ -69,8 +83,15 @@ export function SqlEditor({
     onExecuter,
     onExecuterLaSelection,
     onSelectionChange,
+    catalogue,
   })
-  rappels.current = { onTexteChange, onExecuter, onExecuterLaSelection, onSelectionChange }
+  rappels.current = {
+    onTexteChange,
+    onExecuter,
+    onExecuterLaSelection,
+    onSelectionChange,
+    catalogue,
+  }
   // Aucune dépendance : la vue est montée une fois et vit jusqu'au démontage. Reconstruire à chaque
   // rendu perdrait le curseur et l'historique d'annulation, et `texteInitial` ne vaut qu'au montage.
   // biome-ignore lint/correctness/useExhaustiveDependencies: voir ci-dessus
@@ -110,6 +131,18 @@ export function SqlEditor({
                 return true
               },
             },
+          ]),
+          // **Avant `defaultKeymap`** : `⇥` insère la suggestion retenue, et la carte par défaut le
+          // lie à l'indentation. C'est ce que le mockup annonce — « ⇥ insérer ».
+          autocompletion({
+            override: [sourceDeCompletion(() => rappels.current.catalogue?.() ?? CATALOGUE_VIDE)],
+            // Le mockup ne montre pas d'icônes dans la liste : ses entrées portent un nom et un type.
+            icons: false,
+            defaultKeymap: false,
+          }),
+          keymap.of([
+            { key: 'Tab', run: acceptCompletion },
+            ...completionKeymap.filter((lien) => lien.key !== 'Tab'),
           ]),
           keymap.of([...defaultKeymap, ...historyKeymap]),
           sql({ dialect: PostgreSQL }),

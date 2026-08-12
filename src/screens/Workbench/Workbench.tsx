@@ -210,6 +210,46 @@ export function Workbench({
   // L'exécution des requêtes de console (`12c`). Elle vit ici parce que la confirmation est une
   // sous-modale de l'écran, comme celle de `11d`.
   const execution = useExecution(cle, passerelleExecution ?? PASSERELLE_EXECUTION)
+
+  /**
+   * Les colonnes des tables **déjà lues**, accumulées.
+   *
+   * **Ni `table` ni `cible` ne suffisaient.** Quand une console est l'onglet actif, `table` est nul par
+   * construction et `cible` l'est aussi dès qu'aucun objet n'est sélectionné dans le centre :
+   * l'autocomplétion des colonnes n'avait alors jamais rien à proposer, ce qui vidait `12d` de son
+   * contenu. Vu en écrivant son e2e, où la liste ne s'ouvrait pas.
+   *
+   * Une entrée par table ouverte, donc borné par ce que l'utilisateur a consulté.
+   */
+  const [colonnesConnues, setColonnesConnues] = useState<
+    Readonly<Record<string, readonly { name: string; typeName: string }[]>>
+  >({})
+
+  /**
+   * Ce que l'autocomplétion de `12d` propose : **ce que l'écran a déjà chargé**.
+   *
+   * Les tables viennent de l'arbre (`09d`), les colonnes du détail de la table ouverte (`06c`).
+   * Interroger le serveur à chaque frappe ajouterait une latence à l'endroit le plus sensible de
+   * l'écran — et ces données sont déjà en mémoire.
+   */
+  // Le détail lu entre dans le catalogue de l'autocomplétion. `detail.name` plutôt que la cible
+  // demandée : c'est la table que le moteur a réellement décrite.
+  useEffect(() => {
+    if (!detail) return
+    setColonnesConnues((connues) =>
+      connues[detail.name]
+        ? connues
+        : {
+            ...connues,
+            [detail.name]: detail.columns.map((c) => ({ name: c.name, typeName: c.typeName })),
+          },
+    )
+  }, [detail])
+
+  const catalogue = useCallback(
+    () => ({ tables: objets.map((objet) => objet.name), colonnes: colonnesConnues }),
+    [objets, colonnesConnues],
+  )
   // Le texte de chaque console, indexé par l'identité de l'onglet — comme les modifications en
   // attente de `11b`. Fermer une console perd son texte, et c'est `12f` qui donnera le moyen de le
   // garder pour les requêtes qu'on choisit d'enregistrer.
@@ -475,6 +515,9 @@ export function Workbench({
                     enCours={execution.enCours}
                     resultat={execution.resultat}
                     erreur={execution.erreur}
+                    // **Une fonction, pas une valeur** : elle est lue au moment de la frappe, donc une
+                    // table ouverte après le montage de la console voit ses colonnes proposées.
+                    catalogue={catalogue}
                   />
                 ) : table && cle ? (
                   // Les lignes de la table ouverte (`10c`). La toolbar (`10e`) et le panneau
