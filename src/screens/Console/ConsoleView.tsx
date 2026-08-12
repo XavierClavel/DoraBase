@@ -4,6 +4,7 @@ import type { QueryResult } from '../../domain/engine'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
 import { ConsoleResult } from './ConsoleResult'
 import styles from './ConsoleView.module.css'
+import type { Catalogue } from './completion'
 import { SqlEditor } from './SqlEditor'
 
 type ConsoleViewProps = {
@@ -22,6 +23,8 @@ type ConsoleViewProps = {
   enCours?: boolean
   resultat?: QueryResult | null
   erreur?: string | null
+  /** Ce que l'autocomplétion propose (`12d`), lu au moment de la frappe. */
+  catalogue?: () => Catalogue
 }
 
 /**
@@ -40,6 +43,7 @@ export function ConsoleView({
   enCours = false,
   resultat = null,
   erreur = null,
+  catalogue,
 }: ConsoleViewProps) {
   // La sélection courante, publiée par l'éditeur : « Sélection » l'exécute, et se replie sur la
   // requête entière quand il n'y a rien de sélectionné — un bouton qui ne ferait rien sur une
@@ -100,6 +104,7 @@ export function ConsoleView({
                 onSelectionChange={setSelection}
                 onExecuter={executer}
                 onExecuterLaSelection={executerLaSelection}
+                catalogue={catalogue}
               />
             </div>
           }
