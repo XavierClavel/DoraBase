@@ -32,6 +32,35 @@ pub fn categoriser(typcategory: char, nom: &str) -> TypeCategory {
     }
 }
 
+/// Traduit un type PostgreSQL en catégorie **depuis son nom seul** (`12c`).
+///
+/// **Pourquoi une seconde fonction.** `categoriser` lit le `typcategory` du catalogue, qui n'existe
+/// que pour une colonne introspectée. Le résultat d'une requête arbitraire n'a pas de catalogue
+/// derrière lui : le pilote rend le nom du type de chaque colonne, et rien d'autre. Aller chercher le
+/// `typcategory` de chaque OID coûterait un aller-retour au catalogue **à chaque exécution**, sur le
+/// chemin le plus sensible de la console.
+///
+/// **C'est donc une approximation, et elle se dégrade proprement** : un type inconnu retombe sur
+/// `Other`, dont le glyphe est celui du texte et dont la lecture passe par le repli universel en
+/// texte. Un type mal catégorisé s'affiche, il ne disparaît pas — ce qui était le vrai défaut de
+/// `06d`.
+pub fn categoriser_par_nom(nom: &str) -> TypeCategory {
+    match nom {
+        "bool" | "boolean" => TypeCategory::Boolean,
+        "int2" | "int4" | "int8" | "smallint" | "integer" | "bigint" | "float4" | "float8"
+        | "real" | "double precision" | "numeric" | "decimal" | "money" => TypeCategory::Number,
+        "text" | "varchar" | "character varying" | "char" | "character" | "bpchar" | "name"
+        | "citext" => TypeCategory::Text,
+        "date" | "time" | "timetz" | "timestamp" | "timestamptz" | "interval" => {
+            TypeCategory::Timestamp
+        }
+        "json" | "jsonb" => TypeCategory::Json,
+        "uuid" => TypeCategory::Uuid,
+        "bytea" => TypeCategory::Binary,
+        _ => TypeCategory::Other,
+    }
+}
+
 /// Le comptage de lignes que PostgreSQL estime, **ou son absence**.
 ///
 /// **`reltuples = -1` signifie « inconnu »**, pas « moins une ligne » ni « zéro » : depuis

@@ -215,6 +215,70 @@ impl EngineAdapter for PostgresAdapter {
         rows::updates_de(plan)
     }
 
+    async fn run_sql(
+        &self,
+        sql: &str,
+        limite: crate::engine::RowLimit,
+    ) -> Result<crate::engine::QueryResult, EngineError> {
+        let ajoutee = rows::limite_a_ajouter(sql, limite);
+        let execute = match ajoutee {
+            Some(valeur) => rows::avec_limite(sql, valeur),
+            None => sql.to_owned(),
+        };
+
+        // **`prepare` donne les colonnes et leurs types sans rien exécuter.** Deux raisons : une
+        // requête qui rend zéro ligne doit quand même afficher ses en-têtes, et la catégorie de chaque
+        // colonne décide de l'alignement et du glyphe — la déduire d'une valeur textuelle serait
+        // deviner.
+        let prepare = self
+            .client
+            .prepare(execute.as_str())
+            .await
+            .map_err(|e| error::traduire(&e))?;
+        let colonnes: Vec<(String, crate::engine::TypeCategory)> = prepare
+            .columns()
+            .iter()
+            .map(|colonne| {
+                (
+                    colonne.name().to_owned(),
+                    types::categoriser_par_nom(colonne.type_().name()),
+                )
+            })
+            .collect();
+
+        let depart = Instant::now();
+        // **Le protocole simple, et c'est structurel.** Le protocole étendu rend les valeurs au format
+        // *binaire* : un `jsonb` y commence par un octet de version, un `uuid` fait seize octets
+        // bruts, et `try_get::<String>` refuse de les lire — exactement le défaut de `06d`, où ces
+        // types se lisaient `NULL`. La grille l'évite en transtypant dans le `select` qu'elle
+        // construit ; ici le SQL est celui de l'utilisateur, et le réécrire trahirait la promesse que
+        // ce qui s'affiche est ce qui s'exécute. Le protocole simple rend **tout en texte**, ce que
+        // `psql` fait depuis toujours.
+        let messages = self
+            .client
+            .simple_query(execute.as_str())
+            .await
+            .map_err(|e| error::traduire(&e))?;
+        let duration_ms = depart.elapsed().as_millis() as u64;
+
+        let valeurs = messages
+            .iter()
+            .filter_map(|message| match message {
+                tokio_postgres::SimpleQueryMessage::Row(ligne) => Some(ligne),
+                _ => None,
+            })
+            .map(|ligne| rows::valeurs_textuelles(ligne, &colonnes))
+            .collect();
+
+        Ok(crate::engine::QueryResult {
+            columns: colonnes.into_iter().map(|(nom, _)| nom).collect(),
+            rows: valeurs,
+            sql: execute,
+            duration_ms,
+            applied_limit: ajoutee,
+        })
+    }
+
     async fn apply_updates(
         &self,
         plan: &crate::engine::UpdatePlan,
@@ -1161,6 +1225,168 @@ mod tests_db {
         assert!(lire(&adaptateur, id, "metadata").await.is_none());
 
         retirer_ligne(&adaptateur, id).await;
+    }
+
+    /// **La console exécute le SQL de l'utilisateur** (`12c`), et la limite est réellement appliquée.
+    #[tokio::test]
+    async fn une_lecture_libre_est_limitee_et_le_dit() {
+        let adaptateur = adaptateur().await;
+        let issue = adaptateur
+            .run_sql(
+                "select id from introspection.orders",
+                crate::engine::RowLimit::OneHundred,
+            )
+            .await
+            .expect("la requête doit tourner");
+
+        // **La contrainte transverse du projet** : aucun résultat complet ne traverse l'IPC. Sans
+        // limite, cette requête rendrait toute la table.
+        assert_eq!(issue.applied_limit, Some(100));
+        assert!(issue.rows.len() <= 100);
+        // Et la limite se **lit** dans le SQL rendu : une requête affichée différente de celle qui a
+        // tourné serait un piège pour qui débogue.
+        assert!(issue.sql.contains("limit 100"), "{}", issue.sql);
+        assert_eq!(issue.columns, vec!["id"]);
+    }
+
+    #[tokio::test]
+    async fn une_limite_ecrite_par_l_utilisateur_est_respectee() {
+        let adaptateur = adaptateur().await;
+        let issue = adaptateur
+            .run_sql(
+                "select id from introspection.orders limit 3",
+                crate::engine::RowLimit::OneThousand,
+            )
+            .await
+            .expect("la requête doit tourner");
+
+        assert_eq!(issue.applied_limit, None);
+        assert_eq!(issue.rows.len(), 3);
+        // Le SQL est celui qu'on a écrit, sans ajout.
+        assert!(!issue.sql.contains("limit 1000"));
+    }
+
+    #[tokio::test]
+    async fn les_colonnes_calculees_portent_leur_nom_et_leur_type() {
+        let adaptateur = adaptateur().await;
+        let issue = adaptateur
+            .run_sql(
+                "select count(*) as total, now() as maintenant, 'x' as lettre",
+                crate::engine::RowLimit::OneHundred,
+            )
+            .await
+            .expect("la requête doit tourner");
+
+        // Les colonnes viennent du **résultat** : ces trois-là n'existent dans aucune table.
+        assert_eq!(issue.columns, vec!["total", "maintenant", "lettre"]);
+        let ligne = issue.rows.first().expect("une ligne");
+        // **La catégorie est déduite du nom du type**, faute de catalogue pour une requête libre. Un
+        // type mal catégorisé doit s'afficher quand même — c'était le défaut de `06d`, où les types
+        // exotiques se lisaient `NULL`.
+        assert!(
+            matches!(ligne[0], crate::engine::Value::Int { .. }),
+            "{:?}",
+            ligne[0]
+        );
+        assert!(
+            matches!(ligne[1], crate::engine::Value::Timestamp { .. }),
+            "{:?}",
+            ligne[1]
+        );
+        assert!(
+            matches!(ligne[2], crate::engine::Value::Text { .. }),
+            "{:?}",
+            ligne[2]
+        );
+    }
+
+    #[tokio::test]
+    async fn une_erreur_de_syntaxe_est_rendue_avec_le_message_du_serveur() {
+        let adaptateur = adaptateur().await;
+        let erreur = adaptateur
+            .run_sql("select from where", crate::engine::RowLimit::OneHundred)
+            .await
+            .expect_err("une requête invalide doit échouer");
+        // Le message du serveur, pas une paraphrase : c'est lui qui dit *où* est la faute.
+        assert!(!erreur.to_string().is_empty());
+        assert!(erreur.code.is_some(), "le code SQLSTATE doit remonter");
+    }
+
+    #[tokio::test]
+    async fn un_type_exotique_ne_se_lit_pas_null() {
+        let adaptateur = adaptateur().await;
+        let issue = adaptateur
+            .run_sql(
+                "select '{\"a\":1}'::jsonb as j,
+                        '11111111-2222-3333-4444-555555555555'::uuid as u,
+                        12345678.91::numeric as n,
+                        now()::date as d",
+                crate::engine::RowLimit::OneHundred,
+            )
+            .await
+            .expect("la requête doit tourner");
+
+        // **La leçon de `06d`** : jsonb, uuid, numeric et date se lisaient tous `Null` faute de
+        // transtypage. Le repli universel en texte les rattrape, et une requête libre passe par le
+        // même lecteur que la grille — deux chemins de conversion divergeraient précisément ici.
+        let ligne = issue.rows.first().expect("une ligne");
+        for (index, nom) in ["j", "u", "n", "d"].iter().enumerate() {
+            assert!(
+                !matches!(ligne[index], crate::engine::Value::Null),
+                "{nom} lu comme NULL"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn une_requete_sans_ligne_garde_ses_en_tetes() {
+        let adaptateur = adaptateur().await;
+        let issue = adaptateur
+            .run_sql(
+                "select id, status from introspection.orders where false",
+                crate::engine::RowLimit::OneHundred,
+            )
+            .await
+            .expect("la requête doit tourner");
+
+        // **Les colonnes viennent de `prepare`, pas de la première ligne.** Une grille sans en-tête
+        // sur un résultat vide laisserait croire à une erreur, alors que la requête est correcte.
+        assert!(issue.rows.is_empty());
+        assert_eq!(issue.columns, vec!["id", "status"]);
+    }
+
+    #[tokio::test]
+    async fn un_decimal_garde_sa_precision_exacte() {
+        let adaptateur = adaptateur().await;
+        let issue = adaptateur
+            .run_sql(
+                "select 12345678.91::numeric as montant",
+                crate::engine::RowLimit::OneHundred,
+            )
+            .await
+            .expect("la requête doit tourner");
+
+        // `12345678.91` en `f64` vaut 12345678.909999999… : sur une colonne de montants, l'écart se
+        // voit. Décision de `06d`, qui s'applique aussi aux requêtes libres.
+        match issue.rows.first().and_then(|l| l.first()) {
+            Some(crate::engine::Value::Decimal { value }) => assert_eq!(value, "12345678.91"),
+            autre => panic!("attendu un décimal exact, reçu {autre:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn un_booleen_arrive_en_booleen_et_non_en_t_ou_f() {
+        let adaptateur = adaptateur().await;
+        let issue = adaptateur
+            .run_sql("select true as vrai", crate::engine::RowLimit::OneHundred)
+            .await
+            .expect("la requête doit tourner");
+        // Le protocole simple rend `t` et `f` : les afficher tels quels dans une colonne booléenne
+        // serait un détail de protocole exposé à l'utilisateur.
+        assert!(matches!(
+            issue.rows.first().and_then(|l| l.first()),
+            Some(crate::engine::Value::Bool { value: true })
+        ));
     }
 
     /// Une apostrophe dans une valeur ne doit pas casser le SQL — le cas classique.

@@ -147,6 +147,33 @@ pub struct UpdatePlan {
     pub changes: Vec<PendingUpdate>,
 }
 
+/// Le résultat d'une requête libre de la console (`12c`).
+///
+/// **Distinct de `RowWindow`**, qui décrit une fenêtre de lecture d'une table connue : ici les
+/// colonnes ne viennent pas du catalogue mais du résultat, et il n'y a ni décalage ni total — une
+/// requête arbitraire n'a pas de « page suivante » définissable.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub struct QueryResult {
+    /// Les noms des colonnes rendues, dans l'ordre.
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<Value>>,
+    /// Le SQL **réellement exécuté**, limite comprise s'il y en a une.
+    ///
+    /// Montré à l'écran : une requête affichée différente de celle qui a tourné serait un piège pour
+    /// qui débogue — le même arbitrage que `RowWindow.sql` en `10c`.
+    pub sql: String,
+    #[ts(type = "number")]
+    pub duration_ms: u64,
+    /// La limite que **DoraBase** a ajoutée, quand la requête n'en portait pas.
+    ///
+    /// **Annoncée, jamais silencieuse.** Une limite tue ferait croire à une table de mille lignes —
+    /// un mensonge sur les données, la pire catégorie de défaut pour cet outil.
+    #[ts(type = "number | null")]
+    pub applied_limit: Option<u32>,
+}
+
 /// Ce qu'une application de modifications a produit (`11d`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
