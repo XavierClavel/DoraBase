@@ -124,6 +124,20 @@ pub struct EnvironmentVariant {
     /// qui n'en demande pas — SQLite sur fichier, par exemple.
     pub password: Option<SecretRef>,
     pub ssl_mode: SslMode,
+    /// Le chemin d'un certificat d'autorité, pour `verify-ca` et `verify-full` (`06f`).
+    ///
+    /// **Un chemin de fichier, et c'est le seul mécanisme commun aux trois pilotes.** Ni
+    /// `mysql_async` ni le pilote MongoDB n'acceptent un `ClientConfig` arbitraire : leur surface est
+    /// un chemin de CA et des drapeaux. Le trousseau du système n'est donc pas atteignable partout,
+    /// ce qui a décidé du choix de `rustls` — voir `06f`.
+    ///
+    /// `None` signifie « les racines publiques », qui suffisent à un serveur dont le certificat vient
+    /// d'une autorité connue. Une autorité interne d'entreprise se déclare ici.
+    ///
+    /// **`serde(default)` plutôt qu'une migration** : une configuration écrite avant `06f` n'a pas ce
+    /// champ, et `None` est exactement l'état correct. Même arbitrage qu'en `12f` et `15a`.
+    #[serde(default)]
+    pub ca_certificate: Option<String>,
     /// Réglage **saisi** dans `A2`. L'état effectif d'une base ouverte compose ce
     /// réglage, la préférence globale de `A10` et l'environnement courant : c'est une
     /// règle, pas une donnée, et elle appartient à `11`. Voir `specs/05a`.
@@ -290,6 +304,160 @@ pub struct SavedQuery {
     pub sql: String,
 }
 
+/// Les préférences de l'application (`15a`).
+///
+/// **Pas des propriétés de projet.** `05b` persiste `{ version, projects }` ; celles-ci s'ajoutent à
+/// côté — un thème n'appartient pas à une base. Le champ porte `serde(default)`, comme les requêtes
+/// enregistrées de `12f` : une configuration écrite avant `15a` se lit sans préférences, ce qui donne
+/// les valeurs par défaut. Pas de migration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export_to = "config.ts")]
+pub struct Preferences {
+    pub theme: Theme,
+    /// L'accent, pris dans la palette **fermée** du handoff.
+    ///
+    /// Un sélecteur de couleur libre permettrait un accent illisible sur le fond du produit ; le
+    /// mockup montre six pastilles, et la palette vit dans `tokens.json`.
+    pub accent: Accent,
+    /// La hauteur d'une ligne de grille, en pixels. `10a` annonçait « `15` la fera varier de 20 à 36 ».
+    pub row_height: u8,
+    /// Le corps de la police du code, en dixièmes de point — `125` pour 12,5 pt.
+    ///
+    /// **En dixièmes et non en flottant** : un `f32` dans un fichier de configuration écrit
+    /// `12.5` parfois, `12.499999` ailleurs selon le sérialiseur, et la valeur relue ne serait plus
+    /// celle qu'on a choisie. Un entier n'a pas ce défaut.
+    pub code_font_tenths: u16,
+    /// Les quatre garde-fous d'écriture (`15d`), **actifs par défaut**.
+    pub guards: Guards,
+}
+
+impl Default for Preferences {
+    fn default() -> Self {
+        Self {
+            theme: Theme::Cahier,
+            accent: Accent::Terracotta,
+            // 26 px : la valeur du handoff, et celle que `10a` a codée en dur.
+            row_height: 26,
+            code_font_tenths: 125,
+            guards: Guards::default(),
+        }
+    }
+}
+
+impl Preferences {
+    /// Les bornes de `10a`, appliquées **au modèle** et non à l'écran.
+    ///
+    /// Une valeur hors bornes peut venir d'un fichier édité à la main : la corriger ici évite qu'une
+    /// grille se retrouve à trois pixels de haut, et évite surtout de faire confiance à l'écran pour
+    /// une invariante de donnée.
+    pub const HAUTEUR_MIN: u8 = 20;
+    pub const HAUTEUR_MAX: u8 = 36;
+    /// Bornes du corps de police, en dixièmes de point.
+    pub const CORPS_MIN: u16 = 100;
+    pub const CORPS_MAX: u16 = 160;
+
+    /// Ramène les valeurs numériques dans leurs bornes.
+    pub fn borner(mut self) -> Self {
+        self.row_height = self.row_height.clamp(Self::HAUTEUR_MIN, Self::HAUTEUR_MAX);
+        self.code_font_tenths = self
+            .code_font_tenths
+            .clamp(Self::CORPS_MIN, Self::CORPS_MAX);
+        // **Un corps élevé contraint la densité** (`15c`) : du code en 14 pt dans une grille de
+        // 20 px serait rogné. La règle vit ici, avec la donnée, plutôt que dans le curseur.
+        let plancher = Self::hauteur_minimale_pour(self.code_font_tenths);
+        if self.row_height < plancher {
+            self.row_height = plancher;
+        }
+        self
+    }
+
+    /// La densité la plus compacte que ce corps de police autorise.
+    ///
+    /// Une ligne doit tenir le texte plus deux pixels de respiration, d'où un plancher qui suit le
+    /// corps : `1,3 × corps + 2`.
+    ///
+    /// **Le facteur est calibré sur le handoff, pas choisi.** Il donne exactement 20 px — la borne
+    /// `--rowh-min` du handoff — au corps par défaut de 12,5. Un facteur de 1,45, essayé d'abord,
+    /// rendait 21 px et **interdisait la densité la plus compacte que le design annonce** : le
+    /// mockup montre le curseur allant jusqu'à « compact », donc 20 px doit être atteignable tel
+    /// que le produit est livré. C'est le test qui l'a montré, pas la relecture du calcul.
+    pub fn hauteur_minimale_pour(corps_dixiemes: u16) -> u8 {
+        let hauteur = (f32::from(corps_dixiemes) / 10.0 * 1.3).ceil() as u16 + 2;
+        u8::try_from(hauteur)
+            .unwrap_or(Self::HAUTEUR_MAX)
+            .clamp(Self::HAUTEUR_MIN, Self::HAUTEUR_MAX)
+    }
+}
+
+/// Les trois thèmes du mockup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, Default)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub enum Theme {
+    /// Le thème clair, celui du handoff. Son nom est celui du mockup.
+    #[default]
+    Cahier,
+    /// Le thème sombre. **Incomplet tant que `tokens.json` n'a qu'une valeur par jeton** — la spec
+    /// `15b` livre le mécanisme et le dit à l'écran plutôt que de cacher le réglage.
+    Nuit,
+    /// Suit `prefers-color-scheme`.
+    Systeme,
+}
+
+/// La palette d'accent, **fermée** — les six pastilles du mockup.
+///
+/// Les valeurs viennent des propriétés déclarées par le handoff lui-même
+/// (`accent.options` de son script de démonstration), et non d'un choix fait ici.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, Default)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub enum Accent {
+    /// `#F2653A`, l'accent du handoff.
+    #[default]
+    Terracotta,
+    /// `#DB3753`
+    Framboise,
+    /// `#E4573F`
+    Brique,
+    /// `#2E9E6B`
+    Sauge,
+    /// `#3B82C4`
+    Ardoise,
+    /// `#7C5CD6`
+    Violette,
+}
+
+/// Les quatre garde-fous d'écriture (`15d`).
+///
+/// **Tous à `true` par défaut, y compris pour une installation existante.** `serde(default)` rend
+/// `Default::default()`, et un défaut à `false` transformerait une mise à jour de DoraBase en levée
+/// silencieuse des garde-fous — exactement ce que `11d` refusait en les livrant non réglables.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export_to = "config.ts")]
+pub struct Guards {
+    /// Le mode de `A6` : toute édition passe par un diff à valider.
+    pub pending_before_write: bool,
+    /// Les bases déclarées `prod` s'ouvrent en lecture seule.
+    pub prod_read_only: bool,
+    /// `DELETE`/`UPDATE` sans `WHERE` sont **refusés**, et non simplement confirmés.
+    pub refuse_unrestricted_writes: bool,
+    /// Le patch inverse est conservé 24 h.
+    pub keep_inverse_patch: bool,
+}
+
+impl Default for Guards {
+    fn default() -> Self {
+        Self {
+            pending_before_write: true,
+            prod_read_only: true,
+            refuse_unrestricted_writes: true,
+            keep_inverse_patch: true,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -303,6 +471,7 @@ mod tests {
             username: "dora_ro".into(),
             password: None,
             ssl_mode: SslMode::Require,
+            ca_certificate: None,
             read_only: true,
             reconnect_on_startup: false,
             tunnel: None,

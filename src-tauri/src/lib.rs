@@ -20,6 +20,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             config::commands::load_config,
             config::commands::save_config,
+            config::commands::save_preferences,
             config::commands::save_database,
             config::commands::create_project,
             config::commands::rename_project,

@@ -59,7 +59,21 @@ pub struct ConnectionRequest {
 /// Fonction nommée plutôt qu'un `matches!` en ligne : c'est la distinction que `06b` désigne
 /// comme « l'erreur classique », et elle mérite d'être testable seule.
 pub fn exige_une_verification(mode: SslMode) -> bool {
-    matches!(mode, SslMode::VerifyCa | SslMode::VerifyFull)
+    crate::engine::tls::Exigences::de(mode).authentifie()
+}
+
+/// Vrai quand `A2` doit afficher « TLS non vérifié ».
+///
+/// **La mention dit un fait, pas une échéance** — et c'est ce que `06f` a changé. Elle valait
+/// auparavant « le mode demande une vérification », donc elle s'affichait *même quand la
+/// vérification aurait eu lieu* : elle annonçait une réserve du produit. Elle vaut maintenant « le
+/// chiffrement est demandé **et** le serveur n'est pas authentifié », ce qui est vrai de `require`,
+/// `prefer` et `allow` — trois modes que `05a` propose et que des serveurs internes imposent.
+///
+/// Elle disparaît donc d'elle-même en `verify-ca` et `verify-full`, sans qu'on l'efface.
+pub fn tls_non_verifie(mode: SslMode) -> bool {
+    let exigences = crate::engine::tls::Exigences::de(mode);
+    exigences.chiffre() && !exigences.authentifie()
 }
 
 /// Teste une connexion et rend ce que `A2` affiche.
@@ -120,7 +134,7 @@ async fn tester(
         latency_ms: sonde.latency_ms,
         server_version: sonde.server_version,
         tunnel_local_port,
-        tls_unverified: exige_une_verification(variante.ssl_mode),
+        tls_unverified: tls_non_verifie(variante.ssl_mode),
     })
 }
 
@@ -138,6 +152,7 @@ mod tests {
             username: "dorabase".into(),
             password: None,
             ssl_mode: SslMode::Prefer,
+            ca_certificate: None,
             read_only: false,
             reconnect_on_startup: false,
             tunnel: None,
@@ -265,6 +280,12 @@ impl DatabaseKey {
 pub async fn open_database(
     app: tauri::AppHandle,
     key: DatabaseKey,
+    // `engine` : le moteur déclaré (`05a`), qui décide de l'adaptateur à ouvrir.
+    //
+    // **Passé par l'écran, pas deviné ici** : il appartient à la `Database`, pas à la variante
+    // d'environnement, et le front l'a sous la main — c'est lui qui dessine l'arbre. Le relire
+    // depuis la configuration coûterait une lecture de fichier par ouverture.
+    engine: crate::config::Engine,
     variant: EnvironmentVariant,
     registry: tauri::State<'_, ConnectionRegistry>,
 ) -> Result<ConnectionState, EngineError> {
@@ -289,6 +310,7 @@ pub async fn open_database(
     registry
         .ouvrir(
             &identite,
+            engine,
             &variant,
             secret.as_ref(),
             &known_hosts_utilisateur(),

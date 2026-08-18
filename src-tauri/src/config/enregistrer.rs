@@ -987,6 +987,7 @@ mod tests {
             username: "dora_ro".into(),
             password: None,
             ssl_mode: SslMode::Prefer,
+            ca_certificate: None,
             read_only: true,
             reconnect_on_startup: false,
             tunnel: None,
@@ -1626,6 +1627,7 @@ mod tests_parcours {
             username: analysee.get_user().expect("un utilisateur").to_owned(),
             password: None,
             ssl_mode: SslMode::Prefer,
+            ca_certificate: None,
             read_only: false,
             reconnect_on_startup: false,
             tunnel: None,
@@ -1641,7 +1643,7 @@ mod tests_parcours {
         );
 
         let mut projects = vec![Project {
-            name: "Philippe".into(),
+            name: "Atelier".into(),
             active_environment: Environment::Dev,
             queries: Vec::new(),
             databases: vec![crate::config::model::Database::new(
@@ -1655,7 +1657,7 @@ mod tests_parcours {
         mettre_a_jour(
             &mut projects,
             Modification {
-                project: "Philippe",
+                project: "Atelier",
                 database: "analytics",
                 environment: Environment::Dev,
                 reglages: &variante_de(bon),
@@ -1695,6 +1697,7 @@ mod tests_renommage {
             username: "dora_ro".into(),
             password: reference,
             ssl_mode: SslMode::Prefer,
+            ca_certificate: None,
             read_only: true,
             reconnect_on_startup: false,
             tunnel: None,

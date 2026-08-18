@@ -100,20 +100,6 @@ jobs:
   # feature ils n'existent pas, ce que le job macOS démontre par un compte à zéro.
   engine:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: dorabase
-          POSTGRES_PASSWORD: dorabase-test
-          POSTGRES_DB: dorabase_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     steps:
       - uses: actions/checkout@v7
 
@@ -140,13 +126,38 @@ jobs:
           # ferait invalider un cache par l'autre.
           key: engine
 
-      # Le schéma de test a une composition connue, sur laquelle les tests assènent des
-      # valeurs exactes. Sans cette étape, les tests d'introspection échoueraient sur une
-      # base vide — et le script est le même qu'en local, donc les deux ne divergent pas.
-      - name: charger le schéma de test
-        run: psql "$DORABASE_TEST_PG" -v ON_ERROR_STOP=1 -f scripts/schema-test-pg.sql
+      # Le décor PostgreSQL, **avec TLS** (`06f`), monté par le même script qu'en local. Le schéma
+      # de test garde sa composition connue, sur laquelle les tests assènent des valeurs exactes.
+      #
+      # **Ce n'est plus un service container**, et c'est `06f` qui l'a imposé : le décor a besoin d'un
+      # certificat dont le nom commun **ne correspond pas** à l'hôte joint, ce qui demande de passer
+      # `-c ssl_cert_file=…` à `postgres` — pas exprimable dans les options d'un service container.
+      # PostgreSQL rejoint donc MongoDB et MySQL : une seule façon de monter le décor, en local comme
+      # ici, plutôt que deux qui divergent.
+      - name: monter le décor PostgreSQL
+        run: ./scripts/pg-test.sh demarrer
         env:
-          DORABASE_TEST_PG: postgres://dorabase:dorabase-test@localhost:5432/dorabase_test
+          DORABASE_TEST_PG_PORT: 5432
+
+      # Le décor MongoDB de `18`, monté par le **même script** qu'en local.
+      #
+      # **Pas un service container** non plus : GitHub n'y accepte que des options `docker run`, et
+      # `--replSet rs0` n'est pas exprimable. Or un `mongod` isolé ne sait pas ouvrir de transaction,
+      # donc `18f` n'y testerait que son refus. Le script porte aussi les deux attentes (serveur, puis
+      # élection du primaire) qui évitent un « not primary » intermittent.
+      - name: monter le décor MongoDB
+        run: ./scripts/mongo-test.sh demarrer
+        env:
+          DORABASE_TEST_MONGO_PORT: 27017
+
+      # Le décor MySQL de `16`, monté par le **même script** qu'en local. Il porte l'attente
+      # d'initialisation — MySQL crée son répertoire de données au premier démarrage, et trente
+      # secondes ne suffisent pas toujours — et le `--default-character-set=utf8mb4` sans lequel le
+      # décor entre en latin1 (défaut n° 59).
+      - name: monter le décor MySQL
+        run: ./scripts/mysql-test.sh demarrer
+        env:
+          DORABASE_TEST_MYSQL_PORT: 3306
 
       # Le bastion SSH de `06e`, monté par le **même script** qu'en local. Le conteneur
       # PostgreSQL est ici le *service container* de GitHub, dont le nom est engendré : le
@@ -165,6 +176,10 @@ jobs:
           cargo test --features db-tests
         env:
           DORABASE_TEST_PG: postgres://dorabase:dorabase-test@localhost:5432/dorabase_test
+          DORABASE_TEST_PG_CERTS: /tmp/dorabase-test-pg-certs
+          DORABASE_TEST_MONGO: mongodb://localhost:27017
+          DORABASE_TEST_MYSQL: mysql://dorabase:dorabase-test@localhost:3306/dorabase_test
+          DORABASE_TEST_MYSQL_CA: /tmp/dorabase-test-mysql-ca.pem
 
       # Les tests SSH se **sautent** quand le décor manque, ce qui les rendrait invisibles si
       # le bastion échouait à démarrer sans casser le job. Cette étape refuse ce silence.
@@ -184,3 +199,7 @@ jobs:
             | xargs -I{} echo "{} tests SSH exécutés"
         env:
           DORABASE_TEST_PG: postgres://dorabase:dorabase-test@localhost:5432/dorabase_test
+          DORABASE_TEST_PG_CERTS: /tmp/dorabase-test-pg-certs
+          DORABASE_TEST_MONGO: mongodb://localhost:27017
+          DORABASE_TEST_MYSQL: mysql://dorabase:dorabase-test@localhost:3306/dorabase_test
+          DORABASE_TEST_MYSQL_CA: /tmp/dorabase-test-mysql-ca.pem
