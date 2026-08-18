@@ -8,12 +8,6 @@
   width: 252px;
 }
 
-/* La largeur vient du conteneur — le `SplitPane` de l'écran de travail (10b). Sans elle, la
-   poignée déplacerait un panneau dont le contenu garderait sa largeur fixe. */
-.fill {
-  width: 100%;
-}
-
 .root {
   display: flex;
   flex-direction: column;
@@ -28,6 +22,26 @@
   /* La graisse et la famille de toute la sidebar, posées une fois : les lignes d'arbre en
      héritent, seules les lignes de colonne repassent en mono. */
   font: var(--weight-semibold) var(--text-dense) var(--font-ui);
+}
+
+/* La largeur vient du conteneur — le `SplitPane` de l'écran de travail (10b). Sans elle, la
+   poignée déplacerait un panneau dont le contenu garderait sa largeur fixe. */
+.fill {
+  width: 100%;
+  /* **`border-box` en variante `fill`, et c'est une correction.**
+   *
+   * `.root` est en `content-box` — décision de `04`, pour que 212 px soit la largeur du *contenu* et
+   * que le filet droit s'ajoute, comme le mockup le rend. Juste pour une largeur fixe ; **faux pour
+   * `width: 100%`** : le filet s'ajoute alors aux 100 % du panneau, la colonne dépasse d'un pixel, et
+   * ce pixel se propage jusqu'au bord droit de la fenêtre. Signalé à l'écran le 18 août 2026.
+   *
+   * **Ce bloc est placé après `.root`, et l'ordre est la règle elle-même.** Écrit plus haut dans le
+   * fichier, il ne servait à rien : deux sélecteurs de classe ont la même spécificité, donc c'est le
+   * dernier déclaré qui gagne, et `.root` remettait `content-box`. La première version de cette
+   * correction était donc **du code mort qui se lisait comme une correction** — ce qui est pire qu'une
+   * absence de correction, puisque le commentaire affirmait le contraire de ce que faisait la page.
+   * Trouvé par la mesure de `geometrie-reelle`, pas à la lecture. */
+  box-sizing: border-box;
 }
 
 .body {

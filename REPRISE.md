@@ -4,13 +4,18 @@ Ce document existe pour qu'une session neuve reprenne le travail sans avoir la c
 précédente. Il complète les specs et les plans, qui disent *quoi* construire ; lui dit **où on
 en est, ce qui a été décidé, et pourquoi**.
 
-Dernière mise à jour : 10 août 2026. Le travail vit sur `quiver-leader`, en avance de treize
-commits sur `main` : les six specs de `A5` (`10a`–`10f`), la création de projet (`08f`), et sept
+Dernière mise à jour : 18 août 2026 (TLS). Le travail vit sur `quiver-leader` : les six specs de `A5`
+(`10a`–`10f`), la création de projet (`08f`), la modification et le retrait de connexions
+(`08g`–`08j`), l'édition inline de `A6` (`11a`–`11d`), la console SQL de `A7` (`12a`–`12f`), la
+console MongoDB de `A8` (`13a`–`13c`), la vue Structure de `A9` (`14a`–`14c`), les préférences de
+`A10` (`15a`–`15d`), **le second moteur du projet** (`18a`–`18g`, MongoDB), et une trentaine de
 correctifs venus du **premier usage réel** de l'application.
+
+**Les dix écrans du handoff sont assemblés et atteignables.**
 
 ---
 
-## 0. À faire en premier — six vérifications à l'œil, dont une en attente
+## 0. À faire en premier — huit vérifications à l'œil, dont trois en attente
 
 **Elles s'accumulent depuis `08c` et rien ne peut les automatiser** : Playwright ne pilote pas
 WKWebView, et piloter le bureau par frappes synthétiques a été tenté puis abandonné — la fenêtre
@@ -31,8 +36,11 @@ pnpm tauri dev
 | 5 | ~~« Copier la ligne en INSERT », puis coller~~ | **Fait le 10 août** : le SQL arrive dans le presse-papiers | `10f` |
 | 6 | ~~`⌘E`, modifier une cellule, `⌘Z`~~ | **Fait le 10 août** : la bascule et l'annulation répondent sous WKWebView, malgré les raccourcis système. Deux défauts d'affichage relevés au passage (`DEFAUTS.md` n° 36 et 37), corrigés | `11b` |
 
-**Une seule vérification reste — et l'usage réel en a appris bien plus qu'elles** : douze défauts en deux
-jours, dont neuf signalés par l'utilisateur (voir `DEFAUTS.md` § « Ce qu'a trouvé le premier
+| 7 | Régler « Afficher les barres de défilement : toujours » (Réglages ▸ Apparence), puis regarder la sidebar et la bande d'onglets | La barre de la sidebar doit être **fine, sans piste**, et son curseur ne se voir qu'au survol ; la bande d'onglets ne doit en montrer aucune. **Non vérifiable ici** : Chromium sans tête rend des barres en survol, qui n'occupent aucune place — la mesure vaut 0 avec comme sans la correction (`DEFAUTS.md` n° 73) | — |
+| 8 | Cliquer une autre application pour défocaliser DoraBase | Les trois feux tricolores doivent rester visibles (grisés). Signalé le 18 août : ils **disparaissent**. Boutons dessinés par le système sous `titleBarStyle: "Overlay"` — donc **ni reproductible ni corrigeable depuis le web** ; l'expérience à tenter est de passer `hiddenTitle` à `false` le temps d'un lancement pour savoir si la disparition vient de la superposition ou du thème | `tauri.conf.json` |
+
+**Trois vérifications restent — et l'usage réel en a appris bien plus qu'elles** : dix-neuf défauts,
+dont seize signalés par l'utilisateur (voir `DEFAUTS.md` § « Ce qu'a trouvé le premier
 usage réel »). La leçon est au § 5, règle 9.
 
 Tant que ce n'est pas fait, **ne présenter aucun de ces points comme vérifié**. Les
@@ -65,10 +73,23 @@ d'ordonnancement prise sur la foi d'un blocage inexistant.
 
 ## 3. Où en est le travail
 
-**Trente-deux specs écrites, toutes implémentées.** `A1` (accueil), `A2`/`A3` (nouvelle connexion et
-son échec), `A4` (explorateur) et `A5` (visualiseur de table) sont assemblés **et atteignables
-depuis l'application**. La couche moteur PostgreSQL est complète, du contrat au tunnel SSH.
-Restent cinq specs d'écran à écrire (`11`–`15`) et six specs de moteur (`16`–`21`).
+**Cinquante-six specs écrites, toutes implémentées.** Les dix écrans du handoff sont assemblés **et
+atteignables depuis l'application** : `A1` (accueil), `A2`/`A3` (nouvelle connexion et son échec),
+`A4` (explorateur), `A5` (visualiseur), `A6` (édition inline), `A7` (console SQL), `A8` (console
+MongoDB), `A9` (structure et DDL), `A10` (préférences). **Deux moteurs** répondent : PostgreSQL
+(`06`, du contrat au tunnel SSH) et MongoDB (`18`).
+
+**Quatre moteurs répondent** : PostgreSQL (`06`), MongoDB (`18`), SQLite (`17`) et MySQL (`16`).
+Les trois specs de moteur restantes sont **écrites**, et aucune n'attend du code :
+
+- **`19a` (Redis)** — **conclusion négative** : un espace de clés n'est pas un tableau, et l'y forcer
+  donnerait des écrans qui affichent des colonnes inventées. Il lui faut son propre écran, qui n'est
+  pas maquetté. C'est une décision produit, pas d'implémentation.
+- **`20` (Snowflake) et `21` (BigQuery)** — bloquées par l'**absence de décor de test**, pas par une
+  difficulté de conception. Le projet n'a aucun compte.
+
+**Le contrat de `06a` porte donc tout ce qu'il pouvait porter** : quatre moteurs sur les six qu'il
+couvre, et les deux manquants n'attendent qu'un compte.
 
 | Specs | Sujet | État |
 | --- | --- | --- |
@@ -81,11 +102,24 @@ Restent cinq specs d'écran à écrire (`11`–`15`) et six specs de moteur (`16
 | `08f` | créer un projet — `create_project`, « + Nouveau projet… » | **fait** |
 | `08g` | modifier une connexion — `update_variant`, menu de la pastille projet | **fait** |
 | `10a`–`10f` | primitives de grille, coquille de travail, grille, filtres et tri, toolbar, panneau de ligne | **fait** |
-| `11`–`15` | `A6` → `A10` | à écrire |
-| `16`–`21` | moteurs additionnels (MySQL, SQLite, MongoDB, Redis, Snowflake, BigQuery) | à écrire |
+| `08h`–`08j` | menu « … » de l'arbre, renommer un projet, retirer une connexion | **fait** |
+| `11a`–`11d` | `A6` — cellule éditable, marques d'édition, panneau des modifications, écriture | **fait** |
+| `12a`–`12f` | `A7` — coquille de console, éditeur, exécution, autocomplétion, onglets de résultat, requêtes enregistrées | **fait** |
+| `13a`–`13c` | `A8` — console mongo, arbre JSON, schéma déduit | **fait** |
+| `14a`–`14c` | `A9` — vue Structure, index et contraintes, DDL | **fait** |
+| `15a`–`15d` | `A10` — préférences, apparence, grille et code, garde-fous | **fait** |
+| `18a`–`18g` | **le moteur MongoDB** — contrat, connexion, introspection, schéma déduit, lecture, écriture, console | **fait** |
+| `17a`–`17b` | **le moteur SQLite** — un fichier, pas un serveur | **fait** |
+| `16a`–`16c` | **le moteur MySQL / MariaDB** — connexion, introspection, lecture et écriture | **fait** |
+| `19a` | Redis — **n'entre pas dans le contrat**, et pourquoi | écrite, conclusion négative |
+| `20`, `21` | Snowflake, BigQuery — **aucun décor de test** | écrites, bloquées |
 
-**Comptes de tests** — 226 Rust (dont ceux sur PostgreSQL 17.6 réel et un vrai bastion SSH),
-479 Vitest, 103 Playwright.
+**Comptes de tests, mesurés le 18 août 2026 par `./scripts/verifier-tout.sh`** — 513 Rust (dont ceux
+sur PostgreSQL 17.6 **en TLS**, un MongoDB 8 en jeu de réplicas, un MySQL 8.4 en TLS, un fichier
+SQLite, et un vrai bastion SSH), 746 Vitest, 184 Playwright.
+
+**Les tests SQLite tournent sans décor à monter** : le fichier est temporaire et créé par le test
+lui-même, donc ils passent sur une machine sans Docker — le seul moteur du projet dans ce cas.
 
 **La boucle du produit est complète depuis `09b`** : saisir (`08e`), persister, relire, afficher.
 `load_config` existait depuis `05b` et n'était appelée par personne.
@@ -312,6 +346,42 @@ emploie de vraies radios natives. La dette reste ouverte pour l'écran qui voudr
 **`cargo` n'est pas dans le `PATH`** des commandes shell de cet outillage — `~/.zshenv` source
 `~/.cargo/env`, mais ce shell ne le relit pas. Préfixer *chaque* commande.
 
+**Un serveur de développement résiduel fait échouer les 175 tests Playwright.**
+`playwright.config.ts` pose `reuseExistingServer: !process.env.CI` : en local, Playwright **réutilise**
+ce qui écoute sur 5173. Plusieurs exécutions de la barrière lancées en arrière-plan laissent chacune un
+serveur derrière elles, et le suivant réutilise le mauvais — ou un état cassé.
+
+Le symptôme est trompeur : **tous** les tests expirent à 30 s, ou les captures de référence diffèrent
+de 10 % des pixels. Cela ressemble exactement à une régression de rendu, et j'ai cherché deux fois du
+côté du code avant de regarder le port.
+
+```bash
+lsof -ti:5173 | xargs -r kill -9   # avant toute exécution de la barrière
+```
+
+**`pnpm tsc --noEmit` ne vérifie rien.** Le projet compile par références (`tsc -b`) : la forme
+`--noEmit` sort 0 sans regarder `src`. Un champ ajouté au domaine a laissé seize littéraux
+incomplets pendant que la commande annonçait « aucune erreur ». **C'est `pnpm typecheck` qui mord.**
+
+**Cinq décors, et chacun sert en local *et* en CI** — une variante CI qu'on ne peut pas essayer
+localement finit par diverger de ce qu'on croit qu'elle fait :
+
+| Décor | Script | Particularité |
+| --- | --- | --- |
+| PostgreSQL | `scripts/pg-test.sh` | **TLS activé**, certificat dont le nom ne correspond pas — sans quoi `06f` ne distinguerait pas `verify-ca` de `verify-full` |
+| MongoDB | `scripts/mongo-test.sh` | jeu de réplicas à un nœud, **sans quoi `18f` ne testerait que son refus** |
+| MySQL | `scripts/mysql-test.sh` | `--default-character-set=utf8mb4`, **sans quoi le décor entre en latin1** |
+| SQLite | `scripts/schema-test-sqlite.sql` | un fichier temporaire que le test crée : **aucun conteneur** |
+| Bastion SSH | `scripts/bastion-test.sh` | un vrai serveur SSH |
+
+```bash
+export DORABASE_TEST_PG=postgres://dorabase:dorabase-test@localhost:55432/dorabase_test
+export DORABASE_TEST_MONGO=$(./scripts/mongo-test.sh demarrer)
+export DORABASE_TEST_MYSQL=$(./scripts/mysql-test.sh demarrer)
+./scripts/bastion-test.sh demarrer /tmp/bastion && . /tmp/bastion/bastion.env
+./scripts/verifier-tout.sh
+```
+
 **Pas de capture d'écran de fenêtre native.** Playwright pilote Chromium, donc `pnpm dev` est
 entièrement vérifiable (mesures, captures, comparaison au pixel contre le mockup). `pnpm tauri
 dev` compile et s'exécute, mais **la fenêtre native elle-même ne peut pas être vue** — d'où le § 0.
@@ -364,33 +434,99 @@ cd src-tauri && cargo test --features db-tests   # 209 tests, dont 48 sur base e
 cd src-tauri && cargo test                       # 161 tests, sans décor
 ```
 
+## 10 bis. La capture du 18 août, et ce qu'elle a changé dans la manière de tester
+
+Une capture de l'application **lancée** a fait apparaître neuf défauts de mise en page dans une
+interface dont chaque écran avait pourtant sa spec verte (`DEFAUTS.md` n° 67 à 73). Ils partagent
+tous une forme : chaque composant était juste **dans sa vitrine**, et faux dès qu'un voisin décidait
+sa largeur, qu'un réglage du système changeait le rendu, ou qu'un pixel de fidélité tombait dans un
+conteneur qui n'en voulait pas.
+
+Ce qui manquait n'était pas de la rigueur, c'était un **niveau** de test. Les specs par écran
+vérifient qu'un écran ressemble à son mockup ; aucune ne vérifiait ce qui n'appartient à aucun écran.
+`e2e/geometrie-reelle.spec.ts` s'en charge, à la taille de fenêtre de la capture (1360 × 814) :
+
+- rien ne franchit le bord droit de la fenêtre, et la racine ne défile pas horizontalement — les deux
+  ensemble, parce qu'un enfant coupé par un ancêtre en `overflow: hidden` échappe à la première ;
+- la grille défile bien **au geste**, molette comprise, et non « parce que `overflow-x: auto` est
+  déclaré » ;
+- la bande d'onglets ne déborde pas verticalement ;
+- la barre de fil d'Ariane contient son contrôle segmenté **à 960 px**, la largeur minimale du
+  produit ;
+- la pastille du séparateur est invisible au repos ;
+- les libellés des actions tiennent dans leurs boutons.
+
+Chacune a été **sabotée** avant d'être acceptée. Deux ne mordaient pas : l'une mesurait un ensemble
+vide (n° 72), l'autre une épaisseur de barre que Chromium sans tête ne rend pas (n° 73).
+
+Ce qui **n'est pas** corrigé : la disparition des feux tricolores à la défocalisation. Ils sont
+dessinés par macOS, pas par la page — il n'y a rien à corriger dans le web, et rien à mesurer depuis
+Chromium. L'expérience à tenter est au § 0, ligne 8.
+
 ## 11. La suite
 
-**`11` — `A6`, l'édition inline.** C'est le prochain écran, et il porte le premier **écrit** du
-projet dans une base de l'utilisateur — jusqu'ici tout est en lecture. Trois choses qu'aucune spec
-n'a livrées : la cellule en saisie (boîte flottante débordant de la trame), les modifications en
-attente avec leur diff, et la transaction qui les applique.
+**Les dix écrans sont livrés, et quatre moteurs répondent. Il n'y a plus de chantier prêt.**
 
-`A6` est trop large pour une seule spec. **Proposer le découpage avant d'écrire**, comme
-`AGENTS.md` le demande et comme `05`, `06`, `08`, `09` et `10` l'ont fait. Une piste, à confirmer :
+Ce qui reste demande une **décision humaine**, pas du code :
 
-| Spec | Scope |
-| --- | --- |
-| `11a` | La cellule éditable : boîte flottante, caret, `↩` / `esc`, infobulle de raccourcis |
-| `11b` | Les modifications en attente : modèle, bandeau 34 px, teintes de ligne et de cellule |
-| `11c` | Le panneau droit « Modifications en attente » : une carte par changement, diff barré / vert |
-| `11d` | L'écriture : `BEGIN` / `UPDATE` / `COMMIT`, SQL prévisualisé, garde-fous de production |
+1. **Redis** (`19a`) — un écran de parcours de clés à maquetter. Le forcer dans le contrat donnerait
+   des colonnes inventées.
+2. **Snowflake et BigQuery** (`20`, `21`) — un compte d'essai pour chacun. Sans décor, l'adaptateur
+   serait le premier code du projet dont aucun test ne dirait s'il fonctionne.
+3. **Le patch inverse persisté** (`15d`) — où l'écrire, sous quelle forme, et ce qu'il advient d'un
+   patch dont la base a changé.
+4. **Le thème « Nuit »** (`15b`) — les valeurs sombres des cent jetons de `tokens.json`.
 
-`11d` est celle qui mérite le plus d'attention : c'est la première écriture, et les garde-fous de
-`A10` (« refuser DELETE/UPDATE sans WHERE », « patch inverse 24 h ») en dépendent.
+**Le TLS est tranché et livré** (`06f`) : `rustls`, sur deux faits vérifiés dans les pilotes — celui de
+MongoDB n'offre pas `native-tls`, et ni lui ni `mysql_async` n'accepte de `ClientConfig`. Le trousseau
+du système n'étant atteignable nulle part uniformément, l'argument qui militait pour `native-tls`
+tombait. Les cinq modes de `05a` produisent maintenant cinq comportements, et un champ « certificat
+d'autorité » les alimente.
 
-Trois points à trancher au passage :
+**Une limite à connaître** : `verify-ca` — vérifier la chaîne sans vérifier le nom — n'est disponible
+que pour **PostgreSQL**. Les pilotes MySQL et MongoDB ne savent pas l'exprimer, et le premier a même un
+drapeau silencieusement sans effet (défaut n° 63). Les deux **refusent avec leur raison** plutôt que de
+remplacer le mode en silence.
 
-- **Le rappel `⌘E` de la barre d'état**, retiré par `10c` faute d'écran qui l'honore : `A6` le
-  remet, et c'est le moment.
-- **Supprimer une base ou un projet** reste impossible (`08g` a livré la modification). Destructif,
-  et il faut décider du sort des secrets ; le handoff ne le maquette pas. Sa propre spec.
-- **`SplitPane` horizontal** pour `12` (console SQL) : géométrie de poignée différente (pastille
-  26×3 au lieu de 3×26). Son option `sized`, ajoutée par `10f`, y servira aussi.
+**Le pari de `06a` a été vérifié trois fois** — « les écrans sont écrits en termes du contrat, pas de
+PostgreSQL ». `A4`, `A5`, `A6`, `A7` et `A9` ont fonctionné pour MongoDB, SQLite **et** MySQL sans une
+ligne de code propre au moteur. Trois exceptions seulement, toutes dans l'écran et non dans le
+contrat : la console mongo (`13a`, dialecte de l'éditeur), la section « Schéma déduit » (`13c`), et
+les cinq champs que `A2` masque pour un moteur de fichier (`17a`).
 
-Et, avant tout : **les vérifications 2, 4 et 5 du § 0**.
+**Ce que `16`/`17` devront trancher, et que `18a` a défriché :**
+
+**Ce que les quatre moteurs ont répondu à la même question**, et qui vaut d'être lu avant d'en
+ajouter un :
+
+| Question | PostgreSQL (`06`) | MongoDB (`18a`) | SQLite (`17a`) | MySQL (`16a`) |
+| --- | --- | --- | --- | --- |
+| Le niveau « schéma » | les schémas de la base | les **bases** du serveur | un seul, nommé `main` | les **bases** du serveur |
+| Les colonnes | déclarées | **déduites** par échantillonnage | déclarées, type **suggéré** | déclarées |
+| Le DDL | **reconstruit** — et il a perdu deux fois | les commandes qui recréent la collection | **presque** d'origine | rendu par le serveur |
+| Le compte de lignes | estimé (`reltuples`) | estimé | **exact** | estimé (InnoDB) ou **exact** (MyISAM) |
+| L'égalité sûre au nul | `is not distinct from` | `$in: [null]` | `is` | `<=>` |
+| Les transactions | toujours | jeu de réplicas requis | toujours | InnoDB oui, MyISAM **non** |
+| La citation | guillemet double | — | guillemet double | **backtick** |
+| La connexion | hôte et port | hôte et port | **un fichier** | hôte et port |
+
+**La ligne de l'égalité sûre au nul est celle qui a mordu quatre fois** : avec `=`, une modification
+partant d'une cellule vide ne trouve aucune ligne, la transaction s'annule, et l'utilisateur lit « la
+ligne a changé » sur une ligne que personne n'a touchée. Quatre moteurs, quatre syntaxes, un seul
+piège.
+
+**Trois réserves connues, aucune bloquante :**
+
+- **`verify-ca` n'est disponible que pour PostgreSQL** (`06f`) : les pilotes MySQL et MongoDB ne
+  savent pas vérifier une chaîne sans vérifier le nom d'hôte. Les deux refusent avec leur raison, et
+  la nomment — jamais de remplacement silencieux.
+- **Le patch inverse n'est pas persisté.** Le garde-fou de `15d` est livré **désactivé avec sa
+  raison** plutôt qu'allumé sans effet. Le trancher demande de décider où l'écrire, sous quelle
+  forme, et ce qu'il advient d'un patch dont la base a changé.
+- **Le thème « Nuit » est incomplet.** `15b` livre le mécanisme (`data-theme` sur la racine, suivi de
+  `prefers-color-scheme`), et l'écran **le dit**. Les valeurs sombres des cent jetons de
+  `tokens.json` sont un travail de design que le handoff ne fournit pas.
+
+**Et, avant tout : la vérification 4 du § 0** — cliquer la pastille projet dans l'application
+réelle, pour confirmer que le menu s'ouvre depuis le correctif du découpage. `A10` en ajoute une
+seconde : ouvrir les préférences, changer la densité, et voir la grille suivre sous WKWebView.

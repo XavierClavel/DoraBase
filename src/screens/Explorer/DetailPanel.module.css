@@ -13,7 +13,22 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  width: 300px;
+  /* **La largeur vient du conteneur, pas de la feuille.**
+   *
+   * 300 px est la mesure du mockup, et c'était la bonne valeur tant que ce panneau ne vivait que dans
+   * la galerie. Dans l'écran de travail, il est le panneau `end` d'un `SplitPane` dimensionné à 296 et
+   * **réglable** : une largeur fixe le faisait dépasser de quatre pixels — et comme il est le dernier
+   * élément de la rangée, ces quatre pixels sortaient de la fenêtre. Le panneau était coupé sur le
+   * bord droit. Signalé à l'écran le 18 août 2026.
+   *
+   * Même correction que la variante `fill` de `Sidebar` (`04`), et pour la même raison : dans un
+   * partage réglable, c'est la poignée qui décide de la largeur. La galerie, elle, donne 300 px à son
+   * conteneur — la mesure du mockup y est donc respectée sans être imposée ici.
+   *
+   * `min-width: 0` : sans lui, un enfant refusant de se réduire (les deux tuiles côte à côte)
+   * repousserait le panneau au-delà de son panneau. */
+  width: 100%;
+  min-width: 0;
   flex: none;
   border-left: 1px solid var(--divider);
   background: var(--paper);
@@ -67,6 +82,10 @@
 }
 
 .body {
+  /* `border-box` : les 11 px de remplissage s'ajoutaient à la largeur d'étirement, et le corps
+     dépassait du panneau. Le projet n'a pas de `box-sizing` global — chaque bloc déclare la sienne
+     (`reset.css`). */
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 11px;
@@ -171,6 +190,23 @@
   font-family: var(--font-ui);
   font-size: var(--text-dense);
   font-weight: var(--weight-semibold);
+  /* **Interligne serrée, et centrage du texte : « SELECT dans console » ne tient pas sur une ligne.**
+   *
+   * Dans une grille à deux colonnes au sein d'un panneau de 300 px, chaque bouton fait 136 px ; moins
+   * les bordures, le remplissage, l'icône et son écart, il reste 104 px de texte pour un libellé qui en
+   * demande 118. Le libellé passait donc à la ligne, et deux lignes à l'interligne par défaut font
+   * 29 px dans un bouton de 28 : le texte débordait par le bas. Signalé à l'écran le 18 août 2026.
+   *
+   * **Le mockup porte exactement le même défaut** — mêmes deux colonnes, même hauteur de 28 px, même
+   * corps de 11,5 px, même libellé. La fidélité ne pouvait donc pas trancher : ce n'est pas un écart au
+   * handoff, c'est une mesure que le handoff n'a pas faite.
+   *
+   * `1` fait tenir deux lignes dans 26 px de contenu — mesuré, pas déduit : `1.05` laissait encore un
+   * pixel de débordement. Les autres réponses étaient pires : tronquer
+   * le libellé en « SELECT dans cons… » cache l'action, lui donner toute la largeur casse la grille du
+   * mockup, et retirer son icône la désaccorde de ses trois voisines. */
+  line-height: 1;
+  text-align: center;
   cursor: pointer;
 }
 

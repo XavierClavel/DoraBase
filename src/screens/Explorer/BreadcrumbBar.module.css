@@ -15,17 +15,44 @@
   height: var(--h-bar);
   padding: 0 var(--space-6);
   border-bottom: 1px solid var(--divider);
+  /* **Garde-fou de confinement.** Les trois règles de rétrécissement ci-dessous suffisent à la
+   * largeur minimale de la fenêtre ; un glissement de séparateur peut encore réduire la colonne
+   * centrale en dessous. `hidden` garantit alors que ce qui manque de place est coupé *dans la barre*,
+   * et non répandu par-dessus la grille et hors de la fenêtre. */
+  overflow: hidden;
 }
 
+/*
+ * Le fil, et **ce qui cède quand la barre est trop étroite**.
+ *
+ * # Pourquoi trois règles de rétrécissement
+ *
+ * La barre alignait trois éléments de largeur fixe — le fil, le champ de filtre à 210 px, le contrôle
+ * segmenté à 269 px — plus les écarts et le remplissage : 649 px au minimum. La colonne centrale, elle,
+ * est redimensionnable des deux côtés. En dessous de cette largeur, le dernier élément de la rangée
+ * sortait de la barre : le contrôle « Tables / Vues / Fonctions / Index » débordait par la droite,
+ * hors de la fenêtre. Signalé à l'écran le 18 août 2026.
+ *
+ * L'ordre dans lequel les choses cèdent est une décision, pas un effet de bord :
+ *
+ *   1. **le fil se tronque** — un chemin coupé en « analytics… » reste lisible, et la barre de titre
+ *      porte le même chemin en entier ;
+ *   2. **le champ se rétrécit** jusqu'à 96 px — assez pour voir ce qu'on tape ;
+ *   3. **le contrôle segmenté ne cède jamais** — c'est le seul élément de la barre dont un pixel
+ *      manquant rend une cible incliquable, et ses quatre libellés n'ont pas de forme courte.
+ */
 .breadcrumb {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+  overflow: hidden;
   font-family: var(--font-ui);
   font-size: var(--text-control);
   font-weight: var(--weight-medium);
   color: var(--ink-8);
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .dbIcon {
@@ -55,8 +82,10 @@
   gap: var(--space-3);
   box-sizing: border-box;
   height: var(--h-btn-sm);
-  width: 210px;
-  flex: none;
+  /* `0 1 210px` : la largeur du mockup comme base, et le droit de rétrécir — voir la note sur
+   * `.breadcrumb` pour l'ordre dans lequel la barre cède. */
+  flex: 0 1 210px;
+  min-width: 96px;
   padding: 0 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-field);

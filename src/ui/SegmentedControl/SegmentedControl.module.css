@@ -13,6 +13,10 @@
 .root {
   display: flex;
   gap: var(--space-1);
+  /* **Ne cède jamais.** Un contrôle segmenté rétréci n'affiche pas moins de texte : il rend ses
+   * cibles trop petites pour être visées. Dans une rangée en flex, `flex: none` le laisse pousser ses
+   * voisins plutôt que d'être écrasé — et c'est aux voisins de savoir se tronquer. */
+  flex: none;
   margin: 0;
   padding: 0;
   border: none;
