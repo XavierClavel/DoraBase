@@ -30,11 +30,31 @@ etape() {
 }
 
 etape "aucun sabotage résiduel" ./scripts/verifier-aucun-sabotage.sh
+# **Le fichier de CI décrit-il ce qu'on croit ?** Une clé dupliquée dans un mappage YAML ne fait pas
+# échouer l'analyseur : le dernier gagne, en silence. Une édition automatisée a un jour dupliqué le
+# job `engine`, et le premier avait avalé les étapes du job `build` — la construction macOS ne
+# tournait plus, et rien ne le disait.
+etape "ci.yml cohérent" python3 scripts/verifier-ci.py
 etape "rust : format" cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check
 
 if [[ -n "${DORABASE_TEST_PG:-}" && -z "${DORABASE_TEST_SSH_HOST:-}" ]]; then
   printf '\n\033[33m── Bastion SSH absent : les tests de tunnel (06e) seront sautés.\033[0m\n'
   printf '\033[33m   ./scripts/bastion-test.sh demarrer /tmp/bastion && . /tmp/bastion/bastion.env\033[0m\n'
+fi
+
+if [[ -n "${DORABASE_TEST_PG:-}" && -z "${DORABASE_TEST_PG_CERTS:-}" ]]; then
+  printf '\n\033[33m── Décor TLS absent : les tests de `06f` seront sautés.\033[0m\n'
+  printf '\033[33m   export DORABASE_TEST_PG=$(./scripts/pg-test.sh demarrer)\033[0m\n'
+fi
+
+if [[ -n "${DORABASE_TEST_PG:-}" && -z "${DORABASE_TEST_MYSQL:-}" ]]; then
+  printf '\n\033[33m── MySQL absent : les tests du moteur `16` seront sautés.\033[0m\n'
+  printf '\033[33m   export DORABASE_TEST_MYSQL=$(./scripts/mysql-test.sh demarrer)\033[0m\n'
+fi
+
+if [[ -n "${DORABASE_TEST_PG:-}" && -z "${DORABASE_TEST_MONGO:-}" ]]; then
+  printf '\n\033[33m── MongoDB absent : les tests du moteur `18` seront sautés.\033[0m\n'
+  printf '\033[33m   export DORABASE_TEST_MONGO=$(./scripts/mongo-test.sh demarrer)\033[0m\n'
 fi
 
 if [[ -n "${DORABASE_TEST_PG:-}" ]]; then

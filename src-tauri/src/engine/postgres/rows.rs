@@ -428,7 +428,11 @@ fn lire_nombre(ligne: &Row, index: usize) -> Option<Option<Value>> {
 
 /// Encodage base64 sans dépendance : l'IPC transporte du JSON, donc un binaire doit se
 /// représenter en texte. Une dépendance pour trente lignes ne se justifie pas.
-fn encoder_base64(octets: &[u8]) -> String {
+///
+/// **Partagé avec l'adaptateur MongoDB** (`18a`), qui a le même besoin pour `BinData`. Une seconde
+/// copie aurait été une seconde table de 64 caractères à écrire correctement — et le remplissage
+/// des trois restes est exactement l'endroit où l'on se trompe.
+pub(in crate::engine) fn encoder_base64(octets: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut sortie = String::with_capacity(octets.len().div_ceil(3) * 4);
 
@@ -722,6 +726,8 @@ mod tests {
                 category: TypeCategory::Number,
                 nullable: false,
                 default: None,
+                identity: None,
+                frequency: None,
                 key: Some(KeyKind::Primary),
                 comment: None,
             },
@@ -732,6 +738,8 @@ mod tests {
                 category: TypeCategory::Text,
                 nullable: true,
                 default: None,
+                identity: None,
+                frequency: None,
                 key: None,
                 comment: None,
             },

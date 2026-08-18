@@ -61,6 +61,7 @@ mod tests {
             username: "dora_ro".into(),
             password: None,
             ssl_mode: SslMode::Require,
+            ca_certificate: None,
             read_only: true,
             reconnect_on_startup: false,
             tunnel: None,

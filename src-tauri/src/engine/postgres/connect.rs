@@ -2,8 +2,10 @@
 
 use tokio_postgres::config::SslMode as PgSslMode;
 use tokio_postgres::{Client, Config, NoTls};
+use tokio_postgres_rustls::MakeRustlsConnect;
 
 use crate::config::{EnvironmentVariant, SslMode};
+use crate::engine::tls::Exigences;
 use crate::engine::EngineError;
 use crate::secrets::Secret;
 
@@ -55,10 +57,14 @@ pub fn preparer(
 
 /// Correspondance entre les six modes de `05a` et ceux de `tokio-postgres`.
 ///
-/// **La distinction qui compte** : `Require` chiffre sans authentifier le serveur, donc
-/// n'empêche pas un intermédiaire ; `VerifyCa` et `VerifyFull` vérifient le certificat.
-/// Les confondre est l'erreur classique, et c'est pourquoi un test de `06b` distingue
-/// explicitement une famille de l'autre.
+/// **`PgSslMode` ne connaît que trois valeurs** — `Disable`, `Prefer`, `Require` — parce qu'il ne
+/// décide que du *transport* : demander TLS ou non. La **vérification**, elle, vit dans la
+/// `ClientConfig` de `rustls`, et c'est `06f` qui l'a branchée. Les trois modes du bas donnent donc
+/// le même `PgSslMode` et trois configurations différentes.
+///
+/// **La distinction qui compte** : `Require` chiffre sans authentifier le serveur, donc n'empêche pas
+/// un intermédiaire ; `VerifyCa` et `VerifyFull` vérifient le certificat. Les confondre est l'erreur
+/// classique, et c'est pourquoi un test de `06b` distingue explicitement une famille de l'autre.
 fn traduire_mode_ssl(mode: SslMode) -> PgSslMode {
     match mode {
         SslMode::Disable => PgSslMode::Disable,
@@ -70,15 +76,39 @@ fn traduire_mode_ssl(mode: SslMode) -> PgSslMode {
     }
 }
 
-/// Ouvre une connexion.
+/// Ouvre une connexion, **TLS compris** (`06f`).
 ///
-/// **Le TLS n'est pas encore branché** : cette fonction emploie `NoTls`, donc un mode
-/// exigeant le chiffrement échouera côté serveur si celui-ci l'impose. C'est délibéré et
-/// borné — la tâche SSL du plan `06b` doit trancher entre `rustls` et `native-tls`, et ce
-/// choix a des conséquences (les autorités internes d'entreprise) qui méritent d'être
-/// décidées séparément plutôt que subies ici.
-pub async fn ouvrir(config: &Config) -> Result<Client, EngineError> {
-    let (client, connexion) = config.connect(NoTls).await.map_err(|e| traduire(&e))?;
+/// La réserve de `06b` — « le TLS n'est pas encore branché », `NoTls` en dur — est levée. Le choix de
+/// `rustls` est tranché dans `06f`, sur deux faits vérifiés dans les pilotes : celui de MongoDB
+/// n'offre pas `native-tls`, et ni lui ni `mysql_async` n'acceptent de `ClientConfig`. Le trousseau du
+/// système n'étant atteignable nulle part uniformément, l'argument qui militait pour `native-tls`
+/// tombait — et `rustls` donne en échange un seul comportement sur macOS et en CI Linux.
+pub async fn ouvrir(
+    config: &Config,
+    exigences: Exigences,
+    ca: Option<&str>,
+) -> Result<Client, EngineError> {
+    // **Le seul pilote des trois qui accepte une `ClientConfig`** : c'est donc le seul où les trois
+    // modes de vérification s'expriment exactement, sans passer par des drapeaux (`06f`).
+    //
+    // `Disable` court-circuite : construire une configuration TLS pour ne pas s'en servir chargerait
+    // les racines publiques pour rien, et échouerait sur un fichier CA mal déclaré alors que personne
+    // n'a demandé de chiffrement.
+    if !exigences.chiffre() {
+        return ouvrir_avec(config, NoTls).await;
+    }
+    let configuration = crate::engine::tls::configuration(exigences, ca)?;
+    ouvrir_avec(config, MakeRustlsConnect::new(configuration)).await
+}
+
+async fn ouvrir_avec<T>(config: &Config, tls: T) -> Result<Client, EngineError>
+where
+    T: tokio_postgres::tls::MakeTlsConnect<tokio_postgres::Socket> + Send + 'static,
+    T::Stream: Send + 'static,
+    T::TlsConnect: Send,
+    <T::TlsConnect as tokio_postgres::tls::TlsConnect<tokio_postgres::Socket>>::Future: Send,
+{
+    let (client, connexion) = config.connect(tls).await.map_err(|e| traduire(&e))?;
 
     // `tokio-postgres` sépare le client de la boucle d'entrées-sorties : sans cette tâche,
     // aucune requête n'avancerait. Elle s'arrête quand le client est libéré.
@@ -105,6 +135,7 @@ mod tests {
             username: "dorabase".into(),
             password: None,
             ssl_mode: SslMode::Prefer,
+            ca_certificate: None,
             read_only: false,
             reconnect_on_startup: false,
             tunnel: None,

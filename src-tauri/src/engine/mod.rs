@@ -18,16 +18,20 @@
 pub mod commands;
 mod error;
 mod introspection;
+pub mod mongo;
+pub mod mysql;
 pub mod postgres;
 pub mod registry;
 mod rows;
+pub mod sqlite;
+pub mod tls;
 pub mod tunnel;
 
 use std::future::Future;
 
 pub use error::{ConnectionProbe, EngineError};
 pub use introspection::{
-    ColumnInfo, ConstraintInfo, IndexInfo, KeyKind, ObjectCounts, ObjectKind, Relation,
+    ColumnInfo, ConstraintInfo, Identity, IndexInfo, KeyKind, ObjectCounts, ObjectKind, Relation,
     RelationDirection, RowCount, SchemaInfo, TableDetail, TableSummary, TriggerInfo, TypeCategory,
 };
 pub use rows::{
@@ -129,29 +133,159 @@ pub trait EngineAdapter {
 
 /// Le moteur actif, réparti statiquement.
 ///
-/// Six variantes manquent encore — MySQL, SQLite, MongoDB, Redis, Snowflake, BigQuery,
-/// specs `16` à `21`. L'exhaustivité du `match` est ce qui garantit qu'aucune ne sera
-/// oubliée en cours de route : chaque ajout fait échouer la compilation ici.
+/// Six variantes manquent encore — MySQL (`16`), SQLite (`17`), MongoDB (`18a`–`18g`),
+/// Redis (`19`), Snowflake (`20`), BigQuery (`21`). L'exhaustivité du `match` est ce qui
+/// garantit qu'aucune ne sera oubliée en cours de route : chaque ajout fait échouer la
+/// compilation ici.
+///
+/// **`18a` est la spec à lire avant d'en ajouter une** : elle recense les six endroits où ce
+/// contrat suppose quelque chose qu'un moteur documentaire n'a pas — niveau schéma, colonnes
+/// déclarées, DDL, types BSON, transactions, et le mot « sql » dans deux noms de méthodes.
 pub enum AnyEngine {
     Postgres(postgres::PostgresAdapter),
+    MongoDb(mongo::MongoAdapter),
+    Sqlite(sqlite::SqliteAdapter),
+    MySql(mysql::MysqlAdapter),
+}
+
+impl AnyEngine {
+    /// Ouvre l'adaptateur que le moteur déclaré désigne.
+    ///
+    /// **Le `match` est ce qui rend l'oubli impossible** : déclarer un septième moteur dans `05a`
+    /// fait échouer la compilation ici tant qu'aucun adaptateur ne lui répond. C'est ce que `06a`
+    /// attendait de l'énumération, et `18` est le premier moteur à le vérifier.
+    pub async fn connect_via(
+        moteur: crate::config::Engine,
+        variante: &crate::config::EnvironmentVariant,
+        mot_de_passe: Option<&crate::secrets::Secret>,
+        known_hosts: &std::path::Path,
+    ) -> Result<Self, EngineError> {
+        use crate::config::Engine;
+        match moteur {
+            Engine::PostgreSql => Ok(Self::Postgres(
+                postgres::PostgresAdapter::connect_via(variante, mot_de_passe, known_hosts).await?,
+            )),
+            Engine::MongoDb => Ok(Self::MongoDb(
+                mongo::MongoAdapter::connect_via(variante, mot_de_passe, known_hosts).await?,
+            )),
+            // **Refusé, avec ce qui manque — pas seulement un numéro de spec.** La règle de `09f`
+            // appliquée à un moteur : un message qui nomme l'échéance vaut mieux qu'un échec de
+            // connexion qui laisse chercher un problème de réseau. Et nommer *la difficulté* vaut
+            // mieux qu'un numéro, parce que les trois moteurs restants sont bloqués pour trois
+            // raisons différentes.
+            autre => Err(EngineError::local(raison_du_refus(autre))),
+        }
+    }
+
+    /// L'état du tunnel, quand il y en a un.
+    pub fn etat_tunnel(&self) -> Option<tunnel::EtatTunnel> {
+        match self {
+            Self::Postgres(adaptateur) => adaptateur.etat_tunnel(),
+            Self::MongoDb(adaptateur) => adaptateur.etat_tunnel(),
+            Self::Sqlite(adaptateur) => adaptateur.etat_tunnel(),
+            Self::MySql(adaptateur) => adaptateur.etat_tunnel(),
+        }
+    }
+
+    /// Le port local du tunnel, que `A2` affiche sous « auto (63342) ».
+    pub fn port_local_tunnel(&self) -> Option<u16> {
+        match self {
+            Self::Postgres(adaptateur) => adaptateur.port_local_tunnel(),
+            Self::MongoDb(adaptateur) => adaptateur.port_local_tunnel(),
+            Self::Sqlite(adaptateur) => adaptateur.port_local_tunnel(),
+            Self::MySql(adaptateur) => adaptateur.port_local_tunnel(),
+        }
+    }
+
+    /// Ferme la connexion et **attend** que le port local du tunnel soit rendu.
+    pub async fn close(self) {
+        match self {
+            Self::Postgres(adaptateur) => adaptateur.close().await,
+            Self::MongoDb(adaptateur) => adaptateur.close().await,
+            Self::Sqlite(adaptateur) => adaptateur.close().await,
+            Self::MySql(adaptateur) => adaptateur.close().await,
+        }
+    }
+}
+
+fn nom_du_moteur(moteur: crate::config::Engine) -> &'static str {
+    use crate::config::Engine;
+    match moteur {
+        Engine::PostgreSql => "PostgreSQL",
+        Engine::MySql => "MySQL",
+        Engine::Sqlite => "SQLite",
+        Engine::MongoDb => "MongoDB",
+        Engine::Redis => "Redis",
+        Engine::Snowflake => "Snowflake",
+        Engine::BigQuery => "BigQuery",
+    }
+}
+
+/// Pourquoi ce moteur n'est pas livré, **dans ses termes**.
+///
+/// Les trois moteurs restants le sont pour trois raisons distinctes, et les confondre sous un
+/// « voir la spec N » ferait chercher du code là où il manque un compte, ou un écran.
+fn raison_du_refus(moteur: crate::config::Engine) -> String {
+    use crate::config::Engine;
+    let nom = nom_du_moteur(moteur);
+    let spec = spec_du_moteur(moteur);
+    match moteur {
+        // **La seule conclusion négative du projet** (`19a`) : un espace de clés Redis n'est pas un
+        // tableau. Le forcer dans le contrat de `06a` donnerait des écrans qui affichent des
+        // colonnes inventées — un préfixe de clé est une convention d'équipe, pas une structure.
+        Engine::Redis => format!(
+            "{nom} ne se parcourt pas comme une base relationnelle : un espace de clés n'a ni              tables ni colonnes, et les inventer donnerait des écrans qui affichent des données qui              n'existent pas. Il lui faut son propre écran — voir la spec {spec}"
+        ),
+        // `20` et `21` : ni difficulté de conception, ni décor de test. Le second est l'obstacle.
+        Engine::Snowflake | Engine::BigQuery => format!(
+            "DoraBase ne sait pas encore parler à {nom} : le contrat lui irait, mais le projet n'a              aucun décor de test pour lui — et un adaptateur de base de données que rien ne vérifie              est exactement ce qui perd des données sans le dire. Voir la spec {spec}"
+        ),
+        autre => format!(
+            "DoraBase ne sait pas encore parler à {} — voir la spec {} du projet",
+            nom_du_moteur(autre),
+            spec_du_moteur(autre)
+        ),
+    }
+}
+
+fn spec_du_moteur(moteur: crate::config::Engine) -> &'static str {
+    use crate::config::Engine;
+    match moteur {
+        Engine::PostgreSql => "06",
+        Engine::MySql => "16a",
+        Engine::Sqlite => "17a",
+        Engine::MongoDb => "18",
+        Engine::Redis => "19a",
+        Engine::Snowflake => "20",
+        Engine::BigQuery => "21",
+    }
 }
 
 impl AnyEngine {
     pub async fn probe(&self) -> Result<ConnectionProbe, EngineError> {
         match self {
             Self::Postgres(adaptateur) => adaptateur.probe().await,
+            Self::MongoDb(adaptateur) => adaptateur.probe().await,
+            Self::Sqlite(adaptateur) => adaptateur.probe().await,
+            Self::MySql(adaptateur) => adaptateur.probe().await,
         }
     }
 
     pub async fn schemas(&self) -> Result<Vec<SchemaInfo>, EngineError> {
         match self {
             Self::Postgres(adaptateur) => adaptateur.schemas().await,
+            Self::MongoDb(adaptateur) => adaptateur.schemas().await,
+            Self::Sqlite(adaptateur) => adaptateur.schemas().await,
+            Self::MySql(adaptateur) => adaptateur.schemas().await,
         }
     }
 
     pub async fn objects(&self, schema: &str) -> Result<Vec<TableSummary>, EngineError> {
         match self {
             Self::Postgres(adaptateur) => adaptateur.objects(schema).await,
+            Self::MongoDb(adaptateur) => adaptateur.objects(schema).await,
+            Self::Sqlite(adaptateur) => adaptateur.objects(schema).await,
+            Self::MySql(adaptateur) => adaptateur.objects(schema).await,
         }
     }
 
@@ -162,36 +296,54 @@ impl AnyEngine {
     ) -> Result<TableDetail, EngineError> {
         match self {
             Self::Postgres(adaptateur) => adaptateur.table_detail(schema, table).await,
+            Self::MongoDb(adaptateur) => adaptateur.table_detail(schema, table).await,
+            Self::Sqlite(adaptateur) => adaptateur.table_detail(schema, table).await,
+            Self::MySql(adaptateur) => adaptateur.table_detail(schema, table).await,
         }
     }
 
     pub async fn rows(&self, query: &RowQuery) -> Result<RowWindow, EngineError> {
         match self {
             Self::Postgres(adaptateur) => adaptateur.rows(query).await,
+            Self::MongoDb(adaptateur) => adaptateur.rows(query).await,
+            Self::Sqlite(adaptateur) => adaptateur.rows(query).await,
+            Self::MySql(adaptateur) => adaptateur.rows(query).await,
         }
     }
 
     pub async fn preview_updates(&self, plan: &UpdatePlan) -> Result<String, EngineError> {
         match self {
             Self::Postgres(adaptateur) => adaptateur.preview_updates(plan).await,
+            Self::MongoDb(adaptateur) => adaptateur.preview_updates(plan).await,
+            Self::Sqlite(adaptateur) => adaptateur.preview_updates(plan).await,
+            Self::MySql(adaptateur) => adaptateur.preview_updates(plan).await,
         }
     }
 
     pub async fn apply_updates(&self, plan: &UpdatePlan) -> Result<ApplyOutcome, EngineError> {
         match self {
             Self::Postgres(adaptateur) => adaptateur.apply_updates(plan).await,
+            Self::MongoDb(adaptateur) => adaptateur.apply_updates(plan).await,
+            Self::Sqlite(adaptateur) => adaptateur.apply_updates(plan).await,
+            Self::MySql(adaptateur) => adaptateur.apply_updates(plan).await,
         }
     }
 
     pub async fn run_sql(&self, sql: &str, limite: RowLimit) -> Result<QueryResult, EngineError> {
         match self {
             Self::Postgres(adaptateur) => adaptateur.run_sql(sql, limite).await,
+            Self::MongoDb(adaptateur) => adaptateur.run_sql(sql, limite).await,
+            Self::Sqlite(adaptateur) => adaptateur.run_sql(sql, limite).await,
+            Self::MySql(adaptateur) => adaptateur.run_sql(sql, limite).await,
         }
     }
 
     pub async fn explain_sql(&self, sql: &str) -> Result<QueryPlan, EngineError> {
         match self {
             Self::Postgres(adaptateur) => adaptateur.explain_sql(sql).await,
+            Self::MongoDb(adaptateur) => adaptateur.explain_sql(sql).await,
+            Self::Sqlite(adaptateur) => adaptateur.explain_sql(sql).await,
+            Self::MySql(adaptateur) => adaptateur.explain_sql(sql).await,
         }
     }
 
@@ -203,6 +355,72 @@ impl AnyEngine {
     ) -> Result<String, EngineError> {
         match self {
             Self::Postgres(adaptateur) => adaptateur.row_as_insert(schema, table, values).await,
+            Self::MongoDb(adaptateur) => adaptateur.row_as_insert(schema, table, values).await,
+            Self::Sqlite(adaptateur) => adaptateur.row_as_insert(schema, table, values).await,
+            Self::MySql(adaptateur) => adaptateur.row_as_insert(schema, table, values).await,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests_refus {
+    use super::*;
+    use crate::config::Engine;
+
+    #[test]
+    fn redis_est_refuse_pour_sa_forme_pas_pour_un_retard() {
+        // **La seule conclusion négative du projet** (`19a`) : Redis n'entre pas dans le contrat.
+        // Un message qui dirait « pas encore » ferait attendre une spec qui n'arrivera pas sous
+        // cette forme.
+        let raison = raison_du_refus(Engine::Redis);
+        assert!(raison.contains("espace de clés"), "{raison}");
+        assert!(raison.contains("son propre écran"), "{raison}");
+        assert!(
+            !raison.contains("pas encore"),
+            "Redis n'est pas en retard, il ne rentre pas : {raison}"
+        );
+    }
+
+    #[test]
+    fn snowflake_et_bigquery_sont_refuses_pour_l_absence_de_decor() {
+        // Ni l'un ni l'autre ne pose de difficulté de conception : c'est le décor qui manque, et le
+        // dire évite de chercher du code là où il faut un compte.
+        for moteur in [Engine::Snowflake, Engine::BigQuery] {
+            let raison = raison_du_refus(moteur);
+            assert!(raison.contains("décor de test"), "{raison}");
+            assert!(raison.contains("perd des données"), "{raison}");
+        }
+    }
+
+    #[test]
+    fn chaque_refus_nomme_le_moteur_et_sa_spec() {
+        // Sans le numéro, le message dit « non » sans dire où lire pourquoi.
+        for (moteur, spec) in [
+            (Engine::MySql, "16a"),
+            (Engine::Sqlite, "17a"),
+            (Engine::Redis, "19a"),
+            (Engine::Snowflake, "20"),
+            (Engine::BigQuery, "21"),
+        ] {
+            let raison = raison_du_refus(moteur);
+            assert!(raison.contains(nom_du_moteur(moteur)), "{raison}");
+            assert!(raison.contains(spec), "{raison} devait citer {spec}");
+        }
+    }
+
+    #[test]
+    fn les_deux_moteurs_livres_ne_passent_pas_par_un_refus() {
+        // Un refus rendu pour PostgreSQL ou MongoDB signifierait que le `match` de `connect_via` a
+        // perdu une branche — panne silencieuse, puisque le message serait plausible.
+        for moteur in [Engine::PostgreSql, Engine::MongoDb] {
+            assert_eq!(
+                spec_du_moteur(moteur),
+                if moteur == Engine::PostgreSql {
+                    "06"
+                } else {
+                    "18"
+                }
+            );
         }
     }
 }

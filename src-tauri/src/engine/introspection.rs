@@ -182,7 +182,11 @@ pub struct TableSummary {
 }
 
 /// Une colonne, telle que `A9` la tabule et `A5` la liste.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+///
+/// **Pas `Eq`** depuis que `frequency` existe : un flottant ne l'est pas — `NaN` n'est égal à rien,
+/// pas même à lui-même. `PartialEq` suffit à tout ce que le projet en fait (des `assert_eq!`), et
+/// prétendre le contraire serait faux.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "engine.ts")]
 pub struct ColumnInfo {
@@ -194,8 +198,37 @@ pub struct ColumnInfo {
     pub category: TypeCategory,
     pub nullable: bool,
     pub default: Option<String>,
+    /// `Some` quand la colonne est une identité — `GENERATED ... AS IDENTITY`.
+    ///
+    /// **Distinct de `default`**, qui est `NULL` pour ces colonnes : PostgreSQL ne range pas
+    /// l'identité dans `pg_attrdef`. Sans ce champ, `A9` afficherait « — » dans la colonne
+    /// « défaut » d'une clé primaire auto-incrémentée, ce qui la ferait lire comme une colonne
+    /// à remplir soi-même.
+    pub identity: Option<Identity>,
     pub key: Option<KeyKind>,
     pub comment: Option<String>,
+    /// La part des documents qui portent ce champ, entre 0 et 1 — **`18d`**.
+    ///
+    /// `None` pour un moteur relationnel, et ce n'est pas « inconnu » : une colonne y est
+    /// **déclarée**, donc elle existe pour toutes les lignes et la question ne se pose pas. `Some`
+    /// n'a de sens que là où le schéma est déduit d'un échantillon.
+    ///
+    /// **Un champ du modèle, pas une décoration de `A8`** : `A9` peut l'afficher pour une
+    /// collection sans une ligne de code propre à MongoDB, et un champ à moins de 100 % se
+    /// distingue partout où les colonnes s'affichent.
+    pub frequency: Option<f32>,
+}
+
+/// Les deux formes d'identité de la norme SQL, que PostgreSQL distingue.
+///
+/// `Always` refuse une valeur fournie par l'insertion, `ByDefault` l'accepte. La différence est
+/// visible à l'écriture, donc elle est dite plutôt que fondue en un booléen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub enum Identity {
+    Always,
+    ByDefault,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -252,7 +285,9 @@ pub enum RelationDirection {
 }
 
 /// Tout ce que `A9` affiche d'une table, DDL compris.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+///
+/// **Pas `Eq`**, parce qu'il contient des `ColumnInfo` — voir leur documentation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "engine.ts")]
 pub struct TableDetail {

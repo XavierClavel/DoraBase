@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::model::Project;
+use super::model::{Preferences, Project};
 
 /// Version du format sur disque. À incrémenter pour tout changement de forme, en
 /// ajoutant la migration correspondante dans `migrer`.
@@ -19,6 +19,14 @@ pub const VERSION_COURANTE: u32 = 1;
 struct ConfigFile {
     version: u32,
     projects: Vec<Project>,
+    /// Les préférences de `15a`.
+    ///
+    /// **`serde(default)` plutôt qu'une montée de version.** Une configuration écrite avant `15a`
+    /// n'a pas ce champ : `serde` le remplit par `Preferences::default()`, qui est exactement l'état
+    /// correct — les valeurs du handoff, et les quatre garde-fous actifs. Monter la version aurait
+    /// forcé une migration qui ne migre rien, le même arbitrage qu'en `12f`.
+    #[serde(default)]
+    preferences: Preferences,
 }
 
 /// L'issue d'une lecture. Quatre cas distincts, délibérément : confondre « absent » et
@@ -27,7 +35,12 @@ struct ConfigFile {
 pub enum LoadOutcome {
     /// Aucun fichier : premier lancement. C'est l'état que l'écran `A1` affiche.
     Fresh,
-    Loaded(Vec<Project>),
+    Loaded {
+        projects: Vec<Project>,
+        /// **Toujours présentes**, même quand le fichier ne les portait pas : leur défaut *est* une
+        /// valeur, pas une absence.
+        preferences: Preferences,
+    },
     /// Fichier présent mais incompréhensible. L'original est **conservé** sous
     /// `quarantined_to` : c'est peut-être la seule copie du travail de l'utilisateur.
     Unreadable {
@@ -36,10 +49,7 @@ pub enum LoadOutcome {
     },
     /// Version postérieure à celle que cette app comprend — cas d'une app rétrogradée.
     /// Rien n'est écrit : écraser serait perdre des données qu'on ne sait pas relire.
-    TooNew {
-        found: u32,
-        supported: u32,
-    },
+    TooNew { found: u32, supported: u32 },
 }
 
 #[derive(Debug)]
@@ -127,6 +137,7 @@ fn chemin_libre(cible: &Path, suffixe: &str) -> PathBuf {
 pub(crate) fn ecrire_temporaire_sans_renommer(
     cible: &Path,
     projects: &[Project],
+    preferences: &Preferences,
 ) -> Result<PathBuf, StoreError> {
     if let Some(parent) = cible.parent() {
         fs::create_dir_all(parent)?;
@@ -135,6 +146,9 @@ pub(crate) fn ecrire_temporaire_sans_renommer(
     let contenu = serde_json::to_string_pretty(&ConfigFile {
         version: VERSION_COURANTE,
         projects: projects.to_vec(),
+        // **Bornées à l'écriture**, pas seulement à la lecture : une valeur hors bornes écrite sur
+        // disque reviendrait à chaque démarrage.
+        preferences: preferences.clone().borner(),
     })?;
 
     let temporaire = chemin_temporaire(cible);
@@ -151,8 +165,12 @@ pub(crate) fn ecrire_temporaire_sans_renommer(
 ///
 /// À tout instant, le chemin cible désigne soit l'ancien contenu complet, soit le
 /// nouveau — jamais un JSON tronqué.
-pub fn save(cible: &Path, projects: &[Project]) -> Result<(), StoreError> {
-    let temporaire = ecrire_temporaire_sans_renommer(cible, projects)?;
+pub fn save(
+    cible: &Path,
+    projects: &[Project],
+    preferences: &Preferences,
+) -> Result<(), StoreError> {
+    let temporaire = ecrire_temporaire_sans_renommer(cible, projects, preferences)?;
     fs::rename(&temporaire, cible)?;
     Ok(())
 }
@@ -197,7 +215,11 @@ pub fn load(cible: &Path) -> LoadOutcome {
     }
 
     match serde_json::from_str::<ConfigFile>(&brut) {
-        Ok(fichier) => LoadOutcome::Loaded(fichier.projects),
+        Ok(fichier) => LoadOutcome::Loaded {
+            projects: fichier.projects,
+            // Bornées à la lecture aussi : le fichier est éditable à la main.
+            preferences: fichier.preferences.borner(),
+        },
         Err(erreur) => mettre_en_quarantaine(cible, format!("forme inattendue : {erreur}")),
     }
 }
@@ -219,7 +241,8 @@ fn migrer(cible: &Path, brut: &str, depuis: u32) -> LoadOutcome {
     // v0 → v1 : la v0 n'a jamais été diffusée, sa forme est celle de la v1. La chaîne
     // existe pour que la prochaine évolution n'ait qu'un bras à ajouter.
     let migre = match depuis {
-        0 => serde_json::from_str::<ConfigFile>(brut).map(|fichier| fichier.projects),
+        0 => serde_json::from_str::<ConfigFile>(brut)
+            .map(|fichier| (fichier.projects, fichier.preferences)),
         _ => {
             return LoadOutcome::Unreadable {
                 reason: format!("aucune migration connue depuis la version {depuis}"),
@@ -229,7 +252,10 @@ fn migrer(cible: &Path, brut: &str, depuis: u32) -> LoadOutcome {
     };
 
     match migre {
-        Ok(projects) => LoadOutcome::Loaded(projects),
+        Ok((projects, preferences)) => LoadOutcome::Loaded {
+            projects,
+            preferences: preferences.borner(),
+        },
         Err(erreur) => LoadOutcome::Unreadable {
             reason: format!("migration depuis la version {depuis} impossible : {erreur}"),
             quarantined_to: sauvegarde,
@@ -262,7 +288,7 @@ fn mettre_en_quarantaine(cible: &Path, raison: String) -> LoadOutcome {
 /// Le magasin de configuration : il **porte** la propriété « ne pas écraser ce qu'on n'a
 /// pas su lire ».
 ///
-/// Une fonction libre `save(path, …)` laisserait l'appelant libre d'oublier de vérifier
+/// Une fonction libre `save(path, …, &Preferences::default())` laisserait l'appelant libre d'oublier de vérifier
 /// l'issue de lecture — et cet oubli coûterait les données de l'utilisateur. Ici le type
 /// s'en souvient.
 pub struct ConfigStore {
@@ -279,7 +305,7 @@ impl ConfigStore {
         let issue = load(&chemin);
 
         let refus = match &issue {
-            LoadOutcome::Fresh | LoadOutcome::Loaded(_) => None,
+            LoadOutcome::Fresh | LoadOutcome::Loaded { .. } => None,
             LoadOutcome::Unreadable { reason, .. } => Some(reason.clone()),
             LoadOutcome::TooNew { found, supported } => Some(format!(
                 "le fichier est en version {found}, cette application comprend la version {supported}"
@@ -289,13 +315,34 @@ impl ConfigStore {
         (Self { chemin, refus }, issue)
     }
 
-    pub fn save(&self, projects: &[Project]) -> Result<(), StoreError> {
+    pub fn save(&self, projects: &[Project], preferences: &Preferences) -> Result<(), StoreError> {
         if let Some(raison) = &self.refus {
             return Err(StoreError::EcritureRefusee {
                 raison: raison.clone(),
             });
         }
-        save(&self.chemin, projects)
+        save(&self.chemin, projects, preferences)
+    }
+
+    /// Relit les préférences du disque.
+    ///
+    /// **Même raison que `load_projects`** : écrire un réglage se fait sur ce qui a été lu, sinon
+    /// enregistrer un thème effacerait un garde-fou modifié entre-temps.
+    ///
+    /// Rend les valeurs par défaut quand le fichier est absent : c'est l'état d'un premier
+    /// lancement, pas une erreur.
+    pub fn load_preferences(&self) -> Result<Preferences, String> {
+        if let Some(raison) = &self.refus {
+            return Err(raison.clone());
+        }
+        match load(&self.chemin) {
+            LoadOutcome::Fresh => Ok(Preferences::default()),
+            LoadOutcome::Loaded { preferences, .. } => Ok(preferences),
+            LoadOutcome::Unreadable { reason, .. } => Err(reason),
+            LoadOutcome::TooNew { found, supported } => Err(format!(
+                "le fichier est en version {found}, cette application comprend la version {supported}"
+            )),
+        }
     }
 
     /// Relit les projets du disque.
@@ -313,7 +360,7 @@ impl ConfigStore {
         }
         match load(&self.chemin) {
             LoadOutcome::Fresh => Ok(Vec::new()),
-            LoadOutcome::Loaded(projects) => Ok(projects),
+            LoadOutcome::Loaded { projects, .. } => Ok(projects),
             LoadOutcome::Unreadable { reason, .. } => Err(reason),
             LoadOutcome::TooNew { found, supported } => Err(format!(
                 "le fichier est en version {found}, cette application comprend la version {supported}"
@@ -323,6 +370,158 @@ impl ConfigStore {
 
     pub fn path(&self) -> &Path {
         &self.chemin
+    }
+}
+
+#[cfg(test)]
+mod tests_preferences {
+    use super::super::model::{Accent, Guards, Theme};
+    use super::*;
+    use tempfile::tempdir;
+
+    /// Le fichier tel qu'une version **antérieure à `15a`** l'écrivait : version 1, aucun champ
+    /// `preferences`.
+    const AVANT_15A: &str = r#"{ "version": 1, "projects": [] }"#;
+
+    #[test]
+    fn une_configuration_ecrite_avant_15a_se_lit_avec_les_defauts() {
+        let dossier = tempdir().unwrap();
+        let chemin = dossier.path().join("config.json");
+        fs::write(&chemin, AVANT_15A).unwrap();
+
+        let LoadOutcome::Loaded { preferences, .. } = load(&chemin) else {
+            panic!("le fichier doit se lire");
+        };
+        // **Pas de migration, et pas de fichier en quarantaine** : `serde(default)` suffit, ce qui
+        // est l'arbitrage de `12f` réappliqué. Une montée de version aurait forcé une migration qui
+        // ne migre rien.
+        assert_eq!(preferences, Preferences::default());
+    }
+
+    #[test]
+    fn les_quatre_garde_fous_sont_actifs_sur_une_configuration_anterieure() {
+        let dossier = tempdir().unwrap();
+        let chemin = dossier.path().join("config.json");
+        fs::write(&chemin, AVANT_15A).unwrap();
+
+        let LoadOutcome::Loaded { preferences, .. } = load(&chemin) else {
+            panic!("le fichier doit se lire");
+        };
+        // **Le test qui compte le plus de `15d`** : un défaut à `false` transformerait une mise à
+        // jour de DoraBase en levée silencieuse des garde-fous.
+        let g = preferences.guards;
+        assert!(g.pending_before_write, "{g:?}");
+        assert!(g.prod_read_only, "{g:?}");
+        assert!(g.refuse_unrestricted_writes, "{g:?}");
+        assert!(g.keep_inverse_patch, "{g:?}");
+    }
+
+    #[test]
+    fn un_reglage_survit_a_un_aller_retour() {
+        let dossier = tempdir().unwrap();
+        let chemin = dossier.path().join("config.json");
+
+        let mut voulues = Preferences {
+            theme: Theme::Nuit,
+            accent: Accent::Sauge,
+            row_height: 32,
+            code_font_tenths: 110,
+            guards: Guards {
+                prod_read_only: false,
+                ..Guards::default()
+            },
+        };
+        save(&chemin, &[], &voulues).unwrap();
+
+        let LoadOutcome::Loaded { preferences, .. } = load(&chemin) else {
+            panic!("le fichier doit se lire");
+        };
+        voulues = voulues.borner();
+        assert_eq!(preferences, voulues);
+    }
+
+    #[test]
+    fn une_hauteur_hors_bornes_est_ramenee_plutot_que_refusee() {
+        // Le fichier est éditable à la main : une grille à trois pixels de haut n'est pas une
+        // erreur à signaler, c'est une valeur à corriger. La règle vit dans le modèle, pas dans le
+        // curseur — l'écran n'est pas le gardien de la donnée.
+        let dossier = tempdir().unwrap();
+        let chemin = dossier.path().join("config.json");
+        fs::write(
+            &chemin,
+            r#"{ "version": 1, "projects": [], "preferences": { "rowHeight": 3 } }"#,
+        )
+        .unwrap();
+
+        let LoadOutcome::Loaded { preferences, .. } = load(&chemin) else {
+            panic!("le fichier doit se lire");
+        };
+        assert_eq!(preferences.row_height, Preferences::HAUTEUR_MIN);
+    }
+
+    #[test]
+    fn un_corps_de_police_eleve_releve_le_plancher_de_densite() {
+        // **La contrainte de `15c`** : du code en 14 pt dans une grille de 20 px serait rogné. Le
+        // réglage de l'un borne la plage de l'autre.
+        let serrees = Preferences {
+            code_font_tenths: 160,
+            row_height: 20,
+            ..Preferences::default()
+        }
+        .borner();
+        assert!(
+            serrees.row_height > Preferences::HAUTEUR_MIN,
+            "hauteur obtenue : {}",
+            serrees.row_height
+        );
+        // Et un petit corps laisse la densité la plus compacte accessible.
+        let compactes = Preferences {
+            code_font_tenths: 100,
+            row_height: 20,
+            ..Preferences::default()
+        }
+        .borner();
+        assert_eq!(compactes.row_height, Preferences::HAUTEUR_MIN);
+    }
+
+    #[test]
+    fn les_defauts_sont_ceux_du_handoff() {
+        let defauts = Preferences::default();
+        assert_eq!(defauts.row_height, 26, "la valeur du mockup");
+        assert_eq!(defauts.code_font_tenths, 125, "12,5 pt");
+        assert_eq!(defauts.theme, Theme::Cahier);
+        assert_eq!(defauts.accent, Accent::Terracotta);
+    }
+
+    #[test]
+    fn ecrire_des_projets_ne_perd_pas_les_preferences() {
+        // Le scénario : on règle un thème, puis on ajoute une base. `save_config` ne reçoit pas les
+        // préférences — si elle les remplaçait par un défaut, le thème disparaîtrait à la première
+        // base créée.
+        let dossier = tempdir().unwrap();
+        let chemin = dossier.path().join("config.json");
+        let reglees = Preferences {
+            theme: Theme::Nuit,
+            ..Preferences::default()
+        };
+        save(&chemin, &[], &reglees).unwrap();
+
+        let (store, _) = ConfigStore::open(&chemin);
+        let relues = store.load_preferences().unwrap();
+        store.save(&[], &relues).unwrap();
+
+        let LoadOutcome::Loaded { preferences, .. } = load(&chemin) else {
+            panic!("le fichier doit se lire");
+        };
+        assert_eq!(preferences.theme, Theme::Nuit);
+    }
+
+    #[test]
+    fn un_premier_lancement_rend_les_defauts_et_non_une_erreur() {
+        let dossier = tempdir().unwrap();
+        let chemin = dossier.path().join("absent.json");
+        let (store, _) = ConfigStore::open(&chemin);
+        assert_eq!(store.load_preferences().unwrap(), Preferences::default());
     }
 }
 
@@ -340,6 +539,7 @@ mod tests {
             username: "dora_ro".into(),
             password: None,
             ssl_mode: SslMode::Require,
+            ca_certificate: None,
             read_only: true,
             reconnect_on_startup: false,
             tunnel: None,
@@ -368,9 +568,9 @@ mod tests {
         let chemin = dir.path().join("config.json");
         let projets = vec![projet_nomme("Atelier Nord")];
 
-        save(&chemin, &projets).unwrap();
+        save(&chemin, &projets, &Preferences::default()).unwrap();
         let relu = match load(&chemin) {
-            LoadOutcome::Loaded(projets) => projets,
+            LoadOutcome::Loaded { projects, .. } => projects,
             autre => panic!("attendu Loaded, obtenu {autre:?}"),
         };
 
@@ -381,7 +581,7 @@ mod tests {
     fn le_fichier_porte_un_numero_de_version() {
         let dir = tempfile::tempdir().unwrap();
         let chemin = dir.path().join("config.json");
-        save(&chemin, &[]).unwrap();
+        save(&chemin, &[], &Preferences::default()).unwrap();
 
         let valeur: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(&chemin).unwrap()).unwrap();
@@ -392,7 +592,7 @@ mod tests {
     fn le_repertoire_est_cree_s_il_manque() {
         let dir = tempfile::tempdir().unwrap();
         let chemin = dir.path().join("sous/dossier/config.json");
-        save(&chemin, &[]).unwrap();
+        save(&chemin, &[], &Preferences::default()).unwrap();
         assert!(chemin.exists());
     }
 
@@ -403,9 +603,9 @@ mod tests {
         let mut projet = projet_nomme("Atelier Nord");
         projet.active_environment = Environment::Prod;
 
-        save(&chemin, &[projet]).unwrap();
+        save(&chemin, &[projet], &Preferences::default()).unwrap();
         let relu = match load(&chemin) {
-            LoadOutcome::Loaded(projets) => projets,
+            LoadOutcome::Loaded { projects, .. } => projects,
             autre => panic!("attendu Loaded, obtenu {autre:?}"),
         };
 
@@ -419,16 +619,23 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let chemin = dir.path().join("config.json");
 
-        save(&chemin, &[projet_nomme("Ancien")]).unwrap();
+        save(&chemin, &[projet_nomme("Ancien")], &Preferences::default()).unwrap();
         let avant = fs::read_to_string(&chemin).unwrap();
 
         // L'interruption simulée : le temporaire est écrit et synchronisé, le renommage
         // n'a pas lieu.
-        ecrire_temporaire_sans_renommer(&chemin, &[projet_nomme("Nouveau")]).unwrap();
+        ecrire_temporaire_sans_renommer(
+            &chemin,
+            &[projet_nomme("Nouveau")],
+            &Preferences::default(),
+        )
+        .unwrap();
 
         assert_eq!(fs::read_to_string(&chemin).unwrap(), avant);
         match load(&chemin) {
-            LoadOutcome::Loaded(projets) => assert_eq!(projets[0].name, "Ancien"),
+            LoadOutcome::Loaded {
+                projects: projets, ..
+            } => assert_eq!(projets[0].name, "Ancien"),
             autre => panic!("attendu Loaded, obtenu {autre:?}"),
         }
     }
@@ -443,7 +650,7 @@ mod tests {
     fn le_temporaire_ne_subsiste_pas_apres_une_ecriture_reussie() {
         let dir = tempfile::tempdir().unwrap();
         let chemin = dir.path().join("config.json");
-        save(&chemin, &[]).unwrap();
+        save(&chemin, &[], &Preferences::default()).unwrap();
         assert!(!chemin_temporaire(&chemin).exists());
     }
 
@@ -465,10 +672,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let chemin = dir.path().join("config.json");
 
-        save(&chemin, &[projet_nomme("Premier")]).unwrap();
+        save(&chemin, &[projet_nomme("Premier")], &Preferences::default()).unwrap();
         let inode_avant = fs::metadata(&chemin).unwrap().ino();
 
-        save(&chemin, &[projet_nomme("Second")]).unwrap();
+        save(&chemin, &[projet_nomme("Second")], &Preferences::default()).unwrap();
         let inode_apres = fs::metadata(&chemin).unwrap().ino();
 
         assert_ne!(
@@ -557,7 +764,7 @@ mod tests {
         let (store, issue) = ConfigStore::open(&chemin);
         assert!(matches!(issue, LoadOutcome::Unreadable { .. }));
 
-        let erreur = store.save(&[projet_nomme("Nouveau")]);
+        let erreur = store.save(&[projet_nomme("Nouveau")], &Preferences::default());
         assert!(matches!(erreur, Err(StoreError::EcritureRefusee { .. })));
         // Rien n'a été écrit à la place.
         assert!(!chemin.exists());
@@ -572,7 +779,7 @@ mod tests {
 
         let (store, _) = ConfigStore::open(&chemin);
         assert!(matches!(
-            store.save(&[]),
+            store.save(&[], &Preferences::default()),
             Err(StoreError::EcritureRefusee { .. })
         ));
         assert_eq!(fs::read_to_string(&chemin).unwrap(), futur);
@@ -585,7 +792,9 @@ mod tests {
 
         let (store, issue) = ConfigStore::open(&chemin);
         assert!(matches!(issue, LoadOutcome::Fresh));
-        assert!(store.save(&[projet_nomme("Premier")]).is_ok());
+        assert!(store
+            .save(&[projet_nomme("Premier")], &Preferences::default())
+            .is_ok());
     }
 
     // --- Tâche 5 : migration ---
@@ -597,7 +806,7 @@ mod tests {
         let original = r#"{"version":0,"projects":[]}"#;
         fs::write(&chemin, original).unwrap();
 
-        assert!(matches!(load(&chemin), LoadOutcome::Loaded(_)));
+        assert!(matches!(load(&chemin), LoadOutcome::Loaded { .. }));
 
         // La sauvegarde est cherchée en **listant le répertoire**, et non en rappelant
         // `sauvegarde_de_migration` : celle-ci rend le prochain chemin *libre*, donc
@@ -645,7 +854,7 @@ mod tests {
             .unwrap()],
         };
 
-        save(&chemin, &[projet]).unwrap();
+        save(&chemin, &[projet], &Preferences::default()).unwrap();
 
         // Lecture en texte brut : la seule vérification qui vaille.
         let brut = fs::read_to_string(&chemin).unwrap();
@@ -676,7 +885,7 @@ mod tests {
         .expect("écriture");
 
         match load(&cible) {
-            LoadOutcome::Loaded(projects) => {
+            LoadOutcome::Loaded { projects, .. } => {
                 assert_eq!(projects.len(), 1);
                 // Vide, ce qui est l'état correct — et non une lecture qui échoue.
                 assert!(projects[0].queries.is_empty());
@@ -695,9 +904,9 @@ mod tests {
             sql: "select 1".into(),
         }];
 
-        save(&cible, &projets).expect("écriture");
+        save(&cible, &projets, &Preferences::default()).expect("écriture");
         match load(&cible) {
-            LoadOutcome::Loaded(projects) => {
+            LoadOutcome::Loaded { projects, .. } => {
                 assert_eq!(projects[0].queries.len(), 1);
                 assert_eq!(projects[0].queries[0].name, "CA par jour");
             }

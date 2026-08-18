@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use tokio::sync::Mutex;
 
 use crate::config::EnvironmentVariant;
-use crate::engine::postgres::PostgresAdapter;
-use crate::engine::{EngineAdapter, EngineError};
+use crate::engine::AnyEngine;
+use crate::engine::EngineError;
 use crate::secrets::Secret;
 
 /// L'identité d'une connexion : projet / base / environnement.
@@ -58,7 +58,7 @@ pub enum ConnectionState {
 /// bibliothèque standard tenu à travers un point d'attente bloque le fil de l'exécuteur.
 #[derive(Default)]
 pub struct ConnectionRegistry {
-    ouvertes: Mutex<HashMap<String, PostgresAdapter>>,
+    ouvertes: Mutex<HashMap<String, AnyEngine>>,
     etats: Mutex<HashMap<String, ConnectionState>>,
 }
 
@@ -91,6 +91,7 @@ impl ConnectionRegistry {
     pub async fn ouvrir(
         &self,
         cle: &str,
+        moteur: crate::config::Engine,
         variante: &EnvironmentVariant,
         mot_de_passe: Option<&Secret>,
         known_hosts: &std::path::Path,
@@ -104,7 +105,7 @@ impl ConnectionRegistry {
             .await
             .insert(cle.to_owned(), ConnectionState::Connecting);
 
-        match PostgresAdapter::connect_via(variante, mot_de_passe, known_hosts).await {
+        match AnyEngine::connect_via(moteur, variante, mot_de_passe, known_hosts).await {
             Ok(adaptateur) => {
                 let sonde = adaptateur.probe().await;
                 let (version, port) = match sonde {
@@ -157,7 +158,7 @@ impl ConnectionRegistry {
     pub async fn avec<T, F>(&self, cle: &str, operation: F) -> Result<T, EngineError>
     where
         F: for<'a> FnOnce(
-            &'a PostgresAdapter,
+            &'a AnyEngine,
         ) -> std::pin::Pin<
             Box<dyn std::future::Future<Output = Result<T, EngineError>> + Send + 'a>,
         >,
@@ -293,6 +294,7 @@ mod tests_db {
             username: analysee.get_user().expect("un utilisateur").to_owned(),
             password: None,
             ssl_mode: SslMode::Prefer,
+            ca_certificate: None,
             read_only: false,
             reconnect_on_startup: false,
             tunnel: None,
@@ -334,7 +336,13 @@ mod tests_db {
         let registre = ConnectionRegistry::new();
         let cle = "Print/analytics/dev";
         registre
-            .ouvrir(cle, &variante(), secret().as_ref(), &known_hosts())
+            .ouvrir(
+                cle,
+                crate::config::Engine::PostgreSql,
+                &variante(),
+                secret().as_ref(),
+                &known_hosts(),
+            )
             .await
             .expect("ouverture");
 
@@ -384,14 +392,26 @@ mod tests_db {
         let cle = "Print/analytics/dev";
 
         registre
-            .ouvrir(cle, &variante(), secret().as_ref(), &known_hosts())
+            .ouvrir(
+                cle,
+                crate::config::Engine::PostgreSql,
+                &variante(),
+                secret().as_ref(),
+                &known_hosts(),
+            )
             .await
             .expect("première ouverture");
 
         let mut cassee = variante();
         cassee.port = 1; // rien n'écoute
         registre
-            .ouvrir(cle, &cassee, None, &known_hosts())
+            .ouvrir(
+                cle,
+                crate::config::Engine::PostgreSql,
+                &cassee,
+                None,
+                &known_hosts(),
+            )
             .await
             .expect("la seconde ouverture doit rendre sans rien tenter");
 
@@ -412,7 +432,13 @@ mod tests_db {
 
         assert_eq!(registre.etat(cle).await, ConnectionState::Never);
         registre
-            .ouvrir(cle, &variante(), secret().as_ref(), &known_hosts())
+            .ouvrir(
+                cle,
+                crate::config::Engine::PostgreSql,
+                &variante(),
+                secret().as_ref(),
+                &known_hosts(),
+            )
             .await
             .expect("ouverture");
 
@@ -435,13 +461,20 @@ mod tests_db {
         let mut muette = variante();
         muette.port = 1; // rien n'écoute
         registre
-            .ouvrir("Print/muette/dev", &muette, None, &known_hosts())
+            .ouvrir(
+                "Print/muette/dev",
+                crate::config::Engine::PostgreSql,
+                &muette,
+                None,
+                &known_hosts(),
+            )
             .await
             .expect_err("un port fermé doit échouer");
 
         registre
             .ouvrir(
                 "Print/analytics/dev",
+                crate::config::Engine::PostgreSql,
                 &variante(),
                 secret().as_ref(),
                 &known_hosts(),
@@ -467,7 +500,13 @@ mod tests_db {
         let cle = "Print/analytics/dev";
 
         registre
-            .ouvrir(cle, &variante(), secret().as_ref(), &known_hosts())
+            .ouvrir(
+                cle,
+                crate::config::Engine::PostgreSql,
+                &variante(),
+                secret().as_ref(),
+                &known_hosts(),
+            )
             .await
             .expect("ouverture");
         registre.fermer(cle).await;
@@ -482,7 +521,13 @@ mod tests_db {
         let registre = ConnectionRegistry::new();
         let cle = "Print/analytics/dev";
         registre
-            .ouvrir(cle, &variante(), secret().as_ref(), &known_hosts())
+            .ouvrir(
+                cle,
+                crate::config::Engine::PostgreSql,
+                &variante(),
+                secret().as_ref(),
+                &known_hosts(),
+            )
             .await
             .expect("ouverture");
 
@@ -495,7 +540,8 @@ mod tests_db {
 
         // 4 tables et 1 vue dans le schéma de test, dont la composition est connue.
         // Cinq tables et une vue depuis le 10 août 2026 : `montants` couvre le cas `numeric`.
-        assert_eq!(objets.len(), 6);
+        // Six tables depuis le 12 août 2026 : `identites` couvre les deux formes d'identité.
+        assert_eq!(objets.len(), 7);
 
         registre.fermer(cle).await;
     }
@@ -510,6 +556,7 @@ mod tests_db {
         registre
             .ouvrir(
                 "Print/inconnue/dev",
+                crate::config::Engine::PostgreSql,
                 &inconnue,
                 secret().as_ref(),
                 &known_hosts(),
@@ -538,6 +585,7 @@ mod tests_db {
         registre
             .ouvrir(
                 "Print/mauvaise/dev",
+                crate::config::Engine::PostgreSql,
                 &mauvaise,
                 Some(&Secret::new(sentinelle)),
                 &known_hosts(),

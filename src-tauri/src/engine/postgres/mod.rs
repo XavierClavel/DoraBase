@@ -9,7 +9,7 @@
 mod connect;
 mod error;
 mod introspect;
-mod rows;
+pub(in crate::engine) mod rows;
 mod types;
 
 use std::time::Instant;
@@ -90,7 +90,13 @@ impl PostgresAdapter {
         let redirection = tunnel.as_ref().map(|t| ("127.0.0.1", t.port_local()));
         let config = connect::preparer(variante, mot_de_passe, redirection)?;
 
-        match connect::ouvrir(&config).await {
+        match connect::ouvrir(
+            &config,
+            crate::engine::tls::Exigences::de(variante.ssl_mode),
+            variante.ca_certificate.as_deref(),
+        )
+        .await
+        {
             Ok(client) => Ok(Self { client, tunnel }),
             // **Le point de `06e`** : sans cette qualification, un bastion tombé produit un
             // « connection refused » sur `127.0.0.1`, qui envoie chercher un problème de
@@ -533,6 +539,7 @@ mod tests_db {
             username: analysee.get_user().expect("un utilisateur").to_owned(),
             password: None,
             ssl_mode: SslMode::Disable,
+            ca_certificate: None,
             read_only: false,
             reconnect_on_startup: false,
             tunnel: None,
@@ -760,7 +767,7 @@ mod tests_db {
             .objects("introspection")
             .await
             .expect("introspection à travers le tunnel");
-        assert_eq!(objets.len(), 6, "5 tables et 1 vue");
+        assert_eq!(objets.len(), 7, "6 tables et 1 vue");
 
         // Le port local doit être **connu** : `A2` l'affiche sous « auto (63342) ».
         assert!(adaptateur.port_local_tunnel().is_some());
@@ -1752,13 +1759,14 @@ mod tests_db {
     async fn les_compteurs_d_objets_sont_justes() {
         let schema = schema_de_test().await;
         // `users`, `orders`, `petite`, `grande`, `montants` — cette dernière ajoutée le 10 août
-        // 2026 pour le cas `numeric`, qui se lisait `NULL`.
-        assert_eq!(schema.counts.tables, 5, "{:?}", schema.counts);
+        // 2026 pour le cas `numeric`, qui se lisait `NULL` — et `identites`, ajoutée le 12 août
+        // 2026 pour les deux formes de `GENERATED … AS IDENTITY` que le DDL de `14c` perdait.
+        assert_eq!(schema.counts.tables, 6, "{:?}", schema.counts);
         assert_eq!(schema.counts.views, 1, "{:?}", schema.counts);
         assert_eq!(schema.counts.functions, 2, "{:?}", schema.counts);
-        // Sept index pour cinq tables : chaque clé primaire en crée un, plus l'unicité sur
+        // Huit index pour six tables : chaque clé primaire en crée un, plus l'unicité sur
         // `email` et l'index secondaire sur `status`.
-        assert_eq!(schema.counts.indexes, 7, "{:?}", schema.counts);
+        assert_eq!(schema.counts.indexes, 8, "{:?}", schema.counts);
     }
 
     #[tokio::test]
@@ -1953,16 +1961,213 @@ mod tests_db {
         assert_eq!(entrante.target_columns, vec!["user_id".to_owned()]);
     }
 
+    // --- Le TLS de `06f` -------------------------------------------------------------------------
+    //
+    // **PostgreSQL est le seul des trois moteurs où les cinq modes s'expriment exactement**, parce
+    // que `tokio-postgres-rustls` accepte une `ClientConfig`. MySQL et MongoDB refusent `verify-ca`
+    // avec leur raison : leurs pilotes ne prennent que des drapeaux, et celui de MySQL est même
+    // silencieusement sans effet (voir `mysql/connect.rs`).
+    //
+    // Le décor est monté par `scripts/pg-test.sh`, qui engendre une autorité à nous et un certificat
+    // serveur dont le nom commun est `pg-interne.exemple.test` — **pas** `localhost`. Les tests se
+    // connectent par `localhost`, donc :
+    //
+    //   - la chaîne est **valide** dès que l'autorité est déclarée ;
+    //   - le nom ne correspond **jamais**.
+    //
+    // C'est ce qui permet de distinguer `verify-ca` de `verify-full` sur le **même** serveur, avec la
+    // **même** autorité. Sans cette distinction, `06f` n'aurait rien prouvé de plus que `06b`.
+
+    /// Le chemin de l'autorité engendrée par `scripts/pg-test.sh`.
+    ///
+    /// Les tests TLS se **sautent** si le fichier manque, plutôt que d'échouer : le décor peut avoir
+    /// été monté par une ancienne version du script, ou par le service container de la CI. L'absence
+    /// est dite, jamais silencieuse.
+    fn autorite() -> Option<String> {
+        let dossier = std::env::var("DORABASE_TEST_PG_CERTS")
+            .unwrap_or_else(|_| "/tmp/dorabase-test-pg-certs".to_owned());
+        let chemin = format!("{dossier}/ca.pem");
+        if std::path::Path::new(&chemin).exists() {
+            Some(chemin)
+        } else {
+            eprintln!("test TLS sauté : {chemin} absent — relancer ./scripts/pg-test.sh demarrer");
+            None
+        }
+    }
+
+    async fn connexion_en(
+        mode: SslMode,
+        ca: Option<String>,
+    ) -> Result<PostgresAdapter, EngineError> {
+        let (mut variante, secret) = variante_de_test();
+        variante.ssl_mode = mode;
+        variante.ca_certificate = ca;
+        PostgresAdapter::connect_via(
+            &variante,
+            secret.as_ref(),
+            std::path::Path::new("/dev/null"),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn require_chiffre_sans_authentifier_donc_accepte_une_autorite_inconnue() {
+        if autorite().is_none() {
+            return;
+        }
+        // **`require` chiffre sans authentifier** : il n'empêche donc pas un intermédiaire. Ce n'est
+        // pas un défaut mais un mode que `05a` propose — et `A2` le dit, en gardant la mention
+        // « TLS non vérifié » (voir `tls_non_verifie`).
+        let adaptateur = connexion_en(SslMode::Require, None)
+            .await
+            .expect("require doit accepter un certificat inconnu");
+        assert!(
+            session_chiffree(&adaptateur).await,
+            "la session doit être chiffrée"
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_ca_refuse_une_autorite_inconnue() {
+        if autorite().is_none() {
+            return;
+        }
+        // **Le test qui compte le plus de `06f`.** Avant cette spec, `require`, `verify-ca` et
+        // `verify-full` se comportaient à l'identique : le sélecteur de `A2` proposait trois choix
+        // pour un seul effet, et le produit affichait un cadenas sans rien vérifier.
+        let erreur = connexion_en(SslMode::VerifyCa, None)
+            .await
+            .expect_err("verify-ca doit refuser une autorité inconnue");
+        let message = erreur.message.to_lowercase();
+        assert!(
+            message.contains("certificate") || message.contains("certificat"),
+            "le refus doit parler du certificat : {}",
+            erreur.message
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_ca_accepte_le_meme_serveur_quand_son_autorite_est_fournie() {
+        let Some(ca) = autorite() else { return };
+        // Le **même serveur**, la **même autorité** : seule la déclaration change. C'est ce qui montre
+        // que le refus précédent portait bien sur la chaîne, et non sur autre chose.
+        let adaptateur = connexion_en(SslMode::VerifyCa, Some(ca))
+            .await
+            .expect("verify-ca doit accepter quand l'autorité est déclarée");
+        assert!(
+            session_chiffree(&adaptateur).await,
+            "la session doit être chiffrée"
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_full_refuse_un_nom_d_hote_qui_ne_correspond_pas() {
+        let Some(ca) = autorite() else { return };
+        // **Le cas qu'on oublie**, et le plus instructif : l'autorité est fournie, la chaîne est donc
+        // valide — mais le certificat porte `pg-interne.exemple.test` et l'on joint `localhost`.
+        // `verify-full` doit refuser là où `verify-ca` vient d'accepter : deux comportements distincts
+        // sur le **même** serveur, avec la **même** autorité.
+        let erreur = connexion_en(SslMode::VerifyFull, Some(ca))
+            .await
+            .expect_err("verify-full doit refuser un nom d'hôte qui ne correspond pas");
+        let message = erreur.message.to_lowercase();
+        assert!(
+            message.contains("name") || message.contains("nom"),
+            "le refus doit parler du nom d'hôte : {}",
+            erreur.message
+        );
+    }
+
+    #[tokio::test]
+    async fn disable_ne_chiffre_pas_et_c_est_verifie_cote_serveur() {
+        // Le pendant des tests ci-dessus : `disable` doit **vraiment** ne pas chiffrer. Les deux
+        // ensemble prouvent que le réglage décide, et non que tout est chiffré par hasard.
+        let adaptateur = connexion_en(SslMode::Disable, None)
+            .await
+            .expect("connexion");
+        assert!(
+            !session_chiffree(&adaptateur).await,
+            "la session ne devait pas être chiffrée"
+        );
+    }
+
+    #[tokio::test]
+    async fn un_certificat_d_autorite_introuvable_le_dit_avant_de_se_connecter() {
+        let erreur = connexion_en(SslMode::VerifyCa, Some("/nulle/part/ca.pem".to_owned()))
+            .await
+            .expect_err("un fichier absent doit être refusé");
+        // Le chemin apparaît : c'est ce qui permet de voir qu'on l'a mal tapé, plutôt que de croire le
+        // serveur en cause.
+        assert!(
+            erreur.message.contains("/nulle/part/ca.pem"),
+            "{}",
+            erreur.message
+        );
+    }
+
+    #[tokio::test]
+    async fn un_fichier_qui_n_est_pas_un_certificat_le_dit() {
+        let dossier = tempfile::tempdir().unwrap();
+        let chemin = dossier.path().join("pas-un-certificat.pem");
+        std::fs::write(
+            &chemin,
+            b"ceci est du texte
+",
+        )
+        .unwrap();
+        // **Le piège** : sans ce refus, le magasin resterait aux racines publiques et la connexion
+        // échouerait sur « autorité inconnue » — on chercherait du côté du serveur.
+        let erreur = connexion_en(
+            SslMode::VerifyCa,
+            Some(chemin.to_string_lossy().into_owned()),
+        )
+        .await
+        .expect_err("un fichier sans certificat doit être refusé");
+        assert!(
+            erreur.message.contains("aucun certificat"),
+            "{}",
+            erreur.message
+        );
+    }
+
+    /// Vrai quand la session est **réellement** chiffrée, d'après le serveur.
+    ///
+    /// **Demander le TLS et l'obtenir sont deux choses.** Sans cette lecture côté serveur, une
+    /// configuration qui retomberait silencieusement en clair passerait tous les tests ci-dessus — et
+    /// le produit afficherait un cadenas sur une connexion en clair.
+    async fn session_chiffree(adaptateur: &PostgresAdapter) -> bool {
+        adaptateur
+            .client
+            .query_one(
+                "select ssl from pg_stat_ssl where pid = pg_backend_pid()",
+                &[],
+            )
+            .await
+            .map(|ligne| ligne.get::<_, bool>(0))
+            .unwrap_or(false)
+    }
+
     /// **Le critère le plus fort de la spec** : un DDL qui ne se réexécute pas est faux, et
     /// c'est testable. Rejoué dans un schéma vierge, il doit produire une table dont les
     /// colonnes se décrivent identiquement.
     #[tokio::test]
     async fn le_ddl_produit_se_rejoue_et_donne_la_meme_table() {
-        let adaptateur = adaptateur().await;
-        let original = detail_de_test("orders").await;
+        // **Deux tables, et la seconde n'est pas décorative** : `orders` couvre les `bigserial`
+        // et les contraintes, `identites` les deux formes de `GENERATED … AS IDENTITY` — que
+        // PostgreSQL ne range pas dans `pg_attrdef`, donc que le DDL peut perdre sans que le
+        // rejeu échoue.
+        for table in ["orders", "identites"] {
+            rejouer_le_ddl_de(table).await;
+        }
+    }
 
-        // Schéma jetable, propre à ce test pour ne pas gêner les autres.
-        let schema = "ddl_rejeu";
+    async fn rejouer_le_ddl_de(table: &str) {
+        let adaptateur = adaptateur().await;
+        let original = detail_de_test(table).await;
+
+        // Schéma jetable, propre à ce test pour ne pas gêner les autres. Le nom porte la table
+        // pour que les deux passages ne se marchent pas dessus.
+        let schema = &format!("ddl_rejeu_{table}");
         adaptateur
             .client
             .batch_execute(&format!(
@@ -1990,13 +2195,57 @@ mod tests_db {
             .await
             .unwrap();
 
+        // **Le défaut et l'identité font partie de la description.** Sans eux, un DDL qui perd
+        // l'auto-incrément d'une clé primaire se rejoue et se compare à l'identique : c'est ce
+        // qui a laissé passer la clause `GENERATED … AS IDENTITY` manquante jusqu'à ce que `A9`
+        // (`14c`) affiche ce DDL à l'écran.
         let decrire = |c: &crate::engine::ColumnInfo| {
-            (c.position, c.name.clone(), c.type_name.clone(), c.nullable)
+            (
+                c.position,
+                c.name.clone(),
+                c.type_name.clone(),
+                c.nullable,
+                c.identity,
+                c.default.clone(),
+            )
+        };
+        // Le défaut d'une colonne `serial` **nomme sa séquence**, donc son schéma : la copie dit
+        // `ddl_rejeu_orders.orders_id_seq` là où l'originale dit `introspection.orders_id_seq`.
+        // C'est le seul écart légitime, et il se normalise plutôt que de s'ignorer — retirer le
+        // défaut de la comparaison rendrait le test aveugle à l'identité perdue, qui est
+        // exactement ce qu'il vient d'attraper.
+        let sans_le_schema = |defaut: Option<String>| {
+            defaut.map(|texte| texte.replace(schema.as_str(), "introspection"))
+        };
+        let decrire_copie = |c: &crate::engine::ColumnInfo| {
+            let (position, nom, type_name, nullable, identite, defaut) = decrire(c);
+            (
+                position,
+                nom,
+                type_name,
+                nullable,
+                identite,
+                sans_le_schema(defaut),
+            )
         };
         assert_eq!(
-            copie.columns.iter().map(decrire).collect::<Vec<_>>(),
+            copie.columns.iter().map(decrire_copie).collect::<Vec<_>>(),
             original.columns.iter().map(decrire).collect::<Vec<_>>(),
-            "les colonnes de la copie doivent décrire la même table"
+            "les colonnes de la copie de {table} doivent décrire la même table"
+        );
+
+        // **Les index aussi.** Un DDL qui recrée les colonnes mais pas les index se rejoue et donne
+        // une table qui se lit pareil et se **requête** cent fois plus lentement. Comparer les noms
+        // suffit : leur définition est celle du catalogue, déjà vérifiée par les colonnes.
+        let noms = |detail: &crate::engine::TableDetail| {
+            let mut noms: Vec<String> = detail.indexes.iter().map(|i| i.name.clone()).collect();
+            noms.sort();
+            noms
+        };
+        assert_eq!(
+            noms(&copie),
+            noms(&original),
+            "les index de la copie de {table} doivent être ceux de l'originale"
         );
 
         adaptateur
