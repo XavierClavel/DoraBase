@@ -17,6 +17,7 @@ const variante = {
   username: 'dorabase',
   password: null,
   sslMode: 'prefer' as const,
+  caCertificate: null,
   readOnly: true,
   reconnectOnStartup: false,
   tunnel: null,
@@ -63,8 +64,10 @@ const DETAIL: TableDetail = {
       category: 'number',
       nullable: false,
       default: null,
+      identity: null,
       key: 'primary',
       comment: null,
+      frequency: null,
     },
     {
       position: 2,
@@ -73,8 +76,10 @@ const DETAIL: TableDetail = {
       category: 'timestamp',
       nullable: false,
       default: null,
+      identity: null,
       key: null,
       comment: null,
+      frequency: null,
     },
     // **Une colonne dont la valeur n'est pas nulle**, et c'est délibéré : avec `created_at` nulle
     // partout, un test sur la valeur attendue d'une modification était satisfait par `null` — donc
@@ -86,8 +91,10 @@ const DETAIL: TableDetail = {
       category: 'text',
       nullable: false,
       default: null,
+      identity: null,
       key: null,
       comment: null,
+      frequency: null,
     },
   ],
   indexes: [],
@@ -314,12 +321,54 @@ describe('Workbench', () => {
     await waitFor(() => expect(within(section).getByText('tri ↑')).toBeInTheDocument())
   })
 
-  it('« Structure » reste désactivé et nomme son écran', () => {
+  it('« Structure » bascule vers la structure, et « Données » ramène la grille', async () => {
+    const utilisateur = userEvent.setup()
     monter()
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
+
+    // Le tableau de la grille (`10a`) est là, celui des colonnes non.
+    expect(screen.queryByRole('table', { name: /Colonnes de public\.orders/ })).toBeNull()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Structure' }))
+
+    // **Le tableau des colonnes, avec ce que l'introspection en sait.** Aucune commande nouvelle
+    // n'a été envoyée : `detail` était déjà lu pour la sidebar.
+    const structure = await screen.findByRole('table', { name: /Colonnes de public\.orders/ })
+    expect(within(structure).getByText('created_at')).toBeInTheDocument()
+    // Le pressé dit laquelle des deux vues est à l'écran — sans quoi les deux libellés seraient
+    // indiscernables.
     expect(screen.getByRole('button', { name: 'Structure' })).toHaveAttribute(
-      'aria-disabled',
+      'aria-pressed',
       'true',
     )
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Données' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('table', { name: /Colonnes de public\.orders/ })).toBeNull(),
+    )
+  })
+
+  it('la vue est un état d’onglet : chaque onglet garde la sienne', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
+    await utilisateur.click(screen.getByRole('button', { name: 'Structure' }))
+    await screen.findByRole('table', { name: /Colonnes de public\.orders/ })
+
+    // Un second onglet s'ouvre sur les données, pas sur la structure du premier.
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /^order_items/ }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Données' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      ),
+    )
+
+    // Et revenir sur `orders` le retrouve en structure.
+    await utilisateur.click(screen.getByRole('tab', { name: /^orders/ }))
+    await screen.findByRole('table', { name: /Colonnes de public\.orders/ })
   })
 
   it('un dépliage qui échoue le dit sur sa ligne sans vider l’arbre', async () => {

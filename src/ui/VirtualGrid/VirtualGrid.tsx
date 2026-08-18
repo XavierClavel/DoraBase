@@ -47,7 +47,17 @@ type VirtualGridProps<Row> = {
    * c'est Playwright qui vérifie que la mesure réelle suit le panneau.
    */
   viewportHeight: number
-  /** Densité de ligne. 26 px dans le mockup ; `15` (`A10`) la fera varier de 20 à 36. */
+  /**
+   * Densité de ligne, en pixels. 26 px dans le mockup.
+   *
+   * **Une prop et non le jeton `--rowh`**, alors que le jeton existe : la virtualisation a besoin
+   * d'un **nombre** — elle calcule quelles lignes monter en divisant le défilement par le pas. Lire
+   * une variable CSS depuis le JavaScript demanderait un `getComputedStyle` à chaque rendu, et
+   * surtout un observateur pour réagir à son changement. La préférence de `15c` descend donc par les
+   * props, du seul endroit qui la détient.
+   *
+   * Le jeton reste employé par le CSS pour l'en-tête ; c'est cette prop qui règle les lignes.
+   */
   rowHeight?: number
   /** Lignes montées en marge de la fenêtre visible, pour que le défilement ne clignote pas. */
   overscan?: number

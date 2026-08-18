@@ -34,6 +34,8 @@ import { LIMITE_PAR_DEFAUT, type PasserelleLignes, useLignes } from './useLignes
 type EnEdition = { cle: string; rang: number; column: string }
 
 type TableViewProps = {
+  /** La densité de `15c`. Absente, la grille garde celle du mockup. */
+  rowHeight?: number
   cle: DatabaseKey
   schema: string
   table: string
@@ -108,6 +110,7 @@ const LARGEUR_GOUTTIERE = 30
  * une seconde requête à chaque montage : mesuré, pas supposé.
  */
 export function TableView({
+  rowHeight,
   cle,
   schema,
   table,
@@ -407,6 +410,7 @@ export function TableView({
       <div className={styles.centre}>
         <div className={styles.grille}>
           <VirtualGrid
+            rowHeight={rowHeight}
             label={`Lignes de ${schema}.${table}`}
             columns={colonnes}
             rows={lignes}

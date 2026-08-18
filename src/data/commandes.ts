@@ -1,5 +1,12 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { ConfigLoad, EnvironmentVariant, Project, SavedQueryRequest } from '../domain/config'
+import type {
+  ConfigLoad,
+  Engine,
+  EnvironmentVariant,
+  Preferences,
+  Project,
+  SavedQueryRequest,
+} from '../domain/config'
 import type {
   ApplyOutcome,
   ConnectionState,
@@ -16,6 +23,7 @@ import type {
   UpdatePlan,
   Value,
 } from '../domain/engine'
+import { PREFERENCES_PAR_DEFAUT } from '../screens/Preferences/preferences'
 
 /**
  * Les commandes du câblage de `09b`, en un seul point de contact avec l'IPC.
@@ -33,11 +41,30 @@ export async function loadConfig(): Promise<ConfigLoad> {
   return invoke<ConfigLoad>('load_config')
 }
 
+/**
+ * Ouvre une connexion.
+ *
+ * **`engine` est passé, pas deviné côté Rust** : le moteur appartient à la `Database`, pas à la
+ * variante d'environnement, et le front l'a sous la main — c'est lui qui dessine l'arbre. Depuis
+ * `18`, c'est ce paramètre qui décide de l'adaptateur ouvert.
+ */
 export async function openDatabase(
   key: DatabaseKey,
+  engine: Engine,
   variant: EnvironmentVariant,
 ): Promise<ConnectionState> {
-  return invoke<ConnectionState>('open_database', { key, variant })
+  return invoke<ConnectionState>('open_database', { key, engine, variant })
+}
+
+/**
+ * Écrit les préférences (`15a`), et rend celles que le disque a retenues.
+ *
+ * **Le retour n'est pas décoratif** : le modèle borne les valeurs (une hauteur de ligne éditée à la
+ * main, un corps de police qui relève le plancher de densité), et sans le rendre, l'écran garderait
+ * une valeur que le disque a refusée — deux vérités, dont la visible serait fausse.
+ */
+export async function savePreferences(preferences: Preferences): Promise<Preferences> {
+  return invoke<Preferences>('save_preferences', { preferences })
 }
 
 export async function closeDatabase(key: DatabaseKey): Promise<void> {
@@ -201,20 +228,30 @@ export function etatDe(
  * ce qui écraserait le fichier qu'on vient de refuser d'ouvrir.
  */
 export type EtatDeConfiguration =
-  | { kind: 'fresh'; projects: Project[] }
-  | { kind: 'loaded'; projects: Project[] }
-  | { kind: 'blocked'; projects: Project[]; reason: string; quarantinedTo?: string }
+  | { kind: 'fresh'; projects: Project[]; preferences: Preferences }
+  | { kind: 'loaded'; projects: Project[]; preferences: Preferences }
+  | {
+      kind: 'blocked'
+      projects: Project[]
+      preferences: Preferences
+      reason: string
+      quarantinedTo?: string
+    }
 
 export function interpreter(issue: ConfigLoad): EtatDeConfiguration {
   switch (issue.kind) {
     case 'fresh':
-      return { kind: 'fresh', projects: [] }
+      return { kind: 'fresh', projects: [], preferences: PREFERENCES_PAR_DEFAUT }
     case 'loaded':
-      return { kind: 'loaded', projects: issue.projects }
+      return { kind: 'loaded', projects: issue.projects, preferences: issue.preferences }
     case 'unreadable':
       return {
         kind: 'blocked',
         projects: [],
+        // **Les défauts, même sur un fichier illisible.** Le produit doit rester regardable pour
+        // afficher le message qui explique le blocage : sans jetons, l'écran d'erreur serait
+        // lui-même illisible.
+        preferences: PREFERENCES_PAR_DEFAUT,
         reason: issue.reason,
         quarantinedTo: issue.quarantinedTo,
       }
@@ -222,6 +259,7 @@ export function interpreter(issue: ConfigLoad): EtatDeConfiguration {
       return {
         kind: 'blocked',
         projects: [],
+        preferences: PREFERENCES_PAR_DEFAUT,
         reason: `le fichier de configuration est en version ${issue.found}, cette version de DoraBase comprend la version ${issue.supported}`,
       }
   }

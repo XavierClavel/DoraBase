@@ -1,0 +1,151 @@
+/*
+ * L'arbre JSON dépliable de `13b`. Les teintes sont celles de `JsonColore` (`10f`) — un JSON reste
+ * un JSON, et deux palettes pour la même donnée se verraient au passage d'un écran à l'autre.
+ */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.vide {
+  margin: auto;
+  padding: var(--space-8);
+  font: var(--weight-medium) var(--text-dense) / var(--leading-ui) var(--font-ui);
+  color: var(--ink-8);
+  text-align: center;
+}
+
+.barre {
+  display: flex;
+  gap: var(--space-3);
+  flex: none;
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--divider);
+}
+
+.action {
+  height: 22px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control-2);
+  background: var(--field);
+  font: var(--weight-bold) var(--text-label) / 1 var(--font-ui);
+  color: var(--ink-6);
+  cursor: pointer;
+}
+
+.action:hover {
+  background: var(--hover-bg);
+  border-color: var(--hover-border);
+}
+
+.liste {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: var(--space-3) 0;
+  overflow: auto;
+  list-style: none;
+  font: var(--weight-medium) var(--text-label) / 1.7 var(--font-mono);
+}
+
+.ligne {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.ligne:hover {
+  background: var(--hover-row);
+}
+
+.chevron {
+  display: flex;
+  align-items: center;
+  flex: none;
+  width: 13px;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--ink-5);
+  cursor: pointer;
+}
+
+.sansChevron {
+  flex: none;
+  width: 13px;
+}
+
+.cle {
+  flex: none;
+  color: var(--json-key);
+}
+
+.cle::after {
+  content: ":";
+  color: var(--ink-5);
+}
+
+.resume {
+  color: var(--ink-4);
+}
+
+/* Les genres. `objectId` et `date` ont leur teinte : ce sont les deux que `13b` demande de
+ * distinguer, et les fondre dans « chaîne » les rendrait invisibles. */
+.chaine {
+  color: var(--json-string);
+}
+
+.nombre {
+  color: var(--json-number);
+}
+
+.booleen {
+  color: var(--json-punct);
+}
+
+.nul {
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+.objectId {
+  color: var(--engine-pg);
+}
+
+.date {
+  color: var(--violet-ink);
+}
+
+.objet,
+.tableau {
+  color: var(--ink-4);
+}
+
+.copier {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: var(--space-4);
+  height: 18px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-badge-2);
+  background: var(--muted);
+  font: var(--weight-bold) var(--text-meta) / 1 var(--font-ui);
+  color: var(--ink-6);
+  /* Visible au survol de la ligne seulement : un bouton par document ferait une colonne de
+   * boutons. Le focus le révèle aussi, sans quoi il serait inatteignable au clavier. */
+  opacity: 0;
+  cursor: pointer;
+}
+
+.ligne:hover .copier,
+.copier:focus-visible {
+  opacity: 1;
+}

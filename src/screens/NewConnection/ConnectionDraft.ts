@@ -38,6 +38,14 @@ export type ConnectionDraft = {
    * référence — voir `specs/08e` § « Le mot de passe est un secret dès la saisie ». */
   password: string
   sslMode: SslMode
+  /**
+   * Le chemin d'un certificat d'autorité, pour `verify-ca` et `verify-full` (`06f`).
+   *
+   * **Une chaîne, jamais `null`, comme les autres champs du brouillon** : un formulaire porte du
+   * texte, et `draftToRequest` traduit le vide en `null`. Mélanger les deux conventions dans le même
+   * type obligerait chaque champ à dire laquelle il suit.
+   */
+  caCertificate: string
   readOnly: boolean
   reconnectOnStartup: boolean
   /**
@@ -106,6 +114,7 @@ export function emptyDraft(): ConnectionDraft {
     username: '',
     password: '',
     sslMode: 'prefer',
+    caCertificate: '',
     readOnly: true,
     reconnectOnStartup: false,
     // Pas de tunnel par défaut : le panneau de `A2` s'ouvre replié et sans badge.
@@ -137,6 +146,7 @@ export function draftDepuisLaVariante(
     username: variant.username,
     password: '',
     sslMode: variant.sslMode,
+    caCertificate: variant.caCertificate ?? '',
     readOnly: variant.readOnly,
     reconnectOnStartup: variant.reconnectOnStartup,
     tunnel:

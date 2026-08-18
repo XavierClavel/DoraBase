@@ -35,7 +35,12 @@ test('la pastille projet ouvre le menu des bases', async ({ page }) => {
   await expect(menu.getByText('analytics')).toBeVisible()
   // Les environnements déclarés distinguent deux bases de même nom, et c'est ce qu'on cherche en
   // corrigeant un port.
-  await expect(menu.getByText('prod')).toBeVisible()
+  //
+  // **Deux bases dans le décor depuis `13a`** — une relationnelle, une documentaire — donc deux
+  // pastilles « prod ». Le bouton entier est visé plutôt que le mot seul : il porte le nom de la
+  // base, ce qui rend l'assertion plus précise qu'avant, pas moins.
+  await expect(menu.getByRole('button', { name: 'analytics prod' })).toBeVisible()
+  await expect(menu.getByRole('button', { name: 'evenements prod' })).toBeVisible()
 })
 
 test('un projet sans base le dit plutôt que de paraître vide', async ({ page }) => {

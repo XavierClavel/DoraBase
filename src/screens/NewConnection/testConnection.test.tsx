@@ -251,9 +251,11 @@ test('une erreur d’une forme inattendue ne rend pas « undefined »', () => {
 
 test('« Tester » est désactivé pour un moteur sans adaptateur', async () => {
   monter(async () => REUSSI)
-  await userEvent.click(screen.getByRole('radio', { name: 'MySQL' }))
-  // Le laisser actif ferait échouer le test avec une erreur de connexion PostgreSQL vers un
-  // serveur MySQL — message trompeur là où le pied dit déjà la vraie raison.
+  // **Redis** : MySQL a son adaptateur depuis `16`, et garder l'ancien exemple ferait échouer ce
+  // test en accusant le bouton là où c'est l'exemple qui a vieilli.
+  await userEvent.click(screen.getByRole('radio', { name: 'Redis' }))
+  // Le laisser actif ferait tenter une connexion vers un serveur qu'aucun adaptateur ne sait
+  // interroger — message trompeur là où le pied dit déjà la vraie raison.
   expect(screen.getByRole('button', { name: /Tester la connexion/ })).toBeDisabled()
-  expect(screen.getByText(/MySQL n’a pas encore d’adaptateur/)).toBeInTheDocument()
+  expect(screen.getByText(/Redis n’a pas encore d’adaptateur/)).toBeInTheDocument()
 })

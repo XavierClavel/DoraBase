@@ -28,6 +28,11 @@ type TitleBarProps = {
    * écran là où un contenu s'assemble chez l'appelant.
    */
   center?: ReactNode
+  /**
+   * Ouvre les préférences (`15a`). Absent, l'engrenage reste **désactivé avec sa raison** — la règle
+   * de `09f` : un bouton cliquable et inerte se lit comme une panne (défaut n° 36).
+   */
+  onOpenPreferences?: () => void
 }
 
 // `data-tauri-drag-region` rend la fenêtre déplaçable : sous `titleBarStyle: Overlay`
@@ -44,7 +49,12 @@ type TitleBarProps = {
 // focalisable se trouve sur le chemin. Cliquer la pastille projet ou l'engrenage active donc le
 // contrôle, sans déplacer la fenêtre — ce qui est le comportement voulu, et qu'il n'a pas fallu
 // écrire.
-export function TitleBar({ showConsole = false, dimmed = false, center }: TitleBarProps) {
+export function TitleBar({
+  showConsole = false,
+  dimmed = false,
+  center,
+  onOpenPreferences,
+}: TitleBarProps) {
   return (
     <div className={cx(styles.root, dimmed && styles.dimmed)} data-tauri-drag-region="deep">
       <div className={cx(styles.wordmark, dimmed && styles.wordmarkDimmed)}>
@@ -63,7 +73,18 @@ export function TitleBar({ showConsole = false, dimmed = false, center }: TitleB
             <Icon name="term" size={15} strokeWidth={1.8} />
           </button>
         )}
-        <button type="button" className={styles.action} aria-label="Préférences">
+        <button
+          type="button"
+          className={styles.action}
+          aria-label="Préférences"
+          onClick={onOpenPreferences}
+          disabled={onOpenPreferences === undefined}
+          title={
+            onOpenPreferences === undefined
+              ? 'Les préférences s’ouvrent depuis l’écran de travail.'
+              : undefined
+          }
+        >
           <Icon name="gear" size={15} strokeWidth={1.8} />
         </button>
       </div>

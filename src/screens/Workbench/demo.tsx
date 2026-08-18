@@ -1,7 +1,9 @@
-import { useState } from 'react'
-import type { Database, Project } from '../../domain/config'
+import { useEffect, useState } from 'react'
+import type { Database, Preferences, Project } from '../../domain/config'
 import type { SchemaInfo, TableDetail, TableSummary } from '../../domain/engine'
 import { NewConnection } from '../NewConnection/NewConnection'
+import { PreferencesDialog } from '../Preferences/PreferencesDialog'
+import { jetonsDe, PREFERENCES_PAR_DEFAUT, themeApplique } from '../Preferences/preferences'
 import type { PasserelleLignes } from '../TableView/useLignes'
 import type { PasserelleArbre } from './useArbre'
 import type { PasserelleDetail } from './useDetailTable'
@@ -50,6 +52,29 @@ const PROJETS: Project[] = [
             username: 'dorabase',
             password: null,
             sslMode: 'prefer',
+            caCertificate: null,
+            readOnly: true,
+            reconnectOnStartup: false,
+            tunnel: null,
+          },
+        ],
+      },
+      // **Une base mongo, pour qu'`A8` soit atteignable en démo** (`13a`). Le dialecte de la
+      // console se dérive du moteur : sans base documentaire dans le décor, aucun chemin de
+      // l'application n'ouvrirait une console mongo, et rien de `13a` à `13c` ne se verrait.
+      {
+        name: 'evenements',
+        engine: 'mongodb',
+        variants: [
+          {
+            environment: 'prod',
+            host: 'localhost',
+            port: 27017,
+            defaultDatabase: 'atelier_journal',
+            username: '',
+            password: null,
+            sslMode: 'disable',
+            caCertificate: null,
             readOnly: true,
             reconnectOnStartup: false,
             tunnel: null,
@@ -81,10 +106,16 @@ const OBJETS: TableSummary[] = [
   objet('orders'),
   // Assez de tables pour que la bande d'onglets déborde : c'est ce qui a révélé, le 10 août 2026,
   // qu'elle passait **sous** « Données / Structure » au lieu de défiler.
-  objet('flyway_schema_history'),
-  objet('catalogue_session'),
-  objet('intervals_connection'),
-  objet('prescribed_session'),
+  //
+  // **Des noms inventés, et c'est une règle.** Le décor de démo a un temps porté les noms de
+  // tables d'une base réelle du commanditaire — commode, et indiscret : un dépôt, une capture
+  // d'écran ou un rapport de test publierait le schéma de quelqu'un. Les noms viennent donc du
+  // handoff (`orders`, `users`, `order_items`) ou sont inventés ; les longueurs sont conservées,
+  // puisque c'est d'elles que dépend le débordement mesuré.
+  objet('shipment_batches'),
+  objet('inventory_movements'),
+  objet('pricing_rules'),
+  objet('audit_events'),
   objet('order_items', { rows: { kind: 'estimated', value: 6_400_000 } }),
   objet('users', { rows: { kind: 'estimated', value: 92_800 } }),
   objet('orders_daily', { kind: 'view', rows: { kind: 'estimated', value: 0 }, primaryKey: null }),
@@ -104,8 +135,12 @@ const DETAIL: TableDetail = {
       category: 'number',
       nullable: false,
       default: null,
+      // Une identité, pas un `serial` : c'est le cas où `default` est nul et où `A9` doit dire
+      // « identity » plutôt que « — ».
+      identity: 'byDefault',
       key: 'primary',
       comment: null,
+      frequency: null,
     },
     {
       position: 2,
@@ -114,8 +149,10 @@ const DETAIL: TableDetail = {
       category: 'number',
       nullable: false,
       default: null,
+      identity: null,
       key: 'foreign',
       comment: null,
+      frequency: null,
     },
     {
       position: 3,
@@ -124,8 +161,10 @@ const DETAIL: TableDetail = {
       category: 'text',
       nullable: false,
       default: null,
+      identity: null,
       key: null,
       comment: null,
+      frequency: null,
     },
     {
       position: 4,
@@ -134,8 +173,10 @@ const DETAIL: TableDetail = {
       category: 'number',
       nullable: false,
       default: null,
+      identity: null,
       key: null,
       comment: null,
+      frequency: null,
     },
     {
       position: 5,
@@ -144,8 +185,10 @@ const DETAIL: TableDetail = {
       category: 'text',
       nullable: false,
       default: null,
+      identity: null,
       key: null,
       comment: null,
+      frequency: null,
     },
     {
       position: 6,
@@ -154,8 +197,10 @@ const DETAIL: TableDetail = {
       category: 'timestamp',
       nullable: false,
       default: null,
+      identity: null,
       key: null,
       comment: null,
+      frequency: null,
     },
     {
       position: 7,
@@ -164,8 +209,10 @@ const DETAIL: TableDetail = {
       category: 'timestamp',
       nullable: true,
       default: null,
+      identity: null,
       key: null,
       comment: null,
+      frequency: null,
     },
     {
       position: 8,
@@ -174,13 +221,45 @@ const DETAIL: TableDetail = {
       category: 'text',
       nullable: true,
       default: null,
+      identity: null,
       key: null,
       comment: null,
+      frequency: null,
     },
   ],
-  indexes: [],
-  constraints: [],
-  triggers: [],
+  // **Renseignés depuis `14a`** : tant qu'`A9` n'existait pas, personne ne lisait ces trois
+  // listes, et les laisser vides ne coûtait rien. La démo servant aussi de décor aux mesures de
+  // mise en page, elle doit maintenant porter de quoi remplir les deux panneaux et le DDL.
+  indexes: [
+    {
+      name: 'orders_pkey',
+      definition: 'CREATE UNIQUE INDEX orders_pkey ON public.orders USING btree (id)',
+    },
+    {
+      name: 'orders_created_idx',
+      definition: 'CREATE INDEX orders_created_idx ON public.orders USING btree (created_at DESC)',
+    },
+    {
+      name: 'orders_user_status_idx',
+      definition:
+        'CREATE INDEX orders_user_status_idx ON public.orders USING btree (user_id, status)',
+    },
+  ],
+  constraints: [
+    {
+      name: 'orders_status_chk',
+      definition:
+        "CHECK ((status = ANY (ARRAY['pending'::text, 'paid'::text, 'shipped'::text, 'refunded'::text, 'cancelled'::text])))",
+    },
+    { name: 'orders_total_chk', definition: 'CHECK ((total_cents >= 0))' },
+  ],
+  triggers: [
+    {
+      name: 'trg_touch_updated',
+      definition:
+        'CREATE TRIGGER trg_touch_updated BEFORE UPDATE ON public.orders FOR EACH ROW EXECUTE FUNCTION touch()',
+    },
+  ],
   relations: [
     {
       constraintName: 'orders_user_id_fkey',
@@ -191,8 +270,151 @@ const DETAIL: TableDetail = {
       targetColumns: ['id'],
     },
   ],
-  ddl: 'CREATE TABLE public.orders (…);',
+  ddl: `CREATE TABLE public.orders (
+    id int8 GENERATED BY DEFAULT AS IDENTITY NOT NULL,
+    user_id int8 NOT NULL,
+    status text DEFAULT 'pending'::text NOT NULL,
+    total_cents int4 NOT NULL,
+    currency bpchar DEFAULT 'EUR'::bpchar NOT NULL,
+    created_at timestamptz DEFAULT now() NOT NULL,
+    shipped_at timestamptz,
+    coupon_code text,
+    CONSTRAINT orders_pkey PRIMARY KEY (id),
+    CONSTRAINT orders_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);`,
 }
+
+/**
+ * Le décor MongoDB de la démo (`13a`–`13c`).
+ *
+ * **Le niveau « schéma » porte les bases** (`18a`) : `atelier_journal` en est une, pas un schéma.
+ * Les noms sont inventés, comme le veut `AGENTS.md`.
+ */
+const SCHEMAS_MONGO: SchemaInfo[] = [
+  { name: 'atelier_journal', counts: { tables: 2, views: 0, functions: 0, indexes: 3 } },
+  { name: 'atelier_archives', counts: { tables: 1, views: 0, functions: 0, indexes: 1 } },
+]
+
+const COLLECTIONS: TableSummary[] = [
+  {
+    name: 'evenements',
+    kind: 'table',
+    rows: { kind: 'estimated', value: 482_100 },
+    sizeBytes: 96 * 1024 ** 2,
+    columnCount: 0,
+    primaryKey: '_id',
+    lastAnalyze: null,
+    comment: null,
+  },
+  {
+    name: 'sessions',
+    kind: 'table',
+    rows: { kind: 'estimated', value: 12_400 },
+    sizeBytes: 4 * 1024 ** 2,
+    columnCount: 0,
+    primaryKey: '_id',
+    lastAnalyze: null,
+    comment: null,
+  },
+]
+
+/**
+ * Le détail d'une collection : **des champs déduits, avec leur fréquence** (`18d`).
+ *
+ * Deux champs sous 100 % — c'est ce qui fait apparaître la fréquence dans la sidebar de `13c`. Un
+ * décor à 100 % partout ne montrerait rien de cette spec.
+ */
+const DETAIL_MONGO: TableDetail = {
+  schema: 'atelier_journal',
+  name: 'evenements',
+  rows: { kind: 'estimated', value: 482_100 },
+  sizeBytes: 96 * 1024 ** 2,
+  comment: null,
+  columns: [
+    {
+      position: 1,
+      name: '_id',
+      typeName: 'objectId',
+      category: 'uuid',
+      nullable: false,
+      default: null,
+      identity: null,
+      key: 'primary',
+      comment: null,
+      frequency: 1,
+    },
+    {
+      position: 2,
+      name: 'sorte',
+      typeName: 'string',
+      category: 'text',
+      nullable: true,
+      default: null,
+      identity: null,
+      key: null,
+      comment: null,
+      frequency: 1,
+    },
+    {
+      position: 3,
+      name: 'horodatage',
+      typeName: 'date',
+      category: 'timestamp',
+      nullable: true,
+      default: null,
+      identity: null,
+      key: null,
+      comment: null,
+      frequency: 1,
+    },
+    {
+      position: 4,
+      name: 'canal',
+      typeName: 'string',
+      category: 'text',
+      nullable: true,
+      default: null,
+      identity: null,
+      key: null,
+      comment: null,
+      frequency: 0.98,
+    },
+    {
+      position: 5,
+      name: 'duree_ms',
+      typeName: 'int | double',
+      category: 'number',
+      nullable: true,
+      default: null,
+      identity: null,
+      key: null,
+      comment: null,
+      frequency: 0.61,
+    },
+  ],
+  indexes: [
+    {
+      name: '_id_',
+      definition: 'CREATE INDEX _id_ ON atelier_journal.evenements USING btree (_id)',
+    },
+    {
+      name: 'evenements_sorte_date_idx',
+      definition:
+        'CREATE INDEX evenements_sorte_date_idx ON atelier_journal.evenements USING btree (sorte, horodatage DESC)',
+    },
+  ],
+  constraints: [],
+  triggers: [],
+  relations: [],
+  ddl: `use atelier_journal;
+
+db.createCollection("evenements");
+
+db.evenements.createIndex({ "sorte": 1, "horodatage": -1 }, { name: "evenements_sorte_date_idx" });`,
+}
+
+/** Vrai pour la base documentaire du décor — voir `PROJETS`. */
+const estMongo = (base: string) => base === 'evenements'
 
 const PASSERELLE: PasserelleArbre = {
   openDatabase: async () => ({
@@ -207,8 +429,8 @@ const PASSERELLE: PasserelleArbre = {
       state: { kind: 'connected', serverVersion: 'PostgreSQL 17.6', tunnelLocalPort: null },
     },
   ],
-  listSchemas: async () => SCHEMAS,
-  listObjects: async () => OBJETS,
+  listSchemas: async (cle) => (estMongo(cle.database) ? SCHEMAS_MONGO : SCHEMAS),
+  listObjects: async (cle) => (estMongo(cle.database) ? COLLECTIONS : OBJETS),
 }
 
 const DETAIL_USERS: TableDetail = {
@@ -222,8 +444,10 @@ const DETAIL_USERS: TableDetail = {
       category: 'number',
       nullable: false,
       default: null,
+      identity: null,
       key: 'primary',
       comment: null,
+      frequency: null,
     },
     {
       position: 2,
@@ -232,8 +456,10 @@ const DETAIL_USERS: TableDetail = {
       category: 'text',
       nullable: false,
       default: null,
+      identity: null,
       key: null,
       comment: null,
+      frequency: null,
     },
     {
       position: 3,
@@ -242,15 +468,20 @@ const DETAIL_USERS: TableDetail = {
       category: 'text',
       nullable: true,
       default: null,
+      identity: null,
       key: null,
       comment: null,
+      frequency: null,
     },
   ],
   relations: [],
 }
 
 const PASSERELLE_DETAIL: PasserelleDetail = {
-  describeTable: async (_cle, _schema, table) => (table === 'users' ? DETAIL_USERS : DETAIL),
+  describeTable: async (cle, _schema, table) => {
+    if (estMongo(cle.database)) return DETAIL_MONGO
+    return table === 'users' ? DETAIL_USERS : DETAIL
+  },
 }
 
 /**
@@ -313,6 +544,29 @@ export function WorkbenchDemo() {
   // Chromium, et une démo qui écrirait sur le disque de l'utilisateur serait une mauvaise surprise.
   // Ce qui se vérifie ici est le parcours d'écran, pas la persistance — que les tests Rust couvrent.
   const [projets, setProjets] = useState<Project[]>(PROJETS)
+  /**
+   * Les préférences de la démo (`15a`), **en mémoire et appliquées pour de vrai**.
+   *
+   * Rien n'est persisté — le pont ne répond pas en Chromium — mais les jetons sont bien posés sur la
+   * racine du document, ce qui est précisément ce qu'il faut mesurer : `--rowh` doit atteindre la
+   * grille, `--accent` la pastille de projet. Une démo qui n'appliquerait rien laisserait `15b` et
+   * `15c` invérifiables autrement qu'à l'œil.
+   */
+  const [preferences, setPreferences] = useState<Preferences>(PREFERENCES_PAR_DEFAUT)
+  const [preferencesOuvertes, setPreferencesOuvertes] = useState(false)
+
+  useEffect(() => {
+    const racine = document.documentElement
+    const jetons = jetonsDe(preferences)
+    for (const [nom, valeur] of Object.entries(jetons)) racine.style.setProperty(nom, valeur)
+    const theme = themeApplique(preferences)
+    if (theme === null) racine.removeAttribute('data-theme')
+    else racine.setAttribute('data-theme', theme)
+    return () => {
+      for (const nom of Object.keys(jetons)) racine.style.removeProperty(nom)
+      racine.removeAttribute('data-theme')
+    }
+  }, [preferences])
 
   const surRequetes = (
     nom: string,
@@ -327,8 +581,18 @@ export function WorkbenchDemo() {
   return (
     <>
       {edition && <NewConnection edition={edition} onClose={() => setEdition(null)} />}
+      {preferencesOuvertes && (
+        <PreferencesDialog
+          preferences={preferences}
+          onChange={setPreferences}
+          onClose={() => setPreferencesOuvertes(false)}
+          version="DoraBase 0.4.2 (arm64)"
+        />
+      )}
       <Workbench
         projects={projets}
+        onOpenPreferences={() => setPreferencesOuvertes(true)}
+        rowHeight={preferences.rowHeight}
         passerelle={PASSERELLE}
         passerelleDetail={PASSERELLE_DETAIL}
         passerelleLignes={PASSERELLE_LIGNES}
@@ -354,24 +618,60 @@ export function WorkbenchDemo() {
             sql: `explain ${sql}`,
             durationMs: 2,
           }),
-          runSql: async (_cle, sql) => ({
-            columns: ['jour', 'commandes', 'ca_eur'],
-            rows: [
-              [
-                { kind: 'timestamp', value: '2026-07-31' },
-                { kind: 'int', value: 1204 },
-                { kind: 'decimal', value: '184902.40' },
+          runSql: async (cle, sql) => {
+            // **Le décor mongo rend des documents**, pas des lignes : sans cela l'arbre de `13b`
+            // n'aurait rien à déplier, et `A8` ne se verrait pas en démo.
+            if (estMongo(cle.database)) {
+              return {
+                columns: ['_id', 'sorte', 'horodatage', 'canal', 'contexte'],
+                rows: [
+                  [
+                    // **Le JSON étendu, comme le moteur le rend pour la console** (`13b`) : c'est
+                    // ce qui permet à l'arbre de distinguer un identifiant d'une chaîne de 24
+                    // caractères hexadécimaux. Un décor qui les enverrait en texte ferait passer
+                    // le test là où l'application échouerait.
+                    { kind: 'json', value: '{"$oid":"64b7f9a2c3d4e5f60718293a"}' },
+                    { kind: 'text', value: 'connexion' },
+                    { kind: 'json', value: '{"$date":"2026-08-11T09:12:00Z"}' },
+                    { kind: 'text', value: 'ligne' },
+                    {
+                      kind: 'json',
+                      value: '{"agent":"DoraBase 0.4.2","reseau":{"pays":"FR","fai":"local"}}',
+                    },
+                  ],
+                  [
+                    { kind: 'json', value: '{"$oid":"64b7f9a2c3d4e5f60718293b"}' },
+                    { kind: 'text', value: 'export' },
+                    { kind: 'json', value: '{"$date":"2026-08-11T16:30:00Z"}' },
+                    // Un champ absent : c'est le cas que la fréquence de `13c` annonce.
+                    { kind: 'null' },
+                    { kind: 'json', value: '{"lignes":4821,"format":"csv"}' },
+                  ],
+                ],
+                sql: `${sql}\n// $limit 1000 ajouté par DoraBase`,
+                durationMs: 61,
+                appliedLimit: 1000,
+              }
+            }
+            return {
+              columns: ['jour', 'commandes', 'ca_eur'],
+              rows: [
+                [
+                  { kind: 'timestamp', value: '2026-07-31' },
+                  { kind: 'int', value: 1204 },
+                  { kind: 'decimal', value: '184902.40' },
+                ],
+                [
+                  { kind: 'timestamp', value: '2026-07-30' },
+                  { kind: 'int', value: 1188 },
+                  { kind: 'decimal', value: '176320.00' },
+                ],
               ],
-              [
-                { kind: 'timestamp', value: '2026-07-30' },
-                { kind: 'int', value: 1188 },
-                { kind: 'decimal', value: '176320.00' },
-              ],
-            ],
-            sql: `${sql}\nlimit 1000`,
-            durationMs: 128,
-            appliedLimit: 1000,
-          }),
+              sql: `${sql}\nlimit 1000`,
+              durationMs: 128,
+              appliedLimit: 1000,
+            }
+          },
         }}
         passerelleApply={{
           applyChanges: async (_cle, plan) => ({

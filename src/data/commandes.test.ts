@@ -1,17 +1,25 @@
 import type { ConfigLoad } from '../domain/config'
+import { PREFERENCES_PAR_DEFAUT } from '../screens/Preferences/preferences'
 import { databaseKey, etatDe, interpreter } from './commandes'
 
 // --- Les quatre issues de `load_config` ---
 
 test('un fichier absent donne un état neuf sans projet', () => {
-  expect(interpreter({ kind: 'fresh' })).toEqual({ kind: 'fresh', projects: [] })
+  expect(interpreter({ kind: 'fresh' })).toEqual({
+    kind: 'fresh',
+    projects: [],
+    preferences: PREFERENCES_PAR_DEFAUT,
+  })
 })
 
 test('un fichier lu rend ses projets', () => {
   const projets = [{ name: 'Print', activeEnvironment: 'dev' as const, databases: [], queries: [] }]
-  expect(interpreter({ kind: 'loaded', projects: projets })).toEqual({
+  expect(
+    interpreter({ kind: 'loaded', projects: projets, preferences: PREFERENCES_PAR_DEFAUT }),
+  ).toEqual({
     kind: 'loaded',
     projects: projets,
+    preferences: PREFERENCES_PAR_DEFAUT,
   })
 })
 

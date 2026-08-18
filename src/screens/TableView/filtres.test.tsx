@@ -19,8 +19,10 @@ const colonne = (name: string, category: ColumnInfo['category'] = 'text'): Colum
   category,
   nullable: true,
   default: null,
+  identity: null,
   key: null,
   comment: null,
+  frequency: null,
 })
 
 const COLONNES = [

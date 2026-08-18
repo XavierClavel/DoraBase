@@ -15,8 +15,10 @@ const colonne = (name: string): ColumnInfo => ({
   category: 'text',
   nullable: true,
   default: null,
+  identity: null,
   key: null,
   comment: null,
+  frequency: null,
 })
 
 const COLONNES = [colonne('status'), colonne('total_cents'), colonne('created_at')]

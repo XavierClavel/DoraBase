@@ -56,11 +56,13 @@ test('choisir un moteur sans adaptateur le dit, au lieu de le masquer', async ()
   monter()
   expect(screen.queryByText(/adaptateur/)).not.toBeInTheDocument()
 
-  await userEvent.click(screen.getByRole('radio', { name: 'MySQL' }))
+  // **Redis, et non MySQL** : ce dernier a son adaptateur depuis `16`. Un test qui garde un exemple
+  // devenu faux passe pour la mauvaise raison, ou échoue en accusant le mauvais code.
+  await userEvent.click(screen.getByRole('radio', { name: 'Redis' }))
 
-  // Masquer les six autres moteurs ferait croire que le produit ne les prévoit pas ; les
+  // Masquer les trois moteurs restants ferait croire que le produit ne les prévoit pas ; les
   // laisser muets ferait croire que « Tester la connexion » est cassé.
-  expect(screen.getByText(/MySQL n’a pas encore d’adaptateur/)).toBeInTheDocument()
+  expect(screen.getByText(/Redis n’a pas encore d’adaptateur/)).toBeInTheDocument()
 })
 
 // --- Les options viennent du modèle de `05a` ---
@@ -142,8 +144,9 @@ test('changer de moteur ne perd pas ce qui a été saisi', async () => {
   monter()
   await userEvent.type(screen.getByLabelText('Hôte'), 'db.internal')
   await userEvent.click(screen.getByRole('radio', { name: 'MySQL' }))
-  // Le formulaire ne change pas selon le moteur (`06` n'a livré qu'un adaptateur), donc
-  // remettre l'état à zéro ne serait qu'une perte pour l'utilisateur.
+  // Le formulaire garde ce qui a été saisi en changeant de moteur : remettre l'état à zéro ne serait
+  // qu'une perte pour l'utilisateur. **Deux moteurs de serveur** ici — SQLite masquerait le champ,
+  // et le test mesurerait alors le masquage plutôt que la conservation (`17a`).
   expect(screen.getByLabelText('Hôte')).toHaveValue('db.internal')
 })
 
@@ -279,4 +282,110 @@ test('tout le formulaire est atteignable au clavier', async () => {
   }
 
   expect(atteints).toEqual(attendus)
+})
+
+// --- SQLite : un fichier, pas un serveur (`17a`) ---
+
+async function choisirLeMoteur(nom: string) {
+  await userEvent.click(screen.getByRole('radio', { name: nom }))
+}
+
+test('choisir SQLite retire les cinq champs qui n’ont pas de sens pour un fichier', async () => {
+  monter()
+  // Le formulaire complet, tel qu'un serveur le demande.
+  expect(screen.getByLabelText('Hôte')).toBeInTheDocument()
+  expect(screen.getByLabelText('Utilisateur')).toBeInTheDocument()
+
+  await choisirLeMoteur('SQLite')
+
+  // **Un fichier local n'a ni hôte, ni port, ni utilisateur, ni mot de passe, ni TLS.** Les afficher
+  // ferait remplir cinq champs pour rien, et laisserait croire qu'ils comptent — c'est la raison qui
+  // a fait préférer masquer plutôt qu'ajouter un champ `path` vide pour six moteurs sur sept.
+  expect(screen.queryByLabelText('Hôte')).toBeNull()
+  expect(screen.queryByLabelText('Port')).toBeNull()
+  expect(screen.queryByLabelText('Utilisateur')).toBeNull()
+  expect(screen.queryByLabelText('Mot de passe')).toBeNull()
+  expect(screen.queryByLabelText('Mode SSL')).toBeNull()
+})
+
+test('le champ « base par défaut » devient « fichier de la base », et garde sa donnée', async () => {
+  monter()
+  await userEvent.type(screen.getByLabelText('Base par défaut'), 'analytics')
+  await choisirLeMoteur('SQLite')
+
+  // **Le même champ, deux rôles.** `defaultDatabase` est déjà « la base à ouvrir », et pour SQLite
+  // la base *est* un fichier : le libellé change, la donnée non. Un champ `path` distinct aurait
+  // obligé `A2` à décider lequel afficher, et le modèle à porter un champ vide six fois sur sept.
+  const champ = screen.getByLabelText('Fichier de la base')
+  expect(champ).toHaveValue('analytics')
+  expect(champ).toHaveAttribute('placeholder', '~/bases/atelier.db')
+})
+
+test('les deux bascules restent : elles ont un sens pour un fichier aussi', async () => {
+  monter()
+  await choisirLeMoteur('SQLite')
+  // « Lecture seule » et « se reconnecter au démarrage » ne dépendent pas d'un serveur.
+  expect(screen.getByRole('switch', { name: 'Ouvrir en lecture seule' })).toBeInTheDocument()
+  expect(screen.getByRole('switch', { name: 'Se reconnecter au démarrage' })).toBeInTheDocument()
+})
+
+test('les quatre moteurs livrés n’affichent plus « pas encore d’adaptateur »', async () => {
+  monter()
+  for (const nom of ['PostgreSQL', 'MongoDB', 'SQLite', 'MySQL']) {
+    await choisirLeMoteur(nom)
+    expect(screen.queryByText(/n’a pas encore d’adaptateur/)).toBeNull()
+  }
+})
+
+test('MySQL garde ses champs de serveur : ce n’est pas un moteur de fichier', async () => {
+  monter()
+  await choisirLeMoteur('MySQL')
+  // Seul SQLite s'ouvre depuis un fichier (`17a`). Masquer l'hôte pour MySQL empêcherait de le
+  // déclarer — le genre de généralisation qu'un `FILE_ENGINES` trop large produirait.
+  expect(screen.getByLabelText('Hôte')).toBeInTheDocument()
+  expect(screen.getByLabelText('Port')).toBeInTheDocument()
+  expect(screen.getByLabelText('Base par défaut')).toBeInTheDocument()
+})
+
+test('un moteur sans adaptateur reste sélectionnable et le dit', async () => {
+  monter()
+  await choisirLeMoteur('Redis')
+  // Le masquer ferait croire que le produit ne le prévoit pas ; le laisser muet ferait croire que
+  // « Tester » est cassé. La règle de `08b`, toujours valable pour les quatre moteurs restants.
+  expect(screen.getByText(`${ENGINES.redis.label} n’a pas encore d’adaptateur`)).toBeInTheDocument()
+})
+
+// --- Le certificat d'autorité (`06f`) ---
+
+test('le champ d’autorité n’apparaît que pour les modes qui authentifient', async () => {
+  monter()
+  // `prefer`, le mode par défaut : il chiffre si le serveur l'offre, sans authentifier.
+  expect(screen.queryByLabelText('Certificat d’autorité')).toBeNull()
+
+  // Le mode SSL est un `Select`, pas un groupe de radios.
+  await userEvent.selectOptions(screen.getByLabelText('Mode SSL'), 'verify-ca')
+  expect(screen.getByLabelText('Certificat d’autorité')).toBeInTheDocument()
+
+  // **`require` chiffre sans authentifier** : le champ n'y servirait à rien, et l'afficher ferait
+  // croire qu'il change quelque chose. C'est « l'erreur classique » que `06b` désignait, rendue
+  // visible à l'écran.
+  await userEvent.selectOptions(screen.getByLabelText('Mode SSL'), 'require')
+  expect(screen.queryByLabelText('Certificat d’autorité')).toBeNull()
+})
+
+test('le champ d’autorité dit ce qu’un vide veut dire', async () => {
+  monter()
+  await userEvent.selectOptions(screen.getByLabelText('Mode SSL'), 'verify-full')
+  const champ = screen.getByLabelText('Certificat d’autorité')
+  // Sans cette indication, un champ vide se lirait comme un réglage manquant plutôt que comme
+  // « les autorités publiques suffisent ».
+  expect(champ).toHaveAttribute('placeholder', expect.stringContaining('autorités publiques'))
+})
+
+test('un moteur de fichier n’a pas de mode SSL, donc pas d’autorité', async () => {
+  monter()
+  await choisirLeMoteur('SQLite')
+  // Un fichier local n'a pas de transport à chiffrer (`17a`) : ni l'un ni l'autre n'a de sens.
+  expect(screen.queryByLabelText('Mode SSL')).toBeNull()
+  expect(screen.queryByLabelText('Certificat d’autorité')).toBeNull()
 })

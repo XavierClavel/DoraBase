@@ -1619,8 +1619,10 @@ const DETAIL_DEMO = {
       category: 'number' as const,
       nullable: false,
       default: null,
+      identity: null,
       key: 'primary' as const,
       comment: null,
+      frequency: null,
     },
     {
       position: 2,
@@ -1629,8 +1631,10 @@ const DETAIL_DEMO = {
       category: 'number' as const,
       nullable: false,
       default: null,
+      identity: null,
       key: 'foreign' as const,
       comment: null,
+      frequency: null,
     },
     {
       position: 3,
@@ -1639,8 +1643,10 @@ const DETAIL_DEMO = {
       category: 'text' as const,
       nullable: false,
       default: null,
+      identity: null,
       key: null,
       comment: null,
+      frequency: null,
     },
     {
       position: 4,
@@ -1649,8 +1655,10 @@ const DETAIL_DEMO = {
       category: 'number' as const,
       nullable: true,
       default: null,
+      identity: null,
       key: null,
       comment: null,
+      frequency: null,
     },
     {
       position: 5,
@@ -1659,8 +1667,10 @@ const DETAIL_DEMO = {
       category: 'text' as const,
       nullable: true,
       default: null,
+      identity: null,
       key: null,
       comment: null,
+      frequency: null,
     },
     ...Array.from({ length: 13 }, (_, i) => ({
       position: 6 + i,
@@ -1669,8 +1679,10 @@ const DETAIL_DEMO = {
       category: 'text' as const,
       nullable: true,
       default: null,
+      identity: null,
       key: null,
       comment: null,
+      frequency: null,
     })),
   ],
   indexes: [],
@@ -1721,7 +1733,11 @@ function DetailPanelGallery() {
         son infobulle serait inatteignable — exactement là où elle est le plus utile.
       </Note>
       <Sub title="Table sélectionnée">
-        <div data-testid="detail-a4" style={{ display: 'flex', height: 520 }}>
+        {/* **300 px, la mesure du mockup, portée par le conteneur.** Le panneau la prenait de sa
+            feuille de style ; dans l'écran de travail il est le panneau d'un `SplitPane` réglable, et
+            une largeur fixe le faisait sortir de la fenêtre. La mesure du handoff reste vérifiée
+            ici — c'est la galerie qui la donne, comme elle donne déjà sa hauteur. */}
+        <div data-testid="detail-a4" style={{ display: 'flex', height: 520, width: 300 }}>
           <DetailPanel
             detail={DETAIL_DEMO}
             schema="public"

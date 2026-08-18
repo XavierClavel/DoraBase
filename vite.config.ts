@@ -31,7 +31,13 @@ export default defineConfig({
   // La version affichée (barre d'état, `tauri.conf.json`) vient du build, pas de l'IPC :
   // `getVersion()` échouerait sous Playwright, qui exécute l'app dans Chromium sans
   // runtime Tauri, et rendrait les captures de référence non déterministes.
-  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    // L'architecture de la machine qui **construit**, affichée en pied des préférences (`15a`).
+    // `navigator.userAgent` ne la donne pas de façon fiable dans un WKWebView, et une valeur écrite
+    // à la main cesserait d'être vraie sur l'autre plateforme.
+    __APP_ARCH__: JSON.stringify(process.arch === 'arm64' ? 'arm64' : 'x86_64'),
+  },
   server: { port: 5173, strictPort: true, watch: { ignored: ['**/src-tauri/**'] } },
   build: { target: 'safari16.4', cssTarget: 'safari16.4' },
   test: {

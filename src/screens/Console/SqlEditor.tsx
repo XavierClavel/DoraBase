@@ -1,5 +1,6 @@
 import { acceptCompletion, autocompletion, completionKeymap } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { javascript } from '@codemirror/lang-javascript'
 import { PostgreSQL, sql } from '@codemirror/lang-sql'
 import { EditorState } from '@codemirror/state'
 import {
@@ -10,6 +11,7 @@ import {
   lineNumbers,
 } from '@codemirror/view'
 import { useEffect, useRef } from 'react'
+import type { Dialecte } from '../Workbench/onglets'
 import { type Catalogue, sourceDeCompletion } from './completion'
 import { themeDuHandoff } from './theme'
 
@@ -51,6 +53,17 @@ type SqlEditorProps = {
    * ne seraient jamais proposées.
    */
   catalogue?: () => Catalogue
+  /**
+   * La grammaire colorée (`13a`).
+   *
+   * **Le thème ne change pas** : les jetons `--syn-*` décrivent des mots-clés, des chaînes et des
+   * nombres, qui existent dans les deux grammaires. Seul l'analyseur diffère.
+   *
+   * L'autocomplétion de `12d` est **désactivée en mongo** : elle propose des tables et des colonnes
+   * SQL, et suggérer `left join` dans un pipeline serait une suggestion fausse — ce que `12d` a
+   * établi comme pire qu'une absence.
+   */
+  dialecte?: Dialecte
 }
 
 /**
@@ -73,11 +86,15 @@ export function SqlEditor({
   onExecuterLaSelection,
   onSelectionChange,
   catalogue,
+  dialecte = 'sql',
 }: SqlEditorProps) {
   const hote = useRef<HTMLDivElement>(null)
   const vue = useRef<EditorView | null>(null)
   // Les rappels sont lus par les extensions de CodeMirror, qui ne sont posées qu'une fois : les
   // garder dans une ref évite de reconstruire la vue quand l'appelant recrée ses fonctions.
+  // Le dialecte est lu au montage comme `texteInitial` : changer de langue demande un remontage,
+  // ce que la `key` par onglet fait déjà — un onglet ne change pas de dialecte en cours de vie.
+  const langue = useRef(dialecte)
   const rappels = useRef({
     onTexteChange,
     onExecuter,
@@ -134,23 +151,37 @@ export function SqlEditor({
           ]),
           // **Avant `defaultKeymap`** : `⇥` insère la suggestion retenue, et la carte par défaut le
           // lie à l'indentation. C'est ce que le mockup annonce — « ⇥ insérer ».
-          autocompletion({
-            override: [sourceDeCompletion(() => rappels.current.catalogue?.() ?? CATALOGUE_VIDE)],
-            // Le mockup ne montre pas d'icônes dans la liste : ses entrées portent un nom et un type.
-            icons: false,
-            defaultKeymap: false,
-          }),
-          keymap.of([
-            { key: 'Tab', run: acceptCompletion },
-            ...completionKeymap.filter((lien) => lien.key !== 'Tab'),
-          ]),
+          // **Aucune autocomplétion en mongo** : celle de `12d` propose des tables et des colonnes
+          // SQL. Proposer `left join` dans un pipeline produirait une requête en erreur que
+          // l'utilisateur croirait correcte — la règle que `12d` a posée.
+          ...(langue.current === 'mongo'
+            ? []
+            : [
+                autocompletion({
+                  override: [
+                    sourceDeCompletion(() => rappels.current.catalogue?.() ?? CATALOGUE_VIDE),
+                  ],
+                  // Le mockup ne montre pas d'icônes dans la liste : ses entrées portent un nom et
+                  // un type.
+                  icons: false,
+                  defaultKeymap: false,
+                }),
+                keymap.of([
+                  { key: 'Tab', run: acceptCompletion },
+                  ...completionKeymap.filter((lien) => lien.key !== 'Tab'),
+                ]),
+              ]),
           keymap.of([...defaultKeymap, ...historyKeymap]),
-          sql({ dialect: PostgreSQL }),
+          langue.current === 'mongo' ? javascript() : sql({ dialect: PostgreSQL }),
           // **Le nom accessible va sur `.cm-content`**, seul élément à porter `role="textbox"`. Le
           // poser sur l'hôte ne servait à rien : un `aria-label` sur un élément sans rôle est ignoré
           // — le troisième cas de ce piège dans le projet, après `08c` et `11c`, et Biome l'a signalé
           // les trois fois.
-          EditorView.contentAttributes.of({ 'aria-label': 'Requête SQL' }),
+          // Le nom accessible dit **quelle** langue : « Requête SQL » sur une console mongo
+          // annoncerait la mauvaise à la voix.
+          EditorView.contentAttributes.of({
+            'aria-label': langue.current === 'mongo' ? 'Commande MongoDB' : 'Requête SQL',
+          }),
           themeDuHandoff,
           EditorView.updateListener.of((maj) => {
             if (maj.docChanged) rappels.current.onTexteChange(maj.state.doc.toString())

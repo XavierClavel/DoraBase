@@ -7,6 +7,9 @@ import { emptyDraft } from './ConnectionDraft'
 import { draftToUpdateRequest } from './enregistrerLaBase'
 import { NewConnection } from './NewConnection'
 
+// **Noms inventés.** Ce test portait les identifiants d'une base réelle du commanditaire, ce qui
+// publiait un nom d'utilisateur et un nom de base dans le dépôt. Un décor de test n'a jamais besoin
+// d'être vrai — seulement cohérent.
 const BASE: Database = {
   name: 'analytics',
   engine: 'postgresql',
@@ -14,13 +17,14 @@ const BASE: Database = {
     {
       environment: 'prod',
       host: 'localhost',
-      port: 5445,
-      defaultDatabase: 'philippe',
-      username: 'philippe',
+      port: 5432,
+      defaultDatabase: 'atelier',
+      username: 'atelier',
       // `SecretRef` est un type **nominal** (`05a`) : une chaîne ne s'y affecte pas, ce qui empêche
       // d'y mettre une valeur de secret par erreur. Le cast est donc explicite, et cantonné au test.
-      password: 'Philippe/analytics/prod' as SecretRef,
+      password: 'Atelier/analytics/prod' as SecretRef,
       sslMode: 'prefer',
+      caCertificate: null,
       readOnly: true,
       reconnectOnStartup: false,
       tunnel: null,
@@ -29,7 +33,7 @@ const BASE: Database = {
 }
 
 const APRES: Project[] = [
-  { name: 'Philippe', activeEnvironment: 'prod', databases: [BASE], queries: [] },
+  { name: 'Atelier', activeEnvironment: 'prod', databases: [BASE], queries: [] },
 ]
 
 function monter(over: { onUpdate?: (r: UpdateVariantRequest) => Promise<Project[]> } = {}) {
@@ -39,8 +43,8 @@ function monter(over: { onUpdate?: (r: UpdateVariantRequest) => Promise<Project[
       <Sprite />
       <NewConnection
         onClose={() => {}}
-        projects={[{ id: 'Philippe', name: 'Philippe' }]}
-        edition={{ project: 'Philippe', database: BASE }}
+        projects={[{ id: 'Atelier', name: 'Atelier' }]}
+        edition={{ project: 'Atelier', database: BASE }}
         onBrowseKey={async () => null}
         onTest={async () => {
           throw new Error('non employé')
@@ -73,12 +77,12 @@ describe('draftToUpdateRequest', () => {
       host: 'db.nouveau',
     }
     const requete = draftToUpdateRequest(draft, {
-      project: 'Philippe',
+      project: 'Atelier',
       database: 'analytics',
       environment: 'prod',
     })
 
-    expect(requete.project).toBe('Philippe')
+    expect(requete.project).toBe('Atelier')
     expect(requete.database).toBe('analytics')
     expect(requete.environment).toBe('prod')
     // Les réglages, eux, viennent bien du brouillon.
@@ -96,9 +100,9 @@ describe('modifier une connexion (08g)', () => {
   it('les réglages enregistrés sont préremplis', () => {
     monter()
     expect(screen.getByLabelText('Hôte')).toHaveValue('localhost')
-    expect(screen.getByLabelText('Port')).toHaveValue('5445')
-    expect(screen.getByLabelText('Base par défaut')).toHaveValue('philippe')
-    expect(screen.getByLabelText('Utilisateur')).toHaveValue('philippe')
+    expect(screen.getByLabelText('Port')).toHaveValue('5432')
+    expect(screen.getByLabelText('Base par défaut')).toHaveValue('atelier')
+    expect(screen.getByLabelText('Utilisateur')).toHaveValue('atelier')
   })
 
   it('le mot de passe part vide : le front ne l’a pas', () => {
@@ -130,7 +134,7 @@ describe('modifier une connexion (08g)', () => {
     const requete = requetes[0]
     expect(requete?.variant.port).toBe(5433)
     // L'identité vient de la **cible**, pas du brouillon : c'est elle qui désigne la variante.
-    expect(requete?.project).toBe('Philippe')
+    expect(requete?.project).toBe('Atelier')
     expect(requete?.database).toBe('analytics')
     expect(requete?.environment).toBe('prod')
     // Champ vide : le secret reste en place.
@@ -151,7 +155,7 @@ describe('modifier une connexion (08g)', () => {
     const utilisateur = userEvent.setup()
     monter({
       onUpdate: async () => {
-        throw new Error('la base « analytics » n’existe pas dans le projet « Philippe »')
+        throw new Error('la base « analytics » n’existe pas dans le projet « Atelier »')
       },
     })
 
@@ -181,8 +185,8 @@ describe('modifier une connexion (08g)', () => {
         <Sprite />
         <NewConnection
           onClose={() => {}}
-          projects={[{ id: 'Philippe', name: 'Philippe' }]}
-          edition={{ project: 'Philippe', database: avecTunnel }}
+          projects={[{ id: 'Atelier', name: 'Atelier' }]}
+          edition={{ project: 'Atelier', database: avecTunnel }}
           onBrowseKey={async () => null}
           onTest={async () => {
             throw new Error('non employé')

@@ -43,3 +43,17 @@ export const SSL_MODE_ORDER: readonly SslMode[] = [
   'verify-ca',
   'verify-full',
 ]
+
+/**
+ * Vrai quand ce mode **authentifie** le serveur (`06f`).
+ *
+ * `verify-ca` et `verify-full` sont les deux seuls : `require` chiffre sans authentifier, donc il
+ * n'empêche pas un intermédiaire — « l'erreur classique » que `06b` désignait. C'est ce qui décide de
+ * l'affichage du champ « certificat d'autorité », comme de la mention « TLS non vérifié ».
+ *
+ * **Lit `verifies`, qui existait déjà** : une première version réécrivait la liste des deux modes, ce
+ * qui aurait divergé de la table au premier mode ajouté. La table est la source.
+ */
+export function authentifie(mode: SslMode): boolean {
+  return SSL_MODES[mode].verifies
+}
