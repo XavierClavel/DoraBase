@@ -19,6 +19,22 @@
  * prépare ce réglage sans l'implémenter.
  */
 
+/*
+ * L'enveloppe qui défile.
+ *
+ * **`auto` dans les deux sens.** Le tableau porte une largeur minimale égale à la somme de ses
+ * colonnes (voir `DataTable.tsx`) : sur une fenêtre étroite il déborde, et c'est cette enveloppe qui
+ * le fait défiler. La molette horizontale et `⇧`+molette y fonctionnent sans une ligne de JavaScript —
+ * le navigateur les traite nativement sur un conteneur défilable, et c'est précisément parce qu'aucun
+ * conteneur ne pouvait défiler qu'elles ne faisaient rien.
+ */
+.defilement {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
 .root {
   width: 100%;
   border-collapse: collapse;

@@ -349,9 +349,9 @@ des tests verts au moment où il a été introduit.
 
 ---
 
-## Ce qu'a trouvé le premier usage réel, les 9 et 10 août 2026
+## Ce qu'a trouvé le premier usage réel, du 9 au 12 août 2026
 
-Vingt-trois défauts, tous sur une suite verte, et **douze signalés par l'utilisateur** — pas par nous. Le
+Vingt-six défauts, tous sur une suite verte, et **treize signalés par l'utilisateur** — pas par nous. Le
 point commun : le décor de test était trop régulier pour les produire, ou l'assertion mesurait
 autre chose que ce qu'elle prétendait.
 
@@ -508,8 +508,214 @@ autre chose que ce qu'elle prétendait.
    avait deux. **Un bloc dupliqué se répare une fois sur deux.** L'extraction, elle, a demandé quatre
    tentatives : `{centre}` en position d'expression est un objet vide, non un enfant JSX.
 
-**Ce que ces neuf défauts disent du décor de test.** Aucun n'était un défaut de logique : tous
+49. **Un DDL rejouable et pourtant faux : l'auto-incrément perdu.** `assembler_ddl` prenait le
+   défaut d'une colonne dans `pg_attrdef`. Une colonne `GENERATED … AS IDENTITY` n'y est pas : son
+   `default` est `NULL`. Le DDL rendait donc `id bigint NOT NULL`, qui **se rejoue sans erreur** — et
+   produit une table dont la clé primaire n'a plus d'auto-incrément. Le test de rejeu, pourtant le
+   critère le plus fort de `06c`, ne comparait que position, nom, type et nullité : il validait la
+   copie mutilée. Trouvé en branchant `A9` (`14c`), qui met ce DDL sous les yeux. **Un test de rejeu
+   ne vaut que ce que sa comparaison regarde** — le défaut, l'identité et la liste des index en font
+   maintenant partie, et `schema-test-pg.sql` porte une table aux deux formes d'identité. La même
+   inspection a montré que le DDL ne rendait pas non plus les `CREATE INDEX` : une copie qui se lit
+   pareil et se requête cent fois plus lentement.
+50. **`tsc --noEmit` ne vérifiait rien.** Le projet compile par `tsc -b` (références de projet) ;
+   `pnpm tsc --noEmit` sort 0 sans regarder les fichiers de `src`. Un champ ajouté au domaine laissait
+   seize littéraux incomplets, et la commande annonçait « aucune erreur ». **Une vérification qui ne
+   peut pas échouer est un mensonge poli** — c'est `pnpm typecheck` qui mord, et c'est celle-là qu'il
+   faut lancer.
+
+51. **Le décor de démo portait le schéma d'une base réelle du commanditaire.** Quatre noms de
+   tables, un nom de base, un nom d'utilisateur et un port venaient de sa base de test — commode
+   pour construire un décor crédible, et indiscret : le dépôt, les captures de Playwright et les
+   rapports de CI les publiaient. Signalé par l'utilisateur le 12 août 2026. Remplacés par des noms
+   inventés **de même longueur**, puisque c'est d'elle que dépendent les propriétés mesurées (une
+   bande d'onglets qui déborde). La règle est maintenant dans `AGENTS.md` : **un décor de test n'a
+   jamais besoin d'être vrai, seulement cohérent.**
+
+52. **Un `role="tablist"` sans navigation aux flèches.** Un commentaire du code affirmait que « le
+   clavier y navigue par les flèches sans code à écrire ». C'est faux : un rôle ARIA **annonce** une
+   convention, il n'en fournit aucun comportement. Un lecteur d'écran disait « onglet 1 sur 7 » et
+   les flèches ne faisaient rien — le rôle était un mensonge à la voix. Trouvé par le test Playwright
+   écrit pour vérifier la promesse du commentaire. Corrigé, avec le bouclage et le `tabIndex` unique
+   que la convention demande aussi. Le gestionnaire part de l'onglet **focalisé** et non du
+   sélectionné : les deux divergent dès qu'on porte le focus ailleurs.
+53. **Une entrée `radio` découpée à un pixel, cliquable en jsdom et pas en Chromium.** L'habillage du
+   handoff — carte d'aperçu, pastille de couleur — cachait la radio native par `clip-path`. Vitest
+   passait, `check()` de Playwright expirait : un clic au centre d'une boîte d'un pixel atterrit sur
+   ce qui la recouvre. La radio couvre maintenant son étiquette, transparente. **jsdom ne calcule
+   aucune géométrie, donc il ne peut pas dire qu'un contrôle est atteignable.**
+54. **La densité de grille ne pouvait pas venir d'un jeton CSS.** `--rowh` existait depuis `02` et
+   `10a` annonçait « `15` la fera varier » — mais la virtualisation calcule quelles lignes monter en
+   divisant le défilement par le pas, donc elle a besoin d'un **nombre**. Poser le jeton ne changeait
+   rien à la grille. La préférence descend par les props, du seul endroit qui la détient. Trouvé en
+   mesurant la hauteur d'une ligne réelle, pas la valeur du jeton — et le premier essai mesurait la
+   ligne des filtres, qui a sa propre hauteur.
+55. **Un compteur global au serveur ne prouve rien dans une suite parallèle.** Le test « `explain()`
+   n'exécute pas » comparait `document.returned` de MongoDB avant et après. Il échouait sur
+   « explain a lu 37 documents » — trente-sept que ses vingt-trois voisins avaient lus au même
+   instant. La preuve est devenue **structurelle** : MongoDB ne rend `executionStats` que s'il a
+   exécuté, donc son absence est le signal, et il est déterministe.
+56. **Un facteur calibré au hasard rendait inatteignable une borne du handoff.** Le plancher de
+   densité par corps de police valait `1,45 × corps + 2`, ce qui donnait 21 px au corps par défaut —
+   et interdisait les 20 px que `--rowh-min` déclare et que le mockup montre atteignables. Le facteur
+   est maintenant calibré pour rendre exactement cette borne. **Une constante choisie « à peu près »
+   contredit tôt ou tard une valeur que le design a fixée.**
+
+57. **Un test dont le décor lui donnait tort.** Le filtre « contient » de SQLite était vérifié en
+   cherchant « gra » dans les noms d'ateliers, en attendant une seule réponse — or « Sérigraphie »
+   contient « gra » autant que « Gravure ». Le test échouait en accusant le filtre alors qu'il avait
+   raison. **Un décor dont deux valeurs partagent une sous-chaîne est plus honnête qu'un décor où
+   chaque mot est unique** : il oblige à écrire l'assertion juste.
+58. **« Tel qu'il a été tapé » était faux d'un préfixe.** `17b` affirmait que SQLite garde le DDL
+   d'origine — vrai pour le corps, faux pour l'en-tête : `create table` devient `CREATE TABLE`, le
+   reste est verbatim. La spec disait « tel qu'il a été tapé » sans réserve, et c'est le genre
+   d'écart qu'on remarque en comparant à son fichier de migration, où l'on croit alors le fichier
+   modifié. Le mot juste est « presque », et il a fallu un test pour le trouver.
+
+59. **Un décor chargé en latin1, et un test qui accusait l'adaptateur.** `mysql-test.sh` versait le
+   fichier SQL dans le client sans `--default-character-set=utf8mb4` : le client interprétait les
+   octets UTF-8 comme du latin1, et « démarrage » entrait en base sous la forme « dÃ©marrage ». Le
+   test de lecture échouait en désignant le code de lecture, qui était juste. **Un décor abîmé à
+   l'écriture fait échouer les tests à la lecture** — et il faut penser à regarder le décor avant le
+   code.
+60. **Un `DATETIME` du catalogue demandé en `String` fait paniquer le pilote.** `mysql_async` rend
+   `information_schema.tables.update_time` en `Value::Date` ; `get::<Option<String>, _>` ne rend pas
+   `None`, il **panique** dans la crate. Le test s'est arrêté net à l'intérieur du pilote, sans
+   message utile. La conversion passe maintenant par la fonction qui connaît déjà la forme des
+   horodatages — une seule façon de les rendre dans tout le moteur.
+61. **Deux tests employaient MySQL comme exemple de moteur non implémenté.** Livrer `16` les a fait
+   échouer — l'un en réclamant un texte absent, l'autre en trouvant un bouton actif. Ni l'un ni
+   l'autre ne mesurait ce qu'il annonçait : ils vérifiaient « un moteur sans adaptateur se dit », et
+   MySQL avait cessé d'en être un. **Un test qui nomme un exemple doit être relu quand l'exemple
+   change de camp**, et c'est l'implémentation qui le révèle.
+62. **Un test d'écriture qui dépendait de la valeur du décor.** Le refus d'écrire sur MyISAM était
+   vérifié en relisant `'démarrage'`, la valeur initiale. Un sabotage ayant réussi à écrire une fois,
+   la restauration du code ne suffisait plus à faire repasser le test : le décor restait sali. La
+   leçon de `11d` — chaque test d'écriture pose sa propre ligne — valait aussi pour un test qui vérifie
+   qu'**aucune** écriture n'a lieu.
+
+63. **Un drapeau du pilote MySQL, silencieusement sans effet.**
+   `SslOpts::with_danger_skip_domain_validation` existe, se règle sans erreur, et ne fait **rien** avec
+   `rustls` 0.23 : le vérificateur du pilote écrit
+   `Err(ref e) if e.to_string().contains("NotValidForName")` — il compare l'**affichage** de l'erreur à
+   sa forme `Debug`. L'affichage de rustls dit « certificate not valid for name "localhost" » : le mot
+   n'y est pas, le bras ne se déclenche jamais. Trouvé parce qu'un test attendait que `verify-ca`
+   accepte, et lisait un refus de nom d'hôte. **Filtrer une erreur sur son texte plutôt que sur sa
+   variante marche jusqu'à ce que le texte change** — et le vérificateur écrit ici filtre sur la
+   variante, ce que le sabotage n° 2 de `06f` a confirmé en reproduisant le défaut.
+64. **Un job de CI déclaré deux fois, et la construction macOS qui ne tournait plus.** Une édition
+   automatisée a coupé `ci.yml` aux mauvais indices : le job `engine` s'est retrouvé déclaré deux fois,
+   et le **premier avait avalé les étapes du job `build`**. Or une clé dupliquée dans un mappage YAML
+   ne fait pas échouer `yaml.safe_load` — le dernier gagne, en silence. Le `.app` n'était donc plus
+   construit en CI, et rien ne le disait. Trouvé en relisant le fichier pour une autre raison.
+   `scripts/verifier-ci.py` refuse maintenant un doublon **et** vérifie que le job `build` construit
+   encore.
+65. **Un garde qui criait sur du juste.** La première version de `verifier-ci.py` comptait les
+   doublons de *toutes* les clés à deux niveaux d'indentation, et refusait donc un fichier correct :
+   `runs-on` et `steps` existent légitimement dans chacun des deux jobs. **Un garde qui refuse du juste
+   finit par être désactivé**, ce qui est pire que son absence — il ne surveille plus que les noms de
+   jobs, qui sont ce qui avait cassé.
+
+66. **Un serveur de développement résiduel, et deux fausses pistes.** `reuseExistingServer` étant
+   vrai en local, Playwright réutilise ce qui écoute sur 5173 — et plusieurs barrières lancées en
+   arrière-plan y avaient laissé huit processus. Symptôme : **les 175 tests** expirent à 30 s, ou les
+   captures de référence diffèrent de 10 % des pixels. Cela ressemble trait pour trait à une
+   régression de rendu, et j'ai cherché deux fois dans le code avant de regarder le port. **Une panne
+   qui touche tous les tests à la fois n'est presque jamais dans le code** — c'est le décor ou
+   l'environnement. Consigné au § 9 de `REPRISE.md`.
+
+67. **Quatre primitives avaient oublié leur `box-sizing`, et l'interface était coupée au bord droit.**
+   Le projet n'a **pas** de `box-sizing: border-box` global — c'est une décision documentée dans
+   `reset.css`, chaque primitive déclare la sienne. Quatre ne l'avaient pas fait, et l'erreur ne se
+   voyait dans aucune vitrine : une variante `.fill` en `width: 100%` ajoutait son filet aux 100 %
+   (1 px), un bouton de pied de sidebar dépassait de 6 px, un panneau de détail figé à la mesure du
+   mockup (`width: 300px`) vivait dans un panneau redimensionnable de 296. **Chacun poussait le
+   suivant**, et le bord droit de la fenêtre était coupé. Le mockup, lui, ne redimensionne rien : une
+   mesure prise sur lui est juste et cesse de l'être dès qu'un voisin décide la largeur.
+   Correction : le `border-box` là où il manquait, et la mesure de 300 px déplacée dans le conteneur
+   de la galerie — c'est la vitrine qui donne la largeur, pas le composant.
+68. **La grille de la vue structure écrasait ses colonnes au lieu de défiler.** `DataTable` posait
+   `width: 100%` et `table-layout: fixed` sans conteneur défilable : dix-huit colonnes se partageaient
+   la largeur disponible, une trentaine de pixels chacune, et la molette n'avait **rien à faire
+   défiler** puisque rien ne débordait. Le défaut se lisait comme « le défilement horizontal n'est pas
+   supporté », alors qu'il n'y avait pas de débordement à supporter. Une largeur minimale calculée
+   depuis les colonnes déclarées, dans une enveloppe en `overflow: auto`, rend le geste natif.
+69. **Une barre de défilement là où personne n'en avait demandé — et l'axe le disait.** Une barre
+   apparaissait dans la bande d'onglets, à côté de « Données », dans 34 px de haut. Elle était
+   **verticale**, ce qui écarte d'emblée le nombre d'onglets. `TabStrip` rend 35 px pour 34 déclarés —
+   une fidélité assumée, son filet bas s'ajoutant en `content-box` — et le CSS veut qu'un axe en `auto`
+   force l'autre à quitter `visible` : en posant `overflow-x: auto` sur l'enveloppe, on avait rendu son
+   axe vertical défilable **sans le demander**. Le pixel de trop suffisait. Retiré à sa source : dans
+   cette composition, le conteneur dessine déjà le même filet, les deux se superposaient.
+70. **Un commentaire qui affirmait une propriété de l'environnement.** Trois feuilles portaient
+   « macOS ne montre la barre de défilement qu'au geste, donc rien ne s'ajoute à la trame ». C'est vrai
+   d'*une* configuration de macOS, et faux dès que l'utilisateur règle « Afficher les barres :
+   toujours » ou branche une souris. La barre de la sidebar coupait alors les noms de tables.
+   **Une hypothèse d'environnement écrite comme une loi** : la règle qui la remplace ne dépend d'aucun
+   réglage — barre fine, sans piste, curseur visible au survol.
+71. **Le mockup portait le défaut, donc la fidélité ne pouvait pas trancher.** « SELECT dans console »
+   demande 118 px de texte dans un bouton qui en offre 104 : il passait à la ligne, et deux lignes à
+   l'interligne par défaut débordaient d'un bouton de 28 px. Le handoff a **exactement** les mêmes
+   deux colonnes, le même corps et le même libellé — il ne rend simplement jamais ce cas, étant figé.
+   Il y a donc des mesures qu'aucune comparaison au mockup ne fera : celles que le mockup n'a pas
+   faites.
+72. **Un test vert sur un ensemble vide.** L'assertion « aucun bouton ne déborde » filtrait les boutons
+   débordants et comparait à `[]`. Elle passait — parce que la navigation ouvrait une table, où les
+   actions du panneau de détail **n'existent pas** : elle mesurait zéro bouton. Le sabotage l'a laissée
+   verte, ce qui est la seule façon de s'en apercevoir. Depuis, elle compte d'abord le bouton qu'elle
+   prétend mesurer. **Toute assertion sur « aucun élément ne fait X » doit d'abord prouver qu'il y a
+   des éléments.**
+73. **Une mesure de barre de défilement ne prouve rien sous Chromium sans tête.** La première version
+   du test de la bande mesurait l'épaisseur de la barre (`getBoundingClientRect().height -
+   clientHeight`). Chromium sans tête rend des barres en survol, qui n'occupent aucune place : la
+   mesure valait 0 avec **comme sans** la correction. Remplacée par la mesure de la *cause* — le
+   débordement d'un pixel — qui, elle, se voit des deux côtés. La discrétion des barres de la sidebar
+   (n° 70) reste, elle, **non vérifiable ici** : c'est dit plutôt que faussement testé.
+74. **Une correction qui n'en était pas une : du code mort qui se lisait comme un correctif.** Le
+   `box-sizing: border-box` ajouté à la variante `.fill` de la sidebar (n° 67) **n'a jamais pris
+   effet** : il était déclaré *avant* `.root`, à spécificité égale, et c'est le dernier déclaré qui
+   gagne — `.root` remettait `content-box`. Le commentaire affirmait donc le contraire de ce que
+   faisait la page, ce qui est pire qu'une absence de correction. Le défaut visible ayant disparu par
+   ailleurs, rien ne l'a signalé ; c'est une **mesure** écrite ensuite qui l'a trouvé, pas une
+   relecture. Le bloc est maintenant placé après `.root`, et l'ordre est commenté comme étant la règle
+   elle-même.
+75. **`box-sizing` ne se règle pas par axe.** Le bouton « Nouvelle console » était en `content-box`
+   pour une raison juste — la hauteur du handoff désigne le contenu, le filet s'ajoutant par-dessus,
+   et `<button>` est en `border-box` par défaut. Mais la même déclaration vaut pour la **largeur**, et
+   avec `width: 100%` les deux filets sortaient de la colonne : le bouton dépassait de 2 px. Ce
+   débordement-là est **à l'intérieur** d'un panneau, donc l'assertion « rien ne sort de la fenêtre »
+   ne le voyait pas. La réponse est de **convertir la valeur** — 28 px en `border-box` rend exactement
+   ce que rendait 26 en `content-box` — et non de garder le modèle de boîte qui arrangeait un axe.
+   Une mesure ciblée existe désormais : tout élément en `content-box` qui franchit le bord utile de son
+   parent.
+
+**Ce que ces défauts disent du décor de test.** Presque aucun n'était un défaut de logique : ils
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros
-d'attribut qui coïncident, grille plus étroite que son cadre. Une suite verte sur un décor trop
-propre ne mesure que le décor. Depuis, `scripts/schema-test-pg.sql` porte une ligne dont aucune
-colonne exotique n'est nulle, une table `numeric`, et la galerie une grille qui déborde.
+d'attribut qui coïncident, grille plus étroite que son cadre, `bigserial` partout. Une suite verte
+sur un décor trop propre ne mesure que le décor. Depuis, `scripts/schema-test-pg.sql` porte une
+ligne dont aucune colonne exotique n'est nulle, une table `numeric`, une table aux deux formes
+d'identité, et la galerie une grille qui déborde.
+
+**Une leçon des quatre moteurs, du n° 62 :** un test qui vérifie qu'**aucune** écriture n'a lieu doit
+poser sa propre ligne, comme un test qui écrit. C'est le même raisonnement, et il n'était pas
+évident : on croit qu'un test en lecture seule ne salit rien, alors que c'est le *sabotage* qui
+salit — et le décor sali survit à la restauration du code.
+
+**Et une leçon d'un autre ordre, du n° 51 :** un décor irrégulier n'a pas à être *réel*. Enrichir
+un décor en y copiant une base de production le rend crédible et indiscret à la fois. Les noms
+peuvent être inventés ; ce sont les longueurs, les quantités et les types qui font mordre les
+tests.
+
+**Une leçon des défauts de la capture du 18 août, des n° 67 à 75 :** ils partagent tous une
+forme. Chaque composant était juste **dans sa vitrine**, et faux dès qu'un voisin décidait sa
+largeur, qu'un réglage du système changeait le rendu, ou qu'un pixel de fidélité tombait dans un
+conteneur qui n'en voulait pas. Une suite de tests organisée par écran ne les voit pas : elle
+vérifie qu'un écran ressemble à son mockup, pas ce qui n'appartient à aucun écran.
+`e2e/geometrie-reelle.spec.ts` existe pour ça — rien ne sort de la fenêtre, ce qui doit défiler
+défile, ce qui a été rendu discret l'est resté.
+
+**Et une leçon sur la vérification elle-même, des n° 74 et 75 :** deux des corrections de cette série
+étaient fausses, et **aucune relecture ne les a vues** — l'une était du CSS mort caché par l'ordre des
+règles, l'autre déplaçait le débordement à l'intérieur d'un panneau où la mesure existante ne
+regardait pas. Ce sont deux mesures écrites *après coup* qui les ont trouvées. Corriger un défaut de
+mise en page sans écrire la mesure qui le tient revient à changer du CSS en espérant.

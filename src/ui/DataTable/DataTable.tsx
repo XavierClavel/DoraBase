@@ -76,78 +76,97 @@ export function DataTable<Row>({
     return <div className={styles.empty}>{empty}</div>
   }
 
+  // **La somme des largeurs déclarées**, qui devient la largeur minimale du tableau.
+  //
+  // Sans elle, `width: 100%` et `table-layout: fixed` **écrasaient** les colonnes au lieu de déborder :
+  // sur une fenêtre étroite, la dernière colonne tombait à quarante pixels et son en-tête s'affichait
+  // « Co… », inatteignable — il n'y avait rien à faire défiler, le contenu était simplement rogné.
+  // Signalé à l'écran le 18 août 2026.
+  //
+  // Les colonnes gardent donc leur largeur, le tableau déborde, et son enveloppe défile — ce qui rend
+  // du même coup la molette horizontale et `⇧`+molette opérantes, puisque le navigateur les traite
+  // nativement sur un conteneur qui peut défiler.
+  const largeurMinimale = columns.reduce((total, colonne) => {
+    const declaree = Number.parseFloat(colonne.width ?? '')
+    // Une colonne sans largeur est celle qui prend le reste : elle compte pour un minimum lisible,
+    // sans quoi le tableau pourrait encore l'écraser.
+    return total + (Number.isFinite(declaree) ? declaree : 120)
+  }, 0)
+
   return (
-    <table className={styles.root}>
-      <caption className={styles.caption}>{label}</caption>
-      {/* `<colgroup>` plutôt que des largeurs sur les `<th>` : avec `table-layout: fixed`, c'est
+    <div className={styles.defilement}>
+      <table className={styles.root} style={{ minWidth: `${largeurMinimale}px` }}>
+        <caption className={styles.caption}>{label}</caption>
+        {/* `<colgroup>` plutôt que des largeurs sur les `<th>` : avec `table-layout: fixed`, c'est
           le groupe de colonnes qui fait autorité, et la largeur ne dépend plus du contenu. */}
-      <colgroup>
-        {columns.map((colonne) => (
-          <col key={colonne.key} style={colonne.width ? { width: colonne.width } : undefined} />
-        ))}
-      </colgroup>
-      <thead>
-        <tr>
+        <colgroup>
           {columns.map((colonne) => (
-            <th
-              key={colonne.key}
-              scope="col"
-              className={cx(styles.th, colonne.numeric && styles.numeric)}
-            >
-              {colonne.header}
-            </th>
+            <col key={colonne.key} style={colonne.width ? { width: colonne.width } : undefined} />
           ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => {
-          const id = rowId(row)
-          const selectionnee = id === selectedId
-          return (
-            <tr
-              key={id}
-              // `aria-selected` sur une ligne de `<table>` n'est valable que si la ligne est
-              // sélectionnable — ce qui est le cas ici, et que `onSelect` matérialise.
-              aria-selected={onSelect ? selectionnee : undefined}
-              className={cx(styles.tr, selectionnee && styles.selected)}
-              onClick={onSelect ? () => onSelect(row) : undefined}
-              onDoubleClick={onOpen ? () => onOpen(row) : undefined}
-              // Le clavier ouvre par `Entrée` sur la ligne sélectionnée. Sans cela, l'ouverture
-              // n'existerait qu'à la souris — et le double-clic n'a aucun équivalent clavier.
-              onKeyDown={
-                onOpen
-                  ? (evenement) => {
-                      if (evenement.key === 'Enter') onOpen(row)
-                    }
-                  : undefined
-              }
-              tabIndex={onOpen ? 0 : undefined}
-            >
-              {columns.map((colonne, rang) => {
-                const contenu = colonne.cell(row)
-                const classes = cx(
-                  styles.td,
-                  colonne.numeric && styles.numeric,
-                  colonne.ui && styles.ui,
-                )
-                // La première colonne est l'en-tête **de sa ligne** : c'est le nom de l'objet,
-                // et c'est lui qui identifie la ligne à la voix. Sans `scope="row"`, un lecteur
-                // d'écran annonce « Nom, orders » puis « Lignes, 1.9 M » sans jamais relier la
-                // seconde cellule à l'objet dont elle parle.
-                return rang === 0 ? (
-                  <th key={colonne.key} scope="row" className={cx(classes, styles.rowHeader)}>
-                    {contenu}
-                  </th>
-                ) : (
-                  <td key={colonne.key} className={classes}>
-                    {contenu}
-                  </td>
-                )
-              })}
-            </tr>
-          )
-        })}
-      </tbody>
-    </table>
+        </colgroup>
+        <thead>
+          <tr>
+            {columns.map((colonne) => (
+              <th
+                key={colonne.key}
+                scope="col"
+                className={cx(styles.th, colonne.numeric && styles.numeric)}
+              >
+                {colonne.header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const id = rowId(row)
+            const selectionnee = id === selectedId
+            return (
+              <tr
+                key={id}
+                // `aria-selected` sur une ligne de `<table>` n'est valable que si la ligne est
+                // sélectionnable — ce qui est le cas ici, et que `onSelect` matérialise.
+                aria-selected={onSelect ? selectionnee : undefined}
+                className={cx(styles.tr, selectionnee && styles.selected)}
+                onClick={onSelect ? () => onSelect(row) : undefined}
+                onDoubleClick={onOpen ? () => onOpen(row) : undefined}
+                // Le clavier ouvre par `Entrée` sur la ligne sélectionnée. Sans cela, l'ouverture
+                // n'existerait qu'à la souris — et le double-clic n'a aucun équivalent clavier.
+                onKeyDown={
+                  onOpen
+                    ? (evenement) => {
+                        if (evenement.key === 'Enter') onOpen(row)
+                      }
+                    : undefined
+                }
+                tabIndex={onOpen ? 0 : undefined}
+              >
+                {columns.map((colonne, rang) => {
+                  const contenu = colonne.cell(row)
+                  const classes = cx(
+                    styles.td,
+                    colonne.numeric && styles.numeric,
+                    colonne.ui && styles.ui,
+                  )
+                  // La première colonne est l'en-tête **de sa ligne** : c'est le nom de l'objet,
+                  // et c'est lui qui identifie la ligne à la voix. Sans `scope="row"`, un lecteur
+                  // d'écran annonce « Nom, orders » puis « Lignes, 1.9 M » sans jamais relier la
+                  // seconde cellule à l'objet dont elle parle.
+                  return rang === 0 ? (
+                    <th key={colonne.key} scope="row" className={cx(classes, styles.rowHeader)}>
+                      {contenu}
+                    </th>
+                  ) : (
+                    <td key={colonne.key} className={classes}>
+                      {contenu}
+                    </td>
+                  )
+                })}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }

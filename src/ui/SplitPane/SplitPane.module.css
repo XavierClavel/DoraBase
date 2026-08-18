@@ -52,6 +52,18 @@
   box-shadow: var(--shadow-focus);
 }
 
+/*
+ * La pastille de la poignée.
+ *
+ * **Elle ne se voit qu'au survol et au focus**, et c'est une correction. Une pastille blanche de 3×26
+ * posée en permanence sur un dégradé très pâle est la chose la plus contrastée de la séparation : elle
+ * attirait l'œil plus que les deux colonnes qu'elle sépare. Signalé à l'écran le 18 août 2026 —
+ * « séparateur de section pas assez discret ».
+ *
+ * Le dégradé, lui, reste : c'est lui qui **dit** qu'il y a une séparation. La pastille dit qu'on peut
+ * l'attraper, et cette information n'a d'utilité qu'au moment où l'on s'en approche. Le focus la
+ * révèle aussi, sans quoi elle serait invisible au clavier.
+ */
 .grip {
   position: absolute;
   top: 50%;
@@ -61,6 +73,13 @@
   border-radius: 2px;
   background: var(--field);
   transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.handle:hover .grip,
+.handle:focus-visible .grip {
+  opacity: 1;
 }
 
 /*

@@ -61,6 +61,20 @@ Checkable criteria.
 Specs live in `specs/`, one file per scope, named `NN-short-slug.md`. Keep an index so
 the set of specs stays navigable.
 
+## Décors de test : rien de réel
+
+Les tests, les décors de démo (`?demo`) et la galerie ne doivent **jamais** porter la structure
+d'une base réelle du commanditaire — ni noms de tables, ni noms de colonnes, ni noms de bases,
+ni identifiants, ni ports.
+
+**Pourquoi :** un dépôt, une capture d'écran, un rapport de test ou un artefact de CI publie ce
+qu'il contient. Un décor de test n'a jamais besoin d'être vrai, seulement **cohérent** — et les
+propriétés qu'on mesure (une bande d'onglets qui déborde, une colonne trop longue) dépendent des
+longueurs et des quantités, pas des noms.
+
+**En pratique :** les noms viennent du handoff (`orders`, `users`, `order_items`, `Atelier Nord`)
+ou sont inventés. Les identifiants de connexion sont fictifs, et `localhost:5432`.
+
 ## Notes
 
 - `CLAUDE.md` is a symlink to this file. Edit `AGENTS.md` only.

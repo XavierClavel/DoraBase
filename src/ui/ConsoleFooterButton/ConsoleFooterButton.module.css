@@ -1,4 +1,9 @@
 .root {
+  /* **`border-box`, sans quoi le bouton dépasse de six pixels.** Le projet n'a pas de `box-sizing`
+     global — décision de `reset.css`, chaque primitive déclare la sienne — et celle-ci l'avait
+     oubliée : les 8 px de remplissage s'ajoutaient à la largeur d'étirement du panneau, et le bouton
+     à `width: 100%` sortait de la colonne. Signalé à l'écran le 18 août 2026. */
+  box-sizing: border-box;
   /* 8px : hors de l'échelle `--space-*` (3, 5, 6, 7, 9, 11, 14, 16), comme le `padding`
      horizontal de `Button` — même convention, littéral et commentaire. */
   padding: 8px;
@@ -12,15 +17,26 @@
   justify-content: center;
   gap: 6px;
   width: 100%;
-  /* 26 px : hors de l'échelle `--h-btn-*` (23, 25, 28, 31, 34). Voir le commentaire du
-     composant — à promouvoir dans `Button` au moment de la spec 15. */
-  height: 26px;
+  /* 28 px rendus, soit les 26 px du handoff plus ses deux filets — voir la note sur `box-sizing`
+     juste dessous. Hors de l'échelle `--h-btn-*` (23, 25, 28, 31, 34) par sa provenance ; à
+     promouvoir dans `Button` au moment de la spec 15. */
+  height: 28px;
   border: 1px solid var(--border);
   border-radius: var(--radius-field);
   background: var(--field);
-  /* `content-box` : la hauteur du handoff désigne le contenu, la bordure s'ajoute — sans
-     quoi le bouton rendrait 2 px plus court, `<button>` étant en `border-box` par défaut. */
-  box-sizing: content-box;
+  /* **`border-box`, et la hauteur a été convertie avec.**
+   *
+   * Ce bouton était en `content-box` pour une raison juste : la hauteur du handoff désigne le
+   * contenu, le filet s'ajoutant par-dessus, et `<button>` est en `border-box` par défaut — donc sans
+   * cette ligne il rendait 2 px trop court. Mais `box-sizing` ne se règle pas par axe : la même
+   * déclaration s'appliquait à la **largeur**, et avec `width: 100%` les deux filets s'ajoutaient
+   * aux 100 % du pied. Le bouton sortait de la colonne par la droite. Signalé à l'écran le 18 août
+   * 2026, après une première correction qui n'avait traité que l'enveloppe (`DEFAUTS.md` n° 67).
+   *
+   * Écrire 28 en `border-box` rend exactement ce que rendait 26 en `content-box` — et la largeur
+   * cesse de déborder. **Quand une valeur du handoff désigne le contenu et qu'une largeur vaut
+   * 100 %, c'est la valeur qu'il faut convertir, pas le modèle de boîte qu'il faut changer.** */
+  box-sizing: border-box;
   font: var(--weight-bold) var(--text-label) var(--font-ui);
   color: var(--ink);
   cursor: pointer;

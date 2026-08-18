@@ -20,12 +20,47 @@
  * passait **sous** « Données / Structure ». Constaté à l'écran le 10 août 2026, avec sept onglets.
  *
  * L'enveloppe défile donc à sa place, et `flex: none` sur les vues les empêche d'être écrasées.
- * macOS ne montre la barre de défilement qu'au geste, donc rien ne s'ajoute à la trame. */
+ *
+ * # Les deux règles de débordement, et pourquoi la barre parasite existait
+ *
+ * Une barre de défilement apparaissait dans la bande, à côté de « Données », dans une zone de 34 px de
+ * haut où elle n'avait pas la place. Signalée à l'écran le 18 août 2026. Elle était **verticale**, et
+ * c'est ce qui met sur la piste : la cause n'est pas le nombre d'onglets.
+ *
+ * `TabStrip` rend **35 px pour 34 déclarés** — une décision de fidélité documentée dans sa feuille : le
+ * handoff ne pose aucun `box-sizing`, donc son filet bas s'ajoute à la hauteur. Ce pixel déborde de
+ * cette enveloppe de 34. Et le CSS dit qu'un axe en `auto` force l'autre à quitter `visible` : en
+ * posant `overflow-x: auto`, on avait rendu l'axe vertical défilable **sans le demander**. Le pixel de
+ * trop suffisait alors à faire dessiner une barre.
+ *
+ * Le pixel est donc retiré à sa source : dans cette composition, `.root` dessine déjà son propre filet
+ * bas **exactement là où tombe celui de `TabStrip`** — les deux lignes se superposaient. Retirer le
+ * doublon ramène la bande à 34 px et ne change rien à l'écran. `overflow-y: hidden` reste par-dessus,
+ * en garde-fou : la règle dit que cette enveloppe ne défile que dans un axe, quoi qu'on y mette.
+ *
+ * La barre **horizontale**, elle, est seulement masquée : la bande défile toujours à la molette et au
+ * clavier. C'est ce que fait toute bande d'onglets, Safari comprise — on ne fait pas glisser une barre
+ * sous ses onglets. Et le commentaire d'origine disait « macOS ne montre la barre qu'au geste, donc
+ * rien ne s'ajoute à la trame » : vrai pour une configuration de macOS, faux dès que les barres sont
+ * réglées sur « toujours » ou qu'une souris est branchée. */
 .strip {
   flex: 1;
   min-width: 0;
   display: flex;
   overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.strip::-webkit-scrollbar {
+  display: none;
+}
+
+/* Le filet bas en doublon, retiré — voir la note ci-dessus. Sélecteur d'enfant direct : il ne vise
+ * que la bande posée ici, et laisse `TabStrip` rendre ses 35 px partout ailleurs, comme le veut sa
+ * propre feuille. */
+.strip > :first-child {
+  border-bottom: none;
 }
 
 .vues {
@@ -45,16 +80,23 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  height: 22px;
+  padding: 0 var(--space-5);
   border: 0;
+  border-radius: var(--radius-control-2);
   background: none;
   font: inherit;
   color: inherit;
+  cursor: pointer;
 }
 
-.vue[aria-disabled="true"] {
-  color: var(--ink-3);
+.vue:hover {
+  background: var(--hover-row);
+  color: var(--ink-6);
 }
 
+/* La pastille sombre du mockup d'`A9` : c'est ce qui dit laquelle des deux vues est à l'écran. */
 .vueActive {
-  color: var(--ink);
+  background: var(--dark);
+  color: var(--paper);
 }

@@ -34,3 +34,47 @@ body {
   color: var(--ink);
   font-family: var(--font-ui);
 }
+
+/*
+ * Les barres de défilement, discrètes.
+ *
+ * # Pourquoi cette règle existe
+ *
+ * Plusieurs feuilles de ce projet portent le commentaire « macOS ne montre la barre de défilement
+ * qu'au geste, donc rien ne s'ajoute à la trame ». **C'est faux dès que l'utilisateur a réglé
+ * « Afficher les barres de défilement : toujours »**, ou qu'il branche une souris : WKWebView rend
+ * alors des barres classiques, épaisses et opaques, qui **prennent de la place** et s'ajoutent bien à
+ * la trame. Constaté sur une capture de l'application réelle, le 18 août 2026 : la barre de la sidebar
+ * y coupait les noms de tables.
+ *
+ * L'hypothèse était donc une hypothèse d'environnement, et elle valait pour *une* configuration de
+ * macOS. La règle ci-dessous ne dépend d'aucun réglage : la barre est fine, sans piste, et son curseur
+ * ne se voit qu'au survol du conteneur.
+ *
+ * `::-webkit-scrollbar` plutôt que `scrollbar-width: thin` : WebKit ignore encore la propriété
+ * standard, et c'est WebKit qui rend ce produit.
+ */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+/* Pas de piste : une piste opaque dessine une colonne sur la trame, ce qui est exactement ce que
+ * le mockup n'a pas. */
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 5px;
+  /* Une bordure transparente amincit le curseur sans changer la largeur de la zone cliquable : neuf
+   * pixels restent attrapables à la souris, le curseur n'en occupe que cinq. */
+  border: 2px solid transparent;
+  background-clip: content-box;
+  background-color: rgb(35 32 28 / 18%);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(35 32 28 / 32%);
+}
