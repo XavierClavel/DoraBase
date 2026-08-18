@@ -248,6 +248,7 @@ se pose : ajouter `blob:` à la directive concernée, ou gérer l'écriture côt
 | [`06c`](06c-introspection-postgresql.md) | Introspection PostgreSQL : catalogue → modèle, DDL | **fait** |
 | [`06d`](06d-lecture-paginee.md) | Lecture paginée des lignes : filtres, tri, contrainte IPC | **fait** |
 | [`06e`](06e-tunnel-ssh.md) | Tunnel SSH vers un bastion | **fait** (écran de confiance à trancher) |
+| [`06f`](06f-tls-verifie.md) | Le TLS branché, et **vérifié** — `rustls`, cinq modes distincts | **fait** |
 
 **Pourquoi `05` a été découpé en trois** (5 août 2026) : le périmètre indexé —
 « modèle de domaine, persistance, Trousseau » — mêlait trois préoccupations
@@ -399,14 +400,64 @@ propres critères de vérification.
 | [`12d`](12d-autocompletion.md) | A7 | Autocomplétion depuis le catalogue introspecté | **fait** |
 | [`12e`](12e-onglets-de-resultat.md) | A7 | Résultat, JSON, Plan, Messages | **fait** |
 | [`12f`](12f-requetes-enregistrees.md) | A7 | « Mes requêtes » : persistance, renommer, retirer | **fait** |
-| `13` | A8 | Console MongoDB et vue JSON | à écrire |
-| `14` | A9 | Structure et DDL | à écrire |
-| `15` | A10 | Préférences | à écrire |
+| [`13a`](13a-console-mongodb.md) | A8 | Console MongoDB | livrée |
+| [`13b`](13b-resultat-json.md) | A8 | Résultat en JSON dépliable | livrée |
+| [`13c`](13c-schema-deduit.md) | A8 | « Schéma déduit » | livrée |
+| [`14a`](14a-vue-structure.md) | A9 | Vue Structure et tableau des colonnes | livrée |
+| [`14b`](14b-index-contraintes-declencheurs.md) | A9 | Index, contraintes, déclencheurs | livrée |
+| [`14c`](14c-ddl.md) | A9 | Le DDL reconstruit, coloré et copiable | livrée |
+| [`15a`](15a-coquille-des-preferences.md) | A10 | La coquille des préférences | livrée |
+| [`15b`](15b-apparence.md) | A10 | Thème et couleur d'accent | livrée |
+| [`15c`](15c-grille-et-code.md) | A10 | Densité de grille et police du code | livrée |
+| [`15d`](15d-garde-fous.md) | A10 | Les garde-fous d'écriture, réglables | livrée |
 
 ## Moteurs additionnels
 
-Un scope par moteur, après PostgreSQL (`06`) : MySQL / MariaDB, SQLite, MongoDB,
-Redis, Snowflake, BigQuery. Numérotés `16` → `21` à mesure qu'ils sont écrits.
+Un scope par moteur, après PostgreSQL (`06`) : MySQL / MariaDB (`16`), SQLite (`17`),
+MongoDB (`18`), Redis (`19`), Snowflake (`20`), BigQuery (`21`). Écrits à mesure.
+
+**Quatre moteurs répondent** : PostgreSQL (`06`), MongoDB (`18`), SQLite (`17`), MySQL (`16`).
+
+**Le contrat de `06a` couvre six moteurs sur sept.** `19a` conclut que Redis n'y entre pas : un
+espace de clés n'est pas un tableau, et l'y forcer donnerait des écrans qui affichent des colonnes
+inventées. Il lui faut son propre écran, qui n'est pas maquetté. C'est la conclusion inverse de
+`18a`, et elle vaut d'être écrite.
+
+**`20` et `21` sont bloquées par l'absence de décor de test**, pas par une difficulté de conception :
+le projet n'a ni compte Snowflake ni compte BigQuery, et chaque moteur livré est vérifié contre un
+serveur réel. Un adaptateur dont aucun test ne dit s'il fonctionne est exactement le genre de code qui
+perd des données sans le dire.
+
+Comme `06`, un moteur ne tient pas dans une spec : `18` est découpé en sept scopes,
+sur le modèle `06a` (contrat) → `06b` (connexion) → `06c` (introspection) →
+`06d` (lecture). MongoDB en demande deux de plus, qui n'ont pas d'équivalent SQL :
+le schéma déduit, et la console dont le langage n'est pas du SQL.
+
+| Spec | Sujet | État |
+| --- | --- | --- |
+| [`18a`](18a-mongodb-face-au-contrat.md) | Les six endroits où le contrat de `06a` suppose ce que MongoDB n'a pas | livrée |
+| [`18b`](18b-connexion-mongodb.md) | La connexion, le type de déploiement, les échecs distingués | livrée |
+| [`18c`](18c-introspection-mongodb.md) | Bases, collections, vues, index | livrée |
+| [`18d`](18d-schema-deduit.md) | Le schéma déduit par échantillonnage, et la fréquence des champs | livrée |
+| [`18e`](18e-lecture-de-documents.md) | La lecture paginée de documents, filtres et tri | livrée |
+| [`18f`](18f-ecrire-un-document.md) | L'écriture, sa prévisualisation, et son refus sans jeu de réplicas | livrée |
+| [`18g`](18g-console-mongosh.md) | Exécuter une opération de collection, et l'expliquer | livrée |
+| [`16a`](16a-mysql-connexion.md) | La connexion MySQL, et ses trois écarts avec PostgreSQL | livrée |
+| [`16b`](16b-mysql-introspection.md) | Introspection et DDL, rendu par le serveur | livrée |
+| [`16c`](16c-mysql-lecture-et-ecriture.md) | Lire, écrire, exécuter | livrée |
+| [`17a`](17a-sqlite-un-fichier-pas-un-serveur.md) | SQLite : un fichier, pas un serveur | livrée |
+| [`17b`](17b-sqlite-introspection-et-lignes.md) | Introspection, lignes, écriture | livrée |
+| [`19a`](19a-redis-ce-que-le-contrat-ne-decrit-pas.md) | **Redis n'entre pas dans le contrat** — et pourquoi | livrée |
+| [`20`](20-snowflake.md) | Snowflake — **aucun décor de test** | livrée |
+| [`21`](21-bigquery.md) | BigQuery — **aucun décor de test**, et une facture par requête | livrée |
+
+`18a` est déclaratif et ne demande aucune base : c'est là que se prennent les décisions
+que les six autres appliquent. `18d` est la seule spec de moteur du projet à produire
+une donnée que le catalogue ne contient pas — d'où sa place à part.
+
+**`A8` (`13a`–`13c`) attend `18d` et `18g`**, pas `18` entier : la console a besoin
+d'exécuter et le panneau de schéma d'échantillonner. `A5`, `A6` et `A9` fonctionnent
+pour MongoDB dès `18e` et `18f`, sans une ligne de code propre au moteur.
 
 ## Ordre d'exécution
 
