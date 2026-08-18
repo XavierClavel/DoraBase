@@ -8,7 +8,14 @@ import { RadioGroup } from '../../ui/RadioGroup/RadioGroup'
 import { Select } from '../../ui/Select/Select'
 import { Toggle } from '../../ui/Toggle/Toggle'
 import type { ConnectionDraft } from './ConnectionDraft'
-import { ENVIRONMENT_ORDER, ENVIRONMENTS, SSL_MODE_ORDER, SSL_MODES } from './environments'
+import { estUnFichier } from './engines'
+import {
+  authentifie,
+  ENVIRONMENT_ORDER,
+  ENVIRONMENTS,
+  SSL_MODE_ORDER,
+  SSL_MODES,
+} from './environments'
 import styles from './NewConnection.module.css'
 
 /**
@@ -98,6 +105,9 @@ export function ConnectionForm({
   verrouille = false,
 }: ConnectionFormProps) {
   const [passwordVisible, setPasswordVisible] = useState(false)
+  // **Un moteur de fichier n'a pas de serveur** (`17a`) : cinq champs du formulaire ne veulent rien
+  // dire pour lui, et les afficher laisserait croire qu'ils comptent.
+  const fichier = estUnFichier(draft.engine)
 
   // **« + Nouveau projet… » est une option du `Select`, pas un second écran** (`08f`) : personne
   // ne crée un projet vide, donc le déclarer et y mettre sa première base est un seul geste.
@@ -167,76 +177,113 @@ export function ConnectionForm({
         </div>
       )}
 
-      {/* Le port est **collé** à l'hôte : sous-grille `1fr 84px` avec un gap de 8px, contre
-          les 18px de la grille principale. */}
-      <div className={styles.rowHost}>
-        <Field
-          label="Hôte"
-          mono
-          value={draft.host}
-          onChange={(event) => onChange({ host: event.target.value })}
-        />
-        <Field
-          label="Port"
-          mono
-          inputMode="numeric"
-          value={draft.port}
-          onChange={(event) => onChange({ port: event.target.value })}
-        />
-      </div>
+      {/* **Un moteur de fichier n'a ni hôte ni port** (`17a`). Les afficher ferait remplir cinq
+          champs pour rien, et laisserait croire qu'ils comptent — c'est la raison qui a fait
+          préférer masquer plutôt qu'ajouter un champ `path` vide pour six moteurs sur sept. */}
+      {!fichier && (
+        // Le port est **collé** à l'hôte : sous-grille `1fr 84px` avec un gap de 8px, contre
+        // les 18px de la grille principale.
+        <div className={styles.rowHost}>
+          <Field
+            label="Hôte"
+            mono
+            value={draft.host}
+            onChange={(event) => onChange({ host: event.target.value })}
+          />
+          <Field
+            label="Port"
+            mono
+            inputMode="numeric"
+            value={draft.port}
+            onChange={(event) => onChange({ port: event.target.value })}
+          />
+        </div>
+      )}
 
+      {/* **Le même champ, deux rôles.** Pour un moteur de fichier, `defaultDatabase` porte le chemin
+          — le champ est déjà « la base à ouvrir », et pour SQLite la base *est* un fichier. Le
+          libellé change, la donnée non. */}
       <Field
-        label="Base par défaut"
+        label={fichier ? 'Fichier de la base' : 'Base par défaut'}
         mono
         value={draft.defaultDatabase}
+        placeholder={fichier ? '~/bases/atelier.db' : undefined}
         onChange={(event) => onChange({ defaultDatabase: event.target.value })}
       />
 
-      <Field
-        label="Utilisateur"
-        mono
-        value={draft.username}
-        onChange={(event) => onChange({ username: event.target.value })}
-      />
+      {!fichier && (
+        <Field
+          label="Utilisateur"
+          mono
+          value={draft.username}
+          onChange={(event) => onChange({ username: event.target.value })}
+        />
+      )}
 
-      <Field
-        label="Mot de passe"
-        mono
-        type={passwordVisible ? 'text' : 'password'}
-        className={styles.passwordField}
-        value={draft.password}
-        onChange={(event) => onChange({ password: event.target.value })}
-        suffix={
-          <>
-            <button
-              type="button"
-              className={styles.eye}
-              onClick={() => setPasswordVisible((visible) => !visible)}
-              aria-label={passwordVisible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
-              aria-pressed={passwordVisible}
-            >
-              <Icon name="eye" size={14} strokeWidth={1.8} />
-            </button>
-            {/* Le badge annonce **où** le secret sera rangé. `05c` choisit le mécanisme selon
+      {/* Un fichier local n'a pas de mot de passe (`17a`). Le champ resterait vide, et le badge
+          « Trousseau » promettrait de ranger un secret qui n'existe pas. */}
+      {!fichier && (
+        <Field
+          label="Mot de passe"
+          mono
+          type={passwordVisible ? 'text' : 'password'}
+          className={styles.passwordField}
+          value={draft.password}
+          onChange={(event) => onChange({ password: event.target.value })}
+          suffix={
+            <>
+              <button
+                type="button"
+                className={styles.eye}
+                onClick={() => setPasswordVisible((visible) => !visible)}
+                aria-label={
+                  passwordVisible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'
+                }
+                aria-pressed={passwordVisible}
+              >
+                <Icon name="eye" size={14} strokeWidth={1.8} />
+              </button>
+              {/* Le badge annonce **où** le secret sera rangé. `05c` choisit le mécanisme selon
                 la signature du binaire : en développement c'est un fichier chiffré, pas le
                 Trousseau. Le libellé exact viendra de `08e`, qui interrogera le magasin —
                 ici il reflète le cas signé, comme le mockup. */}
-            <Badge tone="success" icon={<Icon name="lock" size={12} strokeWidth={2} />}>
-              Trousseau
-            </Badge>
-          </>
-        }
-      />
+              <Badge tone="success" icon={<Icon name="lock" size={12} strokeWidth={2} />}>
+                Trousseau
+              </Badge>
+            </>
+          }
+        />
+      )}
 
       {/* Rangée pleine largeur : mode SSL à gauche, les deux bascules à droite, alignées en
-          bas avec un décalage de 5px pour tomber sur la ligne de base des champs. */}
-      <div className={styles.rowSsl}>
-        <Select
-          label="Mode SSL"
-          options={OPTIONS_SSL}
-          value={draft.sslMode}
-          onValueChange={(sslMode) => onChange({ sslMode: sslMode as SslMode })}
+          bas avec un décalage de 5px pour tomber sur la ligne de base des champs.
+
+          **Le mode SSL disparaît pour un fichier** : il n'y a pas de transport à chiffrer. Les deux
+          bascules restent — « lecture seule » et « se reconnecter au démarrage » ont un sens pour
+          un fichier comme pour un serveur. */}
+      {/* **Le certificat d'autorité, visible seulement quand le mode l'emploie** (`06f`).
+          `require` chiffre sans authentifier : le champ n'y servirait à rien, et l'afficher ferait
+          croire qu'il change quelque chose. C'est la même règle que les cinq champs masqués pour un
+          moteur de fichier (`17a`) — ne montrer que ce qui compte. */}
+      {!fichier && authentifie(draft.sslMode) && (
+        <Field
+          label="Certificat d’autorité"
+          mono
+          value={draft.caCertificate}
+          placeholder="~/certs/interne.pem — vide : autorités publiques"
+          onChange={(event) => onChange({ caCertificate: event.target.value })}
         />
+      )}
+
+      <div className={styles.rowSsl}>
+        {!fichier && (
+          <Select
+            label="Mode SSL"
+            options={OPTIONS_SSL}
+            value={draft.sslMode}
+            onValueChange={(sslMode) => onChange({ sslMode: sslMode as SslMode })}
+          />
+        )}
         <div className={styles.toggles}>
           <ToggleWithLabel
             checked={draft.readOnly}

@@ -6,6 +6,7 @@ import {
   fermer,
   idOnglet,
   type Onglet,
+  type OngletConsole,
   ongletActif,
   ouvrir,
   ouvrirConsole,
@@ -112,7 +113,7 @@ describe('les consoles (`12a`)', () => {
       ouvrirConsole(ouvrirConsole(AUCUN_ONGLET, analytics), analytics),
       analytics,
     )
-    etat = fermer(etat, idOnglet({ sorte: 'console', key: analytics, numero: 2 }))
+    etat = fermer(etat, idOnglet({ sorte: 'console', key: analytics, numero: 2, dialecte: 'sql' }))
     etat = ouvrirConsole(etat, analytics)
     // Un compteur qui monte afficherait « console 4 » à côté de « console 1 » et « console 3 » : le
     // numéro est une étiquette, pas un historique.
@@ -181,5 +182,22 @@ describe('la cible d’un retrait (`08j`)', () => {
     expect(viseeParLId(cible, idDe('Print', 'analytics'))).toBe(true)
     expect(viseeParLId(cible, idDe('Print', 'shop'))).toBe(true)
     expect(viseeParLId(cible, idDe('Outils', 'analytics'))).toBe(false)
+  })
+})
+
+describe('le dialecte d’une console (`13a`)', () => {
+  it('vaut « sql » par défaut, et « mongo » quand on le demande', () => {
+    const sql = ouvrirConsole(AUCUN_ONGLET, analytics).onglets[0] as OngletConsole
+    expect(sql.dialecte).toBe('sql')
+    const mongo = ouvrirConsole(AUCUN_ONGLET, analytics, 'mongo').onglets[0] as OngletConsole
+    expect(mongo.dialecte).toBe('mongo')
+  })
+
+  it('ne fait pas partie de l’identité : deux dialectes ne dédoublent pas la numérotation', () => {
+    // **Le dialecte n'est pas une coordonnée.** Une console mongo et une console SQL sur la même
+    // base sont deux consoles, comme deux consoles SQL le sont — et elles se numérotent dans la
+    // même suite, sans quoi la bande afficherait deux « console 1 ».
+    const etat = ouvrirConsole(ouvrirConsole(AUCUN_ONGLET, analytics, 'mongo'), analytics)
+    expect(etat.onglets.map(libelle)).toEqual(['console 1', 'console 2'])
   })
 })

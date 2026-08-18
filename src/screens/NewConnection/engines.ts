@@ -38,5 +38,25 @@ export const ENGINE_ORDER: readonly Engine[] = [
   'bigquery',
 ]
 
-/** Le seul moteur dont `06` a livré un adaptateur. Les autres sont sélectionnables. */
-export const IMPLEMENTED_ENGINES: readonly Engine[] = ['postgresql']
+/**
+ * Les moteurs dont un adaptateur existe. Les autres restent **sélectionnables et le disent**.
+ *
+ * PostgreSQL (`06`), MongoDB (`18`), SQLite (`17`), MySQL (`16`). Les trois restants sont refusés par
+ * le moteur avec une raison qui nomme ce qui manque — voir `raison_du_refus` côté Rust : Redis
+ * n'entre pas dans le contrat (`19a`), Snowflake et BigQuery n'ont aucun décor de test (`20`, `21`).
+ */
+export const IMPLEMENTED_ENGINES: readonly Engine[] = ['postgresql', 'mongodb', 'sqlite', 'mysql']
+
+/**
+ * Les moteurs **sans serveur** : ni hôte, ni port, ni utilisateur, ni mot de passe, ni TLS.
+ *
+ * SQLite est le seul (`17a`). Son chemin de fichier vit dans `defaultDatabase` — le champ est déjà
+ * « la base à ouvrir », et pour SQLite la base *est* un fichier. Afficher un port à qui n'en a pas
+ * ferait remplir cinq champs pour rien, et laisserait croire qu'ils comptent.
+ */
+export const FILE_ENGINES: readonly Engine[] = ['sqlite']
+
+/** Vrai quand ce moteur s'ouvre depuis un fichier plutôt que depuis un hôte. */
+export function estUnFichier(engine: Engine): boolean {
+  return FILE_ENGINES.includes(engine)
+}

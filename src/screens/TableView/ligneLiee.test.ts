@@ -9,8 +9,10 @@ const colonne = (name: string): ColumnInfo => ({
   category: 'text',
   nullable: true,
   default: null,
+  identity: null,
   key: null,
   comment: null,
+  frequency: null,
 })
 
 const relation = (over: Partial<Relation> = {}): Relation => ({

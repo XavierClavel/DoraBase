@@ -1,0 +1,347 @@
+/*
+ * La vue Structure de `A9` (`14a` → `14c`).
+ *
+ * Trois zones empilées à gauche — comptes, tableau des colonnes, deux panneaux — et la colonne
+ * sombre du DDL à droite, 392 px comme le mockup. Toutes les mesures viennent de lui.
+ */
+
+.root {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  background: var(--paper);
+}
+
+.gauche {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.vide {
+  margin: auto;
+  padding: var(--space-8);
+  font: var(--weight-medium) var(--text-dense) / var(--leading-ui) var(--font-ui);
+  color: var(--ink-8);
+  text-align: center;
+}
+
+/* --- La bande des comptes ------------------------------------------------ */
+
+.comptes {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+  height: var(--h-bar);
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--divider);
+  font: var(--weight-bold) var(--text-label) / 1 var(--font-ui);
+  color: var(--ink-8);
+}
+
+.barre {
+  width: 1px;
+  height: 12px;
+  background: var(--border);
+}
+
+.espace {
+  flex: 1;
+}
+
+.filtre {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 22px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control-2);
+  background: var(--field);
+  color: var(--ink-6);
+}
+
+.filtre:focus-within {
+  border-color: var(--hover-border);
+  box-shadow: var(--shadow-focus);
+}
+
+.filtre input {
+  width: 92px;
+  border: 0;
+  background: none;
+  font: var(--weight-bold) var(--text-label) / 1 var(--font-ui);
+  color: inherit;
+  outline: none;
+}
+
+/* --- Le tableau des colonnes -------------------------------------------- */
+
+/* `auto` et non `hidden` : dix-huit colonnes dépassent la hauteur donnée au tableau, et le mockup
+ * pose `overflow:hidden` parce qu'il est figé — un écran réel doit pouvoir atteindre la
+ * dix-huitième ligne. */
+.tableau {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.rang {
+  color: var(--ink-3);
+  font-size: var(--text-meta);
+}
+
+.nomCle {
+  font-weight: var(--weight-bold);
+}
+
+/* `no` et `yes` : la couleur d'une contrainte présente contre une contrainte absente. */
+.non {
+  color: var(--engine-rd);
+}
+
+.oui {
+  color: var(--success-ink);
+}
+
+.absent {
+  color: var(--ink-3);
+}
+
+/* Un défaut long (`nextval('public.orders_id_seq'::regclass)`) est coupé plutôt que de pousser la
+ * colonne « commentaire » hors de vue. Le texte entier reste dans l'infobulle et dans le DDL. */
+.defaut {
+  display: block;
+  overflow: hidden;
+  color: var(--ink-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cle {
+  display: inline-flex;
+  align-items: center;
+}
+
+.iconePk {
+  color: var(--gold);
+}
+
+.iconeFk {
+  color: var(--info);
+}
+
+.iconeTerne {
+  color: var(--ink-4);
+}
+
+/* Une déduction de DoraBase, distincte d'un commentaire écrit exprès. */
+.deduit {
+  color: var(--ink-2);
+  font-style: italic;
+}
+
+/* Un texte que seules les voix lisent. `clip` et non `display:none` : un contenu masqué par
+ * `display` n'est pas annoncé du tout. */
+.pourLaVoix {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* --- Index, contraintes, déclencheurs (`14b`) ---------------------------- */
+
+.panneaux {
+  display: flex;
+  flex: none;
+  max-height: 40%;
+  border-top: 1px solid var(--divider);
+}
+
+.panneau {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-5) var(--space-6);
+  overflow: auto;
+}
+
+.panneau + .panneau {
+  border-left: 1px solid var(--divider);
+}
+
+.panneauTitre {
+  margin: 0 0 var(--space-3);
+  font: var(--weight-bold) var(--text-meta) / 1 var(--font-ui);
+  color: var(--ink-4);
+  letter-spacing: var(--tracking-caps-sm);
+  text-transform: uppercase;
+}
+
+.panneauVide {
+  margin: 0;
+  font: var(--weight-medium) var(--text-label) / var(--leading-ui) var(--font-ui);
+  color: var(--ink-3);
+}
+
+.liste {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entree {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  font: var(--weight-medium) var(--text-label) / 1.5 var(--font-mono);
+  color: var(--ink);
+}
+
+.entreeNom {
+  flex: none;
+}
+
+.entreeDetail {
+  overflow: hidden;
+  color: var(--ink-meta);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Le DDL (`14c`) ----------------------------------------------------- */
+
+.ddl {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 392px;
+  min-height: 0;
+  border-left: 1px solid var(--divider);
+  background: var(--dark);
+}
+
+.ddlBarre {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex: none;
+  height: var(--h-bar);
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid rgb(251 247 239 / 12%);
+  font: var(--weight-bold) var(--text-caps) / 1 var(--font-ui);
+  color: rgb(251 247 239 / 55%);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.ddlAction {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 19px;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: rgb(251 247 239 / 12%);
+  font: var(--weight-bold) var(--text-meta) / 1 var(--font-ui);
+  color: var(--ink-on-dark);
+  cursor: pointer;
+}
+
+.ddlAction:hover {
+  background: rgb(251 247 239 / 20%);
+}
+
+.ddlTexte {
+  flex: 1;
+  min-height: 0;
+  padding: 0 var(--space-3);
+  overflow: auto;
+}
+
+/* Le bloc de `SqlColore` porte son propre fond arrondi, fait pour un panneau clair. Dans une
+ * colonne déjà sombre, il ferait un rectangle dans un rectangle. */
+.ddlTexte > pre {
+  padding: var(--space-5) var(--space-3);
+  border-radius: 0;
+  background: none;
+}
+
+.ddlMention {
+  flex: none;
+  margin: 0;
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid rgb(251 247 239 / 12%);
+  font: var(--weight-medium) var(--text-meta) / var(--leading-ui) var(--font-ui);
+  color: rgb(251 247 239 / 50%);
+}
+
+.ddlMention code {
+  font-family: var(--font-mono);
+}
+
+.ddlPied {
+  display: flex;
+  gap: var(--space-3);
+  flex: none;
+  padding: var(--space-5) var(--space-6);
+}
+
+.ddlBouton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  flex: 1;
+  height: 27px;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: rgb(251 247 239 / 10%);
+  font: var(--weight-bold) var(--text-label) / 1 var(--font-ui);
+  color: var(--ink-on-dark);
+  cursor: pointer;
+}
+
+.ddlBouton:hover {
+  background: rgb(251 247 239 / 18%);
+}
+
+.ddlBouton[aria-disabled="true"] {
+  color: rgb(251 247 239 / 40%);
+  cursor: default;
+}
+
+.ddlBouton[aria-disabled="true"]:hover {
+  background: rgb(251 247 239 / 10%);
+}
+
+/* --- La barre d'état de la structure ------------------------------------ */
+
+.pied {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+  height: var(--h-statusbar);
+  padding: 0 var(--space-6);
+  border-top: 1px solid var(--divider);
+  background: var(--bar);
+  font: var(--weight-medium) var(--text-label) / 1 var(--font-mono);
+  color: var(--ink-8);
+}
+
+.piedPoint {
+  margin-right: var(--space-3);
+  color: var(--ink-3);
+}

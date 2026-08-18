@@ -28,6 +28,7 @@ import type { CibleDeSuppression } from '../Explorer/DeleteConnectionDialog'
 import { DetailPanel } from '../Explorer/DetailPanel'
 import { ExplorerSidebar } from '../Explorer/ExplorerSidebar'
 import { ObjectTable } from '../Explorer/ObjectTable'
+import { StructureStatusBar, StructureView } from '../Structure/StructureView'
 import { ApplyConfirm } from '../TableView/ApplyConfirm'
 import { EditBanner } from '../TableView/EditBanner'
 import { type EnAttente, retirer } from '../TableView/modifications'
@@ -40,6 +41,7 @@ import { PASSERELLE_LIGNES, type PasserelleLignes } from '../TableView/useLignes
 import { PASSERELLE_PREVIEW, type PasserellePreview, useSqlPrevu } from '../TableView/useSqlPrevu'
 import {
   AUCUN_ONGLET,
+  type Dialecte,
   type EtatOnglets,
   fermer,
   idOnglet,
@@ -53,9 +55,18 @@ import { ProjectMenu } from './ProjectMenu'
 import { PASSERELLE_TAURI, type PasserelleArbre, useArbre } from './useArbre'
 import { PASSERELLE_DETAIL, type PasserelleDetail, useDetailTable } from './useDetailTable'
 import styles from './Workbench.module.css'
-import { WorkbenchTabs } from './WorkbenchTabs'
+import { type VueObjet, WorkbenchTabs } from './WorkbenchTabs'
 
 type WorkbenchProps = {
+  /**
+   * La densité des lignes (`15c`), depuis les préférences.
+   *
+   * **Passée, pas lue** : la virtualisation de `10a` a besoin d'un nombre, et l'écran de travail est
+   * le seul chemin entre les préférences et les deux grilles du produit.
+   */
+  rowHeight?: number
+  /** Ouvre les préférences (`15a`). Absent, l'engrenage reste désactivé avec sa raison. */
+  onOpenPreferences?: () => void
   projects: readonly Project[]
   passerelle?: PasserelleArbre
   passerelleDetail?: PasserelleDetail
@@ -98,6 +109,8 @@ type WorkbenchProps = {
  * `A5` du même coup.
  */
 export function Workbench({
+  rowHeight,
+  onOpenPreferences,
   projects,
   passerelle = PASSERELLE_TAURI,
   passerelleDetail = PASSERELLE_DETAIL,
@@ -174,6 +187,23 @@ export function Workbench({
   const projetActif = projects.find((p) => p.name === contexte?.project) ?? projects[0] ?? null
   const environnement: Environment = projetActif?.activeEnvironment ?? 'dev'
 
+  /**
+   * Le dialecte que la base parle (`13a`).
+   *
+   * **Dérivé du moteur déclaré, jamais choisi.** Une console mongo sur une base PostgreSQL n'aurait
+   * rien à interroger, et l'inverse non plus : le bouton « Nouvelle console » ouvre donc la console
+   * de la base sur laquelle on est, sans poser la question.
+   */
+  const dialecteDe = useCallback(
+    (nomProjet: string, nomBase: string): Dialecte => {
+      const moteur = projects
+        .find((p) => p.name === nomProjet)
+        ?.databases.find((d) => d.name === nomBase)?.engine
+      return moteur === 'mongodb' ? 'mongo' : 'sql'
+    },
+    [projects],
+  )
+
   const objets: readonly TableSummary[] = contexte
     ? (charge.objets[idSchema(contexte.project, contexte.database, contexte.schema)] ?? [])
     : []
@@ -194,7 +224,12 @@ export function Workbench({
   // Le détail sert deux endroits : le panneau droit de `A4` (l'objet sélectionné) et la section
   // « Colonnes de *table* » de la sidebar (la table de l'onglet actif). Une seule lecture, deux
   // lecteurs — la table de l'onglet actif étant aussi celle qu'on vient de sélectionner.
-  const cible = table?.table ?? objetChoisi
+  // **Trois sources, dans cet ordre** : l'onglet actif, l'objet sélectionné dans la liste du centre,
+  // et — depuis `13c` — l'objet sélectionné dans l'arbre. Sans la troisième, ouvrir une console
+  // faisait disparaître la section « Schéma déduit » de la sidebar, alors que c'est précisément là
+  // qu'on la regarde : le mockup d'`A8` la montre pendant qu'on écrit une commande.
+  const objetDeLArbre = selection?.kind === 'object' ? selection.label : null
+  const cible = table?.table ?? (objetChoisi !== '' ? objetChoisi : null) ?? objetDeLArbre
   const { detail, loading, error } = useDetailTable(
     cle,
     contexte?.schema ?? null,
@@ -202,8 +237,15 @@ export function Workbench({
     passerelleDetail,
   )
 
+  // **La vue est un état d'onglet, pas d'écran.** Deux tables ouvertes peuvent être regardées
+  // différemment, et revenir sur un onglet doit le retrouver comme on l'a laissé — c'est déjà la
+  // règle des modifications en attente (`11b`) et du texte des consoles (`12a`).
+  const [vues, setVues] = useState<Record<string, VueObjet>>({})
+
   const idActif = actif ? idOnglet(actif) : null
   const enEdition = edition || (idActif !== null && ongletsEnEdition.has(idActif))
+  const vue: VueObjet = idActif === null ? 'donnees' : (vues[idActif] ?? 'donnees')
+  const structureActive = table !== null && vue === 'structure'
   const attente = idActif === null ? [] : (attentes[idActif] ?? [])
 
   /** Pose l'attente de l'onglet actif. Un seul propriétaire de cet état, décidé en `11b`. */
@@ -356,6 +398,12 @@ export function Workbench({
         onSelect={(id) => setEtatOnglets((etat) => ({ ...etat, actif: id }))}
         onClose={(id) => setEtatOnglets((etat) => fermer(etat, id))}
         onReorder={(ids) => setEtatOnglets((etat) => reordonner(etat, ids))}
+        vue={vue}
+        onVueChange={
+          idActif === null
+            ? undefined
+            : (suivante) => setVues((precedent) => ({ ...precedent, [idActif]: suivante }))
+        }
       />
       {consoleActive && cle ? (
         // La console SQL (`12a`). Elle occupe la largeur du centre ; le panneau droit
@@ -366,6 +414,8 @@ export function Workbench({
           // texte de la première. `12a` avait retiré cette `key` faute de garantie
           // mesurable — elle en a une maintenant.
           key={idOnglet(consoleActive)}
+          dialecte={consoleActive.dialecte}
+          rowHeight={rowHeight}
           texte={textes[idOnglet(consoleActive)] ?? ''}
           onTexteChange={(texte) =>
             setTextes((precedent) => ({
@@ -397,6 +447,30 @@ export function Workbench({
                   })
           }
         />
+      ) : structureActive && table ? (
+        // La structure de la table ouverte (`14a` → `14c`). **Aucune lecture nouvelle** : `detail`
+        // est celui que la sidebar et le panneau droit lisent déjà.
+        <StructureView
+          detail={detail}
+          schema={table.schema}
+          loading={loading}
+          error={error}
+          onOuvrirDansLaConsole={
+            cle === null
+              ? undefined
+              : (ddl) =>
+                  setEtatOnglets((etat) => {
+                    const suivant = ouvrirConsole(etat, cle, dialecteDe(cle.project, cle.database))
+                    // Le DDL entre dans la console **qui vient d'être ouverte**, pas dans celle
+                    // qui était active : écraser le texte d'une console où l'on travaillait
+                    // perdrait une requête en cours d'écriture.
+                    if (suivant.actif) {
+                      setTextes((precedent) => ({ ...precedent, [suivant.actif as string]: ddl }))
+                    }
+                    return suivant
+                  })
+          }
+        />
       ) : table && cle ? (
         // Les lignes de la table ouverte (`10c`). La toolbar (`10e`) et le panneau
         // de ligne (`10f`) viendront l'entourer.
@@ -417,6 +491,7 @@ export function Workbench({
           rafraichissement={rafraichissement}
           attente={attente}
           onAttenteChange={onAttenteChange}
+          rowHeight={rowHeight}
         />
       ) : (
         <>
@@ -446,6 +521,7 @@ export function Workbench({
     <div className={styles.root}>
       <TitleBar
         showConsole
+        onOpenPreferences={onOpenPreferences}
         center={
           <>
             {/* La pastille ouvre le menu des projets et bases (`08g`) : son chevron l'annonçait
@@ -592,7 +668,12 @@ export function Workbench({
               // n'aurait rien à interroger, et le bouton disparaît plutôt que d'ouvrir un onglet
               // inerte.
               onNewConsole={
-                cle === null ? undefined : () => setEtatOnglets((etat) => ouvrirConsole(etat, cle))
+                cle === null
+                  ? undefined
+                  : () =>
+                      setEtatOnglets((etat) =>
+                        ouvrirConsole(etat, cle, dialecteDe(cle.project, cle.database)),
+                      )
               }
               // **Retirer une base ferme ses onglets**, et l'écran de travail est le seul à pouvoir
               // le faire : un onglet survivant lirait une base dont la déclaration est partie.
@@ -642,13 +723,21 @@ export function Workbench({
               onToggle={basculer}
               onAddDatabase={onNewDatabase}
               onRefresh={rafraichir}
+              // **La section suit l'objet lu, pas l'onglet ouvert.** Le mockup d'`A8` montre
+              // « Schéma déduit » dans la sidebar *pendant* qu'une console est active : les champs
+              // d'une collection sont ce qu'on regarde en écrivant une commande. La condition
+              // portait sur `table`, ce qui faisait disparaître la section dès qu'on passait sur la
+              // console — et rendait `13c` inatteignable.
+              //
+              // Les annotations, elles, restent propres à la vue de table : « filtré » et « tri ↓ »
+              // décrivent l'état d'une grille, qui n'existe pas sous une console.
               columns={
-                table
+                detail
                   ? {
-                      table: table.table,
-                      columns: detail?.columns ?? [],
+                      table: detail.name,
+                      columns: detail.columns,
                       loading,
-                      annotations: annotationsDe(etatRequete, attente),
+                      annotations: table ? annotationsDe(etatRequete, attente) : undefined,
                     }
                   : undefined
               }
@@ -659,7 +748,10 @@ export function Workbench({
             // panneau droit, et celui de `A5` proposerait ici de sélectionner une ligne d'un
             // résultat qui n'existe pas encore. Le centre est donc rendu seul ou dans le partage
             // selon ce que l'onglet ouvre. Vu à l'écran en assemblant `12a`.
-            consoleActive ? (
+            // **La structure occupe aussi toute la largeur du centre** : elle porte sa propre
+            // colonne de DDL à droite, exactement là où le panneau de détail se serait posé —
+            // c'est ce que montre le mockup d'`A9`.
+            consoleActive || structureActive ? (
               centre
             ) : (
               <SplitPane
@@ -768,7 +860,8 @@ export function Workbench({
       {/* **Sur `table`, pas sur `actif`** : ses chiffres sont ceux d'une lecture de table, et les
           afficher sous une console annoncerait « 500 lignes · limit 500 » pour une requête qui n'a
           pas tourné. Vu à l'écran en assemblant `12a`. La console porte son propre pied. */}
-      {table && (
+      {structureActive && detail && <StructureStatusBar detail={detail} />}
+      {table && !structureActive && (
         <TableStatusBar
           fenetre={lecture.fenetre}
           loading={lecture.loading}

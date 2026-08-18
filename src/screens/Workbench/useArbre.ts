@@ -80,12 +80,16 @@ export function useArbre(
       if (!project || !database || !environment) return
       const id = idBase(project, database)
       const cle = databaseKey(project, database, environment)
-      const variante = varianteDe(projects, project, database, environment)
-      if (!variante) return
+      const declaration = baseDeclaree(projects, project, database)
+      const variante = declaration?.variants.find((v) => v.environment === environment)
+      if (!declaration || !variante) return
 
       marquer(id, true)
       try {
-        await passerelle.openDatabase(cle, variante)
+        // **Le moteur déclaré décide de l'adaptateur** (`18a`) : la variante ne le porte pas, la
+        // `Database` si. Le déduire côté Rust demanderait de relire la configuration à chaque
+        // ouverture.
+        await passerelle.openDatabase(cle, declaration.engine, variante)
         const schemas = await passerelle.listSchemas(cle)
         setCharge((precedent) => ({
           ...precedent,
@@ -155,16 +159,14 @@ export function useArbre(
 }
 
 /** La variante d'environnement d'une base, celle que `open_database` réclame. */
-function varianteDe(
-  projects: readonly Project[],
-  project: string,
-  database: string,
-  environment: Environment,
-) {
-  return projects
-    .find((p) => p.name === project)
-    ?.databases.find((d) => d.name === database)
-    ?.variants.find((v) => v.environment === environment)
+/**
+ * La base **déclarée**, et non sa seule variante d'environnement.
+ *
+ * Depuis `18`, l'ouverture a besoin du moteur, qui vit au niveau de la `Database` : rendre la
+ * variante seule obligeait à refaire la même recherche une seconde fois pour l'obtenir.
+ */
+function baseDeclaree(projects: readonly Project[], project: string, database: string) {
+  return projects.find((p) => p.name === project)?.databases.find((d) => d.name === database)
 }
 
 function message(cause: unknown): string {

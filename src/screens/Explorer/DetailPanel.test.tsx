@@ -11,8 +11,10 @@ const colonne = (name: string, over: Partial<ColumnInfo> = {}): ColumnInfo => ({
   category: 'number',
   nullable: false,
   default: null,
+  identity: null,
   key: null,
   comment: null,
+  frequency: null,
   ...over,
 })
 

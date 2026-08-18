@@ -303,7 +303,15 @@ export function ExplorerSidebar({
         )}
         {columns && (
           <section className={styles.colonnes}>
-            <SidebarSectionTitle>Colonnes de {columns.table}</SidebarSectionTitle>
+            {/* **« Schéma déduit » quand il l'est** (`13c`). Le mot est le plus important de cette
+                section : les champs viennent d'un **échantillon** (`18d`), pas d'un catalogue. Le
+                titre se déduit de la donnée — une colonne qui porte une fréquence est une colonne
+                déduite — plutôt que d'un drapeau que l'appelant pourrait oublier de poser. */}
+            <SidebarSectionTitle>
+              {estDeduit(columns.columns)
+                ? `Schéma déduit de ${columns.table}`
+                : `Colonnes de ${columns.table}`}
+            </SidebarSectionTitle>
             {columns.loading ? (
               <p className={styles.message}>Chargement des colonnes…</p>
             ) : (
@@ -317,8 +325,19 @@ export function ExplorerSidebar({
                     typeIcon={colonne.key === 'primary' ? 'key' : colonne.key ? 'fk' : undefined}
                     typeIconColor={colonne.key === 'primary' ? 'var(--gold)' : 'var(--info)'}
                     typeGlyph={colonne.key ? undefined : glypheDe(colonne.category)}
-                    meta={columns.annotations?.[colonne.name] ?? colonne.typeName}
-                    metaActive={columns.annotations?.[colonne.name] !== undefined}
+                    meta={
+                      columns.annotations?.[colonne.name] ??
+                      // **La fréquence prend la place du type quand elle est partielle** — c'est
+                      // ce que le mockup d'`A8` montre : `channel 98 %`. Un champ à 100 % affiche
+                      // son type : répéter « 100 % » sur quinze lignes noierait les deux qui ne
+                      // le sont pas, et ce sont celles-là qui comptent.
+                      frequenceLisible(colonne) ??
+                      colonne.typeName
+                    }
+                    metaActive={
+                      columns.annotations?.[colonne.name] !== undefined ||
+                      frequenceLisible(colonne) !== null
+                    }
                   />
                 ))}
                 {columns.columns.length > APERCU_COLONNES && (
@@ -494,4 +513,27 @@ const RAISONS = {
   renommerIndisponible: 'Cet écran n’est pas relié à la commande de renommage.',
   retirerIndisponible: 'Cet écran n’est pas relié à la commande de retrait.',
   modifierIndisponible: 'Cet écran n’est pas relié à la modale de modification.',
+}
+
+/**
+ * Vrai quand ces colonnes sont **déduites** et non déclarées (`13c`).
+ *
+ * La fréquence est `None` pour un moteur relationnel — une colonne y existe pour toutes les lignes,
+ * la question ne se pose pas (`18d`). Sa présence est donc le signal, et il vient de la donnée : un
+ * drapeau passé par l'appelant serait un drapeau qu'on peut oublier de poser.
+ */
+function estDeduit(colonnes: readonly ColumnInfo[]): boolean {
+  return colonnes.some((colonne) => colonne.frequency !== null)
+}
+
+/**
+ * `98 %` pour un champ partiel, `null` pour un champ complet ou déclaré.
+ *
+ * **Un champ à 100 % n'est pas garanti pour autant** : l'échantillon n'est pas la collection. C'est
+ * la limite de l'exercice, et elle est dite dans le titre de la section — « déduit » — plutôt que
+ * répétée sur chaque ligne.
+ */
+function frequenceLisible(colonne: ColumnInfo): string | null {
+  if (colonne.frequency === null || colonne.frequency >= 0.995) return null
+  return `${Math.round(colonne.frequency * 100)} %`
 }

@@ -38,7 +38,21 @@ export type OngletConsole = {
   sorte: 'console'
   key: DatabaseKey
   numero: number
+  /**
+   * La langue que la console parle (`13a`).
+   *
+   * **Un dialecte, et non une troisième forme d'onglet.** Ce qui change entre une console SQL et une
+   * console mongo est la **grammaire** de l'éditeur et la forme du résultat — pas la nature de
+   * l'onglet : il se ferme, se réordonne et garde son texte exactement pareil.
+   *
+   * Le dialecte suit le moteur de la base, il ne se choisit pas : une console mongo sur une base
+   * PostgreSQL n'aurait rien à interroger.
+   */
+  dialecte: Dialecte
 }
+
+/** Les langues de console que le projet connaît. `19` (Redis) en ajoutera une troisième. */
+export type Dialecte = 'sql' | 'mongo'
 
 /**
  * Ce qu'un onglet de l'écran de travail peut être.
@@ -111,7 +125,11 @@ export function fermer(etat: EtatOnglets, id: string): EtatOnglets {
  * avoir fermé « console 2 », la suivante reprend ce numéro plutôt que d'afficher « console 3 » à côté
  * d'une « console 1 » solitaire.
  */
-export function ouvrirConsole(etat: EtatOnglets, key: DatabaseKey): EtatOnglets {
+export function ouvrirConsole(
+  etat: EtatOnglets,
+  key: DatabaseKey,
+  dialecte: Dialecte = 'sql',
+): EtatOnglets {
   const pris = new Set(
     etat.onglets
       .filter(
@@ -123,7 +141,7 @@ export function ouvrirConsole(etat: EtatOnglets, key: DatabaseKey): EtatOnglets 
   let numero = 1
   while (pris.has(numero)) numero += 1
 
-  const console: OngletConsole = { sorte: 'console', key, numero }
+  const console: OngletConsole = { sorte: 'console', key, numero, dialecte }
   return { onglets: [...etat.onglets, console], actif: idOnglet(console) }
 }
 

@@ -121,10 +121,10 @@ test('avec beaucoup d’onglets, la bande défile et ne recouvre pas « Données
   // Ouvrir toutes les tables du schéma : assez pour déborder de la bande.
   for (const nom of [
     /^orders 1\.9/,
-    /flyway_schema_history/,
-    /catalogue_session/,
-    /intervals_connection/,
-    /prescribed_session/,
+    /shipment_batches/,
+    /inventory_movements/,
+    /pricing_rules/,
+    /audit_events/,
     /order_items/,
     /^users/,
   ]) {
@@ -134,7 +134,11 @@ test('avec beaucoup d’onglets, la bande défile et ne recouvre pas « Données
 
   const recouvrement = await page.evaluate(() => {
     const bande = document.querySelector('[role=tablist]')
-    const vues = document.querySelector('[aria-current="page"]')
+    // « Données » est un **bouton** depuis `14a`, qui a fait basculer le couple : il portait
+    // `aria-current="page"` tant qu'il n'était qu'un état affiché.
+    const vues = [...document.querySelectorAll('button')].find(
+      (bouton) => bouton.textContent?.trim() === 'Données',
+    )
     const enveloppe = bande?.parentElement
     if (!bande || !vues || !enveloppe) return null
 

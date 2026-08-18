@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import type { ConfigLoad } from '../domain/config'
+import { PREFERENCES_PAR_DEFAUT } from '../screens/Preferences/preferences'
 import { type EtatDeDemarrage, useConfiguration } from './useConfiguration'
 
 function Sonde({ charger }: { charger: () => Promise<ConfigLoad> }) {
@@ -28,6 +29,7 @@ test('un fichier lu remplit les projets', async () => {
       charger={async () => ({
         kind: 'loaded',
         projects: [{ name: 'Print', activeEnvironment: 'dev', databases: [], queries: [] }],
+        preferences: PREFERENCES_PAR_DEFAUT,
       })}
     />,
   )

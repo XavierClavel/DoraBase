@@ -4,7 +4,10 @@ import { formatInteger } from '../../ui/format'
 import { SegmentedControl } from '../../ui/SegmentedControl/SegmentedControl'
 import { type GridColumn, VirtualGrid } from '../../ui/VirtualGrid/VirtualGrid'
 import { estNumerique, rendreValeur } from '../TableView/cellule'
+import type { Dialecte } from '../Workbench/onglets'
+import { ArbreJson } from './ArbreJson'
 import styles from './ConsoleResult.module.css'
+import { documentsDe } from './documents'
 import { VueJson, VueMessages, VuePlan } from './vues'
 
 /** Les quatre vues d'un résultat (`12e`). */
@@ -19,6 +22,16 @@ type ConsoleResultProps = {
   /** Le plan de la requête courante, ou `null` tant qu'il n'a pas été demandé. */
   plan?: QueryPlan | null
   planEnCours?: boolean
+  /**
+   * La langue de la console (`13a`).
+   *
+   * **En mongo, « Résultat » est l'arbre de documents, pas la grille.** Aplatir des documents
+   * hétérogènes en colonnes est une décision de produit que `13b` a explicitement remise, et le
+   * mockup d'`A8` ne montre pas de grille.
+   */
+  dialecte?: Dialecte
+  /** La densité de `15c`, pour que la grille du résultat suive celle des tables. */
+  rowHeight?: number
 }
 
 /**
@@ -37,6 +50,8 @@ export function ConsoleResult({
   onVueChange,
   plan = null,
   planEnCours = false,
+  dialecte = 'sql',
+  rowHeight,
 }: ConsoleResultProps) {
   // La ligne sélectionnée, pour la vue JSON : elle **suit la sélection**, comme le panneau de `10f`.
   // Sérialiser mille lignes pour l'affichage contredirait la contrainte transverse du projet.
@@ -86,13 +101,23 @@ export function ConsoleResult({
     cell: (ligne) => rendreValeur(ligne[index] ?? { kind: 'null' }),
   }))
 
+  const mongo = dialecte === 'mongo'
+
   const onglets = onVueChange && (
     <div className={styles.vues}>
       <SegmentedControl
         label="Vue du résultat"
         segments={[
-          { value: 'resultat' as const, label: 'Résultat', count: resultat.rows.length },
-          { value: 'json' as const, label: 'JSON' },
+          {
+            value: 'resultat' as const,
+            // « Documents » et non « Résultat » : c'est ce que la vue contient, et le mot dit du
+            // même coup que ce n'est pas une grille de lignes.
+            label: mongo ? 'Documents' : 'Résultat',
+            count: resultat.rows.length,
+          },
+          // **Pas d'onglet « JSON » en mongo** : la vue « Documents » *est* du JSON. Deux onglets
+          // pour la même chose feraient chercher la différence.
+          ...(mongo ? [] : [{ value: 'json' as const, label: 'JSON' }]),
           { value: 'plan' as const, label: 'Plan' },
           { value: 'messages' as const, label: 'Messages' },
         ]}
@@ -101,6 +126,23 @@ export function ConsoleResult({
       />
     </div>
   )
+
+  if (mongo && vue === 'resultat') {
+    return (
+      <div className={styles.root}>
+        {onglets}
+        <div className={styles.panneau}>
+          <ArbreJson
+            documents={documentsDe(resultat)}
+            onCopier={(document: unknown) =>
+              void navigator.clipboard?.writeText(JSON.stringify(document, null, 2))
+            }
+          />
+        </div>
+        <Barre resultat={resultat} plan={plan} dialecte={dialecte} />
+      </div>
+    )
+  }
 
   if (vue !== 'resultat') {
     return (
@@ -111,7 +153,7 @@ export function ConsoleResult({
           {vue === 'plan' && <VuePlan plan={plan} enCours={planEnCours} />}
           {vue === 'messages' && <VueMessages resultat={resultat} />}
         </div>
-        <Barre resultat={resultat} plan={plan} />
+        <Barre resultat={resultat} plan={plan} dialecte={dialecte} />
       </div>
     )
   }
@@ -121,6 +163,7 @@ export function ConsoleResult({
       {onglets}
       <div className={styles.grille}>
         <VirtualGrid
+          rowHeight={rowHeight}
           label={`Résultat de la requête, ${resultat.rows.length} ligne${
             resultat.rows.length > 1 ? 's' : ''
           }`}
@@ -133,17 +176,29 @@ export function ConsoleResult({
           empty={<span>La requête n’a rendu aucune ligne.</span>}
         />
       </div>
-      <Barre resultat={resultat} plan={plan} />
+      <Barre resultat={resultat} plan={plan} dialecte={dialecte} />
     </div>
   )
 }
 
 /** La barre de chiffres, partagée par les quatre vues — ils décrivent la même exécution. */
-function Barre({ resultat, plan }: { resultat: QueryResult; plan: QueryPlan | null }) {
+function Barre({
+  resultat,
+  plan,
+  dialecte,
+}: {
+  resultat: QueryResult
+  plan: QueryPlan | null
+  dialecte: Dialecte
+}) {
+  // « 4 docs · 61 ms », le pied du mockup d'`A8`. Compter des « lignes » sous un arbre de documents
+  // nommerait la mauvaise chose.
+  const unite = dialecte === 'mongo' ? 'doc' : 'ligne'
   return (
     <div className={styles.barre} role="status" aria-label="État du résultat">
       <span className={styles.compte}>
-        {formatInteger(resultat.rows.length)} ligne{resultat.rows.length > 1 ? 's' : ''}
+        {formatInteger(resultat.rows.length)} {unite}
+        {resultat.rows.length > 1 ? 's' : ''}
       </span>
       <span>·</span>
       <span>{resultat.durationMs} ms</span>

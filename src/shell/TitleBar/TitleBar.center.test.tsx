@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import { ProjectPill } from '../ProjectPill/ProjectPill'
 import { TitleBar } from './TitleBar'
@@ -34,7 +35,14 @@ test('le parcours clavier va du centre vers les actions', async () => {
   render(
     <>
       <Sprite />
-      <TitleBar showConsole center={<ProjectPill projectName="Atelier Nord" />} />
+      {/* `onOpenPreferences` est fourni : sans lui l'engrenage est **désactivé avec sa raison**
+          depuis `15a`, donc hors du parcours de tabulation — ce qui est correct, et ce que le test
+          suivant vérifie. */}
+      <TitleBar
+        showConsole
+        center={<ProjectPill projectName="Atelier Nord" />}
+        onOpenPreferences={() => {}}
+      />
     </>,
   )
   await userEvent.tab()
@@ -43,4 +51,30 @@ test('le parcours clavier va du centre vers les actions', async () => {
   expect(screen.getByRole('button', { name: 'Console' })).toHaveFocus()
   await userEvent.tab()
   expect(screen.getByRole('button', { name: 'Préférences' })).toHaveFocus()
+})
+
+test('sans gestionnaire, l’engrenage est désactivé et dit pourquoi', () => {
+  render(
+    <>
+      <Sprite />
+      <TitleBar />
+    </>,
+  )
+  // La règle de `09f`, et la leçon du défaut n° 36 : un bouton cliquable et inerte se lit comme une
+  // panne. Il est donc désactivé, avec l'infobulle qui dit où l'écran se trouve.
+  const engrenage = screen.getByRole('button', { name: 'Préférences' })
+  expect(engrenage).toBeDisabled()
+  expect(engrenage).toHaveAttribute('title', expect.stringContaining('écran de travail'))
+})
+
+test('avec un gestionnaire, l’engrenage l’appelle', async () => {
+  const ouvrir = vi.fn()
+  render(
+    <>
+      <Sprite />
+      <TitleBar onOpenPreferences={ouvrir} />
+    </>,
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Préférences' }))
+  expect(ouvrir).toHaveBeenCalledTimes(1)
 })

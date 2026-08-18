@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { Sprite } from '../../design/icons/Sprite'
 import type { Environment, Project } from '../../domain/config'
-import type { ConnectionState, SchemaInfo, TableSummary } from '../../domain/engine'
+import type { ColumnInfo, ConnectionState, SchemaInfo, TableSummary } from '../../domain/engine'
 import { type Charge, idBase, idProjet, idSchema, type Noeud } from './arbre'
 import type { CibleDeSuppression } from './DeleteConnectionDialog'
 import { ExplorerSidebar, filtrer } from './ExplorerSidebar'
@@ -502,4 +502,69 @@ test('« Modifier… » se désactive quand l’écran ne la relie à rien', asy
   await userEvent.click(screen.getByRole('button', { name: 'Actions de analytics' }))
   // Une action branchée sur rien est le défaut n° 36 : mieux vaut le dire que laisser cliquer.
   expect(screen.getByRole('button', { name: 'Modifier…' })).toBeDisabled()
+})
+
+describe('la section contextuelle : colonnes déclarées ou schéma déduit (`13c`)', () => {
+  const champ = (nom: string, frequence: number | null): ColumnInfo => ({
+    position: 1,
+    name: nom,
+    typeName: 'string',
+    category: 'text',
+    nullable: true,
+    default: null,
+    identity: null,
+    key: null,
+    comment: null,
+    frequency: frequence,
+  })
+
+  function monterAvec(colonnes: ColumnInfo[]) {
+    render(
+      <>
+        <Sprite />
+        <ExplorerSidebar
+          projects={[]}
+          deplies={new Set<string>()}
+          charge={RIEN}
+          etatDe={() => ({ kind: 'never' })}
+          selectedId={null}
+          onSelect={() => {}}
+          onToggle={() => {}}
+          columns={{ table: 'evenements', columns: colonnes }}
+        />
+      </>,
+    )
+  }
+
+  it('dit « Colonnes de » quand les colonnes sont déclarées', () => {
+    monterAvec([champ('statut', null)])
+    expect(screen.getByText('Colonnes de evenements')).toBeInTheDocument()
+    // Le type s'affiche : il n'y a pas de fréquence à dire.
+    expect(screen.getByText('string')).toBeInTheDocument()
+  })
+
+  it('dit « Schéma déduit de » dès qu’un champ porte une fréquence', () => {
+    // **Le mot le plus important de la section** : les champs viennent d'un échantillon (`18d`),
+    // pas d'un catalogue. Le titre se déduit de la donnée plutôt que d'un drapeau qu'un appelant
+    // pourrait oublier de poser.
+    monterAvec([champ('canal', 0.98)])
+    expect(screen.getByText('Schéma déduit de evenements')).toBeInTheDocument()
+  })
+
+  it('affiche la fréquence d’un champ partiel, et le type d’un champ complet', () => {
+    monterAvec([champ('canal', 0.98), champ('sorte', 1)])
+    // `98 %` prend la place du type — c'est ce que le mockup d'`A8` montre.
+    expect(screen.getByText('98 %')).toBeInTheDocument()
+    // **Un champ à 100 % garde son type** : répéter « 100 % » sur quinze lignes noierait les deux
+    // qui ne le sont pas, et ce sont celles-là qui comptent.
+    expect(screen.getByText('string')).toBeInTheDocument()
+    expect(screen.queryByText('100 %')).toBeNull()
+  })
+
+  it('arrondit sans faire disparaître un champ presque complet', () => {
+    // 0,996 s'arrondirait à « 100 % », ce qui serait un mensonge de précision : au-delà du seuil, on
+    // affiche le type plutôt qu'un pourcentage faux.
+    monterAvec([champ('presque', 0.996)])
+    expect(screen.queryByText(/%/)).toBeNull()
+  })
 })

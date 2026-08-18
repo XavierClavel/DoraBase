@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { ConfigLoad } from '../domain/config'
+import type { ConfigLoad, Preferences } from '../domain/config'
+import { PREFERENCES_PAR_DEFAUT } from '../screens/Preferences/preferences'
 import { type EtatDeConfiguration, interpreter, loadConfig } from './commandes'
 
 /**
@@ -17,7 +18,7 @@ export type EtatDeDemarrage =
   | { kind: 'chargement' }
   | EtatDeConfiguration
   /** La commande elle-même a échoué — pont cassé, panique. Distinct d'un fichier illisible. */
-  | { kind: 'injoignable'; projects: never[]; reason: string }
+  | { kind: 'injoignable'; projects: never[]; preferences: Preferences; reason: string }
 
 export function useConfiguration(charger: () => Promise<ConfigLoad> = loadConfig): EtatDeDemarrage {
   const [etat, setEtat] = useState<EtatDeDemarrage>({ kind: 'chargement' })
@@ -34,7 +35,13 @@ export function useConfiguration(charger: () => Promise<ConfigLoad> = loadConfig
         // sur le disque. Les confondre proposerait de restaurer un fichier qui va peut-être
         // très bien.
         if (vivant) {
-          setEtat({ kind: 'injoignable', projects: [], reason: messageDe(cause) })
+          setEtat({
+            kind: 'injoignable',
+            projects: [],
+            // Les défauts : sans jetons, le message qui explique la panne serait illisible.
+            preferences: PREFERENCES_PAR_DEFAUT,
+            reason: messageDe(cause),
+          })
         }
       })
     // Le drapeau évite de poser un état après démontage : React le signalerait en avertissement,

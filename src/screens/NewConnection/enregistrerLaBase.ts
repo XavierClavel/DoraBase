@@ -110,6 +110,9 @@ export function draftToSaveRequest(draft: ConnectionDraft): SaveDatabaseRequest 
       username: draft.username,
       password: null,
       sslMode: draft.sslMode,
+      // Le vide devient `null` : « aucune autorité déclarée » se dit par l'absence,
+      // et une chaîne vide dans le fichier de configuration se lirait comme un chemin.
+      caCertificate: draft.caCertificate.trim() === '' ? null : draft.caCertificate.trim(),
       readOnly: draft.readOnly,
       reconnectOnStartup: draft.reconnectOnStartup,
       tunnel: draft.tunnel

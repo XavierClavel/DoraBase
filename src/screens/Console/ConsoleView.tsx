@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type { QueryPlan, QueryResult } from '../../domain/engine'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
+import type { Dialecte } from '../Workbench/onglets'
 import { ConsoleResult, type VueResultat } from './ConsoleResult'
 import styles from './ConsoleView.module.css'
 import type { Catalogue } from './completion'
@@ -33,6 +34,15 @@ type ConsoleViewProps = {
   onVueChange?: (vue: VueResultat) => void
   /** Ouvre la modale d'enregistrement (`12f`) avec le texte courant. */
   onEnregistrer?: (sql: string) => void
+  /**
+   * La langue de la console (`13a`) — `sql` ou `mongo`.
+   *
+   * Elle suit le moteur de la base, elle ne se choisit pas : une console mongo sur une base
+   * PostgreSQL n'aurait rien à interroger.
+   */
+  dialecte?: Dialecte
+  /** La densité de `15c`, transmise à la grille du résultat. */
+  rowHeight?: number
 }
 
 /**
@@ -58,6 +68,8 @@ export function ConsoleView({
   vue,
   onVueChange,
   onEnregistrer,
+  dialecte = 'sql',
+  rowHeight,
 }: ConsoleViewProps) {
   // La sélection courante, publiée par l'éditeur : « Sélection » l'exécute, et se replie sur la
   // requête entière quand il n'y a rien de sélectionné — un bouton qui ne ferait rien sur une
@@ -73,6 +85,12 @@ export function ConsoleView({
   const expliquer = onExpliquer === undefined ? undefined : () => onExpliquer(texte)
 
   const actions = ACTIONS.map((action) => {
+    // **« Expliquer » devient « explain() » en mongo**, et ce n'est pas qu'un libellé : MongoDB n'a
+    // pas d'`EXPLAIN` séparé, le plan s'obtient en appelant `.explain()` sur la requête. Le mot que
+    // l'utilisateur connaît est celui-là.
+    if (dialecte === 'mongo' && action.libelle === 'Expliquer') {
+      return { ...action, libelle: 'explain()', onClick: expliquer }
+    }
     if (action.libelle === 'Exécuter') return { ...action, onClick: executer }
     if (action.libelle === 'Sélection') return { ...action, onClick: executerLaSelection }
     if (action.libelle === 'Expliquer') return { ...action, onClick: expliquer }
@@ -107,8 +125,13 @@ export function ConsoleView({
         ))}
         <span className={styles.espace} />
         {/* Le mockup montre l'auto-`LIMIT` comme un état affiché, pas comme un réglage : c'est `12c`
-            qui l'appliquera, et `A10` qui le rendra réglable. */}
-        <span className={styles.limite}>auto-LIMIT 1000</span>
+            qui l'appliquera, et `A10` qui le rendra réglable.
+
+            **En mongo, le mot change** : ce n'est pas un `LIMIT` SQL mais un `$limit` ajouté en fin
+            de pipeline (`18g`). Garder « LIMIT » ferait chercher une clause qui n'existe pas. */}
+        <span className={styles.limite}>
+          {dialecte === 'mongo' ? 'auto-$limit 1000' : 'auto-LIMIT 1000'}
+        </span>
       </div>
 
       <div className={styles.corps}>
@@ -128,6 +151,7 @@ export function ConsoleView({
                 onExecuter={executer}
                 onExecuterLaSelection={executerLaSelection}
                 catalogue={catalogue}
+                dialecte={dialecte}
               />
             </div>
           }
@@ -140,6 +164,8 @@ export function ConsoleView({
               onVueChange={onVueChange}
               plan={plan}
               planEnCours={planEnCours}
+              dialecte={dialecte}
+              rowHeight={rowHeight}
             />
           }
         />
