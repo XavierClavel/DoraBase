@@ -141,7 +141,6 @@ export function ConsoleView({
           defaultSize={240}
           min={120}
           max={520}
-          handleShadow="end"
           start={
             <div className={styles.editeur}>
               <SqlEditor

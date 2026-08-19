@@ -226,6 +226,16 @@ dans `Field` et sont réemployés par les saisies qui n'y passent pas.
 sous-ensemble sert-il » mais « cette police rend-elle des données arbitraires ». Baloo 2 ne porte
 que du chrome applicatif.
 
+**La jointure des panneaux est un trait, pas une zone — écart au handoff assumé.** Le mockup dessine
+un dégradé de 5 px qui s'assombrit du côté du panneau, plus une pastille blanche de 3×26 en son
+milieu. Rendu dans l'application, cet empilement se lit comme une **zone** entre deux colonnes, alors
+qu'une jointure n'a rien à dire : elle sépare. Demandé le 19 août 2026 — « un simple trait avec une
+barre au survol suffirait ». Le trait fait donc 1 px de `--divider` en permanence, et s'épaissit à
+3 px assombris au survol et au focus. La zone de saisie garde ses 5 px : ce qu'on voit et ce qu'on
+peut attraper sont deux mesures différentes. La propriété `handleShadow` a été **retirée de l'API**
+plutôt que gardée sans effet — un trait n'a pas de côté, et un réglage qui ne fait rien est pire
+qu'un réglage absent.
+
 ## 5. Huit règles tirées des défauts rencontrés
 
 Le détail de chacun est dans [`DEFAUTS.md`](DEFAUTS.md), avec ce qui l'a attrapé. Celles-là se

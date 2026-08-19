@@ -717,7 +717,6 @@ function SplitPaneGallery() {
                 defaultSize={300}
                 min={200}
                 max={420}
-                handleShadow="end"
                 start={<div className={styles.splitZone}>centre</div>}
                 end={<div className={styles.splitZone}>détail 300</div>}
               />
