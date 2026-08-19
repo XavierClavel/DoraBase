@@ -45,6 +45,8 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* Pas de rebond élastique aux extrémités sous WKWebView — voir la note de `reset.css`. */
+  overscroll-behavior: none;
   padding: var(--space-6);
   display: flex;
   flex-direction: column;

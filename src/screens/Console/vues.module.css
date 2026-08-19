@@ -40,6 +40,8 @@
 .texte {
   margin: 0;
   overflow: auto;
+  /* Pas de rebond élastique aux extrémités sous WKWebView — voir la note de `reset.css`. */
+  overscroll-behavior: none;
   font-family: var(--font-mono);
   font-size: var(--text-label);
   font-weight: var(--weight-medium);

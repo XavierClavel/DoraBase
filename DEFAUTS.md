@@ -704,6 +704,16 @@ autre chose que ce qu'elle prétendait.
    pourquoi, alors que `docker logs` contenait la phrase exacte : *private key file has group or world
    access*. **Une boucle d'attente doit surveiller la mort de ce qu'elle attend**, et cracher son
    journal — sans quoi le diagnostic part du mauvais bout.
+78. **Une règle universelle qui ne déplace aucun pixel, et qui casse pourtant la molette.**
+   `* { overscroll-behavior: none }` avait tout l'air de la version sûre : la propriété ne change
+   aucune géométrie, et la spécification dit qu'elle est *sans effet* sur un élément qui n'est pas un
+   conteneur de défilement. Or le geste part de l'élément sous le curseur — une cellule — et remonte
+   jusqu'au premier conteneur défilant. Posée sur les éléments traversés, la propriété **coupe cette
+   remontée** : la grille ne défilait plus du tout. Le test de la molette (n° 68) est passé au rouge
+   sur-le-champ, ce qui est exactement ce qu'on lui demande. La déclaration est désormais posée sur
+   chacun des quatorze conteneurs défilants, à côté de son `overflow`, et une mesure refuse le
+   quinzième qui l'oublierait. **« Sans effet d'après la spécification » n'est pas « sans effet », et
+   c'est une mesure qui fait la différence, pas une lecture.**
 
 **Ce que ces défauts disent du décor de test.** Presque aucun n'était un défaut de logique : ils
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros
