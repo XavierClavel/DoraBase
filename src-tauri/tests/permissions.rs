@@ -30,6 +30,12 @@ const ATTENDUES: &[(&str, &str)] = &[
          n'accorde aucune permission d'écriture, et l'attribut seul ne suffisait donc pas",
     ),
     (
+        "core:webview:allow-set-webview-zoom",
+        "le zoom au geste à pas fin (`useZoom`) — le pas natif de WKWebView va de 10 à 25 % par cran, \
+         et aucun réglage ne l'expose ; `core:webview:default` n'accorde que la lecture de position \
+         et de taille",
+    ),
+    (
         "dialog:allow-open",
         "le bouton « Parcourir… » de la clé privée (08c) — ouverture seule",
     ),

@@ -76,45 +76,29 @@ body {
  */
 
 /*
- * Les barres de défilement, discrètes.
+ * Les barres de défilement natives, **masquées partout**.
  *
- * # Pourquoi cette règle existe
+ * # Pourquoi les masquer plutôt que les habiller
  *
- * Plusieurs feuilles de ce projet portent le commentaire « macOS ne montre la barre de défilement
- * qu'au geste, donc rien ne s'ajoute à la trame ». **C'est faux dès que l'utilisateur a réglé
- * « Afficher les barres de défilement : toujours »**, ou qu'il branche une souris : WKWebView rend
- * alors des barres classiques, épaisses et opaques, qui **prennent de la place** et s'ajoutent bien à
- * la trame. Constaté sur une capture de l'application réelle, le 18 août 2026 : la barre de la sidebar
- * y coupait les noms de tables.
+ * La version précédente les habillait — 9 px, sans piste, curseur pâle — et c'était déjà une
+ * correction (défaut n° 70). Elle ne pouvait pas tenir les deux exigences posées ensuite : *visibles
+ * seulement pendant le geste*, et *sans espace réservé*. **Styler `::-webkit-scrollbar` force WebKit à
+ * rendre une barre classique**, c'est-à-dire une barre permanente qui prend sa place dans la mise en
+ * page. Il n'existe pas de propriété pour demander une barre en survol : c'est un réglage du système,
+ * et l'utilisateur qui affiche « toujours » l'a réglé dans l'autre sens pour tout son bureau.
  *
- * L'hypothèse était donc une hypothèse d'environnement, et elle valait pour *une* configuration de
- * macOS. La règle ci-dessous ne dépend d'aucun réglage : la barre est fine, sans piste, et son curseur
- * ne se voit qu'au survol du conteneur.
+ * Les barres du produit sont donc dessinées par `BarresDeDefilement`, dans une couche `fixed` qui ne
+ * réserve rien. Ici, on se contente de faire taire les natives — et ce masquage est global parce que
+ * l'exigence l'est : aucun panneau ne veut d'une colonne grise à sa droite.
  *
- * `::-webkit-scrollbar` plutôt que `scrollbar-width: thin` : WebKit ignore encore la propriété
- * standard, et c'est WebKit qui rend ce produit.
+ * `::-webkit-scrollbar` **et** `scrollbar-width` : le premier est ce que WebKit comprend, donc ce qui
+ * compte pour le produit livré ; le second est la propriété standard, que Chromium applique — et
+ * Chromium est ce qui exécute les tests.
  */
 ::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
+  display: none;
 }
 
-/* Pas de piste : une piste opaque dessine une colonne sur la trame, ce qui est exactement ce que
- * le mockup n'a pas. */
-::-webkit-scrollbar-track,
-::-webkit-scrollbar-corner {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  border-radius: 5px;
-  /* Une bordure transparente amincit le curseur sans changer la largeur de la zone cliquable : neuf
-   * pixels restent attrapables à la souris, le curseur n'en occupe que cinq. */
-  border: 2px solid transparent;
-  background-clip: content-box;
-  background-color: rgb(35 32 28 / 18%);
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background-color: rgb(35 32 28 / 32%);
+* {
+  scrollbar-width: none;
 }

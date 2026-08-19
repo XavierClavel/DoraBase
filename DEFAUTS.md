@@ -727,6 +727,28 @@ autre chose que ce qu'elle prétendait.
    *le temps d'une trame* — et une trame ne se mesure qu'en lisant sans attendre, trame par trame.
    L'overscan, lui, n'y était pour rien : il valait déjà 4 lignes, et aucune valeur n'aurait couvert
    un saut de 6 000 px.
+80. **Deux exigences de barres de défilement qu'aucune propriété CSS ne tient ensemble.** « Visibles
+   seulement pendant le geste » et « sans espace réservé, superposées » : la correction n° 70 les
+   habillait avec `::-webkit-scrollbar`, et **styler ce pseudo-élément force WebKit à rendre une barre
+   classique** — permanente, et qui prend sa place dans la mise en page. Il n'existe pas de propriété
+   pour demander une barre en survol : c'est un réglage du système, que l'utilisateur avait mis sur
+   « toujours » pour tout son bureau. Les natives sont donc masquées partout, et les barres du produit
+   dessinées dans une couche `fixed` qui ne réserve rien. **Une exigence qui contredit le modèle de
+   rendu ne se règle pas par une valeur, mais par un dispositif** — et il faut le reconnaître avant de
+   chercher la bonne propriété.
+81. **Une piste de curseur qui commençait au-dessus de son contenu.** Le curseur était placé sur toute
+   la hauteur du conteneur défilant, or celui-ci commence à l'en-tête des colonnes et à la ligne de
+   filtres, tous deux `sticky`. En haut de course, le curseur démarrait donc **au-dessus de la première
+   ligne** et décrivait un contenu qui commence plus haut qu'il ne commence. La hauteur collée est
+   maintenant mesurée sur l'arbre — les enfants directs en `position: sticky` à `top: 0` — et non
+   déclarée : une constante de 55 px serait fausse dès qu'un réglage de densité change la hauteur de
+   l'en-tête (`15c`), ou dès qu'un autre panneau colle autre chose.
+82. **Une mesure qui passait seule et échouait dans la suite.** Le test du curseur ramenait la grille en
+   haut de course à la molette, puis mesurait. Une roulette rend la main **avant** que le défilement ne
+   soit arrivé : sous charge parallèle, la mesure lisait un curseur en pleine course. Le retour est
+   désormais posé (`scrollTop = 0`) et suivi de deux trames, et le test **affirme** `scrollTop === 0`
+   avant de comparer. *Passe seul, échoue dans la suite* est la signature d'une attente implicite, pas
+   d'un défaut du code mesuré.
 
 **Ce que ces défauts disent du décor de test.** Presque aucun n'était un défaut de logique : ils
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros

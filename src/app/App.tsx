@@ -13,6 +13,8 @@ import { PreferencesDialog } from '../screens/Preferences/PreferencesDialog'
 import { jetonsDe, PREFERENCES_PAR_DEFAUT, themeApplique } from '../screens/Preferences/preferences'
 import { WelcomeScreen } from '../screens/Welcome/WelcomeScreen'
 import { Workbench } from '../screens/Workbench/Workbench'
+import { useZoom } from '../shell/useZoom'
+import { BarresDeDefilement } from '../ui/BarresDeDefilement/BarresDeDefilement'
 
 // La galerie (`src/design/gallery/`) ne doit jamais partir dans le bundle livré : elle
 // est montée derrière deux conditions, `import.meta.env.DEV` ET `?gallery` dans l'URL.
@@ -40,6 +42,9 @@ const WorkbenchDemo = showDemo
   : null
 
 export function App() {
+  // Le zoom au geste, à pas fin — sous Tauri seulement, la webview étant ce qui zoome.
+  useZoom()
+
   const [connexionOuverte, setConnexionOuverte] = useState(false)
   /**
    * La base en cours de modification (`08g`), ou `null` quand la modale **crée**.
@@ -123,6 +128,10 @@ export function App() {
   return (
     <>
       <Sprite />
+      {/* **Montées une fois, pour toute l'application.** Elles écoutent le défilement en capture sur
+          le document : n'importe quel panneau y a droit sans le savoir, y compris ceux qui n'existent
+          pas encore. Voir `BarresDeDefilement` pour la raison de ce choix. */}
+      <BarresDeDefilement />
       {Gallery ? (
         <Suspense fallback={null}>
           <Gallery />
