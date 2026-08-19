@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use mysql_async::{Opts, OptsBuilder, Pool, SslOpts};
 
-use crate::config::EnvironmentVariant;
+use crate::config::ConnectionSettings;
 use crate::engine::tls::Exigences;
 use crate::engine::EngineError;
 use crate::secrets::Secret;
@@ -17,7 +17,7 @@ use super::error::traduire;
 /// variante déclarant un tunnel sans redirection est **le même** : se connecter en direct
 /// contournerait la consigne de sécurité de l'utilisateur.
 pub fn preparer(
-    variante: &EnvironmentVariant,
+    variante: &ConnectionSettings,
     mot_de_passe: Option<&Secret>,
     redirection: Option<(&str, u16)>,
 ) -> Result<Opts, EngineError> {
@@ -149,11 +149,10 @@ pub async fn version_du_serveur(pool: &Pool) -> Result<String, EngineError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{Environment, SslMode, Tunnel, TunnelKind};
+    use crate::config::{SslMode, Tunnel, TunnelKind};
 
-    fn variante() -> EnvironmentVariant {
-        EnvironmentVariant {
-            environment: Environment::Dev,
+    fn variante() -> ConnectionSettings {
+        ConnectionSettings {
             host: "localhost".into(),
             port: 3306,
             default_database: "dorabase_test".into(),
@@ -167,7 +166,7 @@ mod tests {
         }
     }
 
-    fn avec_tunnel() -> EnvironmentVariant {
+    fn avec_tunnel() -> ConnectionSettings {
         let mut variante = variante();
         variante.host = "db.interne.test".into();
         variante.tunnel = Some(Tunnel {

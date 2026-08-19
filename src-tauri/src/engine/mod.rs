@@ -156,7 +156,7 @@ impl AnyEngine {
     /// attendait de l'énumération, et `18` est le premier moteur à le vérifier.
     pub async fn connect_via(
         moteur: crate::config::Engine,
-        variante: &crate::config::EnvironmentVariant,
+        variante: &crate::config::ConnectionSettings,
         mot_de_passe: Option<&crate::secrets::Secret>,
         known_hosts: &std::path::Path,
     ) -> Result<Self, EngineError> {

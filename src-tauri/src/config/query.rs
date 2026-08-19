@@ -1,60 +1,49 @@
 //! Fonctions pures sur le modèle de configuration : résoudre, filtrer, valider.
 //! Aucune I/O, aucun état — tout est testable sans système de fichiers.
 
-use super::model::{Database, Environment, EnvironmentVariant, ModelError, Project};
+use super::model::{Database, EnvironmentId, ConnectionSettings, ModelError, Project};
 
-/// La variante de `database` pour l'environnement actif de `project`.
+/// Les réglages de `database`, si elle appartient à l'environnement actif de `project`.
 ///
-/// Rend `None` quand la base n'est pas déclarée dans cet environnement — état réel du
-/// domaine, pas une erreur : le handoff pose 1..n environnements, pas n.
+/// Rend `None` quand la connexion appartient à un autre environnement — état réel du domaine depuis
+/// `23b` : l'arbre ne montre que les connexions de l'environnement actif, et demander les réglages
+/// d'une connexion d'ailleurs est une question sans réponse.
 pub fn active_variant<'a>(
     project: &Project,
     database: &'a Database,
-) -> Option<&'a EnvironmentVariant> {
-    database.variant(project.active_environment)
+) -> Option<&'a ConnectionSettings> {
+    (database.environment == project.active_environment).then_some(&database.connection)
 }
 
-/// Les bases du projet déclarées dans `environment`.
+/// Les connexions du projet déclarées dans `environment` — ce que l'arbre liste (`23g`).
 ///
-/// C'est ce qui répond à « que montre l'arbre après un basculement d'environnement » :
-/// une base absente de l'environnement cible n'a pas de serveur où se connecter.
-/// Comment l'arbre la présente reste à trancher par `09` — le handoff ne le maquette pas.
-pub fn databases_available(project: &Project, environment: Environment) -> Vec<&Database> {
-    project
-        .databases
-        .iter()
-        .filter(|database| database.variant(environment).is_some())
-        .collect()
+/// **Le mot « available » a changé de sens avec le modèle.** Il désignait les bases qui *avaient une
+/// variante* dans cet environnement, une même base pouvant en avoir plusieurs. Depuis `23b`, une
+/// connexion appartient à un environnement : la liste est un filtre, non une recherche.
+pub fn databases_available<'a>(
+    project: &'a Project,
+    environment: &'a EnvironmentId,
+) -> Vec<&'a Database> {
+    project.connexions_de(environment).collect()
 }
 
 /// Vérifie la cohérence d'un projet entier.
 ///
-/// Les invariants d'une base sont déjà garantis par `Database::new` ; il reste ceux qui
-/// portent sur l'ensemble, et qu'aucun constructeur ne peut voir seul.
+/// **Délègue à `Project::valider`** (`23a`) : les invariants portent tous sur des relations entre
+/// champs — l'environnement actif doit être déclaré, chaque connexion doit viser un environnement
+/// déclaré, deux connexions ne peuvent pas partager nom **et** environnement. Les tenir à deux
+/// endroits les ferait diverger ; cette fonction reste comme point d'entrée nommé côté `query`.
 pub fn validate(project: &Project) -> Result<(), ModelError> {
-    for (index, database) in project.databases.iter().enumerate() {
-        if project.databases[..index]
-            .iter()
-            .any(|precedente| precedente.name == database.name)
-        {
-            return Err(ModelError::NomDeBaseEnDouble {
-                project: project.name.clone(),
-                database: database.name.clone(),
-            });
-        }
-    }
-
-    Ok(())
+    project.valider()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::model::{Engine, SslMode};
+    use crate::config::model::{Engine, EnvironmentDeclaration, SslMode};
 
-    fn variante(env: Environment) -> EnvironmentVariant {
-        EnvironmentVariant {
-            environment: env,
+    fn reglages() -> ConnectionSettings {
+        ConnectionSettings {
             host: "db.internal".into(),
             port: 5432,
             default_database: "analytics".into(),
@@ -68,67 +57,74 @@ mod tests {
         }
     }
 
-    /// `analytics` en dev + prod, `shop` en dev seulement. Environnement actif : prod.
+    fn connexion(nom: &str, env: &str) -> Database {
+        Database {
+            name: nom.to_owned(),
+            engine: Engine::PostgreSql,
+            environment: EnvironmentId::brut(env),
+            connection: reglages(),
+        }
+    }
+
+    /// `analytics` en dev **et** en prod — deux connexions depuis `23b`, non deux variantes —
+    /// et `shop` en dev seulement. Environnement actif : prod.
     fn projet_de_test() -> Project {
         Project {
             name: "Atelier Nord".into(),
-            active_environment: Environment::Prod,
+            active_environment: EnvironmentId::brut("prod"),
+            environments: EnvironmentDeclaration::trio_par_defaut(),
             queries: Vec::new(),
             databases: vec![
-                Database::new(
-                    "analytics",
-                    Engine::PostgreSql,
-                    vec![variante(Environment::Dev), variante(Environment::Prod)],
-                )
-                .unwrap(),
-                Database::new("shop", Engine::MySql, vec![variante(Environment::Dev)]).unwrap(),
+                connexion("analytics", "dev"),
+                connexion("analytics", "prod"),
+                connexion("shop", "dev"),
             ],
         }
     }
 
     #[test]
-    fn la_variante_active_suit_l_environnement_du_projet() {
+    fn les_reglages_actifs_ne_repondent_que_pour_l_environnement_actif() {
         let projet = projet_de_test();
-        let base = &projet.databases[0];
-        let variante = active_variant(&projet, base).expect("prod existe sur cette base");
-        assert_eq!(variante.environment, Environment::Prod);
+        // La connexion de prod répond ; celle de dev, non — c'est la même base, ce sont deux
+        // connexions.
+        assert!(active_variant(&projet, &projet.databases[1]).is_some());
+        assert!(active_variant(&projet, &projet.databases[0]).is_none());
     }
 
     #[test]
-    fn une_base_absente_de_l_environnement_courant_ne_rend_rien() {
-        let projet = projet_de_test();
-        // `shop` n'est déclarée qu'en dev, or le projet est en prod.
-        let base = &projet.databases[1];
-        assert!(active_variant(&projet, base).is_none());
-    }
-
-    #[test]
-    fn changer_l_environnement_du_projet_change_la_variante_resolue() {
+    fn changer_l_environnement_du_projet_change_les_connexions_qui_repondent() {
         let mut projet = projet_de_test();
-        let attendu_en_prod =
-            active_variant(&projet, &projet.databases[0]).map(|variante| variante.environment);
-        projet.active_environment = Environment::Dev;
-        let attendu_en_dev =
-            active_variant(&projet, &projet.databases[0]).map(|variante| variante.environment);
-
-        assert_eq!(attendu_en_prod, Some(Environment::Prod));
-        assert_eq!(attendu_en_dev, Some(Environment::Dev));
+        assert!(active_variant(&projet, &projet.databases[0]).is_none());
+        projet.active_environment = EnvironmentId::brut("dev");
+        assert!(active_variant(&projet, &projet.databases[0]).is_some());
     }
 
     #[test]
-    fn les_bases_disponibles_excluent_celles_absentes_de_l_environnement() {
+    fn les_connexions_disponibles_sont_celles_de_l_environnement() {
         let projet = projet_de_test();
-        assert_eq!(databases_available(&projet, Environment::Prod).len(), 1);
-        assert_eq!(databases_available(&projet, Environment::Dev).len(), 2);
-        assert_eq!(databases_available(&projet, Environment::Staging).len(), 0);
+        assert_eq!(
+            databases_available(&projet, &EnvironmentId::brut("prod")).len(),
+            1
+        );
+        assert_eq!(
+            databases_available(&projet, &EnvironmentId::brut("dev")).len(),
+            2
+        );
+        // Un environnement déclaré mais sans connexion rend une liste vide — ce que `23g` affiche
+        // comme « aucune connexion déclarée en staging », plutôt qu'un projet muet.
+        assert_eq!(
+            databases_available(&projet, &EnvironmentId::brut("staging")).len(),
+            0
+        );
     }
 
     #[test]
-    fn un_projet_sans_base_est_valide() {
-        // C'est l'état créé par « Nouveau projet » en A1, avant toute connexion déclarée.
+    fn un_projet_sans_connexion_est_valide() {
+        // C'est l'état créé par « Nouveau projet » en `A1`, avant toute connexion déclarée.
         let projet = Project {
             name: "Neuf".into(),
-            active_environment: Environment::Dev,
+            active_environment: EnvironmentId::brut("dev"),
+            environments: EnvironmentDeclaration::trio_par_defaut(),
             queries: Vec::new(),
             databases: vec![],
         };
@@ -141,25 +137,61 @@ mod tests {
     }
 
     #[test]
-    fn deux_bases_de_meme_nom_dans_un_projet_sont_refusees() {
-        let projet = Project {
-            name: "Atelier Nord".into(),
-            active_environment: Environment::Dev,
-            queries: Vec::new(),
-            databases: vec![
-                Database::new(
-                    "analytics",
-                    Engine::PostgreSql,
-                    vec![variante(Environment::Dev)],
-                )
-                .unwrap(),
-                Database::new("analytics", Engine::MySql, vec![variante(Environment::Dev)])
-                    .unwrap(),
-            ],
-        };
+    fn deux_connexions_de_meme_nom_et_meme_environnement_sont_refusees() {
+        let mut projet = projet_de_test();
+        projet.databases.push(connexion("analytics", "prod"));
         assert!(matches!(
             validate(&projet),
-            Err(ModelError::NomDeBaseEnDouble { .. })
+            Err(ModelError::ConnexionEnDouble { .. })
+        ));
+    }
+
+    #[test]
+    fn deux_connexions_de_meme_nom_dans_deux_environnements_sont_le_modele_meme() {
+        // **Le test qui dit le changement de `23b`.** Cette configuration était refusée par
+        // l'ancienne règle « deux bases de même nom dans un projet » ; elle est désormais
+        // exactement ce que le modèle permet — `analytics` en dev et en prod.
+        let projet = projet_de_test();
+        assert!(validate(&projet).is_ok());
+        assert_eq!(
+            projet
+                .databases
+                .iter()
+                .filter(|base| base.name == "analytics")
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn une_connexion_visant_un_environnement_non_declare_est_refusee() {
+        let mut projet = projet_de_test();
+        projet.databases.push(connexion("journal", "preprod"));
+        // Elle serait invisible dans l'arbre, qui liste par environnement actif.
+        assert!(matches!(
+            validate(&projet),
+            Err(ModelError::EnvironnementInconnu { .. })
+        ));
+    }
+
+    #[test]
+    fn un_environnement_actif_non_declare_est_refuse() {
+        let mut projet = projet_de_test();
+        projet.active_environment = EnvironmentId::brut("preprod");
+        assert!(matches!(
+            validate(&projet),
+            Err(ModelError::ActifInconnu { .. })
+        ));
+    }
+
+    #[test]
+    fn un_projet_sans_environnement_est_refuse() {
+        let mut projet = projet_de_test();
+        projet.environments.clear();
+        projet.databases.clear();
+        assert!(matches!(
+            validate(&projet),
+            Err(ModelError::AucunEnvironnement { .. })
         ));
     }
 }

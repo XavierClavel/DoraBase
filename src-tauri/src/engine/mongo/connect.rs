@@ -5,7 +5,7 @@ use std::time::Duration;
 use mongodb::options::{ClientOptions, Credential, ServerAddress, Tls, TlsOptions};
 use mongodb::Client;
 
-use crate::config::EnvironmentVariant;
+use crate::config::ConnectionSettings;
 use crate::engine::tls::Exigences;
 use crate::engine::EngineError;
 use crate::secrets::Secret;
@@ -38,7 +38,7 @@ impl Deploiement {
 /// déclarant un tunnel sans redirection est **le même** : se connecter en direct contournerait la
 /// consigne de sécurité de l'utilisateur.
 pub fn preparer(
-    variante: &EnvironmentVariant,
+    variante: &ConnectionSettings,
     mot_de_passe: Option<&Secret>,
     redirection: Option<(&str, u16)>,
 ) -> Result<ClientOptions, EngineError> {
@@ -199,11 +199,10 @@ pub async fn version_du_serveur(client: &Client) -> Result<String, EngineError> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{Environment, SslMode, Tunnel, TunnelKind};
+    use crate::config::{SslMode, Tunnel, TunnelKind};
 
-    fn variante() -> EnvironmentVariant {
-        EnvironmentVariant {
-            environment: Environment::Dev,
+    fn variante() -> ConnectionSettings {
+        ConnectionSettings {
             host: "localhost".into(),
             port: 27017,
             default_database: "atelier_ventes".into(),

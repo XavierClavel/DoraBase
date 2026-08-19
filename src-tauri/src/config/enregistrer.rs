@@ -5,8 +5,7 @@
 //! `commands.rs` : la logique d'ordonnancement et de rattrapage se teste sans Tauri.
 
 use crate::config::model::{
-    Database, Engine, Environment, EnvironmentVariant, ModelError, Project, SavedQuery, SecretRef,
-};
+    Database, Engine, EnvironmentId, ConnectionSettings, ModelError, Project, SavedQuery, SecretRef,};
 use crate::config::query::validate;
 use crate::secrets::{Secret, SecretError, SecretStore};
 
@@ -128,29 +127,23 @@ pub fn mettre_a_jour(
             project: project_name.to_owned(),
         })?;
 
+    // **La connexion est identifiée par son nom *et* son environnement** (`23b`) : deux connexions
+    // homonymes coexistent dans un projet, et n'en chercher qu'une par le nom modifierait la
+    // première venue — celle de dev alors qu'on éditait celle de prod.
     let base = projects[index]
         .databases
         .iter()
-        .position(|base| base.name == database_name)
+        .position(|base| base.name == database_name && base.environment == environment)
         .ok_or_else(|| SaveError::BaseInconnue {
             project: project_name.to_owned(),
             database: database_name.to_owned(),
         })?;
 
-    let rang = projects[index].databases[base]
-        .variants()
-        .iter()
-        .position(|variante| variante.environment == environment)
-        .ok_or_else(|| SaveError::VarianteInconnue {
-            database: database_name.to_owned(),
-            environment: environment.slug().to_owned(),
-        })?;
-
-    // La variante candidate garde la **référence de secret** de l'ancienne, que l'écran n'a pas à
-    // connaître. Son environnement, lui, est remis en place par `remplacer_variante` : la garde
-    // appartient au modèle, qui la porte pour tous ses appelants, et la doubler ici donnerait deux
-    // vérités dont une seule serait exercée par les tests.
-    let ancienne = projects[index].databases[base].variants()[rang].clone();
+    // Les réglages candidats gardent la **référence de secret** des anciens, que l'écran n'a pas à
+    // connaître. L'environnement, lui, n'est plus dans les réglages : il appartient à la connexion, et
+    // ne se change pas ici — le déplacer d'un environnement à l'autre déplacerait son mot de passe,
+    // ce qui est un autre geste (`23d`, hors périmètre).
+    let ancienne = projects[index].databases[base].connection.clone();
     let mut candidate = reglages.clone();
     candidate.password = ancienne.password.clone();
 
@@ -160,13 +153,13 @@ pub fn mettre_a_jour(
         let reference = ancienne
             .password
             .clone()
-            .unwrap_or_else(|| reference_de(project_name, database_name, environment.slug()));
+            .unwrap_or_else(|| reference_de(project_name, database_name, environment.as_str()));
         store.store(&reference, secret).map_err(SaveError::Secret)?;
         candidate.password = Some(reference);
     }
 
     let mut candidat = projects[index].clone();
-    candidat.databases[base].remplacer_variante(rang, candidate);
+    candidat.databases[base].connection = candidate;
     validate(&candidat).map_err(SaveError::Model)?;
 
     let ancien = std::mem::replace(&mut projects[index], candidat);
@@ -321,22 +314,19 @@ pub fn renommer_projet(
     // Ce qu'il faut déplacer, relevé avant de toucher à quoi que ce soit : une base, un
     // environnement, et la référence que la variante **déclare**. Prendre la référence déclarée
     // plutôt que de la recalculer respecte les variantes dont la référence a été posée autrement.
-    let a_deplacer: Vec<(String, &'static str, SecretRef)> = projects[index]
+    // Une connexion, un secret au plus (`23b`) : la liste est un `filter_map` là où elle était un
+    // `flat_map` sur les variantes.
+    let a_deplacer: Vec<(String, String, SecretRef)> = projects[index]
         .databases
         .iter()
-        .flat_map(|base| {
-            base.variants()
-                .iter()
-                .filter_map(|variante| {
-                    variante.password.as_ref().map(|reference| {
-                        (
-                            base.name.clone(),
-                            variante.environment.slug(),
-                            reference.clone(),
-                        )
-                    })
-                })
-                .collect::<Vec<_>>()
+        .filter_map(|base| {
+            base.connection.password.as_ref().map(|reference| {
+                (
+                    base.name.clone(),
+                    base.environment.as_str().to_owned(),
+                    reference.clone(),
+                )
+            })
         })
         .collect();
 
@@ -404,14 +394,7 @@ pub fn renommer_projet(
     let cles_a_fermer = projects[index]
         .databases
         .iter()
-        .flat_map(|base| {
-            base.variants()
-                .iter()
-                .map(|variante| {
-                    crate::engine::registry::cle(ancien, &base.name, variante.environment.slug())
-                })
-                .collect::<Vec<_>>()
-        })
+        .map(|base| crate::engine::registry::cle(ancien, &base.name, base.environment.as_str()))
         .collect();
 
     // Le projet est reconstruit à côté, validé, puis substitué — le pattern de `mettre_a_jour` :
@@ -419,17 +402,12 @@ pub fn renommer_projet(
     let mut candidat = projects[index].clone();
     candidat.name = nouveau.to_owned();
     for base in &mut candidat.databases {
-        let nom_base = base.name.clone();
-        for rang in 0..base.variants().len() {
-            let mut variante = base.variants()[rang].clone();
-            if variante.password.is_some() {
-                variante.password = Some(reference_de(
-                    nouveau,
-                    &nom_base,
-                    variante.environment.slug(),
-                ));
-            }
-            base.remplacer_variante(rang, variante);
+        if base.connection.password.is_some() {
+            base.connection.password = Some(reference_de(
+                nouveau,
+                &base.name,
+                base.environment.as_str(),
+            ));
         }
     }
     validate(&candidat).map_err(|erreur| RenameError::Config {
@@ -482,10 +460,10 @@ fn retirer_les_ecrits(magasin: &dyn SecretStore, ecrits: &[SecretRef]) -> bool {
 pub struct Modification<'a> {
     pub project: &'a str,
     pub database: &'a str,
-    pub environment: Environment,
+    pub environment: EnvironmentId,
     /// Les réglages saisis. Son `environment` et son `password` sont **ignorés** : la variante
     /// garde les siens.
-    pub reglages: &'a EnvironmentVariant,
+    pub reglages: &'a ConnectionSettings,
     /// `None` laisse le secret en place.
     pub password: Option<&'a Secret>,
 }
@@ -499,7 +477,10 @@ pub struct NouvelleBase<'a> {
     pub project: &'a str,
     pub database: &'a str,
     pub engine: Engine,
-    pub variant: EnvironmentVariant,
+    /// L'environnement de la connexion (`23b`). Il était dans `variant` ; il est monté d'un cran avec
+    /// le modèle, et l'écran le choisit parmi ceux du projet (`23d`).
+    pub environment: EnvironmentId,
+    pub variant: ConnectionSettings,
     pub password: Option<&'a Secret>,
 }
 
@@ -514,7 +495,7 @@ pub struct NouvelleBase<'a> {
 pub fn creer_projet(
     projects: &[Project],
     nom: &str,
-    active_environment: Environment,
+    active_environment: EnvironmentId,
 ) -> Result<Vec<Project>, CreateError> {
     let nom = nom.trim();
     if nom.is_empty() {
@@ -530,6 +511,9 @@ pub fn creer_projet(
     suivants.push(Project {
         name: nom.to_owned(),
         active_environment,
+        // **Le trio du handoff** (`23a`) : un projet sans environnement ne pourrait rien déclarer,
+        // une connexion appartenant désormais à un environnement.
+        environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
         databases: Vec::new(),
         queries: Vec::new(),
     });
@@ -590,6 +574,7 @@ pub fn supprimer_base(
     projects: &[Project],
     project: &str,
     database: &str,
+    environment: &EnvironmentId,
     magasin: &dyn SecretStore,
     ecrire: &mut dyn FnMut(&[Project]) -> Result<(), String>,
 ) -> Result<Suppression, DeleteError> {
@@ -599,10 +584,14 @@ pub fn supprimer_base(
         .ok_or_else(|| DeleteError::Inconnu {
             project: project.to_owned(),
         })?;
+    // **L'environnement fait partie de l'identité d'une connexion** (`23b`), et cette signature est
+    // ce qui l'impose. Sans lui, supprimer « analytics » d'un projet où elle existe en dev et en prod
+    // aurait retiré la première venue — et son mot de passe avec. Trouvé par un test de suppression
+    // qui passait sur un décor à une seule connexion homonyme.
     let rang = projects[index]
         .databases
         .iter()
-        .position(|base| base.name == database)
+        .position(|base| base.name == database && &base.environment == environment)
         .ok_or_else(|| DeleteError::BaseInconnue {
             project: project.to_owned(),
             database: database.to_owned(),
@@ -668,20 +657,17 @@ fn oublier(
     project: &str,
     magasin: &dyn SecretStore,
 ) -> (Vec<String>, Vec<String>) {
-    let mut cles = Vec::new();
     let mut residus = Vec::new();
-    for variante in base.variants() {
-        cles.push(crate::engine::registry::cle(
-            project,
-            &base.name,
-            variante.environment.slug(),
-        ));
-        // La référence **déclarée**, pas une recalculée : une variante dont la référence a été posée
-        // autrement garderait sinon son secret.
-        if let Some(reference) = &variante.password {
-            if magasin.delete(reference).is_err() {
-                residus.push(reference.as_str().to_owned());
-            }
+    let cles = vec![crate::engine::registry::cle(
+        project,
+        &base.name,
+        base.environment.as_str(),
+    )];
+    // La référence **déclarée**, pas une recalculée : une connexion dont la référence a été posée
+    // autrement garderait sinon son secret.
+    if let Some(reference) = &base.connection.password {
+        if magasin.delete(reference).is_err() {
+            residus.push(reference.as_str().to_owned());
         }
     }
     (cles, residus)
@@ -849,10 +835,10 @@ pub fn enregistrer(
         project: project_name,
         database: database_name,
         engine,
+        environment: environnement,
         mut variant,
         password,
     } = nouvelle;
-    let environnement = variant.environment;
     let index = projects
         .iter()
         .position(|projet| projet.name == project_name)
@@ -864,13 +850,20 @@ pub fn enregistrer(
     // remplace le mot de passe dans la configuration, et l'oublier laisserait une base sans
     // moyen de retrouver son secret.
     let reference =
-        password.map(|_| reference_de(project_name, database_name, environnement.slug()));
+        password.map(|_| reference_de(project_name, database_name, environnement.as_str()));
     variant.password = reference.clone();
 
-    // La base est construite avant tout effet de bord : `Database::new` refuse une base sans
-    // variante ou avec deux fois le même environnement, et il vaut mieux le savoir avant
-    // d'avoir touché au magasin.
-    let base = Database::new(database_name, engine, vec![variant]).map_err(SaveError::Model)?;
+    // **La validation a changé de place, et non de nature.** `Database::new` refusait une base sans
+    // variante ou avec deux fois le même environnement ; ces deux cas n'existent plus (`23b`), et ce
+    // qui reste à refuser — une connexion en doublon, un environnement non déclaré — porte sur le
+    // projet entier. C'est donc `validate` du projet candidat, quelques lignes plus bas, qui refuse,
+    // toujours avant d'avoir touché au magasin.
+    let base = Database {
+        name: database_name.to_owned(),
+        engine,
+        environment: environnement.clone(),
+        connection: variant,
+    };
 
     // Un projet candidat, validé à part : muter d'abord puis valider obligerait à défaire la
     // mutation en cas de refus, et une mutation défaite est une mutation qu'on peut oublier.
@@ -912,7 +905,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::config::model::{Environment, SslMode};
+    use crate::config::model::{EnvironmentId, SslMode};
 
     /// Un magasin en mémoire, qui peut être rendu défaillant.
     ///
@@ -978,9 +971,8 @@ mod tests {
         }
     }
 
-    fn variante(env: Environment) -> EnvironmentVariant {
-        EnvironmentVariant {
-            environment: env,
+    fn variante() -> ConnectionSettings {
+        ConnectionSettings {
             host: "db.internal".into(),
             port: 5432,
             default_database: "analytics".into(),
@@ -997,7 +989,8 @@ mod tests {
     fn projets() -> Vec<Project> {
         vec![Project {
             name: "Atelier Nord".into(),
-            active_environment: Environment::Dev,
+            active_environment: EnvironmentId::brut("dev"),
+            environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
             queries: Vec::new(),
             databases: Vec::new(),
         }]
@@ -1007,31 +1000,31 @@ mod tests {
 
     #[test]
     fn un_projet_cree_est_vide_et_porte_l_environnement_demande() {
-        let suivants = creer_projet(&[], "Atelier Nord", Environment::Prod).expect("création");
+        let suivants = creer_projet(&[], "Atelier Nord", EnvironmentId::brut("prod")).expect("création");
 
         assert_eq!(suivants.len(), 1);
         assert_eq!(suivants[0].name, "Atelier Nord");
         // L'environnement vient de la variante qu'on déclare : le coder à `dev` afficherait un
         // arbre vide juste après l'enregistrement d'une base `prod`.
-        assert_eq!(suivants[0].active_environment, Environment::Prod);
+        assert_eq!(suivants[0].active_environment, EnvironmentId::brut("prod"));
         assert!(suivants[0].databases.is_empty());
     }
 
     #[test]
     fn un_nom_vide_ou_en_blancs_est_refuse() {
         assert_eq!(
-            creer_projet(&[], "", Environment::Dev),
+            creer_projet(&[], "", EnvironmentId::brut("dev")),
             Err(CreateError::NomVide)
         );
         assert_eq!(
-            creer_projet(&[], "   ", Environment::Dev),
+            creer_projet(&[], "   ", EnvironmentId::brut("dev")),
             Err(CreateError::NomVide)
         );
     }
 
     #[test]
     fn un_nom_deja_pris_est_refuse_et_le_dit() {
-        let erreur = creer_projet(&projets(), "Atelier Nord", Environment::Dev)
+        let erreur = creer_projet(&projets(), "Atelier Nord", EnvironmentId::brut("dev"))
             .expect_err("le nom est déjà pris");
         assert_eq!(
             erreur,
@@ -1048,7 +1041,7 @@ mod tests {
     /// et le second serait injoignable puisque la clé de base emploie le nom.
     #[test]
     fn les_blancs_de_bord_ne_creent_pas_un_second_projet() {
-        let erreur = creer_projet(&projets(), "  Atelier Nord  ", Environment::Dev)
+        let erreur = creer_projet(&projets(), "  Atelier Nord  ", EnvironmentId::brut("dev"))
             .expect_err("c'est le même projet");
         assert_eq!(
             erreur,
@@ -1058,7 +1051,7 @@ mod tests {
         );
 
         let suivants =
-            creer_projet(&[], "  Outils internes  ", Environment::Dev).expect("création");
+            creer_projet(&[], "  Outils internes  ", EnvironmentId::brut("dev")).expect("création");
         assert_eq!(suivants[0].name, "Outils internes");
     }
 
@@ -1066,7 +1059,7 @@ mod tests {
     fn creer_un_projet_ne_touche_pas_aux_projets_existants() {
         let avant = projets();
         let suivants =
-            creer_projet(&avant, "Data science", Environment::Staging).expect("création");
+            creer_projet(&avant, "Data science", EnvironmentId::brut("staging")).expect("création");
 
         // Une fonction pure : la liste d'entrée n'est pas mutée, et l'appelant décide d'écrire.
         assert_eq!(avant.len(), 1);
@@ -1090,7 +1083,8 @@ mod tests {
                 project: "Atelier Nord",
                 database: "analytics",
                 engine: Engine::PostgreSql,
-                variant: variante(Environment::Dev),
+                environment: EnvironmentId::brut("dev"),
+                variant: variante(),
                 password: Some(&Secret::new("s3cr3t")),
             },
             m,
@@ -1107,9 +1101,9 @@ mod tests {
     fn une_modification_change_les_reglages_sans_toucher_a_l_identite() {
         let m = magasin();
         let mut p = projets_avec_base(&m);
-        let avant = p[0].databases[0].variants()[0].clone();
+        let avant = p[0].databases[0].connection.clone();
 
-        let mut reglages = variante(Environment::Prod);
+        let mut reglages = variante();
         reglages.host = "db.nouveau".into();
         reglages.port = 5433;
 
@@ -1118,7 +1112,7 @@ mod tests {
             Modification {
                 project: "Atelier Nord",
                 database: "analytics",
-                environment: Environment::Dev,
+                environment: EnvironmentId::brut("dev"),
                 reglages: &reglages,
                 password: None,
             },
@@ -1127,13 +1121,13 @@ mod tests {
         )
         .expect("modification");
 
-        let apres = &p[0].databases[0].variants()[0];
+        let apres = &p[0].databases[0].connection;
         assert_eq!(apres.host, "db.nouveau");
         assert_eq!(apres.port, 5433);
         // **L'environnement ne bouge pas**, même si les réglages envoyés en portaient un autre :
         // il désigne la variante, et fait partie de la clé de connexion comme de la référence du
         // secret. Le laisser passer laisserait un secret orphelin.
-        assert_eq!(apres.environment, Environment::Dev);
+        assert_eq!(p[0].databases[0].environment, EnvironmentId::brut("dev"));
         assert_eq!(apres.password, avant.password);
     }
 
@@ -1141,7 +1135,7 @@ mod tests {
     fn un_mot_de_passe_absent_laisse_le_secret_en_place() {
         let m = magasin();
         let mut p = projets_avec_base(&m);
-        let reference = p[0].databases[0].variants()[0]
+        let reference = p[0].databases[0].connection
             .password
             .clone()
             .expect("le décor a rangé un secret");
@@ -1151,8 +1145,8 @@ mod tests {
             Modification {
                 project: "Atelier Nord",
                 database: "analytics",
-                environment: Environment::Dev,
-                reglages: &variante(Environment::Dev),
+                environment: EnvironmentId::brut("dev"),
+                reglages: &variante(),
                 password: None,
             },
             &m,
@@ -1174,7 +1168,7 @@ mod tests {
     fn un_mot_de_passe_fourni_remplace_le_secret() {
         let m = magasin();
         let mut p = projets_avec_base(&m);
-        let reference = p[0].databases[0].variants()[0]
+        let reference = p[0].databases[0].connection
             .password
             .clone()
             .expect("le décor a rangé un secret");
@@ -1184,8 +1178,8 @@ mod tests {
             Modification {
                 project: "Atelier Nord",
                 database: "analytics",
-                environment: Environment::Dev,
-                reglages: &variante(Environment::Dev),
+                environment: EnvironmentId::brut("dev"),
+                reglages: &variante(),
                 password: Some(&Secret::new("nouveau")),
             },
             &m,
@@ -1200,14 +1194,14 @@ mod tests {
             Some("nouveau".to_owned())
         );
         // La référence n'a pas changé : elle dérive du triplet, qui n'a pas bougé.
-        assert_eq!(p[0].databases[0].variants()[0].password, Some(reference));
+        assert_eq!(p[0].databases[0].connection.password, Some(reference));
     }
 
     #[test]
     fn modifier_ne_cree_jamais_rien() {
         let m = magasin();
         let mut p = projets_avec_base(&m);
-        let reglages = variante(Environment::Dev);
+        let reglages = variante();
 
         // Une base inconnue est refusée, et non ajoutée : c'est ce qui distingue cette commande de
         // `enregistrer`.
@@ -1216,7 +1210,7 @@ mod tests {
             Modification {
                 project: "Atelier Nord",
                 database: "inconnue",
-                environment: Environment::Dev,
+                environment: EnvironmentId::brut("dev"),
                 reglages: &reglages,
                 password: None,
             },
@@ -1233,23 +1227,28 @@ mod tests {
             Modification {
                 project: "Atelier Nord",
                 database: "analytics",
-                environment: Environment::Prod,
+                environment: EnvironmentId::brut("prod"),
                 reglages: &reglages,
                 password: None,
             },
             &m,
             &mut |_| Ok(()),
         )
-        .expect_err("la variante n'existe pas");
-        assert!(erreur.to_string().contains("prod"), "{erreur}");
-        assert_eq!(p[0].databases[0].variants().len(), 1);
+        .expect_err("aucune connexion « analytics » en prod dans ce décor");
+        // **Le nom de la base, non l'environnement.** L'erreur est désormais « base inconnue » : une
+        // connexion est identifiée par son nom *et* son environnement (`23b`), et n'en trouver aucune
+        // ne distingue pas « mauvais nom » de « mauvais environnement ». Le message nomme donc ce que
+        // l'utilisateur a demandé.
+        assert!(erreur.to_string().contains("analytics"), "{erreur}");
+        // Une connexion, un seul jeu de réglages (`23b`) : il n'y a plus de variantes à compter.
+        assert_eq!(p[0].databases.len(), 1);
     }
 
     #[test]
     fn une_configuration_qui_echoue_laisse_les_reglages_intacts() {
         let m = magasin();
         let mut p = projets_avec_base(&m);
-        let mut reglages = variante(Environment::Dev);
+        let mut reglages = variante();
         reglages.host = "db.nouveau".into();
 
         mettre_a_jour(
@@ -1257,7 +1256,7 @@ mod tests {
             Modification {
                 project: "Atelier Nord",
                 database: "analytics",
-                environment: Environment::Dev,
+                environment: EnvironmentId::brut("dev"),
                 reglages: &reglages,
                 password: None,
             },
@@ -1268,7 +1267,7 @@ mod tests {
 
         // L'ancien hôte est repris : une écriture ratée ne doit pas laisser la mémoire en avance
         // sur le disque.
-        assert_eq!(p[0].databases[0].variants()[0].host, "db.internal");
+        assert_eq!(p[0].databases[0].connection.host, "db.internal");
     }
 
     #[test]
@@ -1283,7 +1282,8 @@ mod tests {
                 project: "Atelier Nord",
                 database: "analytics",
                 engine: Engine::PostgreSql,
-                variant: variante(Environment::Dev),
+                environment: EnvironmentId::brut("dev"),
+                variant: variante(),
                 password: Some(&Secret::new("s3cr3t")),
             },
             &m,
@@ -1324,7 +1324,8 @@ mod tests {
                 project: "Atelier Nord",
                 database: "analytics",
                 engine: Engine::PostgreSql,
-                variant: variante(Environment::Dev),
+                environment: EnvironmentId::brut("dev"),
+                variant: variante(),
                 password: Some(&Secret::new(sentinelle)),
             },
             &m,
@@ -1371,7 +1372,8 @@ mod tests {
                 project: "Atelier Nord",
                 database: "analytics",
                 engine: Engine::PostgreSql,
-                variant: variante(Environment::Dev),
+                environment: EnvironmentId::brut("dev"),
+                variant: variante(),
                 password: Some(&Secret::new("s3cr3t")),
             },
             &m,
@@ -1409,7 +1411,8 @@ mod tests {
                 project: "Atelier Nord",
                 database: "analytics",
                 engine: Engine::PostgreSql,
-                variant: variante(Environment::Dev),
+                environment: EnvironmentId::brut("dev"),
+                variant: variante(),
                 password: None,
             },
             &m,
@@ -1435,7 +1438,8 @@ mod tests {
                 project: "Atelier Nord",
                 database: "analytics",
                 engine: Engine::PostgreSql,
-                variant: variante(Environment::Dev),
+                environment: EnvironmentId::brut("dev"),
+                variant: variante(),
                 password: Some(&Secret::new("s3cr3t")),
             },
             &m,
@@ -1468,7 +1472,8 @@ mod tests {
                 project: "Atelier Nord",
                 database: "analytics",
                 engine: Engine::PostgreSql,
-                variant: variante(Environment::Dev),
+                environment: EnvironmentId::brut("dev"),
+                variant: variante(),
                 password: Some(&Secret::new("s3cr3t")),
             },
             &m,
@@ -1495,7 +1500,8 @@ mod tests {
                 project: "Atelier Nord",
                 database: "analytics",
                 engine: Engine::PostgreSql,
-                variant: variante(Environment::Dev),
+                environment: EnvironmentId::brut("dev"),
+                variant: variante(),
                 password: None,
             },
             &m,
@@ -1509,7 +1515,8 @@ mod tests {
                 project: "Atelier Nord",
                 database: "analytics",
                 engine: Engine::PostgreSql,
-                variant: variante(Environment::Staging),
+                environment: EnvironmentId::brut("dev"),
+                variant: variante(),
                 password: None,
             },
             &m,
@@ -1519,7 +1526,7 @@ mod tests {
 
         assert!(matches!(
             erreur,
-            SaveError::Model(ModelError::NomDeBaseEnDouble { .. })
+            SaveError::Model(ModelError::ConnexionEnDouble { .. })
         ));
         assert_eq!(p[0].databases.len(), 1);
     }
@@ -1535,7 +1542,8 @@ mod tests {
                 project: "Projet Fantôme",
                 database: "analytics",
                 engine: Engine::PostgreSql,
-                variant: variante(Environment::Dev),
+                environment: EnvironmentId::brut("dev"),
+                variant: variante(),
                 password: None,
             },
             &m,
@@ -1559,7 +1567,8 @@ mod tests {
                 project: "Atelier Nord",
                 database: "analytics",
                 engine: Engine::Sqlite,
-                variant: variante(Environment::Dev),
+                environment: EnvironmentId::brut("dev"),
+                variant: variante(),
                 password: None,
             },
             &m,
@@ -1568,9 +1577,7 @@ mod tests {
         .expect("enregistrement");
 
         assert_eq!(
-            p[0].databases[0]
-                .variant(Environment::Dev)
-                .expect("variante")
+            p[0].databases[0].connection
                 .password,
             None
         );
@@ -1619,8 +1626,7 @@ mod tests_parcours {
             .get_password()
             .map(|octets| Secret::new(String::from_utf8_lossy(octets).into_owned()));
 
-        let variante_de = |port: u16| EnvironmentVariant {
-            environment: Environment::Dev,
+        let variante_de = |port: u16| ConnectionSettings {
             host: hote.clone(),
             port,
             default_database: analysee.get_dbname().expect("une base").to_owned(),
@@ -1644,7 +1650,8 @@ mod tests_parcours {
 
         let mut projects = vec![Project {
             name: "Atelier".into(),
-            active_environment: Environment::Dev,
+            active_environment: EnvironmentId::brut("dev"),
+            environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
             queries: Vec::new(),
             databases: vec![crate::config::model::Database::new(
                 "analytics",
@@ -1659,7 +1666,7 @@ mod tests_parcours {
             Modification {
                 project: "Atelier",
                 database: "analytics",
-                environment: Environment::Dev,
+                environment: EnvironmentId::brut("dev"),
                 reglages: &variante_de(bon),
                 password: secret.as_ref(),
             },
@@ -1668,7 +1675,7 @@ mod tests_parcours {
         )
         .expect("modification");
 
-        let corrigee = projects[0].databases[0].variants()[0].clone();
+        let corrigee = projects[0].databases[0].connection.clone();
         assert_eq!(corrigee.port, bon);
         // Le mot de passe fourni a été rangé et **référencé** : sans cela, la connexion échouerait
         // ici alors que le port est bon — et l'utilisateur croirait le port encore faux.
@@ -1685,12 +1692,11 @@ mod tests_parcours {
 mod tests_renommage {
     use super::tests::{magasin, magasin_defaillant, MagasinSync};
     use super::*;
-    use crate::config::model::{Environment, SslMode};
+    use crate::config::model::{EnvironmentId, SslMode};
     use std::collections::HashMap;
 
-    fn variante(env: Environment, reference: Option<SecretRef>) -> EnvironmentVariant {
-        EnvironmentVariant {
-            environment: env,
+    fn variante(reference: Option<SecretRef>) -> ConnectionSettings {
+        ConnectionSettings {
             host: "db.internal".into(),
             port: 5432,
             default_database: "analytics".into(),
@@ -1717,39 +1723,39 @@ mod tests_renommage {
         vec![
             Project {
                 name: "Print".into(),
-                active_environment: Environment::Prod,
+                active_environment: EnvironmentId::brut("prod"),
+                environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
                 queries: Vec::new(),
+                // **Trois connexions et trois secrets** depuis `23b` : `analytics` en dev et en prod
+                // sont deux connexions, là où c'était une base à deux variantes. Le décor porte
+                // toujours plus d'un secret, pour qu'une migration arrêtée à mi-parcours se distingue
+                // d'une migration complète — la règle 7 de `REPRISE.md`.
                 databases: vec![
-                    Database::new(
-                        "analytics",
-                        crate::config::model::Engine::PostgreSql,
-                        vec![
-                            variante(
-                                Environment::Dev,
-                                Some(reference_de("Print", "analytics", "dev")),
-                            ),
-                            variante(
-                                Environment::Prod,
-                                Some(reference_de("Print", "analytics", "prod")),
-                            ),
-                        ],
-                    )
-                    .expect("base de décor"),
-                    Database::new(
-                        "shop",
-                        crate::config::model::Engine::MySql,
-                        vec![variante(
-                            Environment::Prod,
-                            Some(reference_de("Print", "shop", "prod")),
-                        )],
-                    )
-                    .expect("base de décor"),
+                    Database {
+                        name: "analytics".to_owned(),
+                        engine: crate::config::model::Engine::PostgreSql,
+                        environment: EnvironmentId::brut("dev"),
+                        connection: variante(Some(reference_de("Print", "analytics", "dev"))),
+                    },
+                    Database {
+                        name: "analytics".to_owned(),
+                        engine: crate::config::model::Engine::PostgreSql,
+                        environment: EnvironmentId::brut("prod"),
+                        connection: variante(Some(reference_de("Print", "analytics", "prod"))),
+                    },
+                    Database {
+                        name: "shop".to_owned(),
+                        engine: crate::config::model::Engine::MySql,
+                        environment: EnvironmentId::brut("prod"),
+                        connection: variante(Some(reference_de("Print", "shop", "prod"))),
+                    },
                 ],
             },
             // Un **voisin**, pour que « le projet renommé » se distingue de « le premier projet ».
             Project {
                 name: "Outils".into(),
-                active_environment: Environment::Dev,
+                active_environment: EnvironmentId::brut("dev"),
+                environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
                 queries: Vec::new(),
                 databases: Vec::new(),
             },
@@ -1809,7 +1815,7 @@ mod tests_renommage {
 
         // Les références du modèle suivent, sinon la configuration désignerait des secrets partis.
         assert_eq!(
-            projets[0].databases[0].variants()[0].password,
+            projets[0].databases[0].connection.password,
             Some(reference_de("Atelier Nord", "analytics", "dev"))
         );
 
@@ -1864,7 +1870,7 @@ mod tests_renommage {
         assert_eq!(ecrits, 0);
         assert_eq!(projets[0].name, "Print");
         assert_eq!(
-            projets[0].databases[0].variants()[0].password,
+            projets[0].databases[0].connection.password,
             Some(reference_de("Print", "analytics", "dev"))
         );
     }
@@ -2018,8 +2024,16 @@ mod tests_renommage {
         }
         // Le modèle en mémoire est rendu : le laisser renommé ferait divorcer l'écran du fichier.
         assert_eq!(projets[0].name, "Print");
+        // **Désigné par nom et environnement, non par index.** Le décor porte trois connexions
+        // depuis `23b`, et `databases[1]` est devenu `analytics` en prod : un index dans un décor qui
+        // grandit désigne autre chose sans le dire.
+        let shop = projets[0]
+            .databases
+            .iter()
+            .find(|base| base.name == "shop" && base.environment == EnvironmentId::brut("prod"))
+            .expect("le décor déclare shop en prod");
         assert_eq!(
-            projets[0].databases[1].variants()[0].password,
+            shop.connection.password,
             Some(reference_de("Print", "shop", "prod"))
         );
         assert!(m
@@ -2195,31 +2209,40 @@ mod tests_suppression {
         }
         let mut ecrits = 0;
 
-        let issue = supprimer_base(&projets, "Print", "analytics", &m, &mut |_| {
+        let issue = supprimer_base(&projets, "Print", "analytics", &EnvironmentId::brut("dev"), &m, &mut |_| {
             ecrits += 1;
             Ok(())
         })
         .expect("suppression");
 
         assert_eq!(ecrits, 1);
-        assert_eq!(issue.projects[0].databases.len(), 1);
-        assert_eq!(issue.projects[0].databases[0].name, "shop");
-        // Les deux variantes de la base retirée : une seule effacée laisserait un secret orphelin.
-        for env in ["dev", "prod"] {
-            assert!(
-                m.retrieve(&reference_de("Print", "analytics", env))
-                    .expect("relecture")
-                    .is_none(),
-                "analytics/{env} doit être effacé"
-            );
-        }
-        // **Le voisin est intact** : sans lui dans le décor, « supprimer la bonne base » serait
-        // indiscernable de « tout supprimer ».
+        // **Une connexion retirée, deux restantes** — et c'est le changement de `23b`. Ce test
+        // affirmait l'inverse : supprimer « analytics » emportait ses deux variantes et leurs deux
+        // secrets. Une connexion appartient désormais à un environnement, donc `analytics` en prod
+        // n'est pas concernée par la suppression de `analytics` en dev.
+        assert_eq!(issue.projects[0].databases.len(), 2);
+        assert!(
+            m.retrieve(&reference_de("Print", "analytics", "dev"))
+                .expect("relecture")
+                .is_none(),
+            "le secret de la connexion retirée doit être effacé"
+        );
+        // **L'homonyme survit, secret compris.** C'est la garantie la plus facile à casser du nouveau
+        // modèle : une suppression qui filtrerait sur le seul nom emporterait les deux.
+        assert!(
+            m.retrieve(&reference_de("Print", "analytics", "prod"))
+                .expect("relecture")
+                .is_some(),
+            "analytics/prod est une autre connexion, elle reste"
+        );
+        // Et le voisin d'un autre nom aussi : sans lui, « supprimer la bonne » serait indiscernable
+        // de « tout supprimer ».
         assert!(m
             .retrieve(&reference_de("Print", "shop", "prod"))
             .expect("relecture")
             .is_some());
-        assert_eq!(issue.cles_a_fermer.len(), 2);
+        // Une seule connexion fermée : celle qu'on a retirée.
+        assert_eq!(issue.cles_a_fermer.len(), 1);
         assert!(issue.secrets_residuels.is_empty());
     }
 
@@ -2258,10 +2281,11 @@ mod tests_suppression {
         // Magasin vide : les mots de passe ont été effacés à la main dans le Trousseau.
         let m = magasin();
 
-        let issue = supprimer_base(&projets, "Print", "analytics", &m, &mut |_| Ok(()))
+        let issue = supprimer_base(&projets, "Print", "analytics", &EnvironmentId::brut("dev"), &m, &mut |_| Ok(()))
             .expect("un mot de passe déjà absent ne doit pas rendre l'entrée indélébile");
 
-        assert_eq!(issue.projects[0].databases.len(), 1);
+        // Deux connexions restantes : `analytics` en prod et `shop` en prod (`23b`).
+        assert_eq!(issue.projects[0].databases.len(), 2);
         // `delete` d'une référence absente réussit : rien à signaler.
         assert!(issue.secrets_residuels.is_empty());
     }
@@ -2274,13 +2298,17 @@ mod tests_suppression {
             m.poser(&reference_de("Print", "analytics", env), "mdp");
         }
 
-        let issue = supprimer_base(&projets, "Print", "analytics", &m, &mut |_| Ok(()))
+        let issue = supprimer_base(&projets, "Print", "analytics", &EnvironmentId::brut("dev"), &m, &mut |_| Ok(()))
             .expect("un magasin qui refuse d'effacer ne doit pas rendre l'entrée indélébile");
 
-        assert_eq!(issue.projects[0].databases.len(), 1);
-        // **Dit, jamais tu** : deux mots de passe restent dans le Trousseau, et l'écran doit pouvoir
+        assert_eq!(issue.projects[0].databases.len(), 2);
+        // **Dit, jamais tu** : le mot de passe reste dans le Trousseau, et l'écran doit pouvoir
         // l'annoncer plutôt que de laisser croire à un nettoyage complet.
-        assert_eq!(issue.secrets_residuels.len(), 2);
+        //
+        // **Un seul, et non deux.** Ce test en attendait deux, du temps où une base emportait ses
+        // variantes ; une connexion n'a qu'un secret (`23b`). Ce qui compte n'a pas changé : un résidu
+        // se signale.
+        assert_eq!(issue.secrets_residuels.len(), 1);
     }
 
     #[test]
@@ -2289,14 +2317,15 @@ mod tests_suppression {
         let m = magasin();
         m.poser(&reference_de("Print", "shop", "prod"), "mdp");
 
-        let erreur = supprimer_base(&projets, "Print", "shop", &m, &mut |_| {
+        let erreur = supprimer_base(&projets, "Print", "shop", &EnvironmentId::brut("prod"), &m, &mut |_| {
             Err("disque plein".to_owned())
         })
         .expect_err("la suppression doit échouer");
 
         assert!(matches!(erreur, DeleteError::Config { .. }));
         // Le modèle reçu n'est pas modifié — la fonction travaille sur une copie.
-        assert_eq!(projets[0].databases.len(), 2);
+        // Trois connexions dans le décor depuis `23b` : rien n'a été retiré.
+        assert_eq!(projets[0].databases.len(), 3);
     }
 
     #[test]
@@ -2305,7 +2334,7 @@ mod tests_suppression {
         let m = magasin();
         m.poser(&reference_de("Print", "shop", "prod"), "mdp");
 
-        supprimer_base(&projets, "Print", "shop", &m, &mut |_| {
+        supprimer_base(&projets, "Print", "shop", &EnvironmentId::brut("prod"), &m, &mut |_| {
             Err("disque plein".to_owned())
         })
         .expect_err("la suppression doit échouer");
@@ -2326,7 +2355,7 @@ mod tests_suppression {
         let projets = decor_partage();
         let m = magasin();
         assert!(matches!(
-            supprimer_base(&projets, "Print", "absente", &m, &mut |_| Ok(())),
+            supprimer_base(&projets, "Print", "absente", &EnvironmentId::brut("dev"), &m, &mut |_| Ok(())),
             Err(DeleteError::BaseInconnue { .. })
         ));
         assert!(matches!(
@@ -2378,7 +2407,8 @@ mod tests_requetes {
     fn projets() -> Vec<Project> {
         vec![Project {
             name: "Print".into(),
-            active_environment: Environment::Prod,
+            active_environment: EnvironmentId::brut("prod"),
+            environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
             databases: Vec::new(),
             queries: Vec::new(),
         }]
@@ -2461,7 +2491,8 @@ mod tests_requetes {
         let mut deux = projets();
         deux.push(Project {
             name: "Outils".into(),
-            active_environment: Environment::Dev,
+            active_environment: EnvironmentId::brut("dev"),
+            environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
             databases: Vec::new(),
             queries: Vec::new(),
         });

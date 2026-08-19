@@ -21,7 +21,7 @@ pub use commands::{
 };
 pub use enregistrer::{enregistrer, reference_de, NouvelleBase, SaveError};
 pub use model::{
-    Accent, Database, Engine, Environment, EnvironmentVariant, Guards, ModelError, Preferences,
+    Accent, Database, Engine, EnvironmentId, ConnectionSettings, Guards, ModelError, Preferences,
     Project, SavedQuery, SecretRef, SslMode, Theme, Tunnel, TunnelKind,
 };
 pub use query::{active_variant, databases_available, validate};

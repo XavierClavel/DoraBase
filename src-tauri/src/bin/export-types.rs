@@ -77,7 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     QueryPlan::export_all(&config)?;
     RowWindow::export_all(&config)?;
 
-    // Les deux types du pont IPC de `08d`. `ConnectionRequest` entraîne `EnvironmentVariant`
+    // Les deux types du pont IPC de `08d`. `ConnectionRequest` entraîne `ConnectionSettings`
     // et `Tunnel` avec lui, donc les nommer ici suffit.
     ConnectionRequest::export_all(&config)?;
     ConnectionTest::export_all(&config)?;

@@ -102,8 +102,8 @@ pub struct UpdateVariantRequest {
     pub project: String,
     pub database: String,
     /// L'environnement **désigne** la variante ; il ne se modifie pas. Voir `08g`.
-    pub environment: super::model::Environment,
-    pub variant: super::model::EnvironmentVariant,
+    pub environment: super::model::EnvironmentId,
+    pub variant: super::model::ConnectionSettings,
     /// `None` laisse le mot de passe en place — un champ vide veut dire « inchangé ».
     pub password: Option<String>,
 }
@@ -196,7 +196,9 @@ pub struct SaveDatabaseRequest {
     pub project: String,
     pub database: String,
     pub engine: super::model::Engine,
-    pub variant: super::model::EnvironmentVariant,
+    /// L'environnement choisi dans `A2`, parmi ceux du projet (`23d`).
+    pub environment: super::model::EnvironmentId,
+    pub variant: super::model::ConnectionSettings,
     pub password: Option<String>,
 }
 
@@ -230,6 +232,9 @@ pub struct RenameProjectResult {
 pub struct DeleteDatabaseRequest {
     pub project: String,
     pub database: String,
+    /// **L'environnement fait partie de l'identité d'une connexion** (`23b`) : sans lui, retirer
+    /// « analytics » d'un projet qui la déclare en dev et en prod supprimerait la première venue.
+    pub environment: super::model::EnvironmentId,
 }
 
 /// Ce que `08j` envoie pour retirer un projet entier.
@@ -275,7 +280,7 @@ pub struct CreateProjectRequest {
     /// `05a` en fait une propriété du **projet**, et `A2` ne propose que celui de la variante. Le
     /// coder à `dev` afficherait un arbre vide juste après l'enregistrement d'une base `prod` : la
     /// base existe, mais dans un autre environnement que celui affiché.
-    pub active_environment: super::model::Environment,
+    pub active_environment: super::model::EnvironmentId,
 }
 
 /// Crée un projet vide, et rend les projets à jour.
@@ -423,6 +428,7 @@ pub async fn delete_database(
             &projects,
             &request.project,
             &request.database,
+            &request.environment,
             magasin.store.as_ref(),
             &mut |projets| {
                 // Les préférences sont **relues** à chaque écriture de projets : elles ne
@@ -627,6 +633,7 @@ pub fn save_database(
             project: &request.project,
             database: &request.database,
             engine: request.engine,
+            environment: request.environment.clone(),
             variant: request.variant,
             password: secret.as_ref(),
         },
@@ -695,7 +702,7 @@ pub async fn update_variant(
             super::enregistrer::Modification {
                 project: &request.project,
                 database: &request.database,
-                environment: request.environment,
+                environment: request.environment.clone(),
                 reglages: &request.variant,
                 password: secret.as_ref(),
             },
@@ -720,7 +727,7 @@ pub async fn update_variant(
     let cle = crate::engine::registry::cle(
         &request.project,
         &request.database,
-        request.environment.slug(),
+        request.environment.as_str(),
     );
     registry.fermer(&cle).await;
 

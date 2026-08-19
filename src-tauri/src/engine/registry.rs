@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use tokio::sync::Mutex;
 
-use crate::config::EnvironmentVariant;
+use crate::config::ConnectionSettings;
 use crate::engine::AnyEngine;
 use crate::engine::EngineError;
 use crate::secrets::Secret;
@@ -92,7 +92,7 @@ impl ConnectionRegistry {
         &self,
         cle: &str,
         moteur: crate::config::Engine,
-        variante: &EnvironmentVariant,
+        variante: &ConnectionSettings,
         mot_de_passe: Option<&Secret>,
         known_hosts: &std::path::Path,
     ) -> Result<(), EngineError> {
@@ -271,9 +271,9 @@ mod tests {
 #[cfg(all(test, feature = "db-tests"))]
 mod tests_db {
     use super::*;
-    use crate::config::{Environment, SslMode};
+    use crate::config::{SslMode};
 
-    fn variante() -> EnvironmentVariant {
+    fn variante() -> ConnectionSettings {
         let url = std::env::var("DORABASE_TEST_PG")
             .expect("DORABASE_TEST_PG doit être défini pour les tests de base");
         let analysee: tokio_postgres::Config = url.parse().expect("URL de test analysable");
@@ -286,8 +286,7 @@ mod tests_db {
             })
             .expect("un hôte");
 
-        EnvironmentVariant {
-            environment: Environment::Dev,
+        ConnectionSettings {
             host: hote,
             port: *analysee.get_ports().first().expect("un port"),
             default_database: analysee.get_dbname().expect("une base").to_owned(),
