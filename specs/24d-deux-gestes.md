@@ -20,14 +20,18 @@ appartient à un projet. Commençons par le projet. » Le parcours aboutit là o
 aller ; il passe seulement par ce qui manquait. Aujourd'hui, `08e` désactive l'enregistrement et le
 `Select` dit « Aucun projet » — le minimum défendable, en attendant cette décision.
 
-**« Ajouter une base » devient « Ajouter une connexion ».** Depuis `23b`, ce qu'on ajoute est une
-connexion : une base présente en dev et en prod en fait deux. Le mot juste aligne le bouton sur le titre
-de la modale. Touche aussi le menu de la pastille projet.
+**« Ajouter une base » devient « Ajouter une connexion »** — tranché le 19 août 2026. Depuis `23b`, ce
+qu'on ajoute est une connexion : une base présente en dev et en prod en fait deux. Le mot juste aligne
+le bouton sur le titre de la modale. **Écart au handoff assumé**, qui dit « base » ; il touche le pied
+de la sidebar, le menu de la pastille projet, et les tests qui nomment ces contrôles.
 
-**Les raccourcis suivent la fréquence.** Sur `A1`, `⌘N` est « Nouveau projet » — la seule action de
-l'écran. Sur `A4`, `⌘N` est « Nouvelle connexion », le geste courant, et `⇧⌘N` « Nouveau projet ».
-C'est un raccourci qui change de sens selon l'écran, ce qui ne se défend que parce que **chaque écran
-affiche le raccourci qu'il applique**.
+**`⌘N` est « Nouveau projet », sur tous les écrans**, et `⇧⌘N` « Ajouter une connexion ».
+
+Tranché par le commanditaire le 19 août 2026, contre la recommandation de la conception UX — qui
+proposait de suivre la fréquence, `⌘N` devenant « Nouvelle connexion » sur `A4`. Un raccourci qui
+change de sens selon l'écran demande de savoir sur quel écran on est **avant** de le presser ; la
+fréquence ne rachète pas cette charge. Le geste le plus courant est le second raccourci, et c'est
+assumé.
 
 ## Not in this scope
 
@@ -48,4 +52,4 @@ et le stepper qui en découle (`24b`). Une seconde modale aurait deux formulaire
 - [ ] Le pied de la sidebar et le menu de la pastille offrent « Ajouter une connexion »
 - [ ] « Nouvelle connexion » sans projet ouvre l'étape 1, avec sa raison écrite
 - [ ] Aucun libellé ne dit plus « base » là où il s'agit d'une connexion
-- [ ] `⌘N` et `⇧⌘N` font ce que l'écran affiche, sur `A1` comme sur `A4`
+- [ ] `⌘N` ouvre « Nouveau projet » sur `A1` **et** sur `A4` ; `⇧⌘N` ouvre « Ajouter une connexion »
