@@ -15,16 +15,20 @@ test.beforeEach(async ({ page }) => {
   await page.waitForSelector('[aria-label="Détail de la ligne 1"]')
 })
 
-test('le panneau fait 296 px, ses étiquettes 96', async ({ page }) => {
+test('le panneau fait 296 px, ses étiquettes 96, et l’en-tête du cadre 34', async ({ page }) => {
   const mesures = await page.evaluate(() => {
     const panneau = document.querySelector('[aria-label="Détail de la ligne 1"]')
     const etiquette = panneau?.querySelector('dt')
-    if (!panneau || !etiquette) return null
+    // **L'en-tête n'est plus dans le panneau** : il appartient au cadre de la colonne depuis `22`,
+    // pour survivre à la bascule de vue et au panneau des modifications. Sa mesure reste celle du
+    // mockup — c'est la même barre, elle a changé de contenu, pas de hauteur.
+    const entete = document.querySelector('[role=separator] ~ * header')
+    if (!panneau || !etiquette || !entete) return null
     return {
       // La largeur **calculée** : le rectangle inclurait le filet gauche.
       panneau: getComputedStyle(panneau).width,
       etiquette: getComputedStyle(etiquette).width,
-      entete: getComputedStyle(panneau.querySelector('header') as Element).height,
+      entete: getComputedStyle(entete).height,
     }
   })
   expect(mesures?.panneau).toBe('296px')

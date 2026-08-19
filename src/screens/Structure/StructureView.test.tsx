@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { ColumnInfo, TableDetail } from '../../domain/engine'
 import { momentDuDeclencheur, resumeDIndex, StructureView } from './StructureView'
 
@@ -132,46 +132,6 @@ describe('StructureView', () => {
     expect(screen.getByText('Aucune contrainte, aucun déclencheur.')).toBeInTheDocument()
     // Et les comptes suivent : ils viennent de la même lecture.
     expect(screen.getByText('0 index')).toBeInTheDocument()
-  })
-
-  it('dit que le DDL est reconstruit, pas le texte d’origine', () => {
-    render(<StructureView detail={DETAIL} schema="public" />)
-    const panneau = screen.getByRole('complementary', { name: /DDL de public\.orders/ })
-    // Sans cette phrase, un écart avec le fichier de migration se lit comme une régression.
-    // `toBeVisible` et non `toBeInTheDocument` : un `hidden` posé par erreur laisse le texte dans
-    // le document. C'est le sabotage qui l'a montré — la première version de ce test passait avec
-    // la mention masquée.
-    expect(within(panneau).getByText(/Reconstruit depuis le catalogue/)).toBeVisible()
-  })
-
-  it('copie le DDL entier, pas le texte visible', async () => {
-    const utilisateur = userEvent.setup()
-    const writeText = vi.fn(async () => {})
-    // `navigator.clipboard` n'a qu'un accesseur sous jsdom : `Object.assign` échoue, il faut
-    // redéfinir la propriété.
-    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
-    render(<StructureView detail={DETAIL} schema="public" />)
-
-    await utilisateur.click(screen.getByRole('button', { name: 'Copier' }))
-
-    expect(writeText).toHaveBeenCalledWith(DETAIL.ddl)
-  })
-
-  it('« Ouvrir dans la console » reste désactivé avec sa raison quand aucune base n’est ouverte', () => {
-    render(<StructureView detail={DETAIL} schema="public" />)
-    const bouton = screen.getByRole('button', { name: /Ouvrir dans la console/ })
-    expect(bouton).toHaveAttribute('aria-disabled', 'true')
-    expect(bouton).toHaveAttribute('title', expect.stringContaining('Aucune base ouverte'))
-  })
-
-  it('passe le DDL à la console quand elle est disponible', async () => {
-    const utilisateur = userEvent.setup()
-    const ouvrir = vi.fn()
-    render(<StructureView detail={DETAIL} schema="public" onOuvrirDansLaConsole={ouvrir} />)
-
-    await utilisateur.click(screen.getByRole('button', { name: /Ouvrir dans la console/ }))
-
-    expect(ouvrir).toHaveBeenCalledWith(DETAIL.ddl)
   })
 
   it('distingue une lecture en cours d’une absence de table', () => {

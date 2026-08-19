@@ -28,6 +28,7 @@ import type { CibleDeSuppression } from '../Explorer/DeleteConnectionDialog'
 import { DetailPanel } from '../Explorer/DetailPanel'
 import { ExplorerSidebar } from '../Explorer/ExplorerSidebar'
 import { ObjectTable } from '../Explorer/ObjectTable'
+import { DdlPanel } from '../Structure/DdlPanel'
 import { StructureStatusBar, StructureView } from '../Structure/StructureView'
 import { ApplyConfirm } from '../TableView/ApplyConfirm'
 import { EditBanner } from '../TableView/EditBanner'
@@ -39,6 +40,7 @@ import { TableView } from '../TableView/TableView'
 import { PASSERELLE_APPLY, type PasserelleApply, useApplication } from '../TableView/useApplication'
 import { PASSERELLE_LIGNES, type PasserelleLignes } from '../TableView/useLignes'
 import { PASSERELLE_PREVIEW, type PasserellePreview, useSqlPrevu } from '../TableView/useSqlPrevu'
+import { ColonneDroite } from './ColonneDroite'
 import {
   AUCUN_ONGLET,
   type Dialecte,
@@ -398,12 +400,6 @@ export function Workbench({
         onSelect={(id) => setEtatOnglets((etat) => ({ ...etat, actif: id }))}
         onClose={(id) => setEtatOnglets((etat) => fermer(etat, id))}
         onReorder={(ids) => setEtatOnglets((etat) => reordonner(etat, ids))}
-        vue={vue}
-        onVueChange={
-          idActif === null
-            ? undefined
-            : (suivante) => setVues((precedent) => ({ ...precedent, [idActif]: suivante }))
-        }
       />
       {consoleActive && cle ? (
         // La console SQL (`12a`). Elle occupe la largeur du centre ; le panneau droit
@@ -450,27 +446,7 @@ export function Workbench({
       ) : structureActive && table ? (
         // La structure de la table ouverte (`14a` → `14c`). **Aucune lecture nouvelle** : `detail`
         // est celui que la sidebar et le panneau droit lisent déjà.
-        <StructureView
-          detail={detail}
-          schema={table.schema}
-          loading={loading}
-          error={error}
-          onOuvrirDansLaConsole={
-            cle === null
-              ? undefined
-              : (ddl) =>
-                  setEtatOnglets((etat) => {
-                    const suivant = ouvrirConsole(etat, cle, dialecteDe(cle.project, cle.database))
-                    // Le DDL entre dans la console **qui vient d'être ouverte**, pas dans celle
-                    // qui était active : écraser le texte d'une console où l'on travaillait
-                    // perdrait une requête en cours d'écriture.
-                    if (suivant.actif) {
-                      setTextes((precedent) => ({ ...precedent, [suivant.actif as string]: ddl }))
-                    }
-                    return suivant
-                  })
-          }
-        />
+        <StructureView detail={detail} schema={table.schema} loading={loading} error={error} />
       ) : table && cle ? (
         // Les lignes de la table ouverte (`10c`). La toolbar (`10e`) et le panneau
         // de ligne (`10f`) viendront l'entourer.
@@ -747,10 +723,11 @@ export function Workbench({
             // panneau droit, et celui de `A5` proposerait ici de sélectionner une ligne d'un
             // résultat qui n'existe pas encore. Le centre est donc rendu seul ou dans le partage
             // selon ce que l'onglet ouvre. Vu à l'écran en assemblant `12a`.
-            // **La structure occupe aussi toute la largeur du centre** : elle porte sa propre
-            // colonne de DDL à droite, exactement là où le panneau de détail se serait posé —
-            // c'est ce que montre le mockup d'`A9`.
-            consoleActive || structureActive ? (
+            // **La structure, elle, entre dans le partage depuis `22`.** Elle en sortait parce
+            // qu'elle portait sa propre colonne de DDL à droite, exactement là où le panneau de
+            // détail se serait posé. Ce DDL étant maintenant dans la colonne commune, la structure
+            // redevient un centre ordinaire, et sa largeur se règle avec la même poignée.
+            consoleActive ? (
               centre
             ) : (
               <SplitPane
@@ -765,88 +742,142 @@ export function Workbench({
                 start={centre}
                 end={
                   // **Un seul panneau droit, dont le contenu suit l'écran** : le détail de l'objet
-                  // en `A4`, la ligne sélectionnée en `A5`, les modifications en attente en `A6`.
-                  // Les empiler donnerait deux panneaux là où le mockup n'en montre qu'un.
+                  // en `A4`, la ligne sélectionnée en `A5`, les modifications en attente en `A6`,
+                  // le DDL en `A9`. Les empiler donnerait deux panneaux là où le mockup n'en montre
+                  // qu'un.
+                  //
+                  // **Le cadre, lui, est toujours là** (`22`) : il porte le couple de vues et les
+                  // flèches de ligne, et aucun de ses contenus ne peut les faire disparaître.
                   //
                   // **En édition avec des modifications, ce panneau prend la place du détail** —
                   // conséquence assumée de `11c` : en éditant, ce qu'on veut voir est ce qu'on a
                   // changé, pas la ligne sélectionnée.
                   // Le panneau reste après une écriture réussie, pour montrer de quoi la défaire : le
                   // démonter avec la dernière carte emporterait le patch inverse.
-                  table && cle && (attente.length > 0 || application.patchInverse !== null) ? (
-                    <PendingPanel
-                      attente={attente}
-                      table={`${table.schema}.${table.table}`}
-                      // `DatabaseKey.environment` est une chaîne côté IPC ; l'encart de production
-                      // veut l'environnement **déclaré** du projet, qui est typé.
-                      environment={environnement}
-                      sql={sqlPrevu.sql}
-                      erreurSql={sqlPrevu.erreur}
-                      onRetirer={(cleLigne, column) =>
-                        onAttenteChange(retirer(attente, cleLigne, column))
-                      }
-                      onToutAnnuler={() => onAttenteChange([])}
-                      enCours={application.enCours}
-                      refus={application.refus}
-                      patchInverse={application.patchInverse}
-                      onCopierLePatch={
-                        application.patchInverse === null
-                          ? undefined
-                          : () => {
-                              const texte = application.patchInverse
-                              if (texte) void navigator.clipboard?.writeText(texte)
-                            }
-                      }
-                      onAppliquer={application.demander}
-                      onEcarterLePatch={application.ecarterLePatch}
-                      onCopierLeSQL={
-                        sqlPrevu.sql === null
-                          ? undefined
-                          : () => {
-                              const texte = sqlPrevu.sql
-                              if (texte) void navigator.clipboard?.writeText(texte)
-                            }
-                      }
-                    />
-                  ) : actif && cle ? (
-                    <RowPanel
-                      cle={cle}
-                      columns={detail?.columns ?? []}
-                      relations={detail?.relations ?? []}
-                      ligne={lecture.ligne}
-                      rang={lecture.rang}
-                      total={lecture.total}
-                      onNavigate={setRangChoisi}
-                      onCopyInsert={
-                        lecture.ligne
-                          ? () => {
-                              const valeurs = lecture.ligne
-                              if (!valeurs) return
-                              // La constante fige le rétrécissement de type : dans une closure,
-                              // TypeScript ne peut pas savoir que `table` est encore non nul.
-                              const ouverte = table
-                              if (!ouverte) return
-                              void rowAsInsert(cle, ouverte.schema, ouverte.table, valeurs).then(
-                                (sql) => navigator.clipboard?.writeText(sql),
-                              )
-                            }
-                          : undefined
-                      }
-                      passerelleDetail={passerelleDetail}
-                      passerelleLignes={passerelleLignes ?? PASSERELLE_LIGNES}
-                    />
-                  ) : (
-                    <DetailPanel
-                      detail={detail}
-                      schema={contexte?.schema ?? ''}
-                      loading={loading}
-                      error={error}
-                      onOpenData={() => {
-                        const objet = objets.find((o) => o.name === objetChoisi)
-                        if (objet) ouvrirTable(objet)
-                      }}
-                    />
-                  )
+                  <ColonneDroite
+                    // Le couple n'a de sens que sur une table ouverte : en `A4`, il n'y a pas de
+                    // table dont on basculerait la structure.
+                    vue={table ? vue : undefined}
+                    onVueChange={
+                      idActif === null
+                        ? undefined
+                        : (suivante: VueObjet) =>
+                            setVues((precedent) => ({ ...precedent, [idActif]: suivante }))
+                    }
+                    // Les flèches n'apparaissent qu'avec une ligne sélectionnée en vue Données —
+                    // pas au-dessus d'un DDL, qui n'a pas de ligne suivante.
+                    navigation={
+                      !structureActive && lecture.rang !== null
+                        ? {
+                            rang: lecture.rang,
+                            total: lecture.total,
+                            onNavigate: setRangChoisi,
+                          }
+                        : undefined
+                    }
+                  >
+                    {structureActive && detail ? (
+                      <DdlPanel
+                        detail={detail}
+                        schema={table?.schema ?? ''}
+                        onOuvrirDansLaConsole={
+                          cle === null
+                            ? undefined
+                            : (ddl: string) =>
+                                setEtatOnglets((etat) => {
+                                  const suivant = ouvrirConsole(
+                                    etat,
+                                    cle,
+                                    dialecteDe(cle.project, cle.database),
+                                  )
+                                  // Le DDL entre dans la console **qui vient d'être ouverte**, pas
+                                  // dans celle qui était active : écraser le texte d'une console où
+                                  // l'on travaillait perdrait une requête en cours d'écriture.
+                                  if (suivant.actif) {
+                                    setTextes((precedent) => ({
+                                      ...precedent,
+                                      [suivant.actif as string]: ddl,
+                                    }))
+                                  }
+                                  return suivant
+                                })
+                        }
+                      />
+                    ) : structureActive ? null : table &&
+                      cle &&
+                      (attente.length > 0 || application.patchInverse !== null) ? (
+                      <PendingPanel
+                        attente={attente}
+                        table={`${table.schema}.${table.table}`}
+                        // `DatabaseKey.environment` est une chaîne côté IPC ; l'encart de production
+                        // veut l'environnement **déclaré** du projet, qui est typé.
+                        environment={environnement}
+                        sql={sqlPrevu.sql}
+                        erreurSql={sqlPrevu.erreur}
+                        onRetirer={(cleLigne, column) =>
+                          onAttenteChange(retirer(attente, cleLigne, column))
+                        }
+                        onToutAnnuler={() => onAttenteChange([])}
+                        enCours={application.enCours}
+                        refus={application.refus}
+                        patchInverse={application.patchInverse}
+                        onCopierLePatch={
+                          application.patchInverse === null
+                            ? undefined
+                            : () => {
+                                const texte = application.patchInverse
+                                if (texte) void navigator.clipboard?.writeText(texte)
+                              }
+                        }
+                        onAppliquer={application.demander}
+                        onEcarterLePatch={application.ecarterLePatch}
+                        onCopierLeSQL={
+                          sqlPrevu.sql === null
+                            ? undefined
+                            : () => {
+                                const texte = sqlPrevu.sql
+                                if (texte) void navigator.clipboard?.writeText(texte)
+                              }
+                        }
+                      />
+                    ) : actif && cle ? (
+                      <RowPanel
+                        cle={cle}
+                        columns={detail?.columns ?? []}
+                        relations={detail?.relations ?? []}
+                        ligne={lecture.ligne}
+                        rang={lecture.rang}
+                        onCopyInsert={
+                          lecture.ligne
+                            ? () => {
+                                const valeurs = lecture.ligne
+                                if (!valeurs) return
+                                // La constante fige le rétrécissement de type : dans une closure,
+                                // TypeScript ne peut pas savoir que `table` est encore non nul.
+                                const ouverte = table
+                                if (!ouverte) return
+                                void rowAsInsert(cle, ouverte.schema, ouverte.table, valeurs).then(
+                                  (sql) => navigator.clipboard?.writeText(sql),
+                                )
+                              }
+                            : undefined
+                        }
+                        passerelleDetail={passerelleDetail}
+                        passerelleLignes={passerelleLignes ?? PASSERELLE_LIGNES}
+                      />
+                    ) : (
+                      <DetailPanel
+                        detail={detail}
+                        schema={contexte?.schema ?? ''}
+                        loading={loading}
+                        error={error}
+                        onOpenData={() => {
+                          const objet = objets.find((o) => o.name === objetChoisi)
+                          if (objet) ouvrirTable(objet)
+                        }}
+                      />
+                    )}
+                  </ColonneDroite>
                 }
               />
             )

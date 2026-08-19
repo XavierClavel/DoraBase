@@ -1,4 +1,3 @@
-import { Icon } from '../../design/icons/Icon'
 import { type Tab, TabStrip } from '../../ui/TabStrip/TabStrip'
 import { type EtatOnglets, idOnglet } from './onglets'
 import styles from './WorkbenchTabs.module.css'
@@ -11,27 +10,20 @@ type WorkbenchTabsProps = {
   onSelect: (id: string) => void
   onClose: (id: string) => void
   onReorder: (ids: string[]) => void
-  vue?: VueObjet
-  onVueChange?: (vue: VueObjet) => void
 }
 
 /**
- * La bande d'onglets de l'écran de travail, et le couple « Données / Structure » à sa droite.
+ * La bande d'onglets de l'écran de travail.
  *
  * `TabStrip` (`03`) est purement présentationnelle : elle ne sait rien des tables. La traduction
  * du modèle d'onglets en `Tab` vit donc ici, comme `arbre.ts` traduit les projets en `Noeud`.
+ *
+ * **Le couple « Données / Structure » n'est plus ici.** Il occupait la droite de la bande, et `22`
+ * l'a déplacé dans l'en-tête de la colonne de droite — là où se regarde le détail de ce que le
+ * centre affiche. Les propriétés `vue` et `onVueChange` sont parties avec lui : un composant ne
+ * garde pas une entrée devenue sans objet.
  */
-export function WorkbenchTabs({
-  etat,
-  onSelect,
-  onClose,
-  onReorder,
-  vue = 'donnees',
-  onVueChange,
-}: WorkbenchTabsProps) {
-  const consoleActive = etat.onglets.some(
-    (onglet) => onglet.sorte === 'console' && idOnglet(onglet) === etat.actif,
-  )
+export function WorkbenchTabs({ etat, onSelect, onClose, onReorder }: WorkbenchTabsProps) {
   const tabs: Tab[] = etat.onglets.map((onglet) => {
     // **Une console n'est pas une table**, et le mockup lui donne son icône et son libellé
     // « console 1 ». C'est le seul endroit où l'union de `12a` se traduit en interface.
@@ -66,65 +58,6 @@ export function WorkbenchTabs({
           onReorder={(suivants) => onReorder(suivants.map((tab) => tab.id))}
         />
       </div>
-      {/* **« Données / Structure » ne concerne qu'une table.** Le couple décrit deux vues d'un objet
-          de base ; au-dessus d'une console, il proposerait de basculer la structure d'une requête.
-          Vu à l'écran en assemblant `12a`. */}
-      {!consoleActive && (
-        // **Le couple bascule enfin.** `10b` l'avait livré désactivé sous l'infobulle « Viendra avec
-        // A9 », la règle de `09f` ; `14a` est cet écran, et l'infobulle serait devenue un mensonge.
-        // C'est le dernier bouton du produit qui annonçait une spec à venir.
-        <div className={styles.vues}>
-          <BoutonDeVue
-            vue="donnees"
-            courante={vue}
-            onVueChange={onVueChange}
-            icone="cols"
-            libelle="Données"
-          />
-          <BoutonDeVue
-            vue="structure"
-            courante={vue}
-            onVueChange={onVueChange}
-            icone="plan"
-            libelle="Structure"
-          />
-        </div>
-      )}
     </div>
-  )
-}
-
-/**
- * Un des deux boutons de vue.
- *
- * **La vue active porte une pastille sombre**, comme le mockup d'`A9` la montre. Celui d'`A5`
- * affiche les deux libellés du même gris — ce qui tenait tant que la paire ne basculait pas :
- * l'état actif n'avait pas à se voir. Maintenant qu'elle répond, deux libellés identiques ne
- * diraient plus laquelle des deux vues est à l'écran. Écart assumé, dans le sens de `A9`.
- */
-function BoutonDeVue({
-  vue,
-  courante,
-  onVueChange,
-  icone,
-  libelle,
-}: {
-  vue: VueObjet
-  courante: VueObjet
-  onVueChange?: (vue: VueObjet) => void
-  icone: 'cols' | 'plan'
-  libelle: string
-}) {
-  const active = vue === courante
-  return (
-    <button
-      type="button"
-      className={active ? styles.vueActive : styles.vue}
-      aria-pressed={active}
-      onClick={onVueChange === undefined ? undefined : () => onVueChange(vue)}
-    >
-      <Icon name={icone} size={13} strokeWidth={1.9} />
-      {libelle}
-    </button>
   )
 }

@@ -451,6 +451,18 @@ le schéma déduit, et la console dont le langage n'est pas du SQL.
 | [`20`](20-snowflake.md) | Snowflake — **aucun décor de test** | livrée |
 | [`21`](21-bigquery.md) | BigQuery — **aucun décor de test**, et une facture par requête | livrée |
 
+## Après l'usage réel
+
+| Spec | Scope | État |
+| --- | --- | --- |
+| [`22`](22-colonne-de-droite-unifiee.md) | La colonne de droite unifiée, et le couple de vues dans son en-tête | livrée |
+
+`22` n'est pas une spec du handoff : elle vient de l'usage. Le couple « Données / Structure » était à
+droite de la bande d'onglets, comme le mockup le montre, et le détail de la table se regardait donc
+à deux endroits — le DDL dans une colonne propre à la vue Structure, la ligne sélectionnée dans une
+colonne propre à la vue Données. Une seule colonne, un en-tête permanent : le mockup ne pouvait pas
+montrer ce défaut, étant figé sur un état à la fois.
+
 `18a` est déclaratif et ne demande aucune base : c'est là que se prennent les décisions
 que les six autres appliquent. `18d` est la seule spec de moteur du projet à produire
 une donnée que le catalogue ne contient pas — d'où sa place à part.

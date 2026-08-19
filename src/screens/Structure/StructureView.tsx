@@ -3,7 +3,6 @@ import { Icon } from '../../design/icons/Icon'
 import type { ColumnInfo, TableDetail } from '../../domain/engine'
 import { type Column, DataTable } from '../../ui/DataTable/DataTable'
 import { ABSENT, formatBytes, formatRowCount } from '../../ui/format'
-import { SqlColore } from '../TableView/SqlColore'
 import styles from './StructureView.module.css'
 import { annotationDe, defautLisible } from './structure'
 
@@ -12,8 +11,6 @@ type StructureViewProps = {
   schema: string
   loading?: boolean
   error?: string | null
-  /** Ouvre le DDL dans une console (`12a`). Absent, l'action reste désactivée avec sa raison. */
-  onOuvrirDansLaConsole?: (ddl: string) => void
 }
 
 /**
@@ -24,16 +21,16 @@ type StructureViewProps = {
  * « Colonnes de *table* » de la sidebar (`10c`). C'est l'écran le plus complet du produit pour le
  * moins de code — et c'est `06c` qui l'avait prévu, en rendant `ddl` que personne n'affichait.
  *
- * **La colonne du DDL occupe la place du panneau droit**, comme la console de `12a` : le mockup ne
- * montre pas de panneau de détail à côté d'une structure, et il n'aurait rien à dire — la ligne
- * sélectionnée d'une grille qui n'est pas affichée.
+ * **Le DDL n'est plus ici.** Il occupait une colonne de 392 px sur la droite de cette vue, comme le
+ * mockup d'`A9` le montre, et cette vue prenait donc toute la largeur du centre — comme une console.
+ * Depuis `22`, le DDL est dans la colonne de droite commune : cette vue redevient un centre
+ * ordinaire, qui entre dans le partage comme la grille.
  */
 export function StructureView({
   detail,
   schema,
   loading = false,
   error = null,
-  onOuvrirDansLaConsole,
 }: StructureViewProps) {
   const [filtre, setFiltre] = useState('')
 
@@ -238,54 +235,6 @@ export function StructureView({
           />
         </div>
       </div>
-
-      <aside className={styles.ddl} aria-label={`DDL de ${schema}.${detail.name}`}>
-        <div className={styles.ddlBarre}>
-          <Icon name="code" size={12} strokeWidth={2} />
-          DDL
-          <span className={styles.espace} />
-          <button
-            type="button"
-            className={styles.ddlAction}
-            onClick={() => void navigator.clipboard?.writeText(detail.ddl)}
-          >
-            <Icon name="copy" size={11} strokeWidth={2.2} />
-            Copier
-          </button>
-        </div>
-        <div className={styles.ddlTexte}>
-          <SqlColore texte={detail.ddl} jeu="ddl" />
-        </div>
-        {/* **Ce DDL est reconstruit, et l'écran le dit.** PostgreSQL ne garde pas le texte du
-            `CREATE TABLE` d'origine : `06c` le réassemble depuis le catalogue, comme `pg_dump`. Le
-            résultat est équivalent, pas identique — l'ordre des clauses et les noms de contraintes
-            générés peuvent différer de la migration écrite. Le taire ferait chercher une régression
-            là où il n'y a qu'une reconstruction. */}
-        <p className={styles.ddlMention}>
-          Reconstruit depuis le catalogue : équivalent au <code>CREATE TABLE</code> d’origine, pas
-          identique.
-        </p>
-        <div className={styles.ddlPied}>
-          <button
-            type="button"
-            className={styles.ddlBouton}
-            onClick={
-              onOuvrirDansLaConsole === undefined
-                ? undefined
-                : () => onOuvrirDansLaConsole(detail.ddl)
-            }
-            aria-disabled={onOuvrirDansLaConsole === undefined}
-            title={
-              onOuvrirDansLaConsole === undefined
-                ? 'Aucune base ouverte : la console n’aurait rien à interroger.'
-                : undefined
-            }
-          >
-            <Icon name="term" size={12} strokeWidth={2} />
-            Ouvrir dans la console
-          </button>
-        </div>
-      </aside>
     </div>
   )
 }

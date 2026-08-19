@@ -1,0 +1,121 @@
+/*
+ * Le DDL, dans la colonne de droite (`14c`, déplacé par `22`).
+ *
+ * **Plus de largeur ici.** Elle valait 392 px, la mesure du mockup d'`A9`, quand ce panneau était une
+ * colonne du centre. Il occupe maintenant la colonne de droite, dont la largeur est réglée par la
+ * poignée — la lui imposer reviendrait à ignorer le geste de l'utilisateur, et c'est exactement le
+ * défaut n° 67 du panneau de détail figé à 300 px dans un panneau de 296.
+ *
+ * Le filet gauche part avec elle : c'est la poignée du partage qui sépare, désormais.
+ */
+
+.root {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--dark);
+}
+
+/* Pousse les actions de la barre à droite. */
+.espace {
+  flex: 1;
+}
+
+.barre {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex: none;
+  height: var(--h-bar);
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid rgb(251 247 239 / 12%);
+  font: var(--weight-bold) var(--text-caps) / 1 var(--font-ui);
+  color: rgb(251 247 239 / 55%);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 19px;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: rgb(251 247 239 / 12%);
+  font: var(--weight-bold) var(--text-meta) / 1 var(--font-ui);
+  color: var(--ink-on-dark);
+  cursor: pointer;
+}
+
+.action:hover {
+  background: rgb(251 247 239 / 20%);
+}
+
+.texte {
+  flex: 1;
+  min-height: 0;
+  padding: 0 var(--space-3);
+  overflow: auto;
+  /* Pas de rebond élastique aux extrémités sous WKWebView — voir la note de `reset.css`. */
+  overscroll-behavior: none;
+}
+
+/* Le bloc de `SqlColore` porte son propre fond arrondi, fait pour un panneau clair. Dans une
+ * colonne déjà sombre, il ferait un rectangle dans un rectangle. */
+.texte > pre {
+  padding: var(--space-5) var(--space-3);
+  border-radius: 0;
+  background: none;
+}
+
+.mention {
+  flex: none;
+  margin: 0;
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid rgb(251 247 239 / 12%);
+  font: var(--weight-medium) var(--text-meta) / var(--leading-ui) var(--font-ui);
+  color: rgb(251 247 239 / 50%);
+}
+
+.mention code {
+  font-family: var(--font-mono);
+}
+
+.pied {
+  display: flex;
+  gap: var(--space-3);
+  flex: none;
+  padding: var(--space-5) var(--space-6);
+}
+
+.bouton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  flex: 1;
+  height: 27px;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: rgb(251 247 239 / 10%);
+  font: var(--weight-bold) var(--text-label) / 1 var(--font-ui);
+  color: var(--ink-on-dark);
+  cursor: pointer;
+}
+
+.bouton:hover {
+  background: rgb(251 247 239 / 18%);
+}
+
+.bouton[aria-disabled="true"] {
+  color: rgb(251 247 239 / 40%);
+  cursor: default;
+}
+
+.bouton[aria-disabled="true"]:hover {
+  background: rgb(251 247 239 / 10%);
+}

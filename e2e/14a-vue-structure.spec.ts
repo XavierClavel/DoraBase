@@ -8,6 +8,7 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()
+  // Le couple est dans l'en-tête de la colonne de droite depuis `22`, plus dans la bande d'onglets.
   await page.getByRole('button', { name: 'Structure' }).click()
   // `DataTable` (`09a`) nomme son tableau par une `<caption>` masquée, pas par un `aria-label` :
   // c'est ce qui donne l'en-tête à la voix. Le sélecteur suit donc la légende.
@@ -15,7 +16,7 @@ test.beforeEach(async ({ page }) => {
   await page.evaluate(() => document.fonts.ready)
 })
 
-test('le DDL occupe la colonne de droite sans recouvrir le tableau', async ({ page }) => {
+test('le DDL est dans la colonne de droite, sous l’en-tête du cadre', async ({ page }) => {
   const boites = await page.evaluate(() => {
     const tableauDesColonnes = () =>
       [...document.querySelectorAll('table')].find((t) =>
@@ -25,17 +26,41 @@ test('le DDL occupe la colonne de droite sans recouvrir le tableau', async ({ pa
     const ddl = document
       .querySelector('aside[aria-label^="DDL de public.orders"]')
       ?.getBoundingClientRect()
-    return tableau && ddl ? { tableau, ddl } : null
+    const separateurs = [...document.querySelectorAll('[role=separator]')]
+    const entete = document.querySelector('[role=separator] ~ * header')?.getBoundingClientRect()
+    const colonne = separateurs[1]?.nextElementSibling?.getBoundingClientRect()
+    return tableau && ddl && entete && colonne ? { tableau, ddl, entete, colonne } : null
   })
   const m = boites as NonNullable<typeof boites>
 
-  // **Le DDL prend la place du panneau de détail**, à droite du centre — c'est ce que montre le
-  // mockup, et c'est pourquoi la structure occupe toute la largeur comme la console de `12a`.
+  // **Le DDL a changé de place, et ce test avec lui.** Il occupait une colonne de 392 px propre à
+  // cette vue, qui prenait donc toute la largeur du centre. Depuis `22`, il occupe la colonne de
+  // droite commune — la même que le détail de ligne en vue Données — et hérite donc de ses 296 px et
+  // de sa poignée. Écart au handoff assumé, consigné dans `22`.
+  expect(Math.round(m.ddl.width)).toBe(296)
   expect(m.ddl.left).toBeGreaterThanOrEqual(m.tableau.right - 1)
-  // 393 et non 392 : `getBoundingClientRect` compte le filet de séparation d'un pixel, que le
-  // `width` du CSS n'inclut pas. Arrondir l'attente à « environ 392 » cacherait un jour un écart
-  // qui compte.
-  expect(Math.round(m.ddl.width)).toBe(393)
+
+  // **Sous l'en-tête du cadre, pas à sa place** : c'est cet en-tête qui porte le couple de vues, donc
+  // ce qui permet de revenir aux données. Un DDL qui le recouvrirait enfermerait l'utilisateur dans
+  // la vue Structure.
+  expect(m.ddl.top).toBeGreaterThanOrEqual(m.entete.bottom - 1)
+  expect(Math.round(m.ddl.bottom)).toBe(Math.round(m.colonne.bottom))
+})
+
+test('le centre de la structure occupe toute la largeur laissée par la colonne', async ({
+  page,
+}) => {
+  const mesures = await page.evaluate(() => {
+    const separateurs = [...document.querySelectorAll('[role=separator]')]
+    const centre = separateurs[1]?.previousElementSibling?.getBoundingClientRect()
+    const tableau = [...document.querySelectorAll('table')]
+      .find((t) => /Colonnes de public\.orders/.test(t.querySelector('caption')?.textContent ?? ''))
+      ?.getBoundingClientRect()
+    return centre && tableau ? { centre: Math.round(centre.width), tableau } : null
+  })
+  // La structure était rendue **hors** du partage, comme une console, parce qu'elle portait son DDL.
+  // Elle y entre depuis `22` : son centre est donc borné par la même poignée que la grille, et large.
+  expect(mesures?.centre).toBeGreaterThan(700)
 })
 
 test('la colonne du DDL n’est pas recouverte : le point de son bouton lui appartient', async ({
@@ -117,4 +142,29 @@ test('« Données » ramène la grille, et l’état actif se voit', async ({ pa
 
   await page.getByRole('button', { name: 'Données' }).click()
   await expect(page.getByRole('grid', { name: /Lignes de public\.orders/ })).toBeVisible()
+})
+
+test('l’en-tête de la colonne survit aux trois basculements', async ({ page }) => {
+  // **La garantie que le cadre existe pour tenir** (`22`). Le couple était dans `RowPanel` avant
+  // d'être ici : il aurait disparu en vue Structure — où il est justement ce qui permet de revenir —
+  // et disparu dès qu'aucune ligne n'est sélectionnée.
+  const couple = page.getByRole('button', { name: 'Données' })
+  await expect(couple).toBeVisible()
+
+  // 1. Retour aux données, sans sélection : le corps est vide, l'en-tête reste.
+  await page.getByRole('button', { name: 'Données' }).click()
+  await expect(page.getByRole('grid')).toBeVisible()
+  await expect(couple).toBeVisible()
+  await expect(page.locator('[aria-label^="Détail de la ligne"]')).toHaveCount(0)
+
+  // 2. Une ligne sélectionnée : le détail entre **sous** l'en-tête.
+  await page.getByRole('grid').getByRole('row').nth(2).click()
+  await expect(page.locator('[aria-label="Détail de la ligne 1"]')).toBeVisible()
+  await expect(couple).toBeVisible()
+
+  // 3. Et de nouveau la structure : le DDL prend la place du détail, l'en-tête ne bouge pas.
+  await page.getByRole('button', { name: 'Structure' }).click()
+  await expect(page.locator('aside[aria-label^="DDL de public.orders"]')).toBeVisible()
+  await expect(page.locator('[aria-label="Détail de la ligne 1"]')).toHaveCount(0)
+  await expect(couple).toBeVisible()
 })

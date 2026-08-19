@@ -18,11 +18,11 @@ type RowPanelProps = {
   relations: readonly Relation[]
   /** La ligne sélectionnée, `null` quand il n'y en a pas. */
   ligne: readonly Value[] | null
-  /** Son rang dans la fenêtre, à partir de 1. */
+  /**
+   * Son rang dans la fenêtre, à partir de 1. **Il ne s'affiche plus** — il sert à nommer le panneau
+   * pour un lecteur d'écran, et à savoir qu'une ligne est bien sélectionnée.
+   */
   rang: number | null
-  /** Nombre de lignes de la fenêtre — les flèches se désactivent aux bords. */
-  total: number
-  onNavigate: (rang: number) => void
   /** Le SQL d'insertion, demandé au moteur. `null` quand la commande n'est pas disponible. */
   onCopyInsert?: () => void
   passerelleDetail: PasserelleDetail
@@ -31,6 +31,12 @@ type RowPanelProps = {
 
 /**
  * Le panneau droit de `A5` : la ligne sélectionnée en clé-valeur, ses onglets, sa ligne liée.
+ *
+ * **Il n'a plus d'en-tête.** Son titre « Ligne 5 · id 041ff6ac… » répétait le rang déjà lisible dans
+ * la gouttière `#` de la grille et l'identifiant déjà lisible trois centimètres plus bas, et son
+ * identifiant long poussait les flèches hors de la barre. Les flèches, elles, sont remontées dans le
+ * cadre de la colonne (`22`) : deux barres de chrome empilées là où la capture n'en montre qu'une
+ * auraient été le prix de les garder ici.
  *
  * **Les trois onglets ne sont pas trois vues du même contenu.** Champs rend les colonnes dans
  * l'ordre du catalogue ; JSON rend la ligne entière en objet, ce qui sert à la recopier ; Liens
@@ -43,8 +49,6 @@ export function RowPanel({
   relations,
   ligne,
   rang,
-  total,
-  onNavigate,
   onCopyInsert,
   passerelleDetail,
   passerelleLignes,
@@ -65,52 +69,13 @@ export function RowPanel({
     passerelleLignes,
   )
 
-  if (!ligne || rang === null) {
-    return (
-      <aside className={styles.root} aria-label="Détail de la ligne">
-        <p className={styles.vide}>Sélectionnez une ligne pour en voir le détail.</p>
-      </aside>
-    )
-  }
-
-  const clePrimaire = columns.findIndex((colonne) => colonne.key === 'primary')
-  const valeurCle = clePrimaire === -1 ? null : valeurDeCle(ligne[clePrimaire])
+  // **Rien plutôt qu'une phrase.** Sans ligne sélectionnée, ce panneau affichait « Sélectionnez une
+  // ligne pour en voir le détail. » ; l'en-tête permanent du cadre rend la colonne lisible sans elle,
+  // et une phrase qui décrit un geste évident finit par se lire comme du remplissage (`22`).
+  if (!ligne || rang === null) return null
 
   return (
     <aside className={styles.root} aria-label={`Détail de la ligne ${rang}`}>
-      <header className={styles.header}>
-        <span className={styles.titre}>Ligne {rang}</span>
-        {/* **Une ligne sans clé primaire ne prétend pas en avoir une.** Le mockup écrit
-            « Ligne 3 · id 184217 » ; sur une table sans clé, il n'y a pas d'identifiant à
-            afficher, et inventer un « rang » à sa place le ferait passer pour une donnée. */}
-        {valeurCle !== null && (
-          <span className={styles.identite}>
-            {columns[clePrimaire]?.name} {valeurCle}
-          </span>
-        )}
-        <span className={styles.espace} />
-        {/* Précédent / suivant se déplacent dans la **fenêtre**, et se désactivent aux bords —
-            plutôt que de boucler, ce qui ferait croire à un parcours infini sur 500 lignes. */}
-        <button
-          type="button"
-          className={styles.fleche}
-          aria-label="Ligne précédente"
-          disabled={rang <= 1}
-          onClick={() => onNavigate(rang - 1)}
-        >
-          <Icon name="chevd" size={13} strokeWidth={2.4} className={styles.haut} />
-        </button>
-        <button
-          type="button"
-          className={styles.fleche}
-          aria-label="Ligne suivante"
-          disabled={rang >= total}
-          onClick={() => onNavigate(rang + 1)}
-        >
-          <Icon name="chevd" size={13} strokeWidth={2.4} />
-        </button>
-      </header>
-
       <div className={styles.onglets} role="tablist" aria-label="Vues de la ligne">
         {(
           [
