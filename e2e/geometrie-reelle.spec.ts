@@ -162,6 +162,89 @@ test('un défilement rapide ne laisse aucune bande vide', async ({ page }) => {
   expect(mesures.apresUnSaut.enHaut).toBeLessThanOrEqual(0)
 })
 
+test('les barres de défilement ne réservent aucune place', async ({ page }) => {
+  await ouvrirUneTable(page)
+  const gouttieres = await page.evaluate(() =>
+    [...document.querySelectorAll('body *')]
+      .filter((element) => {
+        const style = getComputedStyle(element)
+        return /auto|scroll/.test(style.overflowX) || /auto|scroll/.test(style.overflowY)
+      })
+      .map((element) => ({
+        classe: element.className,
+        // La gouttière : ce que la barre native prend à la mise en page. Zéro, ou elle dessine une
+        // colonne grise sur la trame et rogne le texte des cellules.
+        verticale: (element as HTMLElement).offsetWidth - element.clientWidth,
+        horizontale: (element as HTMLElement).offsetHeight - element.clientHeight,
+      }))
+      .filter((mesure) => mesure.verticale > 0 || mesure.horizontale > 0),
+  )
+  // Les barres natives sont masquées partout (`reset.css`) et celles du produit vivent dans une couche
+  // `fixed`. **Styler `::-webkit-scrollbar` ne pouvait pas y arriver** : WebKit rend alors une barre
+  // classique, permanente et qui réserve sa place — les deux exigences étaient contradictoires en CSS.
+  expect(gouttieres).toEqual([])
+})
+
+test('un curseur paraît pendant le geste, sous l’en-tête collé, puis s’efface', async ({
+  page,
+}) => {
+  await ouvrirUneTable(page)
+
+  const curseurs = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('[class*="couche"] > div')].map((pouce) => ({
+        classe: pouce.className,
+        opacite: Number(getComputedStyle(pouce).opacity),
+        haut: pouce.getBoundingClientRect().top,
+      })),
+    )
+
+  // Au repos, aucun curseur n'existe même : ils sont créés au premier geste.
+  expect(await curseurs()).toEqual([])
+
+  await page.locator('[role=grid]').hover()
+  await page.mouse.wheel(0, 300)
+  await expect.poll(async () => (await curseurs()).length).toBeGreaterThan(0)
+  // **Le retour en haut de course est posé, non demandé à la molette.** Une roulette rend la main
+  // avant que le défilement ne soit arrivé, et la mesure qui suit lisait alors un curseur en pleine
+  // course — le test passait seul et échouait dans la suite parallèle, ce qui est la signature d'une
+  // attente implicite. Deux trames pour laisser l'événement `scroll` replacer le curseur.
+  const mesures = await page.evaluate(async () => {
+    const zone = document.querySelector('[role=grid] > [role=presentation]') as HTMLElement
+    zone.scrollTop = 0
+    await new Promise((resoudre) => requestAnimationFrame(() => resoudre(null)))
+    await new Promise((resoudre) => requestAnimationFrame(() => resoudre(null)))
+    const pouce = document.querySelector('[class*="vertical"]')?.getBoundingClientRect()
+    const entete = document.querySelector('[class*="head"]')?.getBoundingClientRect()
+    const premiereLigne = document
+      .querySelector('[role=row][aria-rowindex="3"]')
+      ?.getBoundingClientRect()
+    return {
+      pouce: pouce?.top ?? null,
+      entete: entete?.bottom ?? null,
+      ligne: premiereLigne?.top ?? null,
+      defilement: zone.scrollTop,
+    }
+  })
+  // Le garde de la mesure : elle ne vaut qu'en haut de course.
+  expect(mesures.defilement).toBe(0)
+  // **En haut de course, le curseur commence à la première ligne de données**, pas au-dessus. Sa piste
+  // exclut ce qui est collé en haut de la zone — l'en-tête des colonnes et la ligne de filtres. Sans
+  // cela, il décrivait un contenu commençant plus haut qu'il ne commence. Signalé le 19 août 2026.
+  expect(mesures).toMatchObject({
+    pouce: expect.any(Number),
+    entete: expect.any(Number),
+    ligne: expect.any(Number),
+  })
+  expect(Math.round(mesures.pouce as number)).toBe(Math.round(mesures.entete as number))
+  expect(Math.round(mesures.pouce as number)).toBe(Math.round(mesures.ligne as number))
+
+  // Puis il s'efface, la rémanence passée. C'est la seconde exigence : visible **pendant** le geste.
+  await expect
+    .poll(async () => (await curseurs()).every((c) => c.opacite === 0), { timeout: 4000 })
+    .toBe(true)
+})
+
 test('la grille défile horizontalement au lieu d’écraser ses colonnes', async ({ page }) => {
   await ouvrirUneTable(page)
 

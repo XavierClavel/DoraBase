@@ -38,11 +38,9 @@
  * doublon ramène la bande à 34 px et ne change rien à l'écran. `overflow-y: hidden` reste par-dessus,
  * en garde-fou : la règle dit que cette enveloppe ne défile que dans un axe, quoi qu'on y mette.
  *
- * La barre **horizontale**, elle, est seulement masquée : la bande défile toujours à la molette et au
- * clavier. C'est ce que fait toute bande d'onglets, Safari comprise — on ne fait pas glisser une barre
- * sous ses onglets. Et le commentaire d'origine disait « macOS ne montre la barre qu'au geste, donc
- * rien ne s'ajoute à la trame » : vrai pour une configuration de macOS, faux dès que les barres sont
- * réglées sur « toujours » ou qu'une souris est branchée. */
+ * Quant à la barre **horizontale**, elle n'a plus à être masquée ici : les barres natives le sont
+ * partout depuis `reset.css`, et celles du produit se superposent sans réserver de place. La règle
+ * propre à cette bande a donc été retirée plutôt que gardée en doublon. */
 .strip {
   flex: 1;
   min-width: 0;

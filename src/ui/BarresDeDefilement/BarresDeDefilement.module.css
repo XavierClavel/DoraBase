@@ -1,0 +1,44 @@
+/*
+ * La couche des barres de défilement.
+ *
+ * `position: fixed` et `inset: 0` : elle recouvre la fenêtre entière sans occuper une seule
+ * colonne de la mise en page — c'est ce qui répond à « pas d'espace réservé, superposée sur ce
+ * qu'il y a en dessous ».
+ *
+ * `pointer-events: none` sur la couche, `auto` sur les curseurs : sans cela, une couche qui
+ * recouvre toute la fenêtre intercepterait chaque clic du produit. Les curseurs, eux, doivent
+ * s'attraper.
+ */
+.couche {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+}
+
+.vertical,
+.horizontal {
+  position: fixed;
+  border-radius: 3px;
+  background: rgb(35 32 28 / 32%);
+  opacity: 0;
+  /* La disparition est lente, l'apparition immédiate : une barre qui met 160 ms à venir arrive
+   * après le geste qu'elle décrit. */
+  transition: opacity 260ms ease-out;
+  pointer-events: auto;
+}
+
+.vertical {
+  width: 6px;
+}
+
+.horizontal {
+  height: 6px;
+}
+
+.vertical:hover,
+.horizontal:hover,
+.vertical[data-tenu="oui"],
+.horizontal[data-tenu="oui"] {
+  background: rgb(35 32 28 / 52%);
+}
