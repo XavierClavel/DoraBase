@@ -73,7 +73,8 @@ d'ordonnancement prise sur la foi d'un blocage inexistant.
 
 ## 3. Où en est le travail
 
-**Cinquante-six specs écrites, toutes implémentées.** Les dix écrans du handoff sont assemblés **et
+**83 specs écrites, toutes implémentées sauf `19a`, `20` et `21`** — voir le tableau ci-dessous et le
+§ 11 pour ce qui bloque ces trois. Les dix écrans du handoff sont assemblés **et
 atteignables depuis l'application** : `A1` (accueil), `A2`/`A3` (nouvelle connexion et son échec),
 `A4` (explorateur), `A5` (visualiseur), `A6` (édition inline), `A7` (console SQL), `A8` (console
 MongoDB), `A9` (structure et DDL), `A10` (préférences). **Deux moteurs** répondent : PostgreSQL
@@ -113,7 +114,7 @@ couvre, et les deux manquants n'attendent qu'un compte.
 | `16a`–`16c` | **le moteur MySQL / MariaDB** — connexion, introspection, lecture et écriture | **fait** |
 | `22` | l'inventaire des écarts au handoff | **fait** |
 | `23a`, `23b`, `23d`, `23g` | **les environnements par projet** — déclaration, une connexion = un environnement, formulaire, arbre groupé | **fait** |
-| `23c`, `23e`, `23f` | les commandes d'environnement, l'édition d'un projet, la suppression d'un environnement | **écrites, à faire** |
+| `23c`, `23e`, `23f` | les cinq commandes d'environnement, l'édition d'un projet, le retrait d'un environnement | **fait** |
 | `24a`–`24d` | **le parcours de création en deux étapes** — projet, bande de progression, enchaînement, deux gestes | **fait** |
 | `19a` | Redis — **n'entre pas dans le contrat**, et pourquoi | écrite, conclusion négative |
 | `20`, `21` | Snowflake, BigQuery — **aucun décor de test** | écrites, bloquées |
@@ -122,8 +123,12 @@ couvre, et les deux manquants n'attendent qu'un compte.
 sur PostgreSQL 17.6 **en TLS**, un MongoDB 8 en jeu de réplicas, un MySQL 8.4 en TLS, un fichier
 SQLite, et un vrai bastion SSH), 746 Vitest, 184 Playwright.
 
-**Au 19 août 2026, après `23`/`24`** — 396 Rust en `cargo test --lib` (sans les décors, qui demandent
-`--features db-tests`), **796 Vitest**, **209 Playwright**. Les cinq références de fidélité de
+**Au 19 août 2026, `23` et `24` complètes** — **412 Rust** en `cargo test --lib` (sans les décors, qui
+demandent `--features db-tests`), **820 Vitest**, **213 Playwright**.
+
+**⚠️ `npx tsc --noEmit` ne vérifie rien** — le `tsconfig.json` de la racine porte `"files": []` et deux
+`references` : c'est un fichier de solution. Le seul typecheck qui compile quelque chose est
+`pnpm typecheck` (`tsc -b`), et c'est celui de la CI. Défaut n° 94, qui a laissé partir un commit rouge. Les cinq références de fidélité de
 `e2e/a1.spec.ts` ont changé de décor ce jour-là : le bouton de `A1` ouvre désormais l'étape 1 du
 parcours de création, donc `A2`, `A2`+tunnel et `A3` se capturent depuis `?demo` — seul décor où les
 deux étapes s'enchaînent, `create_project` étant une commande Tauri. Voir l'en-tête du fichier, qui
@@ -486,23 +491,21 @@ Chromium. L'expérience à tenter est au § 0, ligne 8.
 
 ## 11. La suite
 
-**Trois specs sont prêtes à coder** — les seules du projet dans ce cas, et elles se tiennent :
+**Les 83 specs de l'index sont écrites, et toutes celles qui demandaient du code sont livrées** — les
+trois exceptions étant `19a` (conclusion négative) et `20`/`21` (aucun décor de test).
+`23` et `24` sont closes : les environnements se déclarent par projet, une connexion appartient à
+l'un d'eux, et les deux gestes de création comme les cinq gestes d'environnement répondent.
 
-1. **`23c`** — les cinq commandes d'environnement (déclarer, renommer le libellé, recolorier, marquer
-   production, retirer). Le modèle les porte déjà : `Project::declare`, `environnement`,
-   `connexions_de` et les cinq variantes de `ModelError` existent et sont testées. Il manque la couche
-   commande et l'allowlist.
-2. **`23e`** — la modale d'édition d'un projet, qui **absorbe** `RenameProjectDialog` : renommer un
-   projet devient un champ de cet écran, non une modale à part. Dépend de `23c`.
-3. **`23f`** — l'avertissement avant de retirer un environnement, **nommant les connexions qu'il
-   emporte**. Dépend de `23c` et de `23e`. C'est la seule des trois qui touche à une suppression, donc
-   la seule où la règle du commanditaire s'applique : on supprime la déclaration locale et son mot de
-   passe du Trousseau, jamais la base distante, et on demande confirmation.
+**Ce que `23e` a tranché, et qu'il faut savoir en y revenant** : l'identifiant d'un environnement est
+figé à la **création** (`23a`), parce que la référence du Trousseau est
+`dorabase/<projet>/<base>/<environnement>`. Renommer un environnement change donc son **libellé
+seulement**, et installe une divergence assumée entre ce qui s'affiche et ce qui désigne. `rename_environment`
+ne touche jamais à l'identifiant, et un test le vérifie en relisant le secret après renommage.
 
-**Un rappel qui n'est pas dans les specs** : l'identifiant d'un environnement est **figé à la
-création** (`23a`), parce que la référence du Trousseau est `dorabase/<projet>/<base>/<environnement>`.
-`24a` autorise donc de modifier les libellés à la création du projet, et `23e` devra dire ce qu'il fait
-d'un libellé changé plus tard — divergence assumée entre identifiant et libellé, ou refus.
+**Ce qui n'existe toujours pas, délibérément** : déplacer une connexion d'un environnement à un autre.
+C'est la réponse raisonnable au cas que `23f` traite par la suppression, et elle demande de déplacer un
+secret du Trousseau — donc son geste et sa spec. La confirmation ne la propose pas : offrir une action
+absente est pire que son absence (défaut n° 36).
 
 Le reste demande une **décision humaine**, pas du code :
 

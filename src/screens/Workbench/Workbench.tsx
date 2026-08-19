@@ -28,6 +28,7 @@ import type { CibleDeSuppression } from '../Explorer/DeleteConnectionDialog'
 import { DetailPanel } from '../Explorer/DetailPanel'
 import { ExplorerSidebar } from '../Explorer/ExplorerSidebar'
 import { ObjectTable } from '../Explorer/ObjectTable'
+import { type GestesEnvironnement, ProjectEditor } from '../Explorer/ProjectEditor'
 import { DdlPanel } from '../Structure/DdlPanel'
 import { StructureStatusBar, StructureView } from '../Structure/StructureView'
 import { ApplyConfirm } from '../TableView/ApplyConfirm'
@@ -87,7 +88,26 @@ type WorkbenchProps = {
    * commande ne répond. Dans l'application, l'absence serait le défaut n° 36.
    */
   onEnvironmentChange?: (project: string, environment: EnvironmentId) => void
-  /** Renommer un projet depuis le « … » de l'arbre (`08i`) — passé tel quel à la sidebar. */
+  /**
+   * Les projets à jour, après un geste de la modale d'édition (`23e`).
+   *
+   * **Une seule prop pour les cinq gestes** : chacun rend la liste entière, et c'est l'appelant qui la
+   * tient. Cinq props jumelles se seraient désynchronisées, et l'écran n'a pas à savoir lequel des cinq
+   * a parlé.
+   */
+  onProjets?: (projects: Project[]) => void
+  /**
+   * Les cinq gestes de `23c`, pour la modale d'édition. Absents, ce sont les commandes réelles.
+   *
+   * **Transmis, non réimplémentés** : la démo les fournit contre son état local, faute de pont Tauri en
+   * Chromium — c'est ce qui rend `23e` mesurable par Playwright.
+   */
+  gestesEnvironnement?: GestesEnvironnement
+  /**
+   * Renomme un projet (`08i`). Ouvre aussi la modale d'édition (`23e`) : sa présence est ce qui rend
+   * l'entrée « Modifier le projet… » cliquable, le renommage étant le seul geste de cet écran qui
+   * demande une commande que la modale ne porte pas elle-même.
+   */
   onRenameProject?: (
     project: string,
     nom: string,
@@ -132,6 +152,8 @@ export function Workbench({
   onEditDatabase,
   onEnvironmentChange,
   onRenameProject,
+  onProjets,
+  gestesEnvironnement,
   onDelete,
   onSaveQuery,
   onDeleteQuery,
@@ -142,6 +164,18 @@ export function Workbench({
   edition = false,
 }: WorkbenchProps) {
   const { deplies, charge, etatDeBase, basculer, rafraichir } = useArbre(projects, passerelle)
+  // Le projet dont on édite les environnements (`23e`). **Ici, et non dans la sidebar** : les deux
+  // points d'entrée — le « … » de l'arbre et la pastille de la barre de titre — vivent tous deux dans
+  // cet écran, et une modale montée dans la sidebar serait inatteignable depuis la pastille. C'est le
+  // défaut n° 89, dont la leçon est appliquée d'emblée cette fois.
+  // **Le projet lui-même, non son nom.** Le nom seul suffisait jusqu'à ce que cette modale sache
+  // renommer : pendant le renommage, la liste porte le nouveau nom et l'état encore l'ancien, si bien
+  // qu'une recherche par nom ne trouve rien le temps d'un rendu — et la modale se démontait, perdant
+  // son compte rendu (« un mot de passe était introuvable »). L'objet gardé ici sert de **repli** pour
+  // ce seul rendu ; la liste chargée reste la source dès qu'elle a suivi.
+  const [aEditer, setAEditer] = useState<Project | null>(null)
+  const ouvrirLEditionDe = (nom: string) =>
+    setAEditer(projects.find((projet) => projet.name === nom) ?? null)
   const [selection, setSelection] = useState<Noeud | null>(null)
   const [etatOnglets, setEtatOnglets] = useState(AUCUN_ONGLET)
   const [type, setType] = useState<TypeObjet>('tables')
@@ -504,8 +538,27 @@ export function Workbench({
     </div>
   )
 
+  const projetAEditer =
+    aEditer === null ? null : (projects.find((projet) => projet.name === aEditer.name) ?? aEditer)
+
   return (
     <div className={styles.root}>
+      {/* La modale d'édition de projet (`23e`). Montée une fois pour les deux points d'entrée. */}
+      {projetAEditer !== null && onRenameProject !== undefined && (
+        <ProjectEditor
+          projet={projetAEditer}
+          onClose={() => setAEditer(null)}
+          onProjets={(suivants) => onProjets?.(suivants)}
+          {...gestesEnvironnement}
+          onRenameProject={async (nom) => {
+            const issue = await onRenameProject(projetAEditer.name, nom)
+            // Le projet a changé de nom : l'état qui le désignait par l'ancien ne trouverait plus
+            // rien, et la modale se fermerait d'elle-même sans que l'utilisateur l'ait demandé.
+            setAEditer({ ...projetAEditer, name: nom })
+            return issue
+          }}
+        />
+      )}
       <TitleBar
         showConsole
         onOpenPreferences={onOpenPreferences}
@@ -518,6 +571,9 @@ export function Workbench({
               actif={projetActif}
               onEdit={(projet, base) => onEditDatabase?.(projet, base)}
               onAddDatabase={onNewDatabase}
+              // Le second point d'entrée de `23e` : la pastille est là où l'on regarde le projet
+              // courant, l'arbre là où l'on regarde ses projets.
+              {...(onRenameProject === undefined ? {} : { onEditProject: ouvrirLEditionDe })}
             >
               <ProjectPill
                 pendingChanges={attente.length}
@@ -640,7 +696,7 @@ export function Workbench({
                   ?.databases.find((declaration) => declaration.name === nomBase)
                 if (base) onEditDatabase?.(nomProjet, base)
               }}
-              onRenameProject={onRenameProject}
+              onEditProject={onRenameProject === undefined ? undefined : ouvrirLEditionDe}
               requetes={
                 projetActif === null
                   ? undefined

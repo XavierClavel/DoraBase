@@ -842,6 +842,41 @@ autre chose que ce qu'elle prétendait.
    référence**, elle est la trace de ce que le code faisait ce jour-là. C'est la lecture de l'image qui
    l'a vu, pas la suite verte.
 
+94. **`npx tsc --noEmit` ne vérifiait rien, et je l'ai cru pendant deux séances.** Le `tsconfig.json`
+   de la racine porte `"files": []` et deux `references` : c'est un fichier de *solution*, et seul
+   `tsc -b` — ce que `pnpm typecheck` et la CI lancent — parcourt les projets référencés. Toutes mes
+   annonces de « types verts » reposaient donc sur une commande qui compile zéro fichier. Le commit
+   précédent est parti **rouge** avec une erreur de type dans un test que je venais d'écrire
+   (`active_environment` au lieu de `activeEnvironment`), et c'est le premier vrai `tsc -b` qui l'a
+   dite. **Une commande qui ne dit jamais rien n'est pas une commande qui passe** — c'est la même leçon
+   que le n° 91, deux crans plus haut : là je vérifiais le bon outil sur le mauvais périmètre, ici
+   j'invoquais l'outil de telle façon qu'il n'avait aucun périmètre.
+95. **La modale d'édition se démontait pendant le renommage du projet.** Son existence était dérivée
+   d'une recherche par nom dans la liste chargée ; le temps d'un rendu, la liste porte le nouveau nom et
+   l'état encore l'ancien, donc la recherche ne trouve rien. La modale disparaissait — en emportant son
+   compte rendu, c'est-à-dire précisément la phrase « un mot de passe était introuvable » que `08i` a
+   rendue obligatoire. **Un écran dont l'identité est une donnée que cet écran peut modifier a besoin
+   d'un repli**, sinon il se supprime lui-même en se modifiant. Trouvé par un test Playwright, invisible
+   en test unitaire : le composant y est monté directement, donc son identité ne dépend de rien.
+96. **La démo renommait sans renommer.** Elle rendait un succès et laissait son état intact, ce qu'aucune
+   commande réelle ne fait. Tant que la modale ne suivait pas le nom, personne ne pouvait s'en
+   apercevoir ; dès que `23e` l'a fait suivre, le mensonge de la démo a produit un échec dont la cause
+   était ailleurs que là où il se manifestait. **Un décor qui simule une écriture doit l'appliquer**,
+   même faussement — sinon il ne teste pas le chemin, il le contourne.
+97. **Un test qui passait le sabotage, faute de mesurer là où ça compte.** « Une couleur s'applique au
+   clic » visait un environnement dont le drapeau de production était déjà `false` : un code qui aurait
+   envoyé `false` en dur — éteignant les garde-fous d'écriture de `11d` sur un clic de pastille — passait
+   au vert. Déplacer la mesure sur l'environnement de production a fait tomber le sabotage. C'est le
+   n° 84 sous une autre forme : **une mesure prise là où la faute et le juste coïncident ne mesure
+   rien**, et seul le sabotage le révèle.
+98. **Une mesure d'alignement héritée de l'écran d'avant.** Le test e2e du renommage exigeait que le
+   corps de la modale s'aligne au pixel sur son pied ; c'était vrai de l'ancienne modale de `08i`, qui
+   portait 14 px de corps. La trame de `A2` — que `24a` et `23e` reprennent délibérément — pose 16 px de
+   corps pour 14 px de pied, et ces 2 px sont ceux du handoff, vérifiés par les captures de fidélité.
+   **Un test déménagé avec son écran hérite d'attentes qui appartenaient à l'ancien.** La bonne mesure
+   est celle de la propriété (« le contenu porte son propre remplissage et ne touche pas les bords »),
+   pas celle d'une coïncidence de deux valeurs.
+
 **Ce que ces défauts disent du décor de test.** Presque aucun n'était un défaut de logique : ils
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros
 d'attribut qui coïncident, grille plus étroite que son cadre, `bigserial` partout. Une suite verte

@@ -234,6 +234,9 @@ export function App() {
               // la liste des projets plutôt que de la modifier localement.
               setProjects(await changerLEnvironnementActif({ project, environment }))
             }}
+            // Les cinq gestes de `23c` rendent la liste entière : la reposer ici évite un second
+            // aller-retour, et supprime la fenêtre pendant laquelle l'arbre montrerait l'ancien état.
+            onProjets={setProjects}
             onRenameProject={async (project, nom) => {
               const issue = await renommerLeProjet({ project, name: nom })
               setProjects(issue.projects)

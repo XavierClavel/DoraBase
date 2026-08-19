@@ -9,15 +9,19 @@
 // pas. Les commandes se réfèrent donc par `config::commands::…` dans `lib.rs`.
 pub mod commands;
 mod enregistrer;
+mod environnements;
 mod model;
 mod query;
 mod store;
 
 pub use commands::{
-    create_project, load_config, save_config, save_database, save_preferences, update_variant,
-    ConfigLoad, ConfigState, CreateProjectRequest, DeleteDatabaseRequest, DeleteProjectRequest,
-    DeleteResult, RenameProjectRequest, RenameProjectResult, SaveDatabaseRequest,
-    SavedQueryRequest, SetActiveEnvironmentRequest, UpdateVariantRequest,
+    create_environment, create_project, delete_environment, load_config, recolor_environment,
+    rename_environment, reorder_environments, save_config, save_database, save_preferences,
+    update_variant, ConfigLoad, ConfigState, CreateEnvironmentRequest, CreateProjectRequest,
+    DeleteDatabaseRequest, DeleteEnvironmentRequest, DeleteEnvironmentResult, DeleteProjectRequest,
+    DeleteResult, RecolorEnvironmentRequest, RenameEnvironmentRequest, RenameProjectRequest,
+    RenameProjectResult, ReorderEnvironmentsRequest, SaveDatabaseRequest, SavedQueryRequest,
+    SetActiveEnvironmentRequest, UpdateVariantRequest,
 };
 pub use enregistrer::{enregistrer, reference_de, NouvelleBase, SaveError};
 pub use model::{

@@ -458,10 +458,10 @@ le schéma déduit, et la console dont le langage n'est pas du SQL.
 | [`22`](22-colonne-de-droite-unifiee.md) | La colonne de droite unifiée, et le couple de vues dans son en-tête | livrée |
 | [`23a`](23a-environnements-du-projet.md) | Les environnements appartiennent au projet | à faire |
 | [`23b`](23b-une-connexion-un-environnement.md) | Une connexion, un environnement | à faire |
-| [`23c`](23c-commandes-des-environnements.md) | Les commandes des environnements | à faire |
+| [`23c`](23c-commandes-des-environnements.md) | Les commandes des environnements | livrée |
 | [`23d`](23d-choisir-l-environnement-d-une-connexion.md) | Choisir l'environnement d'une connexion (`A2`) | à faire |
-| [`23e`](23e-editer-un-projet.md) | Éditer un projet, et ses environnements | à faire |
-| [`23f`](23f-supprimer-un-environnement.md) | Supprimer un environnement, et ce que ça emporte | à faire |
+| [`23e`](23e-editer-un-projet.md) | Éditer un projet, et ses environnements | livrée |
+| [`23f`](23f-supprimer-un-environnement.md) | Supprimer un environnement, et ce que ça emporte | livrée |
 | [`23g`](23g-les-ecrans-face-aux-environnements-declares.md) | Les écrans face aux environnements déclarés | livrée |
 | [`24a`](24a-creer-un-projet.md) | Créer un projet : l'étape 1 | livrée |
 | [`24b`](24b-stepper-informatif.md) | Le stepper informatif | livrée |

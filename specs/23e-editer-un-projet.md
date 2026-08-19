@@ -44,9 +44,9 @@ le second à être écrit serait celui qu'on oublie de corriger.
 
 ## Done when
 
-- [ ] La modale s'ouvre depuis le menu « … » du projet et depuis la pastille de la barre de titre
-- [ ] Le nom du projet s'y renomme, et l'ancien dialogue de `08i` n'existe plus
-- [ ] Chaque environnement s'y renomme, se recolore, se marque production et se réordonne
-- [ ] Chaque ligne affiche le nombre de connexions qui en dépendent
-- [ ] Un environnement s'ajoute, avec le trio par défaut comme point de départ d'un projet neuf
-- [ ] Tout s'applique sans bouton « Appliquer », la suppression exceptée
+- [x] La modale s'ouvre depuis le menu « … » du projet et depuis la pastille de la barre de titre
+- [x] Le nom du projet s'y renomme, et l'ancien dialogue de `08i` n'existe plus
+- [x] Chaque environnement s'y renomme, se recolore, se marque production et se réordonne
+- [x] Chaque ligne affiche le nombre de connexions qui en dépendent
+- [x] Un environnement s'ajoute, avec le trio par défaut comme point de départ d'un projet neuf
+- [x] Tout s'applique sans bouton « Appliquer », la suppression exceptée

@@ -9,6 +9,14 @@ type ProjectMenuProps = {
   actif: Project | null
   onEdit: (project: string, database: Database) => void
   onAddDatabase?: () => void
+  /**
+   * Ouvre la modale d'édition d'un projet (`23e`).
+   *
+   * Absent, l'entrée n'est pas rendue — plutôt que rendue inerte. Ce menu n'a pas de mécanisme de
+   * raison écrite (il n'est pas un `RowMenu`), et un bouton muet qui ne fait rien est le défaut n° 36 ;
+   * son absence, elle, ne promet rien.
+   */
+  onEditProject?: (project: string) => void
   children: React.ReactElement<Record<string, unknown>>
 }
 
@@ -27,6 +35,7 @@ export function ProjectMenu({
   actif,
   onEdit,
   onAddDatabase,
+  onEditProject,
   children,
 }: ProjectMenuProps) {
   // Le projet actif d'abord : c'est celui dont on regarde une base, donc celui qu'on veut corriger.
@@ -44,6 +53,19 @@ export function ProjectMenu({
               <h3 className={styles.nom}>
                 <Icon name="bag" size={12} strokeWidth={1.8} className={styles.sac} />
                 {projet.name}
+                {onEditProject && (
+                  <button
+                    type="button"
+                    className={styles.modifier}
+                    aria-label={`Modifier ${projet.name}`}
+                    onClick={() => {
+                      fermer()
+                      onEditProject(projet.name)
+                    }}
+                  >
+                    <Icon name="pencil" size={12} strokeWidth={1.9} />
+                  </button>
+                )}
               </h3>
               {projet.databases.length === 0 ? (
                 // Un projet vide est un état normal depuis `08f` — sa création n'exige pas une base.
