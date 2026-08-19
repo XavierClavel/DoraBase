@@ -161,7 +161,16 @@ export function NewProject({
       onClose={onClose}
       footer={
         <div className={styles.pied}>
-          <span className={styles.raison} role={empeche === null ? undefined : 'status'}>
+          {/* **Le refus du cœur et l'empêchement calculé n'ont ni la même voix ni la même couleur.**
+              Ils partageaient les deux : le refus héritait de `role={undefined}` — donc n'était pas
+              annoncé du tout — et du gris discret d'une aide à la saisie. Un utilisateur qui clique et
+              lit « rien » conclut que le bouton ne marche pas, ce qui est arrivé le 19 août 2026
+              (défaut n° 100). Un refus est un événement : `alert` l'annonce, l'encre de danger le
+              distingue. Un empêchement est un état : `status` suffit. */}
+          <span
+            className={cx(styles.raison, refus !== null && styles.refus)}
+            role={refus !== null ? 'alert' : 'status'}
+          >
             {refus ?? empeche}
           </span>
           <Button variant="secondary" size="lg" onClick={onClose}>

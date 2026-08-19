@@ -512,7 +512,23 @@ pub fn creer_projet(
     let environments = if environments.is_empty() {
         crate::config::model::EnvironmentDeclaration::trio_par_defaut()
     } else {
+        // **L'identifiant est dérivé ici, du libellé** (`23a`), et il ne l'était pas — c'est le défaut
+        // n° 100. L'écran de `24a` envoie `id: ""` pour chaque ligne, avec un commentaire disant que la
+        // dérivation vit côté Rust ; le cœur les prenait telles quelles. Un projet à deux
+        // environnements partait donc avec deux identifiants vides, que `valider` refusait pour doublon
+        // — c'est-à-dire que **créer un projet était impossible depuis l'écran prévu pour ça**.
+        //
+        // Dériver *toujours*, plutôt que seulement quand l'identifiant est vide : un appelant qui pose
+        // un identifiant à la main choisirait la façon dont son projet est écrit sur le disque, et deux
+        // règles de nommage pour la même donnée finiraient par diverger. À la création, le libellé
+        // décide ; après, plus rien ne le change (`rename_environment`).
         environments
+            .into_iter()
+            .map(|declaration| crate::config::model::EnvironmentDeclaration {
+                id: EnvironmentId::depuis_le_libelle(&declaration.label),
+                ..declaration
+            })
+            .collect()
     };
 
     let candidat = Project {
@@ -1036,6 +1052,70 @@ mod tests {
                 production: false,
             })
             .collect()
+    }
+
+    /// **Le geste tel que l'écran l'envoie** : des identifiants vides, à dériver des libellés.
+    ///
+    /// C'est le défaut n° 100, constaté à l'usage le 19 août 2026 — « je saisis un projet avec deux
+    /// environnements, je clique sur Continuer, rien ne se passe ». Deux identifiants vides sont un
+    /// doublon, `valider` refusait, et la création était **impossible depuis l'écran prévu pour elle**.
+    ///
+    /// Aucun test ne l'avait vu : ceux de l'écran injectent leur propre création, et ceux d'ici
+    /// fabriquaient des déclarations **déjà dérivées** par leur fabrique. Chaque côté testait sa moitié
+    /// du contrat, et personne le joint.
+    fn declares_sans_identifiant(
+        libelles: &[&str],
+    ) -> Vec<crate::config::model::EnvironmentDeclaration> {
+        libelles
+            .iter()
+            .map(|libelle| crate::config::model::EnvironmentDeclaration {
+                id: EnvironmentId::brut(""),
+                label: (*libelle).to_owned(),
+                color: crate::config::model::EnvironmentColor::Slate,
+                production: false,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn deux_environnements_aux_identifiants_vides_sont_derives_des_libelles() {
+        let suivants = creer_projet(
+            &[],
+            "Atelier Nord",
+            declares_sans_identifiant(&["atelier", "vitrine"]),
+        )
+        .expect("la création doit aboutir");
+
+        let identifiants: Vec<_> = suivants[0]
+            .environments
+            .iter()
+            .map(|declaration| declaration.id.as_str())
+            .collect();
+        assert_eq!(identifiants, vec!["atelier", "vitrine"]);
+        // L'actif désigne quelque chose : avec les identifiants vides, il valait `""`.
+        assert_eq!(suivants[0].active_environment.as_str(), "atelier");
+    }
+
+    #[test]
+    fn un_seul_environnement_sans_identifiant_passe_aussi() {
+        // Le cas à un seul environnement **passait** avant le correctif — un identifiant vide n'est pas
+        // un doublon de lui-même. C'est pourquoi le défaut ne se voyait qu'à partir de deux, et c'est
+        // exactement le genre de frontière qu'un test doit tenir des deux côtés.
+        let suivants = creer_projet(&[], "Atelier Nord", declares_sans_identifiant(&["atelier"]))
+            .expect("création");
+        assert_eq!(suivants[0].environments[0].id.as_str(), "atelier");
+    }
+
+    #[test]
+    fn deux_libelles_qui_derivent_pareil_restent_refuses() {
+        // La dérivation ne masque pas le doublon **réel** : « Atelier » et « atelier » donnent le même
+        // identifiant, et c'est un refus nommé, non un `atelier-2` fabriqué en douce.
+        let erreur = creer_projet(
+            &[],
+            "Atelier Nord",
+            declares_sans_identifiant(&["Atelier", "atelier"]),
+        );
+        assert!(matches!(erreur, Err(CreateError::Modele(_))));
     }
 
     #[test]
