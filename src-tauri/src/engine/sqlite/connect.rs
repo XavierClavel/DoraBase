@@ -2,7 +2,7 @@
 //!
 //! # Le seul moteur du projet sans serveur
 //!
-//! Ni hôte, ni port, ni utilisateur, ni mot de passe, ni TLS : cinq champs d'`EnvironmentVariant` ne
+//! Ni hôte, ni port, ni utilisateur, ni mot de passe, ni TLS : cinq champs d'`ConnectionSettings` ne
 //! veulent rien dire ici. **Le chemin du fichier vit dans `default_database`** — le champ est déjà
 //! « la base à ouvrir », et pour SQLite la base *est* un fichier. Trois options avaient été pesées
 //! en `17a` ; celle-ci n'ajoute aucun champ vide pour six moteurs sur sept, et aucune migration.
@@ -11,14 +11,14 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OpenFlags};
 
-use crate::config::EnvironmentVariant;
+use crate::config::ConnectionSettings;
 use crate::engine::EngineError;
 
 /// Le chemin du fichier que cette variante désigne, **après vérification**.
 ///
 /// Refuse une variante incohérente plutôt que de l'interpréter : un tunnel SSH devant un fichier
 /// local n'a rien à traverser, et l'accepter laisserait croire qu'il protège quelque chose.
-pub fn chemin_de(variante: &EnvironmentVariant) -> Result<PathBuf, EngineError> {
+pub fn chemin_de(variante: &ConnectionSettings) -> Result<PathBuf, EngineError> {
     if variante.tunnel.is_some() {
         return Err(EngineError::local(
             "une base SQLite est un fichier local : un tunnel SSH n'a rien à traverser, et le \
@@ -131,11 +131,10 @@ pub fn version_et_taille(chemin: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{Environment, SslMode, Tunnel, TunnelKind};
+    use crate::config::{SslMode, Tunnel, TunnelKind};
 
-    fn variante(chemin: &str) -> EnvironmentVariant {
-        EnvironmentVariant {
-            environment: Environment::Dev,
+    fn variante(chemin: &str) -> ConnectionSettings {
+        ConnectionSettings {
             host: String::new(),
             port: 0,
             default_database: chemin.to_owned(),

@@ -27,61 +27,14 @@ preferences: Preferences, } | { "kind": "unreadable", reason: string,
 quarantinedTo: string, } | { "kind": "tooNew", found: number, supported: number, };
 
 /**
- * Ce que `A2` envoie pour créer un projet.
- */
-export type CreateProjectRequest = { name: string, 
-/**
- * L'environnement actif du projet, qui est celui de la variante qu'on lui déclare.
+ * Les réglages de connexion d'une connexion déclarée. Tout le formulaire de `A2` vit ici, à
+ * l'exception du nom, du moteur et de l'environnement, qui appartiennent à la connexion elle-même.
  *
- * `05a` en fait une propriété du **projet**, et `A2` ne propose que celui de la variante. Le
- * coder à `dev` afficherait un arbre vide juste après l'enregistrement d'une base `prod` : la
- * base existe, mais dans un autre environnement que celui affiché.
+ * **Anciennement `ConnectionSettings`, et le renommage dit le changement de modèle** (`23b`) : ces
+ * réglages ne sont plus *une variante parmi plusieurs* d'une même base, mais les réglages d'**une**
+ * connexion. Le champ `environment` est monté d'un cran, dans `Database`.
  */
-activeEnvironment: Environment, };
-
-/**
- * Une base d'un projet, déclinée en 1..n environnements.
- */
-export type Database = { name: string, engine: Engine, variants: Array<EnvironmentVariant>, };
-
-/**
- * Ce que `08j` envoie pour retirer une déclaration de connexion.
- */
-export type DeleteDatabaseRequest = { project: string, database: string, };
-
-/**
- * Ce que `08j` envoie pour retirer un projet entier.
- */
-export type DeleteProjectRequest = { project: string, };
-
-/**
- * Ce qu'une suppression rend à l'écran (`08j`).
- */
-export type DeleteResult = { projects: Array<Project>, 
-/**
- * Les mots de passe que le magasin n'a pas su effacer : ils restent dans le Trousseau, et
- * l'utilisateur a le droit de le savoir.
- */
-leftoverSecrets: Array<string>, };
-
-/**
- * Les sept moteurs du handoff, et rien d'autre : un moteur inconnu ne compile pas.
- */
-export type Engine = "postgresql" | "mysql" | "sqlite" | "mongodb" | "redis" | "snowflake" | "bigquery";
-
-/**
- * Les trois environnements du handoff. L'environnement actif est une propriété du
- * **projet**, pas de la base — c'est ce qui permet à un basculement de recharger
- * l'arbre entier sur d'autres serveurs sans changer l'arborescence.
- */
-export type Environment = "dev" | "staging" | "prod";
-
-/**
- * Les réglages de connexion d'une base **pour un environnement donné**. Le handoff pose
- * « host/port/creds différents par env », donc tout le formulaire de `A2` vit ici, à
- * l'exception du nom et du moteur qui appartiennent à la base.
- */
-export type EnvironmentVariant = { environment: Environment, host: string, port: number, defaultDatabase: string, username: string, 
+export type ConnectionSettings = { host: string, port: number, defaultDatabase: string, username: string, 
 /**
  * Référence vers le mot de passe, jamais le mot de passe. `None` pour un moteur
  * qui n'en demande pas — SQLite sur fichier, par exemple.
@@ -108,6 +61,106 @@ caCertificate: string | null,
  * règle, pas une donnée, et elle appartient à `11`. Voir `specs/05a`.
  */
 readOnly: boolean, reconnectOnStartup: boolean, tunnel: Tunnel | null, };
+
+/**
+ * Ce que `A2` envoie pour créer un projet.
+ */
+export type CreateProjectRequest = { name: string, 
+/**
+ * L'environnement actif du projet, qui est celui de la variante qu'on lui déclare.
+ *
+ * `05a` en fait une propriété du **projet**, et `A2` ne propose que celui de la variante. Le
+ * coder à `dev` afficherait un arbre vide juste après l'enregistrement d'une base `prod` : la
+ * base existe, mais dans un autre environnement que celui affiché.
+ */
+activeEnvironment: EnvironmentId, };
+
+/**
+ * Une connexion déclarée : une base, dans **un** environnement (`23b`).
+ *
+ * # Ce que ce type était, et pourquoi il a changé
+ *
+ * Il portait `variants: Vec<ConnectionSettings>` — la même base logique déclinée en dev, staging et
+ * prod, sous un seul nœud de l'arbre. Décidé le 19 août 2026 : une connexion appartient à un
+ * environnement et un seul. `analytics` en dev et `analytics` en prod sont deux connexions, ce qui
+ * rend leur nom non unique dans un projet — il l'est dans le couple `(environnement, nom)`.
+ *
+ * Le nom reste celui de la base distante : il n'y a pas d'étiquette libre. Deux connexions homonymes
+ * se distinguent par leur environnement, qui est affiché.
+ */
+export type Database = { name: string, engine: Engine, environment: EnvironmentId, connection: ConnectionSettings, };
+
+/**
+ * Ce que `08j` envoie pour retirer une déclaration de connexion.
+ */
+export type DeleteDatabaseRequest = { project: string, database: string, 
+/**
+ * **L'environnement fait partie de l'identité d'une connexion** (`23b`) : sans lui, retirer
+ * « analytics » d'un projet qui la déclare en dev et en prod supprimerait la première venue.
+ */
+environment: EnvironmentId, };
+
+/**
+ * Ce que `08j` envoie pour retirer un projet entier.
+ */
+export type DeleteProjectRequest = { project: string, };
+
+/**
+ * Ce qu'une suppression rend à l'écran (`08j`).
+ */
+export type DeleteResult = { projects: Array<Project>, 
+/**
+ * Les mots de passe que le magasin n'a pas su effacer : ils restent dans le Trousseau, et
+ * l'utilisateur a le droit de le savoir.
+ */
+leftoverSecrets: Array<string>, };
+
+/**
+ * Les sept moteurs du handoff, et rien d'autre : un moteur inconnu ne compile pas.
+ */
+export type Engine = "postgresql" | "mysql" | "sqlite" | "mongodb" | "redis" | "snowflake" | "bigquery";
+
+/**
+ * La couleur d'un environnement : la pastille du sélecteur, et rien de plus.
+ *
+ * **Cinq jetons existants, pas un sélecteur de teinte.** Un client de bases n'est pas un éditeur de
+ * thème, et une couleur libre finirait par produire des pastilles indistinguables — ce qui coûterait
+ * précisément l'information qu'elles portent.
+ */
+export type EnvironmentColor = "green" | "amber" | "red" | "slate" | "violet";
+
+/**
+ * Un environnement **déclaré par un projet** (`23a`).
+ */
+export type EnvironmentDeclaration = { id: EnvironmentId, label: string, color: EnvironmentColor, 
+/**
+ * Ce qui déclenche les garde-fous d'écriture (`11d`) et l'encart rouge.
+ *
+ * **Un drapeau, jamais le libellé.** Un environnement nommé « live » et marqué production doit
+ * être protégé ; un environnement nommé « prod » que l'utilisateur n'a pas marqué ne l'est pas.
+ * Accrocher une garantie à une chaîne de caractères la rendrait fausse au premier renommage.
+ */
+production: boolean, };
+
+/**
+ * L'identifiant **stable** d'un environnement, dans la portée d'un projet (`23a`).
+ *
+ * # Pourquoi un identifiant distinct du libellé
+ *
+ * La référence d'un mot de passe dans le trousseau vaut `dorabase/<projet>/<base>/<environnement>`
+ * (`08e`), et c'est cet identifiant qui y figure. S'il suivait le libellé, renommer « prod » en
+ * « production » rendrait introuvables **tous les mots de passe du projet** — sans erreur, sans
+ * message : des connexions qui redemanderaient leur mot de passe sans raison visible.
+ *
+ * Il est donc dérivé du libellé **une fois**, à la création, puis figé. C'est exactement le rôle que
+ * tenait `EnvironmentId::slug()` quand les environnements étaient une énumération de trois valeurs.
+ *
+ * # Pourquoi un type nommé et non un `String`
+ *
+ * Une signature `fn variant(&self, environment: &str)` accepterait un nom de base par erreur. Le type
+ * coûte une ligne et rend la confusion impossible — même raison que `SecretRef`.
+ */
+export type EnvironmentId = string;
 
 /**
  * Les quatre garde-fous d'écriture (`15d`).
@@ -175,7 +228,14 @@ export type Project = { name: string,
  * Global au projet, et persisté (`05b`) : le handoff le traite comme une propriété
  * du projet, pas comme une préférence d'affichage.
  */
-activeEnvironment: Environment, databases: Array<Database>, 
+activeEnvironment: EnvironmentId, 
+/**
+ * Les environnements que **ce projet** déclare (`23a`).
+ *
+ * Non vide, et l'environnement actif en fait partie : les deux invariants sont vérifiés par
+ * `valider`. Un projet neuf reçoit `EnvironmentDeclaration::trio_par_defaut`.
+ */
+environments: Array<EnvironmentDeclaration>, databases: Array<Database>, 
 /**
  * Les requêtes enregistrées du projet (`12f`).
  *
@@ -211,7 +271,11 @@ export type RenameProjectResult = { projects: Array<Project>, missingSecrets: Ar
  * `SecretRef` n'existe avant que le secret soit rangé, et c'est justement le travail de cette
  * commande. La variante reçue porte donc `password: null`, que `enregistrer` remplace.
  */
-export type SaveDatabaseRequest = { project: string, database: string, engine: Engine, variant: EnvironmentVariant, password: string | null, };
+export type SaveDatabaseRequest = { project: string, database: string, engine: Engine, 
+/**
+ * L'environnement choisi dans `A2`, parmi ceux du projet (`23d`).
+ */
+environment: EnvironmentId, variant: ConnectionSettings, password: string | null, };
 
 /**
  * Une requête enregistrée (`12f`).
@@ -274,7 +338,7 @@ export type UpdateVariantRequest = { project: string, database: string,
 /**
  * L'environnement **désigne** la variante ; il ne se modifie pas. Voir `08g`.
  */
-environment: Environment, variant: EnvironmentVariant, 
+environment: EnvironmentId, variant: ConnectionSettings, 
 /**
  * `None` laisse le mot de passe en place — un champ vide veut dire « inchangé ».
  */

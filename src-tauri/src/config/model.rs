@@ -24,31 +24,126 @@ pub enum Engine {
     BigQuery,
 }
 
-/// Les trois environnements du handoff. L'environnement actif est une propriété du
-/// **projet**, pas de la base — c'est ce qui permet à un basculement de recharger
-/// l'arbre entier sur d'autres serveurs sans changer l'arborescence.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+/// L'identifiant **stable** d'un environnement, dans la portée d'un projet (`23a`).
+///
+/// # Pourquoi un identifiant distinct du libellé
+///
+/// La référence d'un mot de passe dans le trousseau vaut `dorabase/<projet>/<base>/<environnement>`
+/// (`08e`), et c'est cet identifiant qui y figure. S'il suivait le libellé, renommer « prod » en
+/// « production » rendrait introuvables **tous les mots de passe du projet** — sans erreur, sans
+/// message : des connexions qui redemanderaient leur mot de passe sans raison visible.
+///
+/// Il est donc dérivé du libellé **une fois**, à la création, puis figé. C'est exactement le rôle que
+/// tenait `EnvironmentId::slug()` quand les environnements étaient une énumération de trois valeurs.
+///
+/// # Pourquoi un type nommé et non un `String`
+///
+/// Une signature `fn variant(&self, environment: &str)` accepterait un nom de base par erreur. Le type
+/// coûte une ligne et rend la confusion impossible — même raison que `SecretRef`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[ts(export_to = "config.ts")]
-#[serde(rename_all = "kebab-case")]
-pub enum Environment {
-    Dev,
-    Staging,
-    Prod,
+// `#[ts(type = "string")]` en plus de `#[serde(transparent)]` : `ts-rs` ne comprend pas cet attribut
+// de `serde` et projetterait la structure au lieu de la chaîne qu'elle transporte. Sans lui, le front
+// recevrait un `{ 0: string }` là où le JSON porte `"dev"` — une dérive que seul l'écran verrait.
+#[ts(type = "string")]
+#[serde(transparent)]
+pub struct EnvironmentId(String);
+
+impl EnvironmentId {
+    /// Dérive un identifiant d'un libellé : minuscules, et tout ce qui n'est ni lettre ni chiffre
+    /// devient un tiret.
+    ///
+    /// **Le résultat n'est pas garanti unique**, et ce n'est pas son rôle : c'est le projet qui refuse
+    /// un doublon (voir `Project::new`). Un libellé vide, ou fait de seuls séparateurs, rend `env` —
+    /// un identifiant valable, que le projet dédoublonnera si besoin.
+    pub fn depuis_le_libelle(libelle: &str) -> Self {
+        let mut brut = String::new();
+        for caractere in libelle.chars() {
+            if caractere.is_ascii_alphanumeric() {
+                brut.extend(caractere.to_lowercase());
+            } else if !brut.ends_with('-') {
+                brut.push('-');
+            }
+        }
+        let taille = brut.trim_matches('-');
+        Self(if taille.is_empty() {
+            "env".to_owned()
+        } else {
+            taille.to_owned()
+        })
+    }
+
+    /// Reprend un identifiant déjà écrit — configuration lue, migration, décor de test.
+    pub fn brut(valeur: impl Into<String>) -> Self {
+        Self(valeur.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
-impl Environment {
-    /// La forme textuelle stable de l'environnement.
+impl std::fmt::Display for EnvironmentId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// La couleur d'un environnement : la pastille du sélecteur, et rien de plus.
+///
+/// **Cinq jetons existants, pas un sélecteur de teinte.** Un client de bases n'est pas un éditeur de
+/// thème, et une couleur libre finirait par produire des pastilles indistinguables — ce qui coûterait
+/// précisément l'information qu'elles portent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export_to = "config.ts")]
+#[serde(rename_all = "kebab-case")]
+pub enum EnvironmentColor {
+    Green,
+    Amber,
+    Red,
+    Slate,
+    Violet,
+}
+
+/// Un environnement **déclaré par un projet** (`23a`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct EnvironmentDeclaration {
+    pub id: EnvironmentId,
+    pub label: String,
+    pub color: EnvironmentColor,
+    /// Ce qui déclenche les garde-fous d'écriture (`11d`) et l'encart rouge.
     ///
-    /// Identique à ce que `serde` écrit dans la configuration, et employée par `08e` pour
-    /// dériver la référence d'un secret. **Ne pas la dériver de `Debug`** : celui-ci n'a
-    /// aucune garantie de stabilité, et une référence de secret qui change au fil des versions
-    /// rendrait des mots de passe introuvables.
-    pub fn slug(self) -> &'static str {
-        match self {
-            Self::Dev => "dev",
-            Self::Staging => "staging",
-            Self::Prod => "prod",
-        }
+    /// **Un drapeau, jamais le libellé.** Un environnement nommé « live » et marqué production doit
+    /// être protégé ; un environnement nommé « prod » que l'utilisateur n'a pas marqué ne l'est pas.
+    /// Accrocher une garantie à une chaîne de caractères la rendrait fausse au premier renommage.
+    pub production: bool,
+}
+
+impl EnvironmentDeclaration {
+    /// Le trio du handoff, que reçoit tout projet neuf (`23a`).
+    pub fn trio_par_defaut() -> Vec<Self> {
+        vec![
+            Self {
+                id: EnvironmentId::brut("dev"),
+                label: "dev".to_owned(),
+                color: EnvironmentColor::Green,
+                production: false,
+            },
+            Self {
+                id: EnvironmentId::brut("staging"),
+                label: "staging".to_owned(),
+                color: EnvironmentColor::Amber,
+                production: false,
+            },
+            Self {
+                id: EnvironmentId::brut("prod"),
+                label: "prod".to_owned(),
+                color: EnvironmentColor::Red,
+                production: true,
+            },
+        ]
     }
 }
 
@@ -108,14 +203,16 @@ pub struct Tunnel {
     pub local_port: Option<u16>,
 }
 
-/// Les réglages de connexion d'une base **pour un environnement donné**. Le handoff pose
-/// « host/port/creds différents par env », donc tout le formulaire de `A2` vit ici, à
-/// l'exception du nom et du moteur qui appartiennent à la base.
+/// Les réglages de connexion d'une connexion déclarée. Tout le formulaire de `A2` vit ici, à
+/// l'exception du nom, du moteur et de l'environnement, qui appartiennent à la connexion elle-même.
+///
+/// **Anciennement `ConnectionSettings`, et le renommage dit le changement de modèle** (`23b`) : ces
+/// réglages ne sont plus *une variante parmi plusieurs* d'une même base, mais les réglages d'**une**
+/// connexion. Le champ `environment` est monté d'un cran, dans `Database`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "config.ts")]
-pub struct EnvironmentVariant {
-    pub environment: Environment,
+pub struct ConnectionSettings {
     pub host: String,
     pub port: u16,
     pub default_database: String,
@@ -148,38 +245,76 @@ pub struct EnvironmentVariant {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModelError {
-    /// Le handoff pose qu'une base existe en 1..n environnements — jamais zéro.
-    AucuneVariante {
-        database: String,
-    },
-    /// Deux variantes du même environnement rendraient « la variante de prod » ambiguë.
-    EnvironnementEnDouble {
-        database: String,
-        environment: Environment,
-    },
-    NomDeBaseEnDouble {
+    /// Deux connexions de même nom **dans le même environnement** : « la base analytics de prod »
+    /// serait ambigu. Deux connexions homonymes dans deux environnements sont, elles, le modèle
+    /// même (`23b`).
+    ConnexionEnDouble {
         project: String,
         database: String,
+        environment: EnvironmentId,
+    },
+    /// Une connexion déclare un environnement que son projet ne déclare pas : elle serait invisible
+    /// dans l'arbre, qui liste par environnement actif.
+    EnvironnementInconnu {
+        project: String,
+        database: String,
+        environment: EnvironmentId,
+    },
+    /// Deux environnements de même identifiant rendraient la référence d'un secret ambiguë (`08e`).
+    IdentifiantEnDouble {
+        project: String,
+        environment: EnvironmentId,
+    },
+    /// Un projet sans environnement ne peut plus rien déclarer : une connexion appartient à un
+    /// environnement (`23b`).
+    AucunEnvironnement {
+        project: String,
+    },
+    /// L'environnement actif doit exister, sans quoi l'arbre serait vide sans dire pourquoi.
+    ActifInconnu {
+        project: String,
+        environment: EnvironmentId,
     },
 }
 
 impl std::fmt::Display for ModelError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::AucuneVariante { database } => write!(
-                f,
-                "la base « {database} » doit être déclarée dans au moins un environnement"
-            ),
-            Self::EnvironnementEnDouble {
+            Self::ConnexionEnDouble {
+                project,
                 database,
                 environment,
             } => write!(
                 f,
-                "la base « {database} » déclare deux fois l'environnement {environment:?}"
+                "le projet « {project} » déclare deux fois la base « {database} » en {environment}"
             ),
-            Self::NomDeBaseEnDouble { project, database } => write!(
+            Self::EnvironnementInconnu {
+                project,
+                database,
+                environment,
+            } => write!(
                 f,
-                "le projet « {project} » déclare deux bases nommées « {database} »"
+                "la base « {database} » du projet « {project} » déclare l'environnement inconnu \
+                 « {environment} »"
+            ),
+            Self::IdentifiantEnDouble {
+                project,
+                environment,
+            } => write!(
+                f,
+                "le projet « {project} » déclare deux environnements nommés « {environment} »"
+            ),
+            Self::AucunEnvironnement { project } => write!(
+                f,
+                "le projet « {project} » doit déclarer au moins un environnement"
+            ),
+            Self::ActifInconnu {
+                project,
+                environment,
+            } => write!(
+                f,
+                "le projet « {project} » a pour environnement actif « {environment} », qu'il ne \
+                 déclare pas"
             ),
         }
     }
@@ -187,88 +322,25 @@ impl std::fmt::Display for ModelError {
 
 impl std::error::Error for ModelError {}
 
-/// Une base d'un projet, déclinée en 1..n environnements.
+/// Une connexion déclarée : une base, dans **un** environnement (`23b`).
+///
+/// # Ce que ce type était, et pourquoi il a changé
+///
+/// Il portait `variants: Vec<ConnectionSettings>` — la même base logique déclinée en dev, staging et
+/// prod, sous un seul nœud de l'arbre. Décidé le 19 août 2026 : une connexion appartient à un
+/// environnement et un seul. `analytics` en dev et `analytics` en prod sont deux connexions, ce qui
+/// rend leur nom non unique dans un projet — il l'est dans le couple `(environnement, nom)`.
+///
+/// Le nom reste celui de la base distante : il n'y a pas d'étiquette libre. Deux connexions homonymes
+/// se distinguent par leur environnement, qui est affiché.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "config.ts")]
 pub struct Database {
     pub name: String,
     pub engine: Engine,
-    // Privé, délibérément : c'est ce qui rend l'invariant « 1..n variantes » inviolable.
-    // Public, un appelant pourrait vider la liste après construction et contourner la
-    // validation de `new`. Commentaire `//` et non `///` : la remarque ne concerne que
-    // Rust, et n'aurait aucun sens dans la projection TypeScript où le champ est présent.
-    variants: Vec<EnvironmentVariant>,
-}
-
-impl Database {
-    pub fn new(
-        name: impl Into<String>,
-        engine: Engine,
-        variants: Vec<EnvironmentVariant>,
-    ) -> Result<Self, ModelError> {
-        let name = name.into();
-
-        if variants.is_empty() {
-            return Err(ModelError::AucuneVariante { database: name });
-        }
-
-        for (index, variante) in variants.iter().enumerate() {
-            if variants[..index]
-                .iter()
-                .any(|precedente| precedente.environment == variante.environment)
-            {
-                return Err(ModelError::EnvironnementEnDouble {
-                    database: name,
-                    environment: variante.environment,
-                });
-            }
-        }
-
-        Ok(Self {
-            name,
-            engine,
-            variants,
-        })
-    }
-
-    /// Lire une variante **exige de nommer l'environnement** : aucune signature ne
-    /// permet d'en obtenir une « par défaut ».
-    ///
-    /// Le résultat est optionnel, et c'est un état réel du domaine : le handoff dit
-    /// 1..n, pas n, donc une base déclarée en `dev` seulement n'a pas de variante
-    /// `prod`. Ce n'est pas un trou de modélisation.
-    pub fn variant(&self, environment: Environment) -> Option<&EnvironmentVariant> {
-        self.variants
-            .iter()
-            .find(|variante| variante.environment == environment)
-    }
-
-    /// Les environnements dans lesquels cette base est déclarée. Non vide par
-    /// construction.
-    pub fn environments(&self) -> impl Iterator<Item = Environment> + '_ {
-        self.variants.iter().map(|variante| variante.environment)
-    }
-
-    pub fn variants(&self) -> &[EnvironmentVariant] {
-        &self.variants
-    }
-
-    /// Remplace les réglages d'une variante **en place**, sans toucher à son environnement.
-    ///
-    /// Le champ `variants` reste privé : le rendre public laisserait un appelant vider la liste
-    /// après construction et contourner l'invariant « au moins une variante ». Cette méthode
-    /// remplace donc à index donné, ce qui ne peut ni ajouter ni retirer.
-    ///
-    /// L'environnement de la variante remplaçante est **ignoré** au profit de celui en place : il
-    /// fait partie de la clé de connexion et de la référence du secret (`08e`), et le changer ici
-    /// laisserait un secret orphelin. Voir `08g`.
-    pub fn remplacer_variante(&mut self, index: usize, mut variante: EnvironmentVariant) {
-        if let Some(ancienne) = self.variants.get(index) {
-            variante.environment = ancienne.environment;
-            self.variants[index] = variante;
-        }
-    }
+    pub environment: EnvironmentId,
+    pub connection: ConnectionSettings,
 }
 
 /// Un projet : ce que la sidebar liste. Pas des connexions — le handoff insiste.
@@ -279,7 +351,12 @@ pub struct Project {
     pub name: String,
     /// Global au projet, et persisté (`05b`) : le handoff le traite comme une propriété
     /// du projet, pas comme une préférence d'affichage.
-    pub active_environment: Environment,
+    pub active_environment: EnvironmentId,
+    /// Les environnements que **ce projet** déclare (`23a`).
+    ///
+    /// Non vide, et l'environnement actif en fait partie : les deux invariants sont vérifiés par
+    /// `valider`. Un projet neuf reçoit `EnvironmentDeclaration::trio_par_defaut`.
+    pub environments: Vec<EnvironmentDeclaration>,
     pub databases: Vec<Database>,
     /// Les requêtes enregistrées du projet (`12f`).
     ///
@@ -293,6 +370,89 @@ pub struct Project {
     /// inutile.
     #[serde(default)]
     pub queries: Vec<SavedQuery>,
+}
+
+impl Project {
+    /// Vérifie les invariants d'un projet, tels que `23a` et `23b` les posent.
+    ///
+    /// # Pourquoi une fonction et non un constructeur
+    ///
+    /// `Database` employait un `new` privatisant son champ, ce qui rendait l'invariant inviolable.
+    /// Cela ne marche que pour un invariant **local**. Ici les trois portent sur des relations entre
+    /// champs — l'actif doit être déclaré, chaque connexion doit viser un environnement déclaré — et
+    /// un constructeur ne les protégerait qu'à la construction : les commandes de `23c` modifient un
+    /// projet existant, et c'est après leur passage qu'il faut vérifier. La validation est donc
+    /// explicite, appelée par les commandes avant d'écrire.
+    pub fn valider(&self) -> Result<(), ModelError> {
+        if self.environments.is_empty() {
+            return Err(ModelError::AucunEnvironnement {
+                project: self.name.clone(),
+            });
+        }
+
+        for (index, declaration) in self.environments.iter().enumerate() {
+            if self.environments[..index]
+                .iter()
+                .any(|precedente| precedente.id == declaration.id)
+            {
+                return Err(ModelError::IdentifiantEnDouble {
+                    project: self.name.clone(),
+                    environment: declaration.id.clone(),
+                });
+            }
+        }
+
+        if !self.declare(&self.active_environment) {
+            return Err(ModelError::ActifInconnu {
+                project: self.name.clone(),
+                environment: self.active_environment.clone(),
+            });
+        }
+
+        for (index, base) in self.databases.iter().enumerate() {
+            if !self.declare(&base.environment) {
+                return Err(ModelError::EnvironnementInconnu {
+                    project: self.name.clone(),
+                    database: base.name.clone(),
+                    environment: base.environment.clone(),
+                });
+            }
+            if self.databases[..index]
+                .iter()
+                .any(|autre| autre.name == base.name && autre.environment == base.environment)
+            {
+                return Err(ModelError::ConnexionEnDouble {
+                    project: self.name.clone(),
+                    database: base.name.clone(),
+                    environment: base.environment.clone(),
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn declare(&self, environnement: &EnvironmentId) -> bool {
+        self.environments
+            .iter()
+            .any(|declaration| &declaration.id == environnement)
+    }
+
+    pub fn environnement(&self, id: &EnvironmentId) -> Option<&EnvironmentDeclaration> {
+        self.environments
+            .iter()
+            .find(|declaration| &declaration.id == id)
+    }
+
+    /// Les connexions d'un environnement — ce que l'arbre liste (`23g`).
+    pub fn connexions_de<'a>(
+        &'a self,
+        environnement: &'a EnvironmentId,
+    ) -> impl Iterator<Item = &'a Database> + 'a {
+        self.databases
+            .iter()
+            .filter(move |base| &base.environment == environnement)
+    }
 }
 
 /// Une requête enregistrée (`12f`).
@@ -462,9 +622,8 @@ impl Default for Guards {
 mod tests {
     use super::*;
 
-    fn variante(env: Environment) -> EnvironmentVariant {
-        EnvironmentVariant {
-            environment: env,
+    fn reglages() -> ConnectionSettings {
+        ConnectionSettings {
             host: "db.internal".into(),
             port: 5432,
             default_database: "analytics".into(),
@@ -478,59 +637,166 @@ mod tests {
         }
     }
 
+    fn connexion(nom: &str, env: &str) -> Database {
+        Database {
+            name: nom.to_owned(),
+            engine: Engine::PostgreSql,
+            environment: EnvironmentId::brut(env),
+            connection: reglages(),
+        }
+    }
+
+    fn projet(environnements: Vec<EnvironmentDeclaration>, bases: Vec<Database>) -> Project {
+        Project {
+            name: "Atelier Nord".into(),
+            active_environment: environnements
+                .first()
+                .map(|declaration| declaration.id.clone())
+                .unwrap_or_else(|| EnvironmentId::brut("dev")),
+            environments: environnements,
+            databases: bases,
+            queries: Vec::new(),
+        }
+    }
+
+    // --- L'identifiant, dérivé une fois puis figé (`23a`) ---
+
     #[test]
-    fn une_base_sans_variante_ne_se_construit_pas() {
-        let erreur = Database::new("analytics", Engine::PostgreSql, vec![]);
-        assert!(matches!(erreur, Err(ModelError::AucuneVariante { .. })));
+    fn l_identifiant_se_derive_du_libelle() {
+        assert_eq!(EnvironmentId::depuis_le_libelle("prod").as_str(), "prod");
+        assert_eq!(
+            EnvironmentId::depuis_le_libelle("Pré-production").as_str(),
+            "pr-production"
+        );
+        assert_eq!(EnvironmentId::depuis_le_libelle("Bac à sable").as_str(), "bac-sable");
     }
 
     #[test]
-    fn une_base_avec_une_variante_se_construit() {
-        let base = Database::new(
-            "analytics",
-            Engine::PostgreSql,
-            vec![variante(Environment::Dev)],
-        );
-        assert!(base.is_ok());
+    fn un_libelle_sans_caractere_utilisable_donne_un_identifiant_valable() {
+        // Un identifiant vide se retrouverait dans une référence de secret
+        // `dorabase/projet/base/` — introuvable, et sans erreur pour le dire.
+        assert_eq!(EnvironmentId::depuis_le_libelle("…").as_str(), "env");
+        assert_eq!(EnvironmentId::depuis_le_libelle("").as_str(), "env");
     }
 
     #[test]
-    fn deux_variantes_du_meme_environnement_sont_refusees() {
-        let erreur = Database::new(
-            "analytics",
-            Engine::PostgreSql,
-            vec![variante(Environment::Dev), variante(Environment::Dev)],
+    fn renommer_un_environnement_ne_change_pas_son_identifiant() {
+        // **La garantie centrale de `23a`.** La référence d'un mot de passe contient l'identifiant
+        // (`08e`) : si le renommage le changeait, tous les mots de passe du projet deviendraient
+        // introuvables — sans erreur, sans message.
+        let mut declaration = EnvironmentDeclaration {
+            id: EnvironmentId::depuis_le_libelle("prod"),
+            label: "prod".to_owned(),
+            color: EnvironmentColor::Red,
+            production: true,
+        };
+        let avant = declaration.id.clone();
+        declaration.label = "production".to_owned();
+        assert_eq!(declaration.id, avant);
+        assert_eq!(declaration.id.as_str(), "prod");
+    }
+
+    #[test]
+    fn le_trio_par_defaut_est_celui_du_handoff_et_marque_la_production() {
+        let trio = EnvironmentDeclaration::trio_par_defaut();
+        let ids: Vec<_> = trio.iter().map(|d| d.id.as_str().to_owned()).collect();
+        assert_eq!(ids, vec!["dev", "staging", "prod"]);
+        assert_eq!(
+            trio.iter().filter(|d| d.production).count(),
+            1,
+            "seule la production est marquée : c'est ce qui accroche les garde-fous de `11d`"
         );
+    }
+
+    // --- Les invariants du projet (`23a`, `23b`) ---
+
+    #[test]
+    fn un_projet_sans_environnement_est_refuse() {
+        let erreur = projet(Vec::new(), Vec::new()).valider();
+        assert!(matches!(erreur, Err(ModelError::AucunEnvironnement { .. })));
+    }
+
+    #[test]
+    fn deux_environnements_de_meme_identifiant_sont_refuses() {
+        let mut trio = EnvironmentDeclaration::trio_par_defaut();
+        trio.push(trio[0].clone());
         assert!(matches!(
-            erreur,
-            Err(ModelError::EnvironnementEnDouble { .. })
+            projet(trio, Vec::new()).valider(),
+            Err(ModelError::IdentifiantEnDouble { .. })
         ));
     }
 
     #[test]
-    fn lire_une_variante_exige_de_nommer_l_environnement() {
-        let base = Database::new(
-            "analytics",
-            Engine::PostgreSql,
-            vec![variante(Environment::Dev)],
-        )
-        .unwrap();
-
-        assert!(base.variant(Environment::Dev).is_some());
-        // Une base peut n'exister qu'en dev : le handoff dit 1..n, pas n.
-        assert!(base.variant(Environment::Prod).is_none());
+    fn un_environnement_actif_non_declare_est_refuse() {
+        let mut candidat = projet(EnvironmentDeclaration::trio_par_defaut(), Vec::new());
+        candidat.active_environment = EnvironmentId::brut("preprod");
+        assert!(matches!(
+            candidat.valider(),
+            Err(ModelError::ActifInconnu { .. })
+        ));
     }
 
     #[test]
-    fn les_environnements_declares_sont_enumerables() {
-        let base = Database::new(
-            "analytics",
-            Engine::PostgreSql,
-            vec![variante(Environment::Dev), variante(Environment::Prod)],
-        )
-        .unwrap();
+    fn deux_connexions_homonymes_dans_deux_environnements_sont_valides() {
+        // Le modèle même de `23b` : `analytics` en dev et en prod sont deux connexions.
+        let candidat = projet(
+            EnvironmentDeclaration::trio_par_defaut(),
+            vec![connexion("analytics", "dev"), connexion("analytics", "prod")],
+        );
+        assert!(candidat.valider().is_ok());
+    }
 
-        let envs: Vec<_> = base.environments().collect();
-        assert_eq!(envs, vec![Environment::Dev, Environment::Prod]);
+    #[test]
+    fn deux_connexions_homonymes_dans_le_meme_environnement_sont_refusees() {
+        let candidat = projet(
+            EnvironmentDeclaration::trio_par_defaut(),
+            vec![connexion("analytics", "dev"), connexion("analytics", "dev")],
+        );
+        assert!(matches!(
+            candidat.valider(),
+            Err(ModelError::ConnexionEnDouble { .. })
+        ));
+    }
+
+    #[test]
+    fn une_connexion_visant_un_environnement_non_declare_est_refusee() {
+        let candidat = projet(
+            EnvironmentDeclaration::trio_par_defaut(),
+            vec![connexion("analytics", "preprod")],
+        );
+        assert!(matches!(
+            candidat.valider(),
+            Err(ModelError::EnvironnementInconnu { .. })
+        ));
+    }
+
+    #[test]
+    fn les_connexions_d_un_environnement_sont_celles_que_l_arbre_liste() {
+        let candidat = projet(
+            EnvironmentDeclaration::trio_par_defaut(),
+            vec![
+                connexion("analytics", "dev"),
+                connexion("shop", "dev"),
+                connexion("analytics", "prod"),
+            ],
+        );
+        let dev = EnvironmentId::brut("dev");
+        let en_dev: Vec<_> = candidat
+            .connexions_de(&dev)
+            .map(|base| base.name.as_str())
+            .collect();
+        assert_eq!(en_dev, vec!["analytics", "shop"]);
+        let staging = EnvironmentId::brut("staging");
+        assert_eq!(candidat.connexions_de(&staging).count(), 0);
+    }
+
+    #[test]
+    fn un_environnement_se_lit_par_son_identifiant() {
+        let candidat = projet(EnvironmentDeclaration::trio_par_defaut(), Vec::new());
+        let prod = candidat
+            .environnement(&EnvironmentId::brut("prod"))
+            .expect("le trio déclare prod");
+        assert!(prod.production);
+        assert!(candidat.environnement(&EnvironmentId::brut("preprod")).is_none());
     }
 }

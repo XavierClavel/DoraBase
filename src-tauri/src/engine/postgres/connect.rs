@@ -4,7 +4,7 @@ use tokio_postgres::config::SslMode as PgSslMode;
 use tokio_postgres::{Client, Config, NoTls};
 use tokio_postgres_rustls::MakeRustlsConnect;
 
-use crate::config::{EnvironmentVariant, SslMode};
+use crate::config::{ConnectionSettings, SslMode};
 use crate::engine::tls::Exigences;
 use crate::engine::EngineError;
 use crate::secrets::Secret;
@@ -19,7 +19,7 @@ use super::error::traduire;
 /// que l'utilisateur a demandé contournerait sa consigne de sécurité, et un `None` oublié à
 /// l'appel ne doit pas se traduire par une connexion directe silencieuse.
 pub fn preparer(
-    variante: &EnvironmentVariant,
+    variante: &ConnectionSettings,
     mot_de_passe: Option<&Secret>,
     redirection: Option<(&str, u16)>,
 ) -> Result<Config, EngineError> {
@@ -124,11 +124,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{Environment, Tunnel, TunnelKind};
+    use crate::config::{Tunnel, TunnelKind};
 
-    fn variante() -> EnvironmentVariant {
-        EnvironmentVariant {
-            environment: Environment::Dev,
+    fn variante() -> ConnectionSettings {
+        ConnectionSettings {
             host: "localhost".into(),
             port: 5432,
             default_database: "dorabase_test".into(),
@@ -142,7 +141,7 @@ mod tests {
         }
     }
 
-    fn avec_tunnel() -> EnvironmentVariant {
+    fn avec_tunnel() -> ConnectionSettings {
         let mut variante = variante();
         variante.tunnel = Some(Tunnel {
             kind: TunnelKind::Ssh,

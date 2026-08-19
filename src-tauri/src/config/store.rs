@@ -9,11 +9,20 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::model::{Preferences, Project};
+use super::model::{
+    Database, EnvironmentColor, EnvironmentDeclaration, EnvironmentId, Preferences, Project,
+};
 
 /// Version du format sur disque. À incrémenter pour tout changement de forme, en
 /// ajoutant la migration correspondante dans `migrer`.
-pub const VERSION_COURANTE: u32 = 1;
+/// La version du format sur disque.
+///
+/// **Passée à 2 par `23a`/`23b`**, et c'est la première montée réelle. Les onze specs précédentes ont
+/// employé `serde(default)`, justement parce qu'aucune n'invalidait ce qui était écrit. Ici deux
+/// choses changent de forme : `activeEnvironment` cesse d'être une énumération de trois valeurs, et
+/// une base cesse de porter des variantes. Un `default` produirait une configuration vide de sens
+/// plutôt qu'une erreur.
+pub const VERSION_COURANTE: u32 = 2;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ConfigFile {
@@ -238,11 +247,11 @@ fn migrer(cible: &Path, brut: &str, depuis: u32) -> LoadOutcome {
         };
     }
 
-    // v0 → v1 : la v0 n'a jamais été diffusée, sa forme est celle de la v1. La chaîne
-    // existe pour que la prochaine évolution n'ait qu'un bras à ajouter.
+    // v0 → v1 : la v0 n'a jamais été diffusée, sa forme est celle de la v1.
+    // v1 → v2 : `23a`/`23b`. La chaîne est écrite pour se composer — une v1 lue depuis une v0 passe
+    // ensuite par le même bras que si elle venait du disque.
     let migre = match depuis {
-        0 => serde_json::from_str::<ConfigFile>(brut)
-            .map(|fichier| (fichier.projects, fichier.preferences)),
+        0 | 1 => migration_v1_vers_v2(brut),
         _ => {
             return LoadOutcome::Unreadable {
                 reason: format!("aucune migration connue depuis la version {depuis}"),
@@ -261,6 +270,148 @@ fn migrer(cible: &Path, brut: &str, depuis: u32) -> LoadOutcome {
             quarantined_to: sauvegarde,
         },
     }
+}
+
+/// La forme v1 d'un fichier : ce qu'on doit encore savoir lire (`23a`, `23b`).
+///
+/// **Des types dédiés, et non le modèle courant.** Faire lire l'ancienne forme par les structures
+/// d'aujourd'hui obligerait à garder dans le modèle des champs qui n'existent plus — un
+/// `#[serde(alias)]` ici, un `Option<Vec<_>>` là — et ces béquilles survivraient à la migration.
+/// Décrire l'ancien format à part le laisse mourir avec elle.
+mod v1 {
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Fichier {
+        pub projects: Vec<Projet>,
+        #[serde(default)]
+        pub preferences: crate::config::model::Preferences,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Projet {
+        pub name: String,
+        pub active_environment: String,
+        pub databases: Vec<Base>,
+        #[serde(default)]
+        pub queries: Vec<crate::config::model::SavedQuery>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Base {
+        pub name: String,
+        pub engine: crate::config::model::Engine,
+        pub variants: Vec<Variante>,
+    }
+
+    /// L'ancienne `EnvironmentVariant` : les réglages **plus** leur environnement.
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Variante {
+        pub environment: String,
+        #[serde(flatten)]
+        pub reglages: crate::config::model::ConnectionSettings,
+    }
+}
+
+/// v1 → v2 : les environnements montent au projet, et chaque variante devient une connexion.
+///
+/// # Ce que cette migration garantit, et pourquoi
+///
+/// **Elle duplique, elle ne choisit pas.** Une base à trois variantes devient trois connexions. Ne
+/// garder que celle de l'environnement actif serait plus court, mais perdrait deux déclarations que
+/// l'utilisateur avait faites — et leurs mots de passe deviendraient orphelins dans le trousseau,
+/// invisibles et non nettoyables. C'est la règle de `08j` : on ne supprime jamais ce qu'on n'a pas
+/// demandé à supprimer.
+///
+/// **Aucun secret ne bouge.** La référence d'un mot de passe contient déjà l'identifiant
+/// d'environnement (`08e`), et les identifiants sont conservés tels quels — `dev`, `staging`, `prod`.
+/// C'est précisément ce qui rend cette migration sûre, et c'est pour cela que `23a` fige les
+/// identifiants au lieu de les dériver des libellés.
+///
+/// **Les environnements déclarés sont ceux qui servaient.** Ils sont déduits des variantes présentes,
+/// plus l'environnement actif, dans l'ordre du trio. Déclarer les trois d'office ajouterait des
+/// environnements vides que l'utilisateur n'a jamais demandés ; n'en déclarer aucun rendrait le
+/// projet invalide.
+fn migration_v1_vers_v2(brut: &str) -> Result<(Vec<Project>, Preferences), serde_json::Error> {
+    let ancien: v1::Fichier = serde_json::from_str(brut)?;
+
+    let projects = ancien
+        .projects
+        .into_iter()
+        .map(|projet| {
+            let mut identifiants: Vec<String> = Vec::new();
+            for base in &projet.databases {
+                for variante in &base.variants {
+                    if !identifiants.contains(&variante.environment) {
+                        identifiants.push(variante.environment.clone());
+                    }
+                }
+            }
+            if !identifiants.contains(&projet.active_environment) {
+                identifiants.push(projet.active_environment.clone());
+            }
+
+            // L'ordre du trio d'abord, puis le reste : un fichier écrit à la main pourrait porter
+            // autre chose, et l'ordre du sélecteur ne doit pas dépendre de l'ordre des bases.
+            let rang = |id: &str| match id {
+                "dev" => 0,
+                "staging" => 1,
+                "prod" => 2,
+                _ => 3,
+            };
+            identifiants.sort_by_key(|id| (rang(id), id.clone()));
+
+            let environments = identifiants
+                .iter()
+                .map(|id| {
+                    let (color, production) = match id.as_str() {
+                        "prod" => (EnvironmentColor::Red, true),
+                        "staging" => (EnvironmentColor::Amber, false),
+                        "dev" => (EnvironmentColor::Green, false),
+                        // Un identifiant inconnu garde une couleur neutre : inventer « rouge » le
+                        // ferait passer pour une production, donc protégé alors qu'il ne l'est pas.
+                        _ => (EnvironmentColor::Slate, false),
+                    };
+                    EnvironmentDeclaration {
+                        id: EnvironmentId::brut(id.clone()),
+                        label: id.clone(),
+                        color,
+                        production,
+                    }
+                })
+                .collect();
+
+            let databases = projet
+                .databases
+                .into_iter()
+                .flat_map(|base| {
+                    base.variants
+                        .into_iter()
+                        .map(|variante| Database {
+                            name: base.name.clone(),
+                            engine: base.engine,
+                            environment: EnvironmentId::brut(variante.environment),
+                            connection: variante.reglages,
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+
+            Project {
+                name: projet.name,
+                active_environment: EnvironmentId::brut(projet.active_environment),
+                environments,
+                databases,
+                queries: projet.queries,
+            }
+        })
+        .collect();
+
+    Ok((projects, ancien.preferences))
 }
 
 fn mettre_en_quarantaine(cible: &Path, raison: String) -> LoadOutcome {
@@ -528,11 +679,10 @@ mod tests_preferences {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::model::{Database, Engine, Environment, EnvironmentVariant, SslMode};
+    use crate::config::model::{Database, Engine, EnvironmentId, ConnectionSettings, SslMode};
 
-    fn variante(env: Environment) -> EnvironmentVariant {
-        EnvironmentVariant {
-            environment: env,
+    fn variante() -> ConnectionSettings {
+        ConnectionSettings {
             host: "db.internal".into(),
             port: 5432,
             default_database: "analytics".into(),
@@ -549,14 +699,24 @@ mod tests {
     fn projet_nomme(nom: &str) -> Project {
         Project {
             name: nom.into(),
-            active_environment: Environment::Prod,
+            active_environment: EnvironmentId::brut("prod"),
+            environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
             queries: Vec::new(),
-            databases: vec![Database::new(
-                "analytics",
-                Engine::PostgreSql,
-                vec![variante(Environment::Dev), variante(Environment::Prod)],
-            )
-            .unwrap()],
+            // `analytics` en dev **et** en prod : deux connexions depuis `23b`.
+            databases: vec![
+                Database {
+                    name: "analytics".to_owned(),
+                    engine: Engine::PostgreSql,
+                    environment: EnvironmentId::brut("dev"),
+                    connection: variante(),
+                },
+                Database {
+                    name: "analytics".to_owned(),
+                    engine: Engine::PostgreSql,
+                    environment: EnvironmentId::brut("prod"),
+                    connection: variante(),
+                },
+            ],
         }
     }
 
@@ -601,7 +761,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let chemin = dir.path().join("config.json");
         let mut projet = projet_nomme("Atelier Nord");
-        projet.active_environment = Environment::Prod;
+        projet.active_environment = EnvironmentId::brut("prod");
 
         save(&chemin, &[projet], &Preferences::default()).unwrap();
         let relu = match load(&chemin) {
@@ -609,7 +769,7 @@ mod tests {
             autre => panic!("attendu Loaded, obtenu {autre:?}"),
         };
 
-        assert_eq!(relu[0].active_environment, Environment::Prod);
+        assert_eq!(relu[0].active_environment, EnvironmentId::brut("prod"));
     }
 
     // --- Tâche 2 : atomicité ---
@@ -840,18 +1000,19 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let chemin = dir.path().join("config.json");
 
-        let mut variante_avec_reference = variante(Environment::Dev);
+        let mut variante_avec_reference = variante();
         variante_avec_reference.password = Some(SecretRef::new("ref-abc123"));
         let projet = Project {
             name: "Atelier Nord".into(),
-            active_environment: Environment::Dev,
+            active_environment: EnvironmentId::brut("dev"),
+            environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
             queries: Vec::new(),
-            databases: vec![Database::new(
-                "analytics",
-                Engine::PostgreSql,
-                vec![variante_avec_reference],
-            )
-            .unwrap()],
+            databases: vec![Database {
+                name: "analytics".to_owned(),
+                engine: Engine::PostgreSql,
+                environment: EnvironmentId::brut("dev"),
+                connection: variante_avec_reference,
+            }],
         };
 
         save(&chemin, &[projet], &Preferences::default()).unwrap();
@@ -912,5 +1073,200 @@ mod tests {
             }
             autre => panic!("la lecture doit réussir : {autre:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests_migration_v2 {
+    use super::*;
+    use crate::config::model::Engine;
+
+    /// Un fichier en v1 : deux projets, une base à deux variantes, une base à une seule.
+    ///
+    /// **Écrit à la main, et c'est le point.** Sérialiser le modèle courant pour le relire prouverait
+    /// seulement que `serde` sait faire l'aller-retour. Ce qu'il faut vérifier est la lecture d'un
+    /// fichier que cette version du code ne sait plus écrire.
+    const V1: &str = r#"{
+      "version": 1,
+      "projects": [
+        {
+          "name": "Print",
+          "activeEnvironment": "prod",
+          "databases": [
+            {
+              "name": "analytics",
+              "engine": "postgresql",
+              "variants": [
+                {
+                  "environment": "dev",
+                  "host": "dev.interne", "port": 5432, "defaultDatabase": "analytics",
+                  "username": "dora", "password": "Print/analytics/dev",
+                  "sslMode": "require", "readOnly": true, "reconnectOnStartup": false,
+                  "tunnel": null
+                },
+                {
+                  "environment": "prod",
+                  "host": "prod.interne", "port": 5432, "defaultDatabase": "analytics",
+                  "username": "dora", "password": "Print/analytics/prod",
+                  "sslMode": "verify-full", "readOnly": true, "reconnectOnStartup": true,
+                  "tunnel": null
+                }
+              ]
+            },
+            {
+              "name": "journal",
+              "engine": "mysql",
+              "variants": [
+                {
+                  "environment": "dev",
+                  "host": "dev.interne", "port": 3306, "defaultDatabase": "journal",
+                  "username": "dora", "password": null,
+                  "sslMode": "prefer", "readOnly": false, "reconnectOnStartup": false,
+                  "tunnel": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Outils",
+          "activeEnvironment": "dev",
+          "databases": []
+        }
+      ]
+    }"#;
+
+    fn migrer_le_decor() -> Vec<Project> {
+        let dossier = tempfile::tempdir().expect("dossier temporaire");
+        let chemin = dossier.path().join("config.json");
+        fs::write(&chemin, V1).expect("écriture du décor v1");
+
+        match load(&chemin) {
+            LoadOutcome::Loaded { projects, .. } => projects,
+            autre => panic!("la migration devait aboutir : {autre:?}"),
+        }
+    }
+
+    #[test]
+    fn une_base_a_deux_variantes_devient_deux_connexions() {
+        let projets = migrer_le_decor();
+        let print = &projets[0];
+        // **Trois connexions pour deux bases** : `analytics` en dev et en prod, plus `journal` en dev.
+        assert_eq!(print.databases.len(), 3);
+
+        let analytics: Vec<_> = print
+            .databases
+            .iter()
+            .filter(|base| base.name == "analytics")
+            .collect();
+        assert_eq!(analytics.len(), 2);
+        // Chacune garde **ses** réglages : l'hôte distingue les deux, et les confondre serait le
+        // défaut le plus discret de cette migration.
+        let dev = analytics
+            .iter()
+            .find(|base| base.environment == EnvironmentId::brut("dev"))
+            .expect("dev");
+        let prod = analytics
+            .iter()
+            .find(|base| base.environment == EnvironmentId::brut("prod"))
+            .expect("prod");
+        assert_eq!(dev.connection.host, "dev.interne");
+        assert_eq!(prod.connection.host, "prod.interne");
+        assert!(prod.connection.reconnect_on_startup);
+        assert!(!dev.connection.reconnect_on_startup);
+    }
+
+    #[test]
+    fn aucune_reference_de_secret_ne_bouge() {
+        // **La garantie qui rend cette migration sûre.** La référence contient déjà l'identifiant
+        // d'environnement (`08e`), et les identifiants sont conservés : `dev` reste `dev`. Un
+        // identifiant recalculé depuis le libellé aurait rendu introuvables tous les mots de passe.
+        let projets = migrer_le_decor();
+        let references: Vec<_> = projets[0]
+            .databases
+            .iter()
+            .filter_map(|base| {
+                base.connection
+                    .password
+                    .as_ref()
+                    .map(|reference| reference.as_str().to_owned())
+            })
+            .collect();
+        assert!(references.contains(&"Print/analytics/dev".to_owned()));
+        assert!(references.contains(&"Print/analytics/prod".to_owned()));
+        assert_eq!(references.len(), 2, "`journal` n'avait pas de mot de passe");
+    }
+
+    #[test]
+    fn les_environnements_declares_sont_ceux_qui_servaient() {
+        let projets = migrer_le_decor();
+        let ids: Vec<_> = projets[0]
+            .environments
+            .iter()
+            .map(|declaration| declaration.id.as_str().to_owned())
+            .collect();
+        // `dev` et `prod` seulement : `staging` n'était employé par aucune variante, et le déclarer
+        // ajouterait un environnement vide que l'utilisateur n'a jamais demandé.
+        assert_eq!(ids, vec!["dev", "prod"]);
+        // Dans l'ordre du trio, non dans celui des bases : l'ordre du sélecteur ne doit pas dépendre
+        // de l'ordre d'écriture du fichier.
+        let prod = projets[0]
+            .environnement(&EnvironmentId::brut("prod"))
+            .expect("prod déclaré");
+        assert!(prod.production, "prod garde son drapeau de production");
+        assert_eq!(prod.color, EnvironmentColor::Red);
+    }
+
+    #[test]
+    fn un_projet_sans_base_garde_son_environnement_actif() {
+        let projets = migrer_le_decor();
+        let outils = &projets[1];
+        // Aucune variante d'où déduire quoi que ce soit : c'est l'environnement actif qui sauve le
+        // projet de l'invalidité — un projet sans environnement est refusé (`23a`).
+        assert_eq!(outils.environments.len(), 1);
+        assert_eq!(outils.active_environment, EnvironmentId::brut("dev"));
+        assert!(outils.valider().is_ok());
+    }
+
+    #[test]
+    fn le_projet_migre_est_valide() {
+        for projet in migrer_le_decor() {
+            projet
+                .valider()
+                .unwrap_or_else(|erreur| panic!("le projet migré doit être valide : {erreur}"));
+        }
+    }
+
+    #[test]
+    fn le_moteur_et_le_mode_ssl_traversent_la_migration() {
+        let projets = migrer_le_decor();
+        let journal = projets[0]
+            .databases
+            .iter()
+            .find(|base| base.name == "journal")
+            .expect("journal");
+        assert_eq!(journal.engine, Engine::MySql);
+        assert_eq!(journal.connection.port, 3306);
+    }
+
+    #[test]
+    fn l_original_est_sauvegarde_avant_migration() {
+        let dossier = tempfile::tempdir().expect("dossier temporaire");
+        let chemin = dossier.path().join("config.json");
+        fs::write(&chemin, V1).expect("écriture du décor v1");
+        let _ = load(&chemin);
+
+        // **Une migration fautive doit rester réparable.** Le mécanisme existait déjà ; ce test le
+        // vérifie sur la première migration réelle, où il cesse d'être théorique.
+        let sauvegardes: Vec<_> = fs::read_dir(dossier.path())
+            .expect("lecture du dossier")
+            .filter_map(Result::ok)
+            .map(|entree| entree.file_name().to_string_lossy().to_string())
+            .filter(|nom| nom.contains("v1") || nom.contains("migration"))
+            .collect();
+        assert!(
+            !sauvegardes.is_empty(),
+            "l'original en v1 doit être conservé quelque part : {sauvegardes:?}"
+        );
     }
 }

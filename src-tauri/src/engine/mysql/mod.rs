@@ -26,7 +26,7 @@ use std::time::Instant;
 use mysql_async::prelude::Queryable;
 use mysql_async::{Conn, Pool, Row, TxOpts};
 
-use crate::config::EnvironmentVariant;
+use crate::config::ConnectionSettings;
 use crate::engine::tunnel::{EtatTunnel, SshTunnel};
 use crate::engine::{
     ApplyOutcome, ConnectionProbe, EngineAdapter, EngineError, QueryPlan, QueryResult, RowCount,
@@ -57,7 +57,7 @@ impl std::fmt::Debug for MysqlAdapter {
 
 impl MysqlAdapter {
     pub async fn connect_via(
-        variante: &EnvironmentVariant,
+        variante: &ConnectionSettings,
         mot_de_passe: Option<&Secret>,
         known_hosts: &std::path::Path,
     ) -> Result<Self, EngineError> {
@@ -448,13 +448,13 @@ fn categorie_du_protocole(type_colonne: mysql_async::consts::ColumnType) -> Type
 #[cfg(all(test, feature = "db-tests"))]
 mod tests_db {
     use super::*;
-    use crate::config::{Environment, SslMode};
+    use crate::config::{EnvironmentId, SslMode};
     use crate::engine::{Filter, FilterOperator, Identity, KeyKind, ObjectKind, PendingUpdate};
 
     /// La base du décor (`scripts/schema-test-mysql.sql`). **Noms inventés** — voir `AGENTS.md`.
     const BASE: &str = "dorabase_test";
 
-    fn variante() -> EnvironmentVariant {
+    fn variante() -> ConnectionSettings {
         // `mysql://dorabase:mot@localhost:53306/dorabase_test`
         let url = std::env::var("DORABASE_TEST_MYSQL")
             .expect("DORABASE_TEST_MYSQL doit être défini pour les tests de base");
@@ -463,8 +463,8 @@ mod tests_db {
         let (utilisateur, _) = identifiants.split_once(':').expect(": attendu");
         let (hote_port, base) = hote_base.split_once('/').expect("/ attendu");
         let (hote, port) = hote_port.split_once(':').expect("hôte:port attendu");
-        EnvironmentVariant {
-            environment: Environment::Dev,
+        ConnectionSettings {
+            environment: EnvironmentId::brut("dev"),
             host: hote.to_owned(),
             port: port.parse().expect("port"),
             default_database: base.to_owned(),

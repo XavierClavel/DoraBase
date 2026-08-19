@@ -16,7 +16,7 @@ use std::time::Instant;
 
 use tokio_postgres::Client;
 
-use crate::config::EnvironmentVariant;
+use crate::config::ConnectionSettings;
 use crate::engine::tunnel::{EtatTunnel, SshTunnel};
 use crate::engine::{
     ConnectionProbe, EngineAdapter, EngineError, RowQuery, RowWindow, SchemaInfo, TableDetail,
@@ -64,7 +64,7 @@ impl std::fmt::Debug for PostgresAdapter {
 impl PostgresAdapter {
     /// Ouvre une connexion vers la base décrite par `variante`.
     pub async fn connect(
-        variante: &EnvironmentVariant,
+        variante: &ConnectionSettings,
         mot_de_passe: Option<&Secret>,
     ) -> Result<Self, EngineError> {
         Self::connect_via(variante, mot_de_passe, &known_hosts_utilisateur()).await
@@ -75,7 +75,7 @@ impl PostgresAdapter {
     /// Séparée pour que les tests n'aient pas à toucher le `~/.ssh/known_hosts` de la
     /// machine — ce qu'un test n'a pas le droit de faire.
     pub async fn connect_via(
-        variante: &EnvironmentVariant,
+        variante: &ConnectionSettings,
         mot_de_passe: Option<&Secret>,
         known_hosts: &std::path::Path,
     ) -> Result<Self, EngineError> {
@@ -510,12 +510,12 @@ mod tests {
 #[cfg(all(test, feature = "db-tests"))]
 mod tests_db {
     use super::*;
-    use crate::config::{Environment, SslMode};
+    use crate::config::{EnvironmentId, SslMode};
 
     /// L'adresse de la base de test, **jamais codée en dur** : le port diffère entre le
     /// conteneur local (55432, choisi pour ne croiser aucun autre projet de la machine) et
     /// le service de la CI (5432).
-    fn variante_de_test() -> (EnvironmentVariant, Option<Secret>) {
+    fn variante_de_test() -> (ConnectionSettings, Option<Secret>) {
         let url = std::env::var("DORABASE_TEST_PG")
             .expect("DORABASE_TEST_PG doit être défini pour les tests de base");
         let analysee: tokio_postgres::Config = url
@@ -531,8 +531,8 @@ mod tests_db {
             })
             .expect("un hôte TCP");
 
-        let variante = EnvironmentVariant {
-            environment: Environment::Dev,
+        let variante = ConnectionSettings {
+            environment: EnvironmentId::brut("dev"),
             host: hote,
             port: *analysee.get_ports().first().expect("un port"),
             default_database: analysee.get_dbname().expect("une base").to_owned(),
@@ -703,7 +703,7 @@ mod tests_db {
     /// Le décor SSH n'est monté que par `scripts/bastion-test.sh`. Ces tests sont **sautés**
     /// quand il manque, plutôt qu'en échec : le job de CI qui n'a pas de bastion n'a pas à
     /// rougir. Le saut est annoncé, pour qu'un décor oublié se remarque.
-    fn variante_a_tunnel() -> Option<(EnvironmentVariant, Option<Secret>, std::path::PathBuf)> {
+    fn variante_a_tunnel() -> Option<(ConnectionSettings, Option<Secret>, std::path::PathBuf)> {
         let hote = std::env::var("DORABASE_TEST_SSH_HOST").ok()?;
         let (mut variante, secret) = variante_de_test();
 

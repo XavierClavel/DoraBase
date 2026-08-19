@@ -32,7 +32,7 @@ use futures_util::StreamExt;
 use mongodb::bson::{Bson, Document};
 use mongodb::Client;
 
-use crate::config::EnvironmentVariant;
+use crate::config::ConnectionSettings;
 use crate::engine::tunnel::{EtatTunnel, SshTunnel};
 use crate::engine::{
     ApplyOutcome, ColumnInfo, ConnectionProbe, EngineAdapter, EngineError, PendingUpdate,
@@ -65,7 +65,7 @@ impl std::fmt::Debug for MongoAdapter {
 
 impl MongoAdapter {
     pub async fn connect_via(
-        variante: &EnvironmentVariant,
+        variante: &ConnectionSettings,
         mot_de_passe: Option<&Secret>,
         known_hosts: &std::path::Path,
     ) -> Result<Self, EngineError> {
@@ -622,18 +622,18 @@ fn argument_document(operation: &commande::Operation, rang: usize) -> Option<Doc
 #[cfg(all(test, feature = "db-tests"))]
 mod tests_db {
     use super::*;
-    use crate::config::{Environment, SslMode};
+    use crate::config::{EnvironmentId, SslMode};
 
     /// La base du décor (`scripts/schema-test-mongo.js`). **Noms inventés** — voir `AGENTS.md`.
     const BASE: &str = "atelier_ventes";
 
-    fn variante() -> EnvironmentVariant {
+    fn variante() -> ConnectionSettings {
         let url = std::env::var("DORABASE_TEST_MONGO")
             .expect("DORABASE_TEST_MONGO doit être défini pour les tests de base");
         let hote_port = url.trim_start_matches("mongodb://");
         let (hote, port) = hote_port.split_once(':').expect("hôte:port attendu");
-        EnvironmentVariant {
-            environment: Environment::Dev,
+        ConnectionSettings {
+            environment: EnvironmentId::brut("dev"),
             host: hote.to_owned(),
             port: port.trim_end_matches('/').parse().expect("port"),
             default_database: BASE.to_owned(),

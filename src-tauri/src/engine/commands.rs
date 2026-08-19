@@ -12,7 +12,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::config::{EnvironmentVariant, SslMode};
+use crate::config::{ConnectionSettings, SslMode};
 use crate::engine::postgres::PostgresAdapter;
 use crate::engine::{EngineAdapter, EngineError};
 use crate::secrets::Secret;
@@ -43,14 +43,14 @@ pub struct ConnectionTest {
 /// La variante à tester, telle que `A2` la fournit.
 ///
 /// Le mot de passe est **en clair** et séparé de la variante, à l'inverse de
-/// `EnvironmentVariant` qui n'en porte qu'une `SecretRef`. C'est délibéré : tester une
+/// `ConnectionSettings` qui n'en porte qu'une `SecretRef`. C'est délibéré : tester une
 /// connexion n'exige pas que l'entité existe, donc aucun secret n'est encore rangé. `08e`
 /// fera l'inverse — ranger d'abord, référencer ensuite.
 #[derive(Debug, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "engine.ts")]
 pub struct ConnectionRequest {
-    pub variant: EnvironmentVariant,
+    pub variant: ConnectionSettings,
     pub password: Option<String>,
 }
 
@@ -120,7 +120,7 @@ pub async fn test_connection(request: ConnectionRequest) -> Result<ConnectionTes
 }
 
 async fn tester(
-    variante: &EnvironmentVariant,
+    variante: &ConnectionSettings,
     secret: Option<&Secret>,
 ) -> Result<ConnectionTest, EngineError> {
     let adaptateur = PostgresAdapter::connect(variante, secret).await?;
@@ -141,11 +141,10 @@ async fn tester(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{Environment, SslMode};
+    use crate::config::{SslMode};
 
-    fn variante() -> EnvironmentVariant {
-        EnvironmentVariant {
-            environment: Environment::Dev,
+    fn variante() -> ConnectionSettings {
+        ConnectionSettings {
             host: "localhost".into(),
             port: 5432,
             default_database: "dorabase_test".into(),
@@ -286,7 +285,7 @@ pub async fn open_database(
     // d'environnement, et le front l'a sous la main — c'est lui qui dessine l'arbre. Le relire
     // depuis la configuration coûterait une lecture de fichier par ouverture.
     engine: crate::config::Engine,
-    variant: EnvironmentVariant,
+    variant: ConnectionSettings,
     registry: tauri::State<'_, ConnectionRegistry>,
 ) -> Result<ConnectionState, EngineError> {
     let identite = key.cle();

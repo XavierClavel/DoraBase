@@ -31,7 +31,7 @@ use std::time::Instant;
 
 use rusqlite::Connection;
 
-use crate::config::EnvironmentVariant;
+use crate::config::ConnectionSettings;
 use crate::engine::tunnel::EtatTunnel;
 use crate::engine::{
     ApplyOutcome, ConnectionProbe, EngineAdapter, EngineError, QueryPlan, QueryResult, RowCount,
@@ -57,7 +57,7 @@ impl std::fmt::Debug for SqliteAdapter {
 
 impl SqliteAdapter {
     pub async fn connect_via(
-        variante: &EnvironmentVariant,
+        variante: &ConnectionSettings,
         _mot_de_passe: Option<&Secret>,
         _known_hosts: &std::path::Path,
     ) -> Result<Self, EngineError> {
@@ -317,7 +317,7 @@ impl EngineAdapter for SqliteAdapter {
 #[cfg(test)]
 mod tests_fichier {
     use super::*;
-    use crate::config::{Environment, SslMode};
+    use crate::config::{SslMode};
     use crate::engine::{Filter, FilterOperator, KeyKind, ObjectKind, PendingUpdate, TypeCategory};
 
     /// Le décor de `scripts/schema-test-sqlite.sql`, appliqué à un fichier neuf.
@@ -340,9 +340,8 @@ mod tests_fichier {
         (dossier, chemin)
     }
 
-    fn variante(chemin: &std::path::Path) -> EnvironmentVariant {
-        EnvironmentVariant {
-            environment: Environment::Dev,
+    fn variante(chemin: &std::path::Path) -> ConnectionSettings {
+        ConnectionSettings {
             host: String::new(),
             port: 0,
             default_database: chemin.to_string_lossy().into_owned(),
