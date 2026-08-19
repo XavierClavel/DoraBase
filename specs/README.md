@@ -456,6 +456,21 @@ le schéma déduit, et la console dont le langage n'est pas du SQL.
 | Spec | Scope | État |
 | --- | --- | --- |
 | [`22`](22-colonne-de-droite-unifiee.md) | La colonne de droite unifiée, et le couple de vues dans son en-tête | livrée |
+| [`23a`](23a-environnements-du-projet.md) | Les environnements appartiennent au projet | à faire |
+| [`23b`](23b-une-connexion-un-environnement.md) | Une connexion, un environnement | à faire |
+| [`23c`](23c-commandes-des-environnements.md) | Les commandes des environnements | à faire |
+| [`23d`](23d-choisir-l-environnement-d-une-connexion.md) | Choisir l'environnement d'une connexion (`A2`) | à faire |
+| [`23e`](23e-editer-un-projet.md) | Éditer un projet, et ses environnements | à faire |
+| [`23f`](23f-supprimer-un-environnement.md) | Supprimer un environnement, et ce que ça emporte | à faire |
+| [`23g`](23g-les-ecrans-face-aux-environnements-declares.md) | Les écrans face aux environnements déclarés | à faire |
+
+**`23` est le premier chantier qui invalide le format de configuration.** Les onze specs précédentes
+ont employé `serde(default)`, justement parce qu'aucune n'invalidait ce qui était écrit sur disque.
+Ici, `Environment` cesse d'être une énumération de trois valeurs et une base cesse de porter des
+variantes : la version du format monte, et `23a`/`23b` portent chacune la migration de leur moitié.
+
+L'ordre est contraint : `23a` avant `23b`, les deux avant `23c`, puis `23d`–`23g` dans n'importe quel
+ordre. `23f` dépend de `23c` et de `23e`.
 
 `22` n'est pas une spec du handoff : elle vient de l'usage. Le couple « Données / Structure » était à
 droite de la bande d'onglets, comme le mockup le montre, et le détail de la table se regardait donc
