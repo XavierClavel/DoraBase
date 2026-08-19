@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
-import type { Database, EnvironmentDeclaration, Preferences, Project } from '../../domain/config'
+import type {
+  Database,
+  EnvironmentColor,
+  EnvironmentDeclaration,
+  Preferences,
+  Project,
+} from '../../domain/config'
 import type { SchemaInfo, TableDetail, TableSummary } from '../../domain/engine'
 import { NewConnection } from '../NewConnection/NewConnection'
 import { ParcoursDeCreation } from '../NewProject/ParcoursDeCreation'
@@ -626,6 +632,94 @@ export function WorkbenchDemo() {
       ),
     )
 
+  /**
+   * Applique un geste d'environnement à l'état local, et rend la liste — comme le cœur le fait.
+   *
+   * **La démo ne réimplémente pas les règles**, elle applique le geste : refuser un doublon ou un
+   * dernier environnement est le travail du cœur, et l'écran de la démo n'a pas à en juger. Ce qui se
+   * mesure ici est le chemin — la modale s'ouvre, le geste part, la liste suit.
+   */
+  const surEnvironnements = (
+    nom: string,
+    transforme: (
+      environnements: Project['environments'],
+      projet: Project,
+    ) => Project['environments'],
+    surBases?: (bases: Project['databases']) => Project['databases'],
+  ): Project[] => {
+    const suivants = projets.map((projet) =>
+      projet.name === nom
+        ? {
+            ...projet,
+            environments: transforme(projet.environments, projet),
+            databases: surBases ? surBases(projet.databases) : projet.databases,
+          }
+        : projet,
+    )
+    setProjets(suivants)
+    return suivants
+  }
+
+  const gestesEnvironnement = {
+    onCreer: async (request: { project: string; label: string; color: EnvironmentColor }) =>
+      surEnvironnements(request.project, (environnements) => [
+        ...environnements,
+        {
+          id: request.label.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+          label: request.label,
+          color: request.color,
+          production: false,
+        },
+      ]),
+    onRenommer: async (request: { project: string; environment: string; label: string }) =>
+      surEnvironnements(request.project, (environnements) =>
+        environnements.map((declaration) =>
+          declaration.id === request.environment
+            ? { ...declaration, label: request.label }
+            : declaration,
+        ),
+      ),
+    onRecolorier: async (request: {
+      project: string
+      environment: string
+      color: EnvironmentColor
+      production: boolean
+    }) =>
+      surEnvironnements(request.project, (environnements) =>
+        environnements.map((declaration) =>
+          declaration.id === request.environment
+            ? { ...declaration, color: request.color, production: request.production }
+            : declaration,
+        ),
+      ),
+    onReordonner: async (request: { project: string; order: string[] }) =>
+      surEnvironnements(request.project, (environnements) =>
+        request.order.flatMap(
+          (id) => environnements.find((declaration) => declaration.id === id) ?? [],
+        ),
+      ),
+    onRetirer: async (request: { project: string; environment: string }) => {
+      const emportees = projets
+        .find((projet) => projet.name === request.project)
+        ?.databases.filter((base) => base.environment === request.environment)
+        .map((base) => base.name)
+      const suivants = surEnvironnements(
+        request.project,
+        (environnements) =>
+          environnements.filter((declaration) => declaration.id !== request.environment),
+        (bases) => bases.filter((base) => base.environment !== request.environment),
+      )
+      return {
+        projects: suivants,
+        deletedConnections: emportees ?? [],
+        // Un résidu annoncé : le cas que la commande réelle produit sur un Trousseau verrouillé, et
+        // le seul moyen de voir cet état de la modale sans pont Tauri.
+        leftoverSecrets: emportees && emportees.length > 0 ? ['dorabase/…/…'] : [],
+        newActiveEnvironment: null,
+      }
+    },
+  }
+
   return (
     <>
       {edition && <NewConnection edition={edition} onClose={() => setEdition(null)} />}
@@ -816,10 +910,18 @@ export function WorkbenchDemo() {
         // La démo retire **pour de faux** — le pont ne répond pas en Chromium. Un mot de passe
         // résiduel est annoncé : le cas que la commande réelle produit sur un Trousseau verrouillé.
         onDelete={async () => ({ leftoverSecrets: ['Atelier Nord/analytics/prod'] })}
-        onRenameProject={async (projet) => ({
-          missingSecrets: [`${projet}/analytics/prod`],
-          leftoverSecrets: [],
-        })}
+        // La démo renomme **dans son état**, et pas seulement en apparence : `23e` fait suivre la
+        // modale au nouveau nom, donc une démo qui rendrait un succès sans renommer ferait disparaître
+        // l'écran — ce qui n'arrive pas avec la commande réelle. Le secret introuvable, lui, reste
+        // annoncé : c'est le cas que la commande produit sur un Trousseau nettoyé à la main.
+        onRenameProject={async (projet, nom) => {
+          setProjets((precedents) =>
+            precedents.map((p) => (p.name === projet ? { ...p, name: nom } : p)),
+          )
+          return { missingSecrets: [`${nom}/analytics/prod`], leftoverSecrets: [] }
+        }}
+        onProjets={setProjets}
+        gestesEnvironnement={gestesEnvironnement}
       />
     </>
   )

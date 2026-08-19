@@ -16,9 +16,11 @@
 //! Lancé par `pnpm domain:build`, vérifié par `pnpm domain:check`.
 
 use dorabase_lib::config::{
-    ConfigLoad, CreateProjectRequest, DeleteDatabaseRequest, DeleteProjectRequest, DeleteResult,
-    Project, RenameProjectRequest, RenameProjectResult, SaveDatabaseRequest, SavedQuery,
-    SavedQueryRequest, SetActiveEnvironmentRequest, UpdateVariantRequest,
+    ConfigLoad, CreateEnvironmentRequest, CreateProjectRequest, DeleteDatabaseRequest,
+    DeleteEnvironmentRequest, DeleteEnvironmentResult, DeleteProjectRequest, DeleteResult, Project,
+    RecolorEnvironmentRequest, RenameEnvironmentRequest, RenameProjectRequest, RenameProjectResult,
+    ReorderEnvironmentsRequest, SaveDatabaseRequest, SavedQuery, SavedQueryRequest,
+    SetActiveEnvironmentRequest, UpdateVariantRequest,
 };
 use dorabase_lib::engine::commands::{
     ConnectionRequest, ConnectionStateEntry, ConnectionTest, DatabaseKey,
@@ -63,6 +65,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     DeleteResult::export_all(&config)?;
     RenameProjectResult::export_all(&config)?;
     UpdateVariantRequest::export_all(&config)?;
+    // Les cinq gestes de `23c`. **Nommés un par un** : `export_all` entraîne les dépendances d'un
+    // type, jamais ses voisins — un type de requête oublié ici ne manque pas à la compilation, il
+    // manque au front, qui découvre son absence à l'écriture de l'appel.
+    CreateEnvironmentRequest::export_all(&config)?;
+    RenameEnvironmentRequest::export_all(&config)?;
+    RecolorEnvironmentRequest::export_all(&config)?;
+    ReorderEnvironmentsRequest::export_all(&config)?;
+    DeleteEnvironmentRequest::export_all(&config)?;
+    DeleteEnvironmentResult::export_all(&config)?;
     SecretMechanism::export_all(&config)?;
 
     ConnectionProbe::export_all(&config)?;

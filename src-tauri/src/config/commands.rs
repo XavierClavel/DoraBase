@@ -807,3 +807,264 @@ pub async fn update_variant(
     );
     Ok(projects)
 }
+
+// ---------------------------------------------------------------------------------------------
+// Les environnements d'un projet (`23c`)
+// ---------------------------------------------------------------------------------------------
+
+/// Ce que `23e` envoie pour déclarer un environnement de plus.
+#[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct CreateEnvironmentRequest {
+    pub project: String,
+    pub label: String,
+    pub color: super::model::EnvironmentColor,
+    pub production: bool,
+}
+
+/// Ce que `23e` envoie pour changer le libellé d'un environnement.
+#[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct RenameEnvironmentRequest {
+    pub project: String,
+    /// **L'identifiant, non l'ancien libellé** : c'est lui qui désigne, et lui qui ne change jamais
+    /// (`23a`). Désigner par le libellé rendrait le geste impossible sur deux environnements dont les
+    /// libellés ont divergé de leurs identifiants.
+    pub environment: super::model::EnvironmentId,
+    pub label: String,
+}
+
+/// Ce que `23e` envoie pour changer la couleur et le drapeau de production.
+#[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct RecolorEnvironmentRequest {
+    pub project: String,
+    pub environment: super::model::EnvironmentId,
+    pub color: super::model::EnvironmentColor,
+    pub production: bool,
+}
+
+/// Ce que `23e` envoie après un glissement.
+#[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct ReorderEnvironmentsRequest {
+    pub project: String,
+    /// L'ordre complet, dans l'ordre voulu. Une permutation partielle est refusée (`23c`).
+    pub order: Vec<super::model::EnvironmentId>,
+}
+
+/// Ce que `23f` envoie pour retirer un environnement.
+#[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct DeleteEnvironmentRequest {
+    pub project: String,
+    pub environment: super::model::EnvironmentId,
+}
+
+/// Ce qu'une suppression d'environnement rend à l'écran (`23f`).
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct DeleteEnvironmentResult {
+    pub projects: Vec<Project>,
+    /// Les connexions supprimées, nommées — ce que l'écran redit après coup.
+    pub deleted_connections: Vec<String>,
+    /// Les mots de passe restés dans le trousseau. **Dits, jamais tus.**
+    pub leftover_secrets: Vec<String>,
+    /// L'environnement devenu actif, quand c'est l'actif qui est parti. `null` sinon.
+    pub new_active_environment: Option<super::model::EnvironmentId>,
+}
+
+/// Le chemin commun des quatre gestes non destructeurs (`23c`).
+///
+/// **Écrit une fois pour quatre commandes.** Chacune n'a plus à retrouver le verrou, le magasin et
+/// les préférences : quatre copies de ce préambule auraient été quatre occasions d'oublier que les
+/// préférences sont *relues* et non remplacées — l'oubli qui effacerait les réglages de l'utilisateur
+/// à chaque environnement recolorié.
+fn ecrire_les_environnements(
+    state: &State<'_, ConfigState>,
+    geste: impl FnOnce(
+        &[Project],
+        &mut dyn FnMut(&[Project]) -> Result<(), String>,
+    ) -> Result<Vec<Project>, super::environnements::EnvError>,
+) -> Result<Vec<Project>, String> {
+    let garde = state
+        .0
+        .lock()
+        .map_err(|_| "état de configuration corrompu".to_owned())?;
+    let store = garde
+        .as_ref()
+        .ok_or_else(|| "la configuration doit être lue avant d'être écrite".to_owned())?;
+
+    // Du disque, jamais du front : une liste envoyée par l'écran pourrait être périmée et écraser une
+    // écriture. Même arbitrage qu'en `08e`, `08f` et `08i`.
+    let projects: Vec<Project> = store.load_projects()?;
+    geste(&projects, &mut |projets| {
+        let preferences = store.load_preferences().unwrap_or_default();
+        store
+            .save(projets, &preferences)
+            .map_err(|erreur| erreur.to_string())
+    })
+    .map_err(|erreur| erreur.to_string())
+}
+
+/// Déclare un environnement de plus dans un projet (`23c`).
+#[tauri::command]
+pub fn create_environment(
+    request: CreateEnvironmentRequest,
+    state: State<'_, ConfigState>,
+) -> Result<Vec<Project>, String> {
+    let suivants = ecrire_les_environnements(&state, |projects, ecrire| {
+        super::environnements::creer(
+            projects,
+            &request.project,
+            &request.label,
+            request.color,
+            request.production,
+            ecrire,
+        )
+    })?;
+    log::info!(
+        "create_environment ← {} / {}",
+        request.project,
+        request.label
+    );
+    Ok(suivants)
+}
+
+/// Change le libellé d'un environnement, **jamais son identifiant** (`23a`, `23c`).
+#[tauri::command]
+pub fn rename_environment(
+    request: RenameEnvironmentRequest,
+    state: State<'_, ConfigState>,
+) -> Result<Vec<Project>, String> {
+    let suivants = ecrire_les_environnements(&state, |projects, ecrire| {
+        super::environnements::renommer(
+            projects,
+            &request.project,
+            &request.environment,
+            &request.label,
+            ecrire,
+        )
+    })?;
+    log::info!(
+        "rename_environment ← {} / {} → {}",
+        request.project,
+        request.environment,
+        request.label
+    );
+    Ok(suivants)
+}
+
+/// Change la couleur et le drapeau de production d'un environnement (`23c`).
+#[tauri::command]
+pub fn recolor_environment(
+    request: RecolorEnvironmentRequest,
+    state: State<'_, ConfigState>,
+) -> Result<Vec<Project>, String> {
+    let suivants = ecrire_les_environnements(&state, |projects, ecrire| {
+        super::environnements::recolorier(
+            projects,
+            &request.project,
+            &request.environment,
+            request.color,
+            request.production,
+            ecrire,
+        )
+    })?;
+    log::info!(
+        "recolor_environment ← {} / {}",
+        request.project,
+        request.environment
+    );
+    Ok(suivants)
+}
+
+/// Réordonne les environnements d'un projet — l'ordre du sélecteur (`23c`).
+#[tauri::command]
+pub fn reorder_environments(
+    request: ReorderEnvironmentsRequest,
+    state: State<'_, ConfigState>,
+) -> Result<Vec<Project>, String> {
+    let suivants = ecrire_les_environnements(&state, |projects, ecrire| {
+        super::environnements::reordonner(projects, &request.project, &request.order, ecrire)
+    })?;
+    log::info!(
+        "reorder_environments ← {} : {} environnement(s)",
+        request.project,
+        request.order.len()
+    );
+    Ok(suivants)
+}
+
+/// Retire un environnement, **et les connexions qui lui appartiennent** (`23f`).
+///
+/// **`async`, comme `delete_database` et pour la même raison** : les connexions ouvertes des bases
+/// retirées doivent être fermées, et `fermer` attend la libération du port d'un éventuel tunnel.
+/// L'attente a lieu **hors du verrou** de configuration, qui resterait sinon indisponible aux autres
+/// commandes pendant une attente réseau.
+///
+/// **Aucune base distante n'est touchée, et cette commande ne peut pas en toucher** : elle ne reçoit
+/// aucun moteur, n'ouvre aucune connexion et n'émet aucun SQL. Elle en *ferme*, au contraire.
+#[tauri::command]
+pub async fn delete_environment(
+    request: DeleteEnvironmentRequest,
+    state: State<'_, ConfigState>,
+    registry: State<'_, crate::engine::registry::ConnectionRegistry>,
+) -> Result<DeleteEnvironmentResult, String> {
+    let suppression = {
+        let garde = state
+            .0
+            .lock()
+            .map_err(|_| "état de configuration corrompu".to_owned())?;
+        let store = garde
+            .as_ref()
+            .ok_or_else(|| "la configuration doit être lue avant d'être écrite".to_owned())?;
+        let projects: Vec<Project> = store.load_projects()?;
+        let repertoire = store
+            .path()
+            .parent()
+            .ok_or_else(|| "le fichier de configuration n'a pas de répertoire parent".to_owned())?
+            .to_path_buf();
+        let magasin = crate::secrets::selectionner(&repertoire).map_err(|e| e.to_string())?;
+
+        super::environnements::supprimer(
+            &projects,
+            &request.project,
+            &request.environment,
+            magasin.store.as_ref(),
+            &mut |projets| {
+                let preferences = store.load_preferences().unwrap_or_default();
+                store
+                    .save(projets, &preferences)
+                    .map_err(|erreur| erreur.to_string())
+            },
+        )
+        .map_err(|erreur| erreur.to_string())?
+    };
+
+    for cle in &suppression.cles_a_fermer {
+        registry.fermer(cle).await;
+    }
+
+    log::info!(
+        "delete_environment ← {} / {} : {} connexion(s) supprimée(s), {} secret(s) résiduel(s), actif → {:?}",
+        request.project,
+        request.environment,
+        suppression.connexions_supprimees.len(),
+        suppression.secrets_residuels.len(),
+        suppression.nouvel_actif
+    );
+
+    Ok(DeleteEnvironmentResult {
+        projects: suppression.projects,
+        deleted_connections: suppression.connexions_supprimees,
+        leftover_secrets: suppression.secrets_residuels,
+        new_active_environment: suppression.nouvel_actif,
+    })
+}

@@ -48,10 +48,10 @@ source : les projets chargés. Deux calculs indépendants finiraient par annonce
 
 ## Done when
 
-- [ ] La confirmation nomme l'environnement, compte les connexions, les liste et dit que les bases
+- [x] La confirmation nomme l'environnement, compte les connexions, les liste et dit que les bases
       distantes ne sont pas touchées
-- [ ] Un environnement sans connexion se retire sans confirmation
-- [ ] Retirer l'environnement actif en désigne un autre, et la confirmation l'annonce
-- [ ] Les mots de passe des connexions supprimées sont retirés du trousseau
-- [ ] Un échec de retrait de secret n'annule pas la suppression, et se dit
-- [ ] Le dernier environnement d'un projet ne se retire pas (`23c`)
+- [x] Un environnement sans connexion se retire sans confirmation
+- [x] Retirer l'environnement actif en désigne un autre, et la confirmation l'annonce
+- [x] Les mots de passe des connexions supprimées sont retirés du trousseau
+- [x] Un échec de retrait de secret n'annule pas la suppression, et se dit
+- [x] Le dernier environnement d'un projet ne se retire pas (`23c`)

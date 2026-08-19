@@ -43,14 +43,19 @@ Les cinq commandes passent par le même chemin que `08i` : lire la configuration
 mémoire, valider le modèle, écrire atomiquement. La validation du modèle (`23a`) est ce qui refuse un
 doublon d'identifiant — la commande ne le vérifie pas deux fois.
 
+**Les passerelles du front vivent dans `src/data/environnements.ts`**, non dans `commandes.ts` comme
+cette spec l'écrivait d'abord : ce dernier porte déjà 266 lignes et les commandes de trois specs, et
+un fichier fourre-tout finit par n'être lu par personne. Le principe est tenu — le nom d'une commande
+IPC apparaît **une fois** dans le dépôt, et le typage vient des projections de `ts-rs`.
+
 **`capabilities/default.json` ne bouge pas** : ce sont des commandes de l'application, pas des
 permissions Tauri. Le garde de `tests/permissions.rs` reste vert sans modification, et c'est le signe
 que cette spec n'ouvre aucune surface nouvelle vers le système.
 
 ## Done when
 
-- [ ] Les cinq commandes existent, sont dans l'allowlist du front (`src/data/commandes.ts`) et testées
-- [ ] Renommer conserve l'identifiant, et les mots de passe restent trouvables
-- [ ] Supprimer l'environnement actif en désigne un autre
-- [ ] Supprimer le dernier environnement est refusé avec sa raison
-- [ ] Un identifiant en doublon est refusé par le modèle, pas par la commande
+- [x] Les cinq commandes existent, sont dans l'allowlist du front et testées
+- [x] Renommer conserve l'identifiant, et les mots de passe restent trouvables
+- [x] Supprimer l'environnement actif en désigne un autre
+- [x] Supprimer le dernier environnement est refusé avec sa raison
+- [x] Un identifiant en doublon est refusé par le modèle, pas par la commande

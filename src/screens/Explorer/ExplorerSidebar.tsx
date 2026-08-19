@@ -12,7 +12,6 @@ import { TreeRow } from '../../ui/TreeRow/TreeRow'
 import { aplatir, type Charge, type Deplies, type Noeud } from './arbre'
 import { type CibleDeSuppression, DeleteConnectionDialog } from './DeleteConnectionDialog'
 import styles from './ExplorerSidebar.module.css'
-import { RenameProjectDialog } from './RenameProjectDialog'
 import { RowMenu } from './RowMenu'
 
 type ExplorerSidebarProps = {
@@ -57,15 +56,14 @@ type ExplorerSidebarProps = {
    */
   onEditDatabase?: (project: string, database: string, environment: EnvironmentId) => void
   /**
-   * Renommer un projet depuis son « … » (`08i`) — la commande `rename_project`.
+   * Ouvre la modale d'édition d'un projet depuis son « … » (`23e`).
    *
-   * Injecté comme `onEditDatabase` : le pont IPC ne répond pas hors de la webview, donc ce qui se
-   * teste ici est le **câblage**, pas la commande. Absent, l'entrée est désactivée avec sa raison.
+   * **Elle remplace « Renommer… »** : le renommage de `08i` est devenu le premier champ de cet écran,
+   * et l'ancienne modale n'existe plus. La sidebar ne monte donc plus rien elle-même pour ce geste —
+   * la modale vit dans l'écran de travail, qui porte aussi l'autre point d'entrée (la pastille de la
+   * barre de titre). Absent, l'entrée est désactivée avec sa raison.
    */
-  onRenameProject?: (
-    project: string,
-    nom: string,
-  ) => Promise<{ missingSecrets: string[]; leftoverSecrets: string[] }>
+  onEditProject?: (project: string) => void
   /**
    * Retirer la déclaration d'une base, ou un projet entier (`08j`).
    *
@@ -134,7 +132,7 @@ export function ExplorerSidebar({
   onNewConsole,
   requetes,
   onEditDatabase,
-  onRenameProject,
+  onEditProject,
   onDelete,
   modificationsEnAttenteDe,
   columns,
@@ -142,11 +140,6 @@ export function ExplorerSidebar({
   modifications,
 }: ExplorerSidebarProps) {
   const [filtre, setFiltre] = useState('')
-  // Le projet dont on demande le renommage (`08i`). La modale vit **ici**, dans l'écran qui porte le
-  // point d'entrée : la remonter au `Workbench` obligerait chaque écran qui monte une sidebar à
-  // répéter le même montage.
-  const [aRenommer, setARenommer] = useState<string | null>(null)
-  const demanderLeRenommage = onRenameProject === undefined ? undefined : setARenommer
   const [aRetirer, setARetirer] = useState<CibleDeSuppression | null>(null)
   const demanderLeRetrait = onDelete === undefined ? undefined : setARetirer
 
@@ -165,13 +158,6 @@ export function ExplorerSidebar({
           modificationsEnAttente={modificationsEnAttenteDe?.(aRetirer) ?? 0}
           onClose={() => setARetirer(null)}
           onDelete={() => onDelete(aRetirer)}
-        />
-      )}
-      {aRenommer !== null && onRenameProject !== undefined && (
-        <RenameProjectDialog
-          projet={aRenommer}
-          onClose={() => setARenommer(null)}
-          onRename={(nom) => onRenameProject(aRenommer, nom)}
         />
       )}
       <Sidebar
@@ -265,7 +251,7 @@ export function ExplorerSidebar({
                     </Badge>
                   ) : undefined
                 }
-                actions={menuDe(noeud, onEditDatabase, demanderLeRenommage, demanderLeRetrait)}
+                actions={menuDe(noeud, onEditDatabase, onEditProject, demanderLeRetrait)}
                 onClick={() => {
                   // Un clic sur une ligne dépliable fait les deux : il sélectionne *et* déplie. Le
                   // mockup ne montre pas de zone de clic distincte pour le chevron, et en inventer
@@ -450,7 +436,7 @@ export function filtrer(noeuds: readonly Noeud[], filtre: string): Noeud[] {
 function menuDe(
   noeud: Noeud,
   onEditDatabase: ExplorerSidebarProps['onEditDatabase'],
-  demanderLeRenommage: ((projet: string) => void) | undefined,
+  onEditProject: ExplorerSidebarProps['onEditProject'],
   demanderLeRetrait: ((cible: CibleDeSuppression) => void) | undefined,
 ): ReactNode | undefined {
   if (noeud.kind === 'project') {
@@ -459,10 +445,12 @@ function menuDe(
         cible={noeud.label}
         entrees={[
           {
-            libelle: 'Renommer…',
+            // **« Modifier le projet… » et non « Renommer… »** (`23e`) : l'écran fait les deux, et
+            // un libellé qui n'annonce que le renommage cacherait les environnements.
+            libelle: 'Modifier le projet…',
             icone: 'pencil',
-            onClick: demanderLeRenommage ? () => demanderLeRenommage(noeud.label) : undefined,
-            raison: demanderLeRenommage ? undefined : RAISONS.renommerIndisponible,
+            onClick: onEditProject ? () => onEditProject(noeud.label) : undefined,
+            raison: onEditProject ? undefined : RAISONS.editionIndisponible,
           },
           {
             // **« Retirer… » et non « Supprimer… »** : le mot compte, et c'est toute la décision de
@@ -535,6 +523,7 @@ const RAISONS = {
   renommerIndisponible: 'Cet écran n’est pas relié à la commande de renommage.',
   retirerIndisponible: 'Cet écran n’est pas relié à la commande de retrait.',
   modifierIndisponible: 'Cet écran n’est pas relié à la modale de modification.',
+  editionIndisponible: 'Cet écran n’est pas relié à la modale d’édition de projet.',
 }
 
 /**

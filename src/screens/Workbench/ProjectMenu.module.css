@@ -130,3 +130,30 @@
 .ajouter:hover {
   background: var(--hover-row);
 }
+
+/* Le crayon d'édition du projet (`23e`), au bout de son titre. Le même geste que celui des bases
+ * ci-dessous, à un cran au-dessus dans la hiérarchie — donc la même icône, à la même taille. */
+.modifier {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-chip);
+  background: none;
+  color: var(--ink-4);
+  cursor: pointer;
+}
+
+.modifier:hover {
+  background: var(--hover-row);
+  color: var(--ink);
+}
+
+.modifier:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}

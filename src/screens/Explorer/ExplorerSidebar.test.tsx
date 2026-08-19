@@ -48,7 +48,7 @@ function Piloté({
   etat = { kind: 'never' } as ConnectionState,
   onToggleSpy,
   onEditDatabase,
-  onRenameProject,
+  onEditProject,
   onDelete,
   modificationsEnAttenteDe,
 }: {
@@ -57,10 +57,7 @@ function Piloté({
   etat?: ConnectionState
   onToggleSpy?: (n: Noeud) => void
   onEditDatabase?: (project: string, database: string, environment: EnvironmentId) => void
-  onRenameProject?: (
-    project: string,
-    nom: string,
-  ) => Promise<{ missingSecrets: string[]; leftoverSecrets: string[] }>
+  onEditProject?: (project: string) => void
   onDelete?: (cible: CibleDeSuppression) => Promise<{ leftoverSecrets: string[] }>
   modificationsEnAttenteDe?: (cible: CibleDeSuppression) => number
 }) {
@@ -76,7 +73,7 @@ function Piloté({
         etatDe={() => etat}
         selectedId={choisi}
         onEditDatabase={onEditDatabase}
-        onRenameProject={onRenameProject}
+        onEditProject={onEditProject}
         onDelete={onDelete}
         modificationsEnAttenteDe={modificationsEnAttenteDe}
         onSelect={(n) => setChoisi(n.id)}
@@ -266,9 +263,6 @@ test('« Nouveau projet » n’est rendu que si le geste existe', () => {
 
 // --- Le menu « … » des lignes (`08h`) ---
 
-/** Un renommage sans rien à signaler — le cas courant. */
-const VIDE = { missingSecrets: [], leftoverSecrets: [] }
-
 /** Un retrait qui n'a rien laissé dans le Trousseau. */
 const AUCUN_RESIDU = { leftoverSecrets: [] }
 
@@ -426,89 +420,25 @@ test('un refus s’affiche dans la confirmation, qui reste ouverte', async () =>
   expect(screen.getByRole('dialog', { name: /Retirer analytics/ })).toBeInTheDocument()
 })
 
-test('« Renommer… » ouvre la modale de renommage, sur ce projet', async () => {
-  render(<Piloté initial={TOUT_DEPLIE} onRenameProject={async () => VIDE} />)
+// **Les cinq tests du dialogue de renommage sont partis avec lui** (`23e`) : `RenameProjectDialog`
+// n'existe plus, son contenu a déménagé dans `ProjectEditor`, et ses tests avec — voir
+// `ProjectEditor.test.tsx`. Ce qui reste ici est ce que la sidebar fait vraiment : appeler le geste.
+test('« Modifier le projet… » appelle le geste d’édition, sur ce projet', async () => {
+  const vus: string[] = []
+  render(<Piloté initial={TOUT_DEPLIE} onEditProject={(projet) => vus.push(projet)} />)
   await userEvent.click(screen.getByRole('button', { name: 'Actions de Atelier Nord' }))
-  await userEvent.click(screen.getByRole('button', { name: 'Renommer…' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Modifier le projet…' }))
 
-  const modale = screen.getByRole('dialog', { name: /Renommer Atelier Nord/ })
-  // Le champ part du nom actuel : le vider obligerait à retaper un nom qu'on veut seulement corriger.
-  expect(screen.getByLabelText('Nom du projet')).toHaveValue('Atelier Nord')
-  // **Ce que le renommage entraîne est dit avant de le faire** : déplacer des mots de passe et
-  // fermer des connexions n'est pas ce qu'on attend d'un changement de nom.
-  expect(modale).toHaveTextContent('mots de passe enregistrés suivent')
-  expect(modale).toHaveTextContent('connexions ouvertes de ce projet seront fermées')
+  expect(vus).toEqual(['Atelier Nord'])
+  // **La sidebar ne monte plus la modale** : les deux points d'entrée de `23e` vivent dans l'écran de
+  // travail, et une modale montée ici serait inatteignable depuis la pastille de la barre de titre.
+  expect(screen.queryByRole('dialog')).toBeNull()
 })
 
-test('le renommage passe le projet et le nouveau nom, débarrassé de ses espaces', async () => {
-  const vus: unknown[] = []
-  render(
-    <Piloté
-      initial={TOUT_DEPLIE}
-      onRenameProject={async (...args) => {
-        vus.push(args)
-        return VIDE
-      }}
-    />,
-  )
-  await userEvent.click(screen.getByRole('button', { name: 'Actions de Atelier Nord' }))
-  await userEvent.click(screen.getByRole('button', { name: 'Renommer…' }))
-  const champ = screen.getByLabelText('Nom du projet')
-  await userEvent.clear(champ)
-  await userEvent.type(champ, '  Atelier  ')
-  await userEvent.click(screen.getByRole('button', { name: 'Renommer' }))
-
-  expect(vus).toEqual([['Atelier Nord', 'Atelier']])
-  // Une modale qui reste ouverte après un succès sans rien à dire ferait croire à un échec.
-  expect(screen.queryByRole('dialog', { name: /Renommer/ })).not.toBeInTheDocument()
-})
-
-test('un refus s’affiche dans la modale, qui reste ouverte', async () => {
-  render(
-    <Piloté
-      initial={TOUT_DEPLIE}
-      onRenameProject={async () => {
-        throw new Error('un projet nommé « Outils » existe déjà')
-      }}
-    />,
-  )
-  await userEvent.click(screen.getByRole('button', { name: 'Actions de Atelier Nord' }))
-  await userEvent.click(screen.getByRole('button', { name: 'Renommer…' }))
-  await userEvent.clear(screen.getByLabelText('Nom du projet'))
-  await userEvent.type(screen.getByLabelText('Nom du projet'), 'Outils')
-  await userEvent.click(screen.getByRole('button', { name: 'Renommer' }))
-
-  // À côté du champ qu'il faut corriger, comme le refus de connexion de `08d` — pas dans une alerte
-  // système, qui obligerait à la fermer avant de pouvoir relire ce qu'on avait tapé.
-  expect(await screen.findByRole('alert')).toHaveTextContent('existe déjà')
-  expect(screen.getByRole('dialog', { name: /Renommer/ })).toBeInTheDocument()
-})
-
-test('un mot de passe introuvable est dit, et la modale ne se referme pas dessus', async () => {
-  render(
-    <Piloté
-      initial={TOUT_DEPLIE}
-      onRenameProject={async () => ({
-        missingSecrets: ['Atelier Nord/analytics/prod'],
-        leftoverSecrets: [],
-      })}
-    />,
-  )
-  await userEvent.click(screen.getByRole('button', { name: 'Actions de Atelier Nord' }))
-  await userEvent.click(screen.getByRole('button', { name: 'Renommer…' }))
-  await userEvent.click(screen.getByRole('button', { name: 'Renommer' }))
-
-  // **Refermer sur un succès muet cacherait le fait.** Une base qui redemande son mot de passe sans
-  // raison apparente se découvrirait des semaines plus tard, sur un échec de connexion.
-  const rapport = await screen.findByRole('status')
-  expect(rapport).toHaveTextContent('introuvables dans le Trousseau')
-  expect(screen.getByRole('dialog', { name: /Renommer/ })).toBeInTheDocument()
-})
-
-test('« Renommer… » se désactive quand l’écran ne la relie à rien', async () => {
+test('« Modifier le projet… » se désactive quand l’écran ne la relie à rien', async () => {
   render(<Piloté initial={TOUT_DEPLIE} />)
   await userEvent.click(screen.getByRole('button', { name: 'Actions de Atelier Nord' }))
-  expect(screen.getByRole('button', { name: 'Renommer…' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Modifier le projet…' })).toBeDisabled()
 })
 
 test('« Modifier… » se désactive quand l’écran ne la relie à rien', async () => {

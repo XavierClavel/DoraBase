@@ -63,6 +63,11 @@ caCertificate: string | null,
 readOnly: boolean, reconnectOnStartup: boolean, tunnel: Tunnel | null, };
 
 /**
+ * Ce que `23e` envoie pour déclarer un environnement de plus.
+ */
+export type CreateEnvironmentRequest = { project: string, label: string, color: EnvironmentColor, production: boolean, };
+
+/**
  * Ce que `A2` envoie pour créer un projet.
  */
 export type CreateProjectRequest = { name: string, 
@@ -104,6 +109,28 @@ export type DeleteDatabaseRequest = { project: string, database: string,
  * « analytics » d'un projet qui la déclare en dev et en prod supprimerait la première venue.
  */
 environment: EnvironmentId, };
+
+/**
+ * Ce que `23f` envoie pour retirer un environnement.
+ */
+export type DeleteEnvironmentRequest = { project: string, environment: EnvironmentId, };
+
+/**
+ * Ce qu'une suppression d'environnement rend à l'écran (`23f`).
+ */
+export type DeleteEnvironmentResult = { projects: Array<Project>, 
+/**
+ * Les connexions supprimées, nommées — ce que l'écran redit après coup.
+ */
+deletedConnections: Array<string>, 
+/**
+ * Les mots de passe restés dans le trousseau. **Dits, jamais tus.**
+ */
+leftoverSecrets: Array<string>, 
+/**
+ * L'environnement devenu actif, quand c'est l'actif qui est parti. `null` sinon.
+ */
+newActiveEnvironment: EnvironmentId | null, };
 
 /**
  * Ce que `08j` envoie pour retirer un projet entier.
@@ -256,6 +283,22 @@ environments: Array<EnvironmentDeclaration>, databases: Array<Database>,
 queries: Array<SavedQuery>, };
 
 /**
+ * Ce que `23e` envoie pour changer la couleur et le drapeau de production.
+ */
+export type RecolorEnvironmentRequest = { project: string, environment: EnvironmentId, color: EnvironmentColor, production: boolean, };
+
+/**
+ * Ce que `23e` envoie pour changer le libellé d'un environnement.
+ */
+export type RenameEnvironmentRequest = { project: string, 
+/**
+ * **L'identifiant, non l'ancien libellé** : c'est lui qui désigne, et lui qui ne change jamais
+ * (`23a`). Désigner par le libellé rendrait le geste impossible sur deux environnements dont les
+ * libellés ont divergé de leurs identifiants.
+ */
+environment: EnvironmentId, label: string, };
+
+/**
  * Ce que `08i` envoie pour renommer un projet.
  */
 export type RenameProjectRequest = { project: string, name: string, };
@@ -268,6 +311,15 @@ export type RenameProjectRequest = { project: string, name: string, };
  * pas su effacer. Les taire laisserait l'utilisateur découvrir l'un ou l'autre bien plus tard.
  */
 export type RenameProjectResult = { projects: Array<Project>, missingSecrets: Array<string>, leftoverSecrets: Array<string>, };
+
+/**
+ * Ce que `23e` envoie après un glissement.
+ */
+export type ReorderEnvironmentsRequest = { project: string, 
+/**
+ * L'ordre complet, dans l'ordre voulu. Une permutation partielle est refusée (`23c`).
+ */
+order: Array<EnvironmentId>, };
 
 /**
  * Ce que `A2` envoie en cliquant « Enregistrer & ouvrir ».
