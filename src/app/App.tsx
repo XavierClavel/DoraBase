@@ -4,6 +4,7 @@ import { useConfiguration } from '../data/useConfiguration'
 import { Sprite } from '../design/icons/Sprite'
 import type { Database, Preferences, Project } from '../domain/config'
 import {
+  changerLEnvironnementActif,
   renommerLeProjet,
   retirerLaConnexion,
   retirerLeProjet,
@@ -179,9 +180,15 @@ export function App() {
                   : await retirerLaConnexion({
                       project: cible.project,
                       database: cible.database,
+                      environment: cible.environment,
                     })
               setProjects(issue.projects)
               return issue
+            }}
+            onEnvironmentChange={async (project, environment) => {
+              // L'arbre se recharge sur les connexions de cet environnement (`23b`), donc on remplace
+              // la liste des projets plutôt que de la modifier localement.
+              setProjects(await changerLEnvironnementActif({ project, environment }))
             }}
             onRenameProject={async (project, nom) => {
               const issue = await renommerLeProjet({ project, name: nom })
@@ -195,7 +202,12 @@ export function App() {
                 setConnexionOuverte(false)
                 setEdition(null)
               }}
-              projects={projects.map((projet) => ({ id: projet.name, name: projet.name }))}
+              projects={projects.map((projet) => ({
+                id: projet.name,
+                name: projet.name,
+                // Ses environnements déclarés : c'est ce que `A2` propose (`23d`).
+                environments: projet.environments,
+              }))}
               edition={edition ?? undefined}
               onSaved={setProjects}
             />
@@ -216,7 +228,12 @@ export function App() {
           {connexionOuverte && (
             <NewConnection
               onClose={() => setConnexionOuverte(false)}
-              projects={projects.map((projet) => ({ id: projet.name, name: projet.name }))}
+              projects={projects.map((projet) => ({
+                id: projet.name,
+                name: projet.name,
+                // Ses environnements déclarés : c'est ce que `A2` propose (`23d`).
+                environments: projet.environments,
+              }))}
               onSaved={setProjects}
             />
           )}

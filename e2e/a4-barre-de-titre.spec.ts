@@ -122,9 +122,13 @@ test('le point de prod porte la couleur du danger, celle de son bouton dans A2',
   page,
 }) => {
   const couleur = await page.evaluate(() => {
+    // **Le point est le premier enfant du champ de la liste**, et non plus un `[data-environment]` :
+    // la couleur est une propriété **déclarée** de l'environnement (`23a`), posée en style en ligne
+    // depuis la table de jetons. Trois règles CSS par identifiant étaient le trio en dur sous une
+    // autre forme.
     const point = document
       .querySelector('[data-testid=titlebar-a4]')
-      ?.querySelector('[data-environment]')
+      ?.querySelector('[role=combobox] span')
     return point ? getComputedStyle(point).backgroundColor : null
   })
   // Un environnement de production doit se reconnaître d'un écran à l'autre.

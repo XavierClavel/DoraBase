@@ -1,8 +1,8 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
   ConfigLoad,
+  ConnectionSettings,
   Engine,
-  EnvironmentVariant,
   Preferences,
   Project,
   SavedQueryRequest,
@@ -51,7 +51,7 @@ export async function loadConfig(): Promise<ConfigLoad> {
 export async function openDatabase(
   key: DatabaseKey,
   engine: Engine,
-  variant: EnvironmentVariant,
+  variant: ConnectionSettings,
 ): Promise<ConnectionState> {
   return invoke<ConnectionState>('open_database', { key, engine, variant })
 }

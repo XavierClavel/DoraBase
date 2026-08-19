@@ -1,5 +1,5 @@
 import { Icon } from '../../design/icons/Icon'
-import type { Environment } from '../../domain/config'
+import type { EnvironmentId } from '../../domain/config'
 import type { Value } from '../../domain/engine'
 import { Badge } from '../../ui/Badge/Badge'
 import { cx } from '../../ui/cx'
@@ -12,7 +12,7 @@ type PendingPanelProps = {
   /** `public.orders`, pour l'en-tête des cartes et le titre. */
   table: string
   /** L'environnement de la base : l'encart d'avertissement n'existe que pour `prod`. */
-  environment?: Environment
+  environment?: EnvironmentId
   /**
    * Le SQL rendu par le moteur, ou `null` tant qu'il n'est pas revenu.
    *

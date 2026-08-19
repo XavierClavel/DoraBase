@@ -1,6 +1,6 @@
 import { type ReactNode, useMemo, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
-import type { Environment, Project, SavedQuery } from '../../domain/config'
+import type { EnvironmentId, Project, SavedQuery } from '../../domain/config'
 import type { ColumnInfo, ConnectionState } from '../../domain/engine'
 import { Badge } from '../../ui/Badge/Badge'
 import { ColumnRow } from '../../ui/ColumnRow/ColumnRow'
@@ -48,7 +48,7 @@ type ExplorerSidebarProps = {
    *
    * Absent, l'entrée « Modifier… » est désactivée avec sa raison plutôt que cliquable et inerte.
    */
-  onEditDatabase?: (project: string, database: string, environment: Environment) => void
+  onEditDatabase?: (project: string, database: string, environment: EnvironmentId) => void
   /**
    * Renommer un projet depuis son « … » (`08i`) — la commande `rename_project`.
    *
@@ -481,7 +481,7 @@ function menuDe(
           libelle: 'Modifier…',
           icone: 'pencil',
           onClick: modifiable
-            ? () => onEditDatabase(project as string, label, environment as Environment)
+            ? () => onEditDatabase(project as string, label, environment as EnvironmentId)
             : undefined,
           raison: modifiable ? undefined : RAISONS.modifierIndisponible,
         },
@@ -495,6 +495,9 @@ function menuDe(
                     kind: 'database',
                     project,
                     database: label,
+                    // L'environnement fait partie de l'identité de la connexion (`23b`) : sans lui, le
+                    // retrait viserait la première connexion de ce nom, quel que soit l'environnement.
+                    environment: environment as EnvironmentId,
                     connexions: noeud.connexions ?? 1,
                   })
               : undefined,

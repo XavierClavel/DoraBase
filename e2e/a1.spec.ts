@@ -6,6 +6,11 @@ import { expect, test } from '@playwright/test'
 // retirant le remplissage `1px 6px` que Chromium pose sur tout `<button>`, et le reste tient à la
 // rastérisation des glyphes dans un `<button>` plutôt que dans un `<select>`.
 //
+// **Régénérées une seconde fois le 19 août**, pour un libellé : « Variante d'environnement » est
+// devenu « Environnement » (`23d`). Le mot « variante » décrivait le modèle que `23b` a retiré — une
+// base déclinée en plusieurs environnements — et le garder aurait nommé une chose qui n'existe plus.
+// L'écart mesuré valait 249 pixels, tous dans ce libellé, et le diff l'a confirmé avant régénération.
+//
 // **La géométrie, elle, a été vérifiée au chiffre avant de toucher aux références** : même abscisse de
 // texte, même corps, valeur centrée dans un champ de 30 px, boîtes de 32 et 19 px inchangées — ce que
 // les mesures de `a2-nouvelle-connexion` et `a4-barre-de-titre` affirment indépendamment. Une capture

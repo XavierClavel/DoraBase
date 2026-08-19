@@ -66,18 +66,19 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--success);
+  /* La couleur arrive en style en ligne, depuis la déclaration de l'environnement. Celle-ci n'est
+   * qu'un repli, pour qu'un point sans couleur reste visible plutôt qu'invisible. */
+  background: var(--ink-4);
 }
 
-/* Le rouge de `prod` : la même teinte que son bouton dans `A2` (`08b`). Un environnement de
- * production doit se reconnaître d'un écran à l'autre. */
-.dot[data-environment="prod"] {
-  background: var(--danger);
-}
-
-.dot[data-environment="staging"] {
-  background: var(--warn);
-}
+/*
+ * **Les teintes par identifiant sont parties avec le trio en dur.**
+ *
+ * Trois règles `[data-environment="prod"]`, `="staging"`, `="dev"` vivaient ici. Depuis `23a`, la
+ * couleur est une propriété **déclarée** de l'environnement : elle arrive en style en ligne, depuis la
+ * table `COULEURS_D_ENVIRONNEMENT`. Les garder aurait fait deux sources de vérité, dont une muette sur
+ * un quatrième environnement.
+ */
 
 /* Le champ de la liste : la géométrie vient d'ici, la mécanique de `ListeDeroulante`. */
 .liste {

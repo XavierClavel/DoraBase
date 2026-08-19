@@ -2,17 +2,17 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { Sprite } from '../../design/icons/Sprite'
-import type { Environment } from '../../domain/config'
-import { ENVIRONMENT_ORDER } from '../../screens/NewConnection/environments'
+import type { EnvironmentId } from '../../domain/config'
+import { TRIO_DE_TEST } from '../../screens/NewConnection/pourLesTests'
 import { choisirDansLaListe, optionsDeLaListe } from '../../ui/Select/pourLesTests'
 import { EnvironmentPicker } from './EnvironmentPicker'
 
-function Piloté({ initial = 'dev' as Environment }: { initial?: Environment }) {
-  const [env, setEnv] = useState<Environment>(initial)
+function Piloté({ initial = 'dev' as EnvironmentId }: { initial?: EnvironmentId }) {
+  const [env, setEnv] = useState<EnvironmentId>(initial)
   return (
     <>
       <Sprite />
-      <EnvironmentPicker value={env} onValueChange={setEnv} />
+      <EnvironmentPicker environments={TRIO_DE_TEST} value={env} onValueChange={setEnv} />
     </>
   )
 }
@@ -27,7 +27,8 @@ test('le sélecteur est nommé par son étiquette', () => {
 test('les trois environnements du modèle sont proposés', async () => {
   render(<Piloté />)
   // Les options n'existent que la liste ouverte : c'est ce que fait `optionsDeLaListe`.
-  expect(await optionsDeLaListe('env')).toEqual([...ENVIRONMENT_ORDER])
+  // Les libellés déclarés par le projet — non un trio en dur (`23g`).
+  expect(await optionsDeLaListe('env')).toEqual(TRIO_DE_TEST.map((d) => d.label))
 })
 
 test('changer d’environnement remonte la valeur', async () => {
@@ -39,18 +40,23 @@ test('changer d’environnement remonte la valeur', async () => {
 
 // La couleur du point suit l'environnement, et le rouge de `prod` est celui de son bouton dans
 // `A2` : un environnement de production doit se reconnaître d'un écran à l'autre.
-test('le point porte l’environnement dans un attribut', async () => {
+test('le point prend la couleur **déclarée** de l’environnement', async () => {
+  // **La couleur vient de la déclaration, non d'un attribut lu par le CSS** (`23a`). Trois règles
+  // `[data-environment="prod"]` vivaient dans la feuille ; elles étaient le trio en dur sous une
+  // autre forme, muettes sur un quatrième environnement.
   const { container } = render(<Piloté />)
-  expect(container.querySelector('[data-environment="dev"]')).not.toBeNull()
+  const point = () => container.querySelector('span[style]') as HTMLElement
+  expect(point().style.background).toContain('--success')
   await choisirDansLaListe('env', 'prod')
-  expect(container.querySelector('[data-environment="prod"]')).not.toBeNull()
+  expect(point().style.background).toContain('--danger')
 })
 
 // Le point est décoratif : l'information est dans la valeur du sélecteur, que le lecteur
 // d'écran annonce déjà.
 test('le point est masqué à l’accessibilité', () => {
+  // Décoratif : l'information est dans la valeur du sélecteur, que le lecteur d'écran annonce déjà.
   const { container } = render(<Piloté />)
-  expect(container.querySelector('[data-environment]')).toHaveAttribute('aria-hidden', 'true')
+  expect(container.querySelector('span[style]')).toHaveAttribute('aria-hidden', 'true')
 })
 
 test('le sélecteur se pilote au clavier', async () => {

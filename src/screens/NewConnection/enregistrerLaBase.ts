@@ -8,6 +8,7 @@ import type {
   RenameProjectRequest,
   RenameProjectResult,
   SaveDatabaseRequest,
+  SetActiveEnvironmentRequest,
   UpdateVariantRequest,
 } from '../../domain/config'
 import type { ConnectionDraft } from './ConnectionDraft'
@@ -63,6 +64,22 @@ export async function renommerLeProjet(
 }
 
 /**
+ * Change l'environnement actif d'un projet, et le persiste (`23g`).
+ *
+ * **Le sélecteur de la barre de titre ne faisait rien** : son `onValueChange` était vide, faute de
+ * commande pour l'écrire. Un contrôle qui répond à l'œil et n'agit pas est exactement ce que le défaut
+ * n° 36 décrit.
+ *
+ * Rend les projets à jour : l'arbre se recharge sur les connexions de l'environnement choisi (`23b`),
+ * donc l'écran a besoin de la liste, pas d'un accusé de réception.
+ */
+export async function changerLEnvironnementActif(
+  request: SetActiveEnvironmentRequest,
+): Promise<Project[]> {
+  return invoke<Project[]>('set_active_environment', { request })
+}
+
+/**
  * Convertit le brouillon de `A2` en requête de mise à jour.
  *
  * Le nom, l'environnement et le moteur ne sont **pas** repris du brouillon : ils désignent la
@@ -102,8 +119,9 @@ export function draftToSaveRequest(draft: ConnectionDraft): SaveDatabaseRequest 
     project: draft.project,
     database: draft.name,
     engine: draft.engine,
+    // Hors des réglages : l'environnement appartient à la connexion (`23b`).
+    environment: draft.environment,
     variant: {
-      environment: draft.environment,
       host: draft.host,
       port: Number.isFinite(port) ? port : 0,
       defaultDatabase: draft.defaultDatabase,

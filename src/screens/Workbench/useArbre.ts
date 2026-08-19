@@ -8,7 +8,7 @@ import {
   listSchemas,
   openDatabase,
 } from '../../data/commandes'
-import type { Environment, Project } from '../../domain/config'
+import type { EnvironmentId, Project } from '../../domain/config'
 import type { ConnectionState, ConnectionStateEntry } from '../../domain/engine'
 import type { Charge, Noeud } from '../Explorer/arbre'
 import { idBase } from '../Explorer/arbre'
@@ -57,7 +57,7 @@ export function useArbre(
   const [etats, setEtats] = useState<readonly ConnectionStateEntry[]>([])
 
   const etatDeBase = useCallback(
-    (project: string, database: string, environment: Environment): ConnectionState =>
+    (project: string, database: string, environment: EnvironmentId): ConnectionState =>
       etatDe(etats, project, database, environment),
     [etats],
   )
@@ -80,8 +80,11 @@ export function useArbre(
       if (!project || !database || !environment) return
       const id = idBase(project, database)
       const cle = databaseKey(project, database, environment)
-      const declaration = baseDeclaree(projects, project, database)
-      const variante = declaration?.variants.find((v) => v.environment === environment)
+      // **La connexion est identifiée par son nom *et* son environnement** (`23b`) : deux connexions
+      // homonymes coexistent, et n'en chercher qu'une par le nom ouvrirait la première venue — celle
+      // de dev alors qu'on a cliqué celle de prod.
+      const declaration = baseDeclaree(projects, project, database, environment)
+      const variante = declaration?.connection
       if (!declaration || !variante) return
 
       marquer(id, true)
@@ -165,8 +168,22 @@ export function useArbre(
  * Depuis `18`, l'ouverture a besoin du moteur, qui vit au niveau de la `Database` : rendre la
  * variante seule obligeait à refaire la même recherche une seconde fois pour l'obtenir.
  */
-function baseDeclaree(projects: readonly Project[], project: string, database: string) {
-  return projects.find((p) => p.name === project)?.databases.find((d) => d.name === database)
+/**
+ * La connexion déclarée, par projet, nom **et** environnement (`23b`).
+ *
+ * Le dernier paramètre n'est pas une commodité : `analytics` peut exister en dev et en prod, et deux
+ * connexions homonymes ont des hôtes différents. Chercher par le seul nom ouvrirait l'une pour
+ * l'autre — sans erreur, sur le mauvais serveur.
+ */
+function baseDeclaree(
+  projects: readonly Project[],
+  project: string,
+  database: string,
+  environment: string,
+) {
+  return projects
+    .find((p) => p.name === project)
+    ?.databases.find((d) => d.name === database && d.environment === environment)
 }
 
 function message(cause: unknown): string {

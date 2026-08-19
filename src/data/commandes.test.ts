@@ -1,4 +1,5 @@
 import type { ConfigLoad } from '../domain/config'
+import { TRIO_DE_TEST } from '../screens/NewConnection/pourLesTests'
 import { PREFERENCES_PAR_DEFAUT } from '../screens/Preferences/preferences'
 import { databaseKey, etatDe, interpreter } from './commandes'
 
@@ -13,7 +14,15 @@ test('un fichier absent donne un état neuf sans projet', () => {
 })
 
 test('un fichier lu rend ses projets', () => {
-  const projets = [{ name: 'Print', activeEnvironment: 'dev' as const, databases: [], queries: [] }]
+  const projets = [
+    {
+      name: 'Print',
+      activeEnvironment: 'dev',
+      environments: TRIO_DE_TEST,
+      databases: [],
+      queries: [],
+    },
+  ]
   expect(
     interpreter({ kind: 'loaded', projects: projets, preferences: PREFERENCES_PAR_DEFAUT }),
   ).toEqual({

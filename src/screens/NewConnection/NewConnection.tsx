@@ -3,6 +3,7 @@ import { Icon } from '../../design/icons/Icon'
 import type {
   CreateProjectRequest,
   Database,
+  EnvironmentDeclaration,
   Project,
   UpdateVariantRequest,
 } from '../../domain/config'
@@ -36,7 +37,12 @@ import { codeDe, messageDe, testerLaConnexion } from './testerLaConnexion'
 type NewConnectionProps = {
   onClose: () => void
   /** Les projets existants. Vide, l'enregistrement sera refusé par `08e`. */
-  projects?: readonly { id: string; name: string }[]
+  projects?: readonly {
+    id: string
+    name: string
+    /** Ses environnements déclarés, que `A2` propose (`23d`). */
+    environments: readonly EnvironmentDeclaration[]
+  }[]
   /**
    * Ouvre le sélecteur de fichier de la clé privée.
    *
@@ -100,10 +106,15 @@ type EtatDuTest =
  * correspond, ou la première à défaut. Choisir laquelle éditer quand il y en a plusieurs appartient
  * à l'écran « Bases du projet » de `A10`.
  */
+/**
+ * Les réglages à éditer.
+ *
+ * **Il n'y a plus de choix à faire** (`23b`) : une connexion porte un seul jeu de réglages. Cette
+ * fonction prenait la première variante « ou celle qui correspond », et le commentaire d'origine
+ * renvoyait le vrai choix à un écran « Bases du projet ». Le modèle a tranché à sa place.
+ */
 function varianteCible(edition: { database: Database }) {
-  const premiere = edition.database.variants[0]
-  if (!premiere) throw new Error('une base a toujours au moins une variante (05a)')
-  return premiere
+  return edition.database.connection
 }
 
 export function NewConnection({
@@ -229,7 +240,7 @@ export function NewConnection({
           draftToUpdateRequest(draft, {
             project: edition.project,
             database: edition.database.name,
-            environment: varianteCible(edition).environment,
+            environment: edition.database.environment,
           }),
         )
         onSaved?.(projets)

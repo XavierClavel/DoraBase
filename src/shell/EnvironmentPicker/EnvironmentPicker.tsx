@@ -1,12 +1,20 @@
 import { useId } from 'react'
-import type { Environment } from '../../domain/config'
-import { ENVIRONMENT_ORDER, ENVIRONMENTS } from '../../screens/NewConnection/environments'
+import type { EnvironmentDeclaration, EnvironmentId } from '../../domain/config'
+import { COULEURS_D_ENVIRONNEMENT } from '../../screens/NewConnection/environments'
 import { ListeDeroulante } from '../../ui/Select/ListeDeroulante'
 import styles from './EnvironmentPicker.module.css'
 
 type EnvironmentPickerProps = {
-  value: Environment
-  onValueChange: (environment: Environment) => void
+  /**
+   * Les environnements **du projet courant** (`23g`), dans leur ordre déclaré.
+   *
+   * Ils étaient lus depuis une table en dur de trois valeurs. Les recevoir en propriété est ce qui
+   * garantit qu'aucun trio ne survit ailleurs : un projet à cinq environnements en montre cinq, sans
+   * qu'une ligne de ce fichier le sache.
+   */
+  environments: readonly EnvironmentDeclaration[]
+  value: EnvironmentId
+  onValueChange: (environment: EnvironmentId) => void
 }
 
 /**
@@ -23,8 +31,12 @@ type EnvironmentPickerProps = {
  * quatre propriétés, ce qui ferait des surcharges plus longues que la primitive elle-même. Les deux
  * partagent donc la liste, pas l'habillage du champ.
  */
-export function EnvironmentPicker({ value, onValueChange }: EnvironmentPickerProps) {
+export function EnvironmentPicker({ environments, value, onValueChange }: EnvironmentPickerProps) {
   const id = useId()
+  // La couleur de l'environnement actif. `slate` si l'identifiant ne désigne rien — un état que le
+  // modèle refuse (`23a`), donc jamais vu, mais un rendu neutre vaut mieux qu'un plantage d'écran.
+  const couleurActive =
+    environments.find((declaration) => declaration.id === value)?.color ?? 'slate'
 
   return (
     <div className={styles.root}>
@@ -38,19 +50,31 @@ export function EnvironmentPicker({ value, onValueChange }: EnvironmentPickerPro
           label="Environnement"
           labelledBy={id}
           className={styles.liste}
-          options={ENVIRONMENT_ORDER.map((environnement) => ({
-            value: environnement,
-            label: ENVIRONMENTS[environnement].label,
+          options={environments.map((declaration) => ({
+            value: declaration.id,
+            label: declaration.label,
             // **Le point de couleur suit l'option dans la liste**, pas seulement le champ fermé :
             // c'est la couleur qui distingue `prod` d'un coup d'œil, et une liste sans elle
             // obligerait à lire trois libellés proches.
             ornement: (
-              <span className={styles.dot} data-environment={environnement} aria-hidden="true" />
+              <span
+                className={styles.dot}
+                style={{ background: COULEURS_D_ENVIRONNEMENT[declaration.color] }}
+                aria-hidden="true"
+              />
             ),
           }))}
           value={value}
           onValueChange={onValueChange}
-          prefixe={<span className={styles.dot} data-environment={value} aria-hidden="true" />}
+          prefixe={
+            <span
+              className={styles.dot}
+              // **La couleur vient de la déclaration**, non d'un attribut lu par le CSS. Une table de
+              // teintes par identifiant redeviendrait le trio en dur, sous une autre forme.
+              style={{ background: COULEURS_D_ENVIRONNEMENT[couleurActive] }}
+              aria-hidden="true"
+            />
+          }
         />
       </span>
     </div>

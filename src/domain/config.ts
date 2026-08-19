@@ -312,6 +312,11 @@ export type SecretMechanism = "keychain" | "encryptedFile";
  */
 export type SecretRef = string & { readonly __secretRef: unique symbol };
 
+/**
+ * Ce que `23g` envoie pour changer l'environnement actif d'un projet.
+ */
+export type SetActiveEnvironmentRequest = { project: string, environment: EnvironmentId, };
+
 export type SslMode = "disable" | "allow" | "prefer" | "require" | "verify-ca" | "verify-full";
 
 /**

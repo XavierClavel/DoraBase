@@ -4,7 +4,7 @@ import type { ConnectionDraft } from './ConnectionDraft'
 /**
  * Convertit le brouillon de `A2` en requête de test.
  *
- * **Ce n'est pas la conversion de `08e`.** Celle-ci produit une `EnvironmentVariant`
+ * **Ce n'est pas la conversion de `08e`.** Celle-ci produit une `ConnectionSettings`
  * *persistable* — mot de passe rangé, `SecretRef` en place, invariants de `05a` vérifiés, refus
  * possible. Ici on ne persiste rien : le mot de passe part en clair, à côté de la variante, et
  * un champ vide n'est pas une erreur mais une valeur que le moteur rejettera avec son propre
@@ -20,8 +20,10 @@ export function draftToRequest(draft: ConnectionDraft): ConnectionRequest {
   const bastionPort = draft.tunnel ? Number.parseInt(draft.tunnel.bastionPort, 10) : 0
 
   return {
+    // **Pas d'environnement ici.** `ConnectionRequest` sert au *test* de connexion (`08d`) : il ne
+    // persiste rien, donc il n'a pas besoin de savoir à quel environnement la connexion appartiendra.
+    // C'est `SaveDatabaseRequest` qui le porte (`enregistrerLaBase`).
     variant: {
-      environment: draft.environment,
       host: draft.host,
       port: Number.isFinite(port) ? port : 0,
       defaultDatabase: draft.defaultDatabase,

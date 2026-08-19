@@ -17,12 +17,13 @@ pub use commands::{
     create_project, load_config, save_config, save_database, save_preferences, update_variant,
     ConfigLoad, ConfigState, CreateProjectRequest, DeleteDatabaseRequest, DeleteProjectRequest,
     DeleteResult, RenameProjectRequest, RenameProjectResult, SaveDatabaseRequest,
-    SavedQueryRequest, UpdateVariantRequest,
+    SavedQueryRequest, SetActiveEnvironmentRequest, UpdateVariantRequest,
 };
 pub use enregistrer::{enregistrer, reference_de, NouvelleBase, SaveError};
 pub use model::{
-    Accent, Database, Engine, EnvironmentId, ConnectionSettings, Guards, ModelError, Preferences,
-    Project, SavedQuery, SecretRef, SslMode, Theme, Tunnel, TunnelKind,
+    Accent, ConnectionSettings, Database, Engine, EnvironmentColor, EnvironmentDeclaration,
+    EnvironmentId, Guards, ModelError, Preferences, Project, SavedQuery, SecretRef, SslMode, Theme,
+    Tunnel, TunnelKind,
 };
 pub use query::{active_variant, databases_available, validate};
 pub use store::{load, save, ConfigStore, LoadOutcome, StoreError, VERSION_COURANTE};

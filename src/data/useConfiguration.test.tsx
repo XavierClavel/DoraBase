@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import type { ConfigLoad } from '../domain/config'
+import { TRIO_DE_TEST } from '../screens/NewConnection/pourLesTests'
 import { PREFERENCES_PAR_DEFAUT } from '../screens/Preferences/preferences'
 import { type EtatDeDemarrage, useConfiguration } from './useConfiguration'
 
@@ -28,7 +29,15 @@ test('un fichier lu remplit les projets', async () => {
     <Sonde
       charger={async () => ({
         kind: 'loaded',
-        projects: [{ name: 'Print', activeEnvironment: 'dev', databases: [], queries: [] }],
+        projects: [
+          {
+            name: 'Print',
+            activeEnvironment: 'dev',
+            environments: TRIO_DE_TEST,
+            databases: [],
+            queries: [],
+          },
+        ],
         preferences: PREFERENCES_PAR_DEFAUT,
       })}
     />,

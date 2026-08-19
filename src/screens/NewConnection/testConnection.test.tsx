@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { Sprite } from '../../design/icons/Sprite'
 import type { ConnectionRequest, ConnectionTest } from '../../domain/engine'
 import { NewConnection } from './NewConnection'
+import { TRIO_DE_TEST } from './pourLesTests'
 import { codeDe, messageDe } from './testerLaConnexion'
 
 const REUSSI: ConnectionTest = {
@@ -14,7 +15,7 @@ const REUSSI: ConnectionTest = {
 
 // Un projet par défaut : sans aucun projet, « Enregistrer & ouvrir » est désactivé (`08e`),
 // ce qui masquerait l'effet du test de connexion sur ce bouton.
-const PROJETS = [{ id: 'print', name: 'Atelier Nord' }]
+const PROJETS = [{ id: 'print', name: 'Atelier Nord', environments: TRIO_DE_TEST }]
 
 function monter(onTest: (request: ConnectionRequest) => Promise<ConnectionTest>) {
   return render(

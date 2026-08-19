@@ -397,13 +397,10 @@ test('le séparateur est un trait d’un pixel, et une barre au survol', async (
     .toBe(1)
 
   // Et les panneaux n'ont pas bougé d'un pixel : c'est ce que le débord garantit.
-  const apres = await page.evaluate(() =>
-    Math.round(
-      (
-        document.querySelector('[role=separator]')?.previousElementSibling as HTMLElement
-      ).getBoundingClientRect().width,
-    ),
-  )
+  const apres = await page.evaluate(() => {
+    const panneau = document.querySelector('[role=separator]')?.previousElementSibling
+    return panneau ? Math.round(panneau.getBoundingClientRect().width) : null
+  })
   expect(apres).toBe(212)
 })
 

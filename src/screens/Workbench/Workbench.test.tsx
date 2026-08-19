@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { Project } from '../../domain/config'
 import type { SchemaInfo, TableDetail, TableSummary, UpdatePlan } from '../../domain/engine'
+import { REGLAGES, TRIO_DE_TEST } from '../NewConnection/pourLesTests'
 import type { PasserelleLignes } from '../TableView/useLignes'
 import type { PasserelleArbre } from './useArbre'
 import type { PasserelleDetail } from './useDetailTable'
@@ -27,10 +28,12 @@ const PROJETS: Project[] = [
   {
     name: 'Atelier Nord',
     activeEnvironment: 'prod',
+    environments: TRIO_DE_TEST,
     queries: [],
     databases: [
-      { name: 'analytics', engine: 'postgresql', variants: [variante] },
-      { name: 'shop', engine: 'postgresql', variants: [variante] },
+      // **Dans l'environnement actif** (`23g`) : l'arbre ne liste que les connexions de celui-ci.
+      { name: 'analytics', engine: 'postgresql', environment: 'prod', connection: REGLAGES },
+      { name: 'shop', engine: 'postgresql', environment: 'prod', connection: REGLAGES },
     ],
   },
 ]
@@ -180,7 +183,8 @@ const PROJETS_DEV: Project[] = PROJETS.map((projet) => ({
   // environnement et l'arbre ne déplie rien — l'écran de test n'irait même pas jusqu'à la grille.
   databases: projet.databases.map((base) => ({
     ...base,
-    variants: [{ ...variante, environment: 'dev' as const }],
+    environment: 'dev',
+    connection: { ...variante, environment: 'dev' as const },
   })),
 }))
 

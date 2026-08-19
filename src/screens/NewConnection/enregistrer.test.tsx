@@ -6,11 +6,18 @@ import { choisirDansLaListe } from '../../ui/Select/pourLesTests'
 import { emptyDraft } from './ConnectionDraft'
 import { draftToSaveRequest } from './enregistrerLaBase'
 import { NewConnection } from './NewConnection'
+import { TRIO_DE_TEST } from './pourLesTests'
 
-const PROJETS = [{ id: 'Atelier Nord', name: 'Atelier Nord' }]
+const PROJETS = [{ id: 'Atelier Nord', name: 'Atelier Nord', environments: TRIO_DE_TEST }]
 
 const APRES: Project[] = [
-  { name: 'Atelier Nord', activeEnvironment: 'dev', databases: [], queries: [] },
+  {
+    name: 'Atelier Nord',
+    activeEnvironment: 'dev',
+    environments: TRIO_DE_TEST,
+    databases: [],
+    queries: [],
+  },
 ]
 
 type Espion = {
@@ -22,7 +29,7 @@ type Espion = {
 function monter(
   options: {
     onSave?: (request: SaveDatabaseRequest) => Promise<Project[]>
-    projects?: readonly { id: string; name: string }[]
+    projects?: readonly { id: string; name: string; environments: typeof TRIO_DE_TEST }[]
     onClose?: () => void
     onCreateProject?: (request: CreateProjectRequest) => Promise<Project[]>
   } = {},
