@@ -12,18 +12,32 @@ async function boites(page: import('@playwright/test').Page) {
   return page.evaluate(() => {
     const barre = document.querySelector('[data-testid=titlebar-a4]')
     if (!barre) return null
-    const pastille = barre.querySelector('button')
-    // La seconde boîte est celle qui contient le sélecteur.
-    const env = barre.querySelector('select')?.closest('div')
+    // **La pastille projet, et non le premier bouton.** Depuis que la liste d'environnement est un
+    // bouton `role="combobox"`, `querySelector('button')` peut tomber sur elle selon l'ordre du DOM.
+    const pastille = barre.querySelector('button:not([role=combobox])')
+    // La boîte de l'environnement : l'enveloppe qui porte le filet, autour du champ de la liste.
+    const env = barre.querySelector('[role=combobox]')?.closest('span[class*="field"]')
     if (!pastille || !env) return null
     const a = pastille.getBoundingClientRect()
     const b = env.getBoundingClientRect()
     return {
       hauteurPastille: Math.round(a.height),
       hauteurEnv: Math.round(b.height),
+      // La rangée du sélecteur — étiquette « ENV » comprise. C'est elle qui doit s'aligner sur la
+      // pastille ; le champ, lui, est plus court de cinq pixels par construction.
+      hauteurRangeeEnv: Math.round(
+        (
+          barre.querySelector('[role=combobox]')?.closest('div[class*="root"]') as HTMLElement
+        )?.getBoundingClientRect().height ?? 0,
+      ),
       ecart: Math.round(b.left - a.right),
       // Le centre du contenu, comparé au centre de **sa zone** — pas de la barre entière.
-      centreContenu: Math.round((a.left + b.right) / 2),
+      //
+      // **Sur la pastille seule, depuis que le sélecteur a quitté le centre.** La mesure allait du bord
+      // gauche de la pastille au bord droit du sélecteur, ce qui décrivait le contenu centré tant que
+      // les deux y étaient. Le sélecteur étant maintenant dans la rangée d'actions, la même formule
+      // mesurait la moitié de la barre — et ce test échouait pour la bonne raison.
+      centreContenu: Math.round(a.left + a.width / 2),
       centreZone: (() => {
         // La zone centrale : le parent direct de la pastille, `.center` de `TitleBar`.
         const zone = pastille.parentElement
@@ -35,17 +49,28 @@ async function boites(page: import('@playwright/test').Page) {
   })
 }
 
-// **Le fait que `09c` nomme en premier.** Les fondre donnerait un bandeau unique, où
-// l'environnement se lirait comme une propriété du fil d'Ariane plutôt que comme un commutateur.
-test('les deux boîtes sont distinctes, séparées de 8 px', async ({ page }) => {
+// **Le sélecteur est aligné à droite, et non plus contre la pastille.** `09c` nommait l'écart de 8 px
+// entre les deux boîtes comme sa vérification principale ; cet écart n'existe plus, le sélecteur ayant
+// quitté le centre pour la rangée d'actions (demandé le 19 août 2026). Ce qui reste à garantir est ce
+// que l'écart servait à obtenir : deux contrôles distincts, dont l'environnement ne se lit pas comme
+// une propriété du fil d'Ariane.
+test('le sélecteur d’environnement est à droite du centre, pas contre la pastille', async ({
+  page,
+}) => {
   const m = await boites(page)
-  expect(m?.ecart).toBe(8)
+  // Largement à droite : il n'est plus dans la zone centrée, mais dans la rangée d'actions.
+  expect(m?.ecart ?? 0).toBeGreaterThan(100)
 })
 
-test('les deux boîtes font 24 px', async ({ page }) => {
+test('la pastille et la rangée d’environnement s’alignent sur 24 px', async ({ page }) => {
   const m = await boites(page)
   expect(m?.hauteurPastille).toBe(24)
-  expect(m?.hauteurEnv).toBe(24)
+  // **La rangée, et non la boîte du champ.** Les deux boîtes de 24 px du mockup n'en font plus qu'une :
+  // l'encadré extérieur a été retiré le 19 août 2026 — deux filets emboîtés se lisaient comme deux
+  // contrôles pour un seul réglage. Ce qui reste à garantir est l'alignement des deux contrôles sur la
+  // même bande de 24 px, et le champ à 19 px dans cette bande (test suivant).
+  expect(m?.hauteurRangeeEnv).toBe(24)
+  expect(m?.hauteurEnv).toBe(19)
 })
 
 // Le mockup enveloppe le centre dans un `flex:1; justify-content:center`. Sans cela, la pastille
@@ -64,7 +89,8 @@ test('le champ d’environnement fait 19 px dans sa boîte de 24', async ({ page
   const hauteur = await page.evaluate(() => {
     const champ = document
       .querySelector('[data-testid=titlebar-a4]')
-      ?.querySelector('select')?.parentElement
+      ?.querySelector('[role=combobox]')
+      ?.closest('span[class*="field"]')
     return champ ? Math.round(champ.getBoundingClientRect().height) : null
   })
   expect(hauteur).toBe(19)
@@ -73,14 +99,17 @@ test('le champ d’environnement fait 19 px dans sa boîte de 24', async ({ page
 test('le select occupe toute la hauteur de son champ, donc tout est cliquable', async ({
   page,
 }) => {
-  // Le défaut trouvé en `08b` sur `Select` : un `<select>` garde sa hauteur intrinsèque dans un
-  // conteneur flex, et cliquer dans le remplissage n'ouvre pas la liste.
+  // Le défaut trouvé en `08b` sur `Select`, et **retrouvé le 19 août sur la liste maison** : un champ
+  // qui garde sa hauteur intrinsèque dans un conteneur flex laisse du remplissage inerte au clic. Le
+  // natif est parti, la mesure reste — c'est la propriété qui compte, pas le mécanisme.
   const m = await page.evaluate(() => {
-    const select = document.querySelector('[data-testid=titlebar-a4]')?.querySelector('select')
-    const champ = select?.parentElement
-    if (!select || !champ) return null
+    const liste = document
+      .querySelector('[data-testid=titlebar-a4]')
+      ?.querySelector('[role=combobox]')
+    const champ = liste?.closest('span[class*="field"]')
+    if (!liste || !champ) return null
     return {
-      select: Math.round(select.getBoundingClientRect().height),
+      select: Math.round(liste.getBoundingClientRect().height),
       champ: Math.round(champ.getBoundingClientRect().height),
     }
   })

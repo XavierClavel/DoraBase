@@ -14,22 +14,24 @@
  * que `Field` en `02`.
  */
 
+/*
+ * **Une seule boîte, et c'est un écart au handoff.**
+ *
+ * Le mockup emboîte deux encadrés : un extérieur qui réunit « ENV » et le champ, un intérieur autour
+ * du point et de la valeur. À l'écran, les deux filets se lisent comme deux contrôles imbriqués pour
+ * un seul réglage — « supprimer l'encadré marron, seul l'encadré blanc suffit », demandé le 19 août
+ * 2026. L'enveloppe perd donc son filet et son fond ; elle ne fait plus qu'aligner l'étiquette et le
+ * champ.
+ *
+ * Le `margin-left` part avec : le sélecteur n'est plus voisin de la pastille projet, il est aligné à
+ * droite de la barre, où l'écart vient de la rangée d'actions.
+ */
 .root {
   display: flex;
   align-items: center;
   gap: var(--space-4);
   box-sizing: border-box;
   height: 24px;
-  /* La séparation d'avec la pastille projet. Le handoff la nomme explicitement : sans elle, les
-   * deux boîtes se lisent comme une seule.
-   *
-   * 8px, absent de l'échelle d'espacement qui va de 7 à 9 — comme le remplissage du `DataTable`
-   * de `09a`. Une première version employait `--space-3` (6px), et la mesure a montré l'écart. */
-  margin-left: 8px;
-  padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-field);
-  background: var(--field);
 }
 
 .legend {
@@ -50,7 +52,9 @@
   padding: 0 var(--space-2) 0 var(--space-4);
   border: 1px solid var(--border-field);
   border-radius: var(--radius-control);
-  background: var(--paper-alt);
+  /* `--field` et non `--paper-alt` : seul encadré restant, il est **l'**encadré blanc du réglage. En
+   * gris clair, il se lirait comme un champ désactivé maintenant qu'aucune boîte ne l'entoure. */
+  background: var(--field);
 }
 
 .field:focus-within {
@@ -75,27 +79,11 @@
   background: var(--warn);
 }
 
-.select {
-  /* Retire le chevron du système : celui du handoff est dessiné à côté. */
-  appearance: none;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--ink);
+/* Le champ de la liste : la géométrie vient d'ici, la mécanique de `ListeDeroulante`. */
+.liste {
+  align-self: stretch;
   font-family: var(--font-ui);
   font-size: var(--text-caps);
   font-weight: var(--weight-bold);
-  /* La surface cliquable doit être tout le champ — défaut trouvé en `08b` sur `Select`. */
-  align-self: stretch;
-}
-
-.select:focus-visible {
-  outline: none;
-}
-
-.chevron {
-  flex: none;
-  color: var(--ink-meta);
-  /* Le chevron n'intercepte pas le clic : il doit ouvrir la liste, comme le reste du champ. */
-  pointer-events: none;
+  color: var(--ink);
 }

@@ -32,60 +32,70 @@
 }
 
 /*
- * La poignée : **un trait d'un pixel, et une barre au survol.**
+ * La poignée : **un trait d'un pixel, et rien d'autre dans la trame.**
  *
- * # Ce qu'elle était, et pourquoi ça ne tenait pas
+ * # Deux corrections, pas une
  *
  * Le mockup dessine la jointure par un dégradé de 5 px qui s'assombrit du côté du panneau, plus une
  * pastille blanche de 3×26 en son milieu. Rendu dans l'application, cet empilement se lit comme une
- * **zone** entre deux colonnes, alors qu'une jointure n'a rien à dire : elle sépare. Signalé à l'écran
- * le 19 août 2026 — « un simple trait avec une barre au survol suffirait ».
+ * **zone** entre deux colonnes, alors qu'une jointure n'a rien à dire : elle sépare.
  *
- * Le trait est donc permanent et fait un pixel, dans le même `--divider` que toutes les séparations de
- * l'interface : la jointure ressemble enfin à ce qu'elle est. La **barre** — le trait épaissi à 3 px et
- * assombri, sur toute la hauteur — ne paraît qu'au survol et au focus, c'est-à-dire au moment où
- * l'information « ça s'attrape » sert à quelque chose.
+ * La première correction a remplacé le dégradé et la pastille par un trait de `--divider`, épaissi au
+ * survol. **Elle ne suffisait pas** : la poignée gardait ses 5 px de largeur dans la rangée flex, et
+ * ces 5 px — transparents, donc du fond de la coquille — dessinaient une **bande claire** entre la
+ * sidebar (`--paper-alt`) et le centre (`--paper`), le trait perdu en son milieu. Deux captures du
+ * 19 août 2026 le montrent : on voyait un trait *et* une gouttière.
  *
- * # Deux choses qui ne changent pas
+ * Celle-ci va au bout : la poignée **est** le trait, un pixel de large, de la couleur des séparations.
+ * Ce qu'on attrape vient d'un pseudo-élément qui **déborde** de trois pixels de chaque côté sans rien
+ * occuper — `position: absolute` ne participe pas à la mise en page. La zone de saisie fait donc 7 px
+ * pour un trait de 1, et le centre récupère les 4 px que la bande prenait.
  *
- * La zone de saisie garde ses 5 px. Ce qu'on voit et ce qu'on peut attraper sont deux mesures
- * différentes, et un trait d'un pixel serait invisible au pointeur — c'est la leçon du défaut n° 53,
- * où un `radio` rogné à 1 px était cliquable en jsdom et introuvable en vrai.
+ * # Ce qui n'a pas changé
  *
- * Le sens du dégradé, lui, disparaît avec le dégradé : un trait n'a pas de côté. La propriété
- * `handleShadow` qui le pilotait a donc été retirée de l'API plutôt que gardée sans effet — un réglage
- * qui ne fait rien est pire qu'un réglage absent (défaut n° 36).
+ * Ce qu'on voit et ce qu'on peut attraper restent deux mesures différentes — la leçon du défaut n° 53,
+ * où un `radio` rogné à 1 px était cliquable en jsdom et introuvable en vrai. Et `handleShadow` reste
+ * retirée de l'API : un trait n'a pas de côté.
  */
 .handle {
-  width: 5px;
   flex: none;
   position: relative;
+  /* **Au-dessus du contenu des panneaux.** Un élément positionné passe devant ses voisins statiques,
+   * mais les panneaux contiennent eux-mêmes des éléments positionnés — une grille, un en-tête collé —
+   * qui recouvriraient le débord de la zone de saisie du côté droit. La poignée serait alors
+   * attrapable à gauche seulement, et rien ne le dirait. */
+  z-index: 5;
+  width: 1px;
   cursor: col-resize;
-  background: transparent;
+  background: var(--divider);
 }
 
-/* Le trait. `::before` plutôt qu'un enfant : la poignée porte déjà `role="separator"`, et un trait
- * décoratif n'a pas à exister dans l'arbre d'accessibilité. */
+/* La zone de saisie, en débord. Elle mord de trois pixels sur chaque voisin, comme le séparateur de
+ * fenêtre de macOS — sans quoi viser un trait d'un pixel relèverait de l'adresse. */
 .handle::before {
+  content: "";
+  position: absolute;
+  inset: 0 -3px;
+}
+
+/* La barre du survol, dessinée **par-dessus** les voisins : elle non plus n'occupe rien. Sans ce
+ * débord, épaissir le trait de 1 à 3 px décalerait les deux panneaux à chaque survol. */
+.handle::after {
   content: "";
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 2px;
-  width: 1px;
-  background: var(--divider);
-  transition:
-    width 120ms ease-out,
-    left 120ms ease-out,
-    background-color 120ms ease-out;
-}
-
-.handle:hover::before,
-.handle:focus-visible::before {
-  left: 1px;
+  left: -1px;
   width: 3px;
   border-radius: 2px;
   background: var(--ink-3);
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.handle:hover::after,
+.handle:focus-visible::after {
+  opacity: 1;
 }
 
 .handle:focus-visible {
@@ -141,33 +151,23 @@
   min-height: 0;
 }
 
-/* La poignée d'un partage empilé se saisit en hauteur, et son curseur suit l'axe. */
+/* Les deux axes s'échangent avec elle : le trait devient horizontal, le débord vertical. Sans ces
+ * règles, la poignée d'un partage empilé gardait un trait **vertical** d'un pixel à son bord gauche. */
 .handleH {
   width: auto;
-  height: 5px;
+  height: 1px;
   cursor: row-resize;
 }
 
-/* Le trait tourne avec elle : les deux axes sont échangés, pas seulement la hauteur. Sans cette
- * règle, le partage empilé de `12a` gardait un trait **vertical** de 1 px au bord gauche de sa
- * poignée horizontale. */
 .handleH::before {
-  top: 2px;
+  inset: -3px 0;
+}
+
+.handleH::after {
+  top: -1px;
   bottom: auto;
   left: 0;
   right: 0;
-  width: auto;
-  height: 1px;
-  transition:
-    height 120ms ease-out,
-    top 120ms ease-out,
-    background-color 120ms ease-out;
-}
-
-.handleH:hover::before,
-.handleH:focus-visible::before {
-  top: 1px;
-  left: 0;
   width: auto;
   height: 3px;
 }

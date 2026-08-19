@@ -1,0 +1,123 @@
+/*
+ * La liste déroulante maison.
+ *
+ * Le champ fermé n'a **pas** de géométrie ici : elle vient de l'appelant, par `className`. C'est ce
+ * qui permet à `Select` de garder ses hauteurs de `A2` et au sélecteur d'environnement ses 19 px,
+ * sans que ce fichier connaisse leurs mesures.
+ *
+ * Le panneau reprend l'habillage de `MenuContextuel` : mêmes rayon, filet, ombre et compacité. Deux
+ * listes flottantes qui ne se ressembleraient pas donneraient l'impression de deux produits.
+ */
+
+/*
+ * L'enveloppe de position.
+ *
+ * **`flex: 1` et `align-self: stretch`, et c'est une correction.** Cette enveloppe s'interpose entre
+ * le champ de l'appelant et le bouton : sans elle, l'`align-self: stretch` que `Select` pose sur le
+ * bouton s'appliquait à un élément qui n'était plus l'enfant direct du champ. Le bouton retombait à sa
+ * hauteur intrinsèque — 18 px mesurés dans une boîte de 32 — et cliquer dans le remplissage n'ouvrait
+ * plus la liste. C'est **le défaut que le natif avait déjà eu**, sous la même forme, et que la mesure
+ * de `A2` a repris au vol.
+ */
+.racine {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-self: stretch;
+  min-width: 0;
+}
+
+.champ {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  gap: 6px;
+  /* **`padding: 0`, et ce n'est pas de la coquetterie.** Un `<button>` porte le remplissage par défaut
+   * du navigateur — `1px 6px` sous Chromium — ce qui décalait la valeur de six pixels vers la droite et
+   * d'un pixel vers le bas par rapport au `<select>` qu'il remplace. Les captures de référence de `A2`
+   * et `A3` l'ont vu : 387 pixels de différence, tous dans le texte des deux champs de liste. */
+  padding: 0;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.champ:disabled {
+  color: var(--ink-5);
+  cursor: default;
+}
+
+.valeur {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.chevron {
+  flex: none;
+  color: var(--ink-meta);
+}
+
+.panneau {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  z-index: 320;
+  display: flex;
+  flex-direction: column;
+  min-width: 100%;
+  max-height: 240px;
+  margin: 0;
+  padding: 3px;
+  overflow-y: auto;
+  /* Pas de rebond élastique aux extrémités sous WKWebView — voir la note de `reset.css`. */
+  overscroll-behavior: none;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--paper);
+  box-shadow: var(--shadow-popover);
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 4px var(--space-4);
+  border-radius: var(--radius-control-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/*
+ * L'option **parcourue**, au clavier comme à la souris.
+ *
+ * Un seul état pour les deux : le motif « combobox » garde le focus sur le champ, donc `:hover` ne
+ * suffirait pas au clavier et `:focus` n'arrive jamais sur l'option. C'est `aria-activedescendant`
+ * qui l'annonce, et cette classe qui la montre.
+ */
+.parcourue {
+  background: var(--hover-row);
+}
+
+.libelle {
+  flex: 1;
+}
+
+/* La coche de l'option choisie : dans une liste ouverte au clavier, la teinte de parcours et la
+ * sélection sont deux informations différentes, et une seule couleur ne peut pas dire les deux. */
+.coche {
+  flex: none;
+  color: var(--accent);
+}

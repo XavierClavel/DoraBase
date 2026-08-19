@@ -13,6 +13,7 @@ import { PreferencesDialog } from '../screens/Preferences/PreferencesDialog'
 import { jetonsDe, PREFERENCES_PAR_DEFAUT, themeApplique } from '../screens/Preferences/preferences'
 import { WelcomeScreen } from '../screens/Welcome/WelcomeScreen'
 import { Workbench } from '../screens/Workbench/Workbench'
+import { useClicDroitDesactive } from '../shell/useClicDroit'
 import { useZoom } from '../shell/useZoom'
 import { BarresDeDefilement } from '../ui/BarresDeDefilement/BarresDeDefilement'
 
@@ -44,6 +45,8 @@ const WorkbenchDemo = showDemo
 export function App() {
   // Le zoom au geste, à pas fin — sous Tauri seulement, la webview étant ce qui zoome.
   useZoom()
+  // Le menu contextuel du moteur de rendu, remplacé par le silence : nos menus s'ouvrent eux-mêmes.
+  useClicDroitDesactive()
 
   const [connexionOuverte, setConnexionOuverte] = useState(false)
   /**

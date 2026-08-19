@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Sprite } from '../../design/icons/Sprite'
 import type { CreateProjectRequest, Project, SaveDatabaseRequest } from '../../domain/config'
+import { choisirDansLaListe } from '../../ui/Select/pourLesTests'
 import { emptyDraft } from './ConnectionDraft'
 import { draftToSaveRequest } from './enregistrerLaBase'
 import { NewConnection } from './NewConnection'
@@ -198,10 +199,7 @@ test('pendant l’enregistrement, le bouton ne se reclique pas', async () => {
 
 /** Choisit « + Nouveau projet… » et saisit un nom. */
 async function creerLeProjet(utilisateur: ReturnType<typeof userEvent.setup>, nom: string) {
-  await utilisateur.selectOptions(
-    screen.getByRole('combobox', { name: 'Projet' }),
-    screen.getByRole('option', { name: '+ Nouveau projet…' }),
-  )
+  await choisirDansLaListe('Projet', '+ Nouveau projet…')
   await utilisateur.type(screen.getByLabelText('Nom du nouveau projet'), nom)
 }
 
@@ -250,10 +248,7 @@ test('le nom du projet est rogné avant d’être envoyé', async () => {
 test('sans nom saisi, l’enregistrement est bloqué et rien n’est envoyé', async () => {
   const utilisateur = userEvent.setup()
   const espion = monter()
-  await utilisateur.selectOptions(
-    screen.getByRole('combobox', { name: 'Projet' }),
-    screen.getByRole('option', { name: '+ Nouveau projet…' }),
-  )
+  await choisirDansLaListe('Projet', '+ Nouveau projet…')
 
   // L'écran a l'information sous la main : l'envoyer pour se faire refuser coûterait un
   // aller-retour et un message venu du cœur là où le formulaire sait déjà.

@@ -20,12 +20,26 @@ test.beforeEach(async ({ page }) => {
 /** Le rectangle d'un champ, désigné par son étiquette. */
 async function boite(page: import('@playwright/test').Page, etiquette: string) {
   return page.evaluate((nom) => {
-    const labels = [...document.querySelectorAll('label')]
-    const cible = labels.find((l) => l.textContent?.trim() === nom)
-    const champ = cible?.htmlFor ? document.getElementById(cible.htmlFor) : null
+    // **Deux façons d'être étiqueté, depuis que les listes ne sont plus natives.** Un `<input>` garde
+    // son `<label for>` ; une liste déroulante maison n'est pas un contrôle de formulaire, son
+    // étiquette est un `<span>` qu'elle désigne par `aria-labelledby`. Chercher les `<label>` seuls
+    // rendait `undefined` sur « Projet » et « Mode SSL », et trois mesures de grille avec.
+    const etiquettes = [...document.querySelectorAll('label, span[id]')]
+    const cible = etiquettes.find((l) => l.textContent?.trim() === nom)
+    const champ =
+      cible instanceof HTMLLabelElement && cible.htmlFor
+        ? document.getElementById(cible.htmlFor)
+        : cible
+          ? document.querySelector(`[aria-labelledby="${cible.id}"]`)
+          : null
     // Le champ à suffixe est enveloppé : c'est l'enveloppe qui porte la bordure, donc la
     // boîte visible.
-    const visible = champ?.parentElement?.className.includes('wrap') ? champ.parentElement : champ
+    // L'enveloppe porte la bordure, donc la boîte visible. Pour une liste, le champ est le `button`
+    // à l'intérieur de cette enveloppe, et la racine de `ListeDeroulante` s'interpose : on remonte
+    // jusqu'à celle qui porte `wrap`.
+    const visible =
+      champ?.closest('[class*="wrap"]') ??
+      (champ?.parentElement?.className.includes('wrap') ? champ.parentElement : champ)
     if (!visible) return null
     const r = visible.getBoundingClientRect()
     return {
@@ -111,11 +125,14 @@ test('le select occupe toute la hauteur de sa boîte, donc tout le champ est cli
   page,
 }) => {
   const mesures = await page.evaluate(() => {
-    const select = document.querySelector('select')
-    const enveloppe = select?.parentElement
-    if (!select || !enveloppe) return null
+    // **`[role=combobox]` et non `select`** : le natif est parti (aucun composant natif visible dans
+    // ce produit). Le défaut que ce test garde, lui, n'a pas changé de nature — un champ qui ne
+    // remplit pas sa boîte laisse du remplissage inerte au clic.
+    const champ = document.querySelector('[role=combobox]')
+    const enveloppe = champ?.closest('[class*="wrap"]')
+    if (!champ || !enveloppe) return null
     return {
-      select: Math.round(select.getBoundingClientRect().height),
+      select: Math.round(champ.getBoundingClientRect().height),
       boite: Math.round(enveloppe.getBoundingClientRect().height),
     }
   })
@@ -240,7 +257,9 @@ test('les champs du panneau font 28 px, contre 30 pour le formulaire', async ({ 
       champs: [...panneau.querySelectorAll('input')].map((i) =>
         hauteur(i.parentElement?.className.includes('wrap') ? i.parentElement : i),
       ),
-      select: hauteur(panneau.querySelector('select')?.parentElement ?? null),
+      // La boîte visible de la liste : son enveloppe `wrap`, qui porte la bordure. `[role=combobox]`
+      // et non `select` — plus de composant natif dans ce produit.
+      select: hauteur(panneau.querySelector('[role=combobox]')?.closest('[class*="wrap"]') ?? null),
       portLocal: hauteur(panneau.querySelector('output')),
     }
   })

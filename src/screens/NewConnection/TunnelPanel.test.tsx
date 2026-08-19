@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Sprite } from '../../design/icons/Sprite'
+import { optionsDeLaListe } from '../../ui/Select/pourLesTests'
 import { NewConnection } from './NewConnection'
 
 function monter(onBrowseKey?: () => Promise<string | null>) {
@@ -50,12 +51,9 @@ test('déplié, les cinq champs du handoff sont là', async () => {
 test('le sélecteur de type ne propose que SSH', async () => {
   monter()
   await deplier()
-  const options = screen
-    .getByRole('combobox', { name: 'Type' })
-    .querySelectorAll<HTMLOptionElement>('option')
   // `05a` modélise `TunnelKind` en énumération d'un seul membre, et le mockup ne montre que
   // « SSH ». Le champ est rendu quand même : le mockup le montre, et un second type viendra.
-  expect([...options].map((o) => o.value)).toEqual(['ssh'])
+  expect(await optionsDeLaListe('Type')).toEqual(['SSH'])
 })
 
 test('le port du bastion est prérempli à 22, celui de la base à 5432', async () => {

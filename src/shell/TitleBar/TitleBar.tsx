@@ -29,6 +29,15 @@ type TitleBarProps = {
    */
   center?: ReactNode
   /**
+   * Ce qui se pose **à droite**, avant les icônes d'action : le sélecteur d'environnement (`A4` → `A9`).
+   *
+   * Il était dans `center`, collé à la pastille projet, comme le mockup le montre. Aligné à droite, il
+   * cesse de se déplacer avec la longueur du fil d'Ariane — un sélecteur qui bouge quand on change de
+   * schéma est un sélecteur qu'on cherche. Demandé à l'écran le 19 août 2026 ; écart au handoff
+   * assumé.
+   */
+  right?: ReactNode
+  /**
    * Ouvre les préférences (`15a`). Absent, l'engrenage reste **désactivé avec sa raison** — la règle
    * de `09f` : un bouton cliquable et inerte se lit comme une panne (défaut n° 36).
    */
@@ -53,6 +62,7 @@ export function TitleBar({
   showConsole = false,
   dimmed = false,
   center,
+  right,
   onOpenPreferences,
 }: TitleBarProps) {
   return (
@@ -68,6 +78,7 @@ export function TitleBar({
           collerait au logo et se déplacerait avec la longueur du fil d'Ariane. */}
       <div className={styles.center}>{center}</div>
       <div className={styles.actions}>
+        {right}
         {showConsole && (
           <button type="button" className={styles.action} aria-label="Console">
             <Icon name="term" size={15} strokeWidth={1.8} />
