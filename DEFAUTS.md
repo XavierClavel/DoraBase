@@ -783,6 +783,16 @@ autre chose que ce qu'elle prétendait.
    surligné son texte : le défaut du 11 août, revenu par une autre porte. **Le commentaire qui
    justifiait la suppression est ce qui a permis de la refaire correctement** — il nommait la condition
    qui a cessé d'être vraie.
+87. **Un comptage exact sur une table qu'un autre test écrit — et l'échec n'est apparu qu'en CI.** Le
+   test qui vérifie que MyISAM tient un compte exact affirmait deux lignes dans `journal_myisam`. Or le
+   test du refus d'écriture y **pose sa propre ligne**, précisément parce que le n° 62 lui avait appris à
+   ne pas dépendre du décor. Les deux tournant en parallèle, le comptage voyait trois lignes une fois
+   sur deux : vert en local, rouge en CI, `left: Exact { value: 3 }`.
+   Nettoyer après l'écriture **n'y suffirait pas** — la course resterait ouverte entre l'insertion et la
+   suppression. Le décor porte donc une seconde table MyISAM que personne n'écrit. **Une assertion de
+   comptage exact ne peut porter que sur une table qu'aucun autre test ne touche** : c'est la leçon du
+   n° 55, où un compteur du serveur mesurait vingt-trois lectures voisines, appliquée cette fois à une
+   ligne posée par un test voisin. Corriger un défaut de rejouabilité peut en créer un de concurrence.
 
 **Ce que ces défauts disent du décor de test.** Presque aucun n'était un défaut de logique : ils
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros

@@ -21,6 +21,7 @@ drop table if exists listes_attente;
 drop table if exists seances;
 drop table if exists ateliers;
 drop table if exists journal_myisam;
+drop table if exists compteur_myisam;
 
 create table ateliers (
   id bigint unsigned not null auto_increment primary key,
@@ -65,6 +66,20 @@ create table journal_myisam (
   message varchar(200)
 ) engine = MyISAM;
 
+-- **Une seconde table MyISAM, que personne n'écrit.** Le test du comptage exact affirmait deux lignes
+-- dans `journal_myisam` ; or le test du refus d'écriture y **pose sa propre ligne** — c'est ce que le
+-- défaut n° 62 lui avait appris. Les deux tournant en parallèle, le comptage voyait trois lignes une
+-- fois sur deux, et l'échec est apparu en CI seulement (défaut n° 87).
+--
+-- Nettoyer après l'écriture n'y suffirait pas : la course resterait ouverte entre l'insertion et la
+-- suppression. **Une assertion de comptage exact ne peut porter que sur une table qu'aucun autre test
+-- ne touche** — la même leçon que le n° 55, où un compteur du serveur mesurait vingt-trois lectures
+-- voisines.
+create table compteur_myisam (
+  id int not null auto_increment primary key,
+  etiquette varchar(60)
+) engine = MyISAM;
+
 create view seances_ouvertes as
   select s.id, s.intitule, a.nom as atelier
   from seances s join ateliers a on a.id = s.atelier_id
@@ -89,5 +104,7 @@ insert into seances (atelier_id, intitule, places, tarif, metadonnees, empreinte
   (3, 'Pointe sèche', 4, 61.20, null, null, '2026-03-09 17:20:00');
 
 insert into journal_myisam (message) values ('démarrage'), ('arrêt');
+
+insert into compteur_myisam (etiquette) values ('un'), ('deux');
 
 analyze table ateliers, seances, listes_attente;
