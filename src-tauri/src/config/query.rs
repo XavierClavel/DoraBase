@@ -1,7 +1,7 @@
 //! Fonctions pures sur le modèle de configuration : résoudre, filtrer, valider.
 //! Aucune I/O, aucun état — tout est testable sans système de fichiers.
 
-use super::model::{Database, EnvironmentId, ConnectionSettings, ModelError, Project};
+use super::model::{ConnectionSettings, Database, EnvironmentId, ModelError, Project};
 
 /// Les réglages de `database`, si elle appartient à l'environnement actif de `project`.
 ///

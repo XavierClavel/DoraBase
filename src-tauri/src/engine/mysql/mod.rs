@@ -448,7 +448,7 @@ fn categorie_du_protocole(type_colonne: mysql_async::consts::ColumnType) -> Type
 #[cfg(all(test, feature = "db-tests"))]
 mod tests_db {
     use super::*;
-    use crate::config::{EnvironmentId, SslMode};
+    use crate::config::SslMode;
     use crate::engine::{Filter, FilterOperator, Identity, KeyKind, ObjectKind, PendingUpdate};
 
     /// La base du décor (`scripts/schema-test-mysql.sql`). **Noms inventés** — voir `AGENTS.md`.
@@ -464,7 +464,6 @@ mod tests_db {
         let (hote_port, base) = hote_base.split_once('/').expect("/ attendu");
         let (hote, port) = hote_port.split_once(':').expect("hôte:port attendu");
         ConnectionSettings {
-            environment: EnvironmentId::brut("dev"),
             host: hote.to_owned(),
             port: port.parse().expect("port"),
             default_database: base.to_owned(),

@@ -42,11 +42,15 @@ pub enum Engine {
 /// coûte une ligne et rend la confusion impossible — même raison que `SecretRef`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[ts(export_to = "config.ts")]
-// `#[ts(type = "string")]` en plus de `#[serde(transparent)]` : `ts-rs` ne comprend pas cet attribut
-// de `serde` et projetterait la structure au lieu de la chaîne qu'elle transporte. Sans lui, le front
-// recevrait un `{ 0: string }` là où le JSON porte `"dev"` — une dérive que seul l'écran verrait.
+// `#[ts(type = "string")]` : `ts-rs` projetterait la structure au lieu de la chaîne qu'elle
+// transporte, et le front recevrait un `{ 0: string }` là où le JSON porte `"dev"` — une dérive que
+// seul l'écran verrait.
+//
+// **Pas de `#[serde(transparent)]`, et c'est une correction.** Il y était, et il était superflu :
+// `serde` traite déjà un newtype comme sa valeur interne. Son seul effet observable était un
+// avertissement à chaque compilation — « ts-rs failed to parse this attribute » — imprimé jusque dans
+// la sortie de `tauri dev`. Un attribut sans effet qui fait du bruit est un attribut à retirer.
 #[ts(type = "string")]
-#[serde(transparent)]
 pub struct EnvironmentId(String);
 
 impl EnvironmentId {
@@ -267,9 +271,7 @@ pub enum ModelError {
     },
     /// Un projet sans environnement ne peut plus rien déclarer : une connexion appartient à un
     /// environnement (`23b`).
-    AucunEnvironnement {
-        project: String,
-    },
+    AucunEnvironnement { project: String },
     /// L'environnement actif doit exister, sans quoi l'arbre serait vide sans dire pourquoi.
     ActifInconnu {
         project: String,
@@ -668,7 +670,10 @@ mod tests {
             EnvironmentId::depuis_le_libelle("Pré-production").as_str(),
             "pr-production"
         );
-        assert_eq!(EnvironmentId::depuis_le_libelle("Bac à sable").as_str(), "bac-sable");
+        assert_eq!(
+            EnvironmentId::depuis_le_libelle("Bac à sable").as_str(),
+            "bac-sable"
+        );
     }
 
     #[test]
@@ -741,7 +746,10 @@ mod tests {
         // Le modèle même de `23b` : `analytics` en dev et en prod sont deux connexions.
         let candidat = projet(
             EnvironmentDeclaration::trio_par_defaut(),
-            vec![connexion("analytics", "dev"), connexion("analytics", "prod")],
+            vec![
+                connexion("analytics", "dev"),
+                connexion("analytics", "prod"),
+            ],
         );
         assert!(candidat.valider().is_ok());
     }
@@ -797,6 +805,8 @@ mod tests {
             .environnement(&EnvironmentId::brut("prod"))
             .expect("le trio déclare prod");
         assert!(prod.production);
-        assert!(candidat.environnement(&EnvironmentId::brut("preprod")).is_none());
+        assert!(candidat
+            .environnement(&EnvironmentId::brut("preprod"))
+            .is_none());
     }
 }

@@ -17,9 +17,8 @@
 
 use dorabase_lib::config::{
     ConfigLoad, CreateProjectRequest, DeleteDatabaseRequest, DeleteProjectRequest, DeleteResult,
-    SetActiveEnvironmentRequest,
     Project, RenameProjectRequest, RenameProjectResult, SaveDatabaseRequest, SavedQuery,
-    SavedQueryRequest, UpdateVariantRequest,
+    SavedQueryRequest, SetActiveEnvironmentRequest, UpdateVariantRequest,
 };
 use dorabase_lib::engine::commands::{
     ConnectionRequest, ConnectionStateEntry, ConnectionTest, DatabaseKey,

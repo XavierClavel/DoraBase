@@ -271,7 +271,7 @@ mod tests {
 #[cfg(all(test, feature = "db-tests"))]
 mod tests_db {
     use super::*;
-    use crate::config::{SslMode};
+    use crate::config::SslMode;
 
     fn variante() -> ConnectionSettings {
         let url = std::env::var("DORABASE_TEST_PG")

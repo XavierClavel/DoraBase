@@ -141,7 +141,7 @@ async fn tester(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{SslMode};
+    use crate::config::SslMode;
 
     fn variante() -> ConnectionSettings {
         ConnectionSettings {

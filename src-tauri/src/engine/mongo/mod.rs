@@ -622,7 +622,7 @@ fn argument_document(operation: &commande::Operation, rang: usize) -> Option<Doc
 #[cfg(all(test, feature = "db-tests"))]
 mod tests_db {
     use super::*;
-    use crate::config::{EnvironmentId, SslMode};
+    use crate::config::SslMode;
 
     /// La base du décor (`scripts/schema-test-mongo.js`). **Noms inventés** — voir `AGENTS.md`.
     const BASE: &str = "atelier_ventes";
@@ -633,7 +633,6 @@ mod tests_db {
         let hote_port = url.trim_start_matches("mongodb://");
         let (hote, port) = hote_port.split_once(':').expect("hôte:port attendu");
         ConnectionSettings {
-            environment: EnvironmentId::brut("dev"),
             host: hote.to_owned(),
             port: port.trim_end_matches('/').parse().expect("port"),
             default_database: BASE.to_owned(),

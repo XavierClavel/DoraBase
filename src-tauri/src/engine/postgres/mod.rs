@@ -510,7 +510,7 @@ mod tests {
 #[cfg(all(test, feature = "db-tests"))]
 mod tests_db {
     use super::*;
-    use crate::config::{EnvironmentId, SslMode};
+    use crate::config::SslMode;
 
     /// L'adresse de la base de test, **jamais codée en dur** : le port diffère entre le
     /// conteneur local (55432, choisi pour ne croiser aucun autre projet de la machine) et
@@ -532,7 +532,6 @@ mod tests_db {
             .expect("un hôte TCP");
 
         let variante = ConnectionSettings {
-            environment: EnvironmentId::brut("dev"),
             host: hote,
             port: *analysee.get_ports().first().expect("un port"),
             default_database: analysee.get_dbname().expect("une base").to_owned(),
