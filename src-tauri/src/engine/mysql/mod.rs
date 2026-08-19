@@ -558,8 +558,15 @@ mod tests_db {
 
         // **MyISAM tient le compte exact.** Le distinguer n'est pas de la coquetterie : c'est la
         // différence entre une valeur sur laquelle on décide et une valeur qu'on regarde.
-        let journal = objets.iter().find(|o| o.name == "journal_myisam").unwrap();
-        assert_eq!(journal.rows, RowCount::Exact { value: 2 });
+        //
+        // **Sur `compteur_myisam`, et non `journal_myisam`.** Ce test affirmait deux lignes dans le
+        // journal ; or le test du refus d'écriture y pose sa propre ligne — ce que le défaut n° 62 lui
+        // avait appris. Les deux tournant en parallèle, ce comptage voyait trois lignes une fois sur
+        // deux, et l'échec n'est apparu qu'en CI. Nettoyer après l'écriture ne suffirait pas : la
+        // course resterait ouverte entre l'insertion et la suppression. Une assertion de comptage
+        // exact ne peut porter que sur une table qu'aucun autre test ne touche.
+        let compteur = objets.iter().find(|o| o.name == "compteur_myisam").unwrap();
+        assert_eq!(compteur.rows, RowCount::Exact { value: 2 });
     }
 
     #[tokio::test]
