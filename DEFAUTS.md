@@ -877,6 +877,16 @@ autre chose que ce qu'elle prétendait.
    est celle de la propriété (« le contenu porte son propre remplissage et ne touche pas les bords »),
    pas celle d'une coïncidence de deux valeurs.
 
+99. **`Acquire::http::Timeout` n'empêche pas `apt-get` de pendre.** Posé le matin du 19 août pour
+   corriger le n° 77, il n'a rien empêché le soir : le job `engine` est resté **vingt-cinq minutes** dans
+   `apt-get update`, après avoir récupéré ses fichiers `InRelease`. Ce réglage borne chaque *étape* d'une
+   connexion, pas la durée totale — un miroir qui répond puis distille les octets ne le déclenche jamais.
+   Seule la borne `timeout-minutes` du job a rendu la main, ce qui prouve au moins qu'elle servait. Le
+   remède qui tient est **`timeout(1)` autour de l'appel**, parce qu'il ne dépend pas de la bonne volonté
+   du serveur ; s'y ajoutent l'écartement du miroir Azure, que les lignes `Ign:` du log désignent, et
+   trois tentatives. **Un correctif qu'on n'a pas vu échouer n'est pas un correctif vérifié** : celui du
+   matin était plausible, documenté, et faux.
+
 **Ce que ces défauts disent du décor de test.** Presque aucun n'était un défaut de logique : ils
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros
 d'attribut qui coïncident, grille plus étroite que son cadre, `bigserial` partout. Une suite verte
