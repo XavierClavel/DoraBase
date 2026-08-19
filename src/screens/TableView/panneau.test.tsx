@@ -147,6 +147,45 @@ describe('panneau de ligne', () => {
     expect(bloc?.textContent).toContain('"status": "paid"')
   })
 
+  it('le bouton copie le JSON de la ligne, reparsable et complet', async () => {
+    const utilisateur = userEvent.setup()
+    const columnsAttendues = COLONNES.length
+    // Le paramètre est typé : sans lui, `mock.calls[0]` est un tuple vide et l'accès à `[0]` ne
+    // compile pas — `pnpm typecheck` l'a dit, `pnpm vitest` non (défaut n° 50).
+    const writeText = vi.fn(async (_texte: string) => {})
+    // `navigator.clipboard` n'a qu'un accesseur sous jsdom : `Object.assign` échoue, il faut
+    // redéfinir la propriété.
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    monter()
+
+    await utilisateur.click(screen.getByRole('tab', { name: 'JSON' }))
+    await utilisateur.click(screen.getByRole('button', { name: 'Copier le JSON de la ligne' }))
+
+    const copie = writeText.mock.calls[0]?.[0] ?? ''
+    // Le JSON copié se reparse, avec les types de la ligne : c'est la propriété qui compte pour un
+    // texte destiné à être recollé ailleurs.
+    expect(JSON.parse(copie)).toMatchObject({ id: 184220, status: 'paid' })
+    // Et l'objet est **entier** — les huit colonnes, pas celles qui tiennent à l'écran.
+    expect(Object.keys(JSON.parse(copie))).toHaveLength(columnsAttendues)
+
+    // **Ce que ce test ne prouve pas.** Le bouton copie le texte source plutôt que le rendu de
+    // `JsonColore` — un choix, puisque le rendu est découpé en `<span>` pour la coloration. Mais un
+    // sabotage qui copie `textContent` du bloc affiché **passe** : `textContent` recolle les fragments
+    // à l'identique. La distinction n'est donc pas observable ici, et prétendre le contraire dans un
+    // commentaire de test serait une garantie inventée.
+  })
+
+  it('le bouton de copie n’apparaît pas sur les autres onglets', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    // Sur Champs, il n'y a pas de JSON à copier — et un bouton qui copierait « la ligne » depuis un
+    // onglet qui ne la montre pas en JSON serait une promesse sur un format invisible.
+    expect(screen.queryByRole('button', { name: 'Copier le JSON de la ligne' })).toBeNull()
+
+    await utilisateur.click(screen.getByRole('tab', { name: 'Liens' }))
+    expect(screen.queryByRole('button', { name: 'Copier le JSON de la ligne' })).toBeNull()
+  })
+
   it('l’onglet Liens rend les relations de la table', async () => {
     const utilisateur = userEvent.setup()
     monter()

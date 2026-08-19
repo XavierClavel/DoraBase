@@ -90,3 +90,37 @@ test('les trois onglets rendent trois contenus distincts', async ({ page }) => {
   await expect(panneau.getByText('user_id → users.id')).toBeVisible()
   await expect(panneau.locator('pre')).toHaveCount(0)
 })
+
+test('le bouton de copie du JSON ne recouvre ni le texte ni la barre de défilement', async ({
+  page,
+}) => {
+  await page.getByRole('tab', { name: 'JSON' }).click()
+  const bouton = page.getByRole('button', { name: 'Copier le JSON de la ligne' })
+  await expect(bouton).toBeVisible()
+
+  const mesures = await page.evaluate(() => {
+    const bouton = [...document.querySelectorAll('button')].find(
+      (b) => b.getAttribute('aria-label') === 'Copier le JSON de la ligne',
+    )
+    const bloc = document.querySelector('[aria-label="Détail de la ligne 1"] pre')
+    if (!bouton || !bloc) return null
+    const boite = bouton.getBoundingClientRect()
+    const dessus = document.elementFromPoint(boite.x + boite.width / 2, boite.y + boite.height / 2)
+    return {
+      // **Le point, pas le rectangle.** Un bouton posé sur du texte peut avoir les bonnes coordonnées
+      // et se retrouver *sous* le bloc : c'est la leçon de la gouttière de `11b`, où une mesure de
+      // position validait un élément inatteignable.
+      cliquable: bouton.contains(dessus) || dessus === bouton,
+      // Il reste à l'intérieur du panneau, et à l'écart du bord droit où se posent les curseurs de
+      // défilement — huit pixels, sinon c'est le curseur qu'on attrape en visant le bouton.
+      ecartDuBordDroit: Math.round(bloc.getBoundingClientRect().right - boite.right),
+      opaque: getComputedStyle(bouton).backgroundColor,
+    }
+  })
+
+  expect(mesures?.cliquable).toBe(true)
+  expect(mesures?.ecartDuBordDroit).toBeGreaterThanOrEqual(8)
+  // Opaque : posé **sur** du texte, un fond translucide laisse lire des accolades au travers de
+  // l'icône.
+  expect(mesures?.opaque).not.toBe('rgba(0, 0, 0, 0)')
+})

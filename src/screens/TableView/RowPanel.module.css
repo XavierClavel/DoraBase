@@ -250,3 +250,45 @@
   font-size: var(--text-dense);
   color: var(--ink-2);
 }
+
+/*
+ * La vue JSON, et son bouton de copie.
+ *
+ * `position: relative` sur l'enveloppe, `absolute` sur le bouton : le JSON défile sous lui, le bouton
+ * ne défile pas. L'alternative — une barre au-dessus du JSON — prendrait 34 px des 296 px de la
+ * colonne pour un seul mot, et le mockup n'en montre pas.
+ */
+.json {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.copierJson {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  top: var(--space-4);
+  /* Décalé de la gouttière : les barres de défilement du produit se posent à 8 px du bord droit de
+   * leur conteneur, et un bouton dessous serait attrapé à leur place. */
+  right: var(--space-6);
+  z-index: 1;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control-2);
+  /* Opaque, et non transparent : le bouton est posé **sur** du texte, et un fond translucide laisse
+   * lire des accolades au travers d'une icône. */
+  background: var(--field);
+  color: var(--ink-6);
+  cursor: pointer;
+}
+
+.copierJson:hover {
+  border-color: var(--hover-border);
+  background: var(--hover-bg);
+  color: var(--ink);
+}

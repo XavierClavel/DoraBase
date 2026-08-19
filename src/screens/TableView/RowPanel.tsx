@@ -116,7 +116,24 @@ export function RowPanel({
           </dl>
         )}
 
-        {onglet === 'json' && <JsonColore texte={jsonDe(columns, ligne)} />}
+        {onglet === 'json' && (
+          <div className={styles.json}>
+            {/* **Une icône seule, posée sur le JSON.** Le bouton du DDL porte son libellé « Copier »
+                dans une barre qui lui est propre ; ici il n'y a pas de barre — le JSON occupe tout
+                l'onglet — et en ajouter une prendrait 34 px des 296 de la colonne pour un mot. Le nom
+                accessible, lui, est complet : une icône ne s'annonce pas. */}
+            <button
+              type="button"
+              className={styles.copierJson}
+              aria-label="Copier le JSON de la ligne"
+              title="Copier le JSON de la ligne"
+              onClick={() => void navigator.clipboard?.writeText(jsonDe(columns, ligne))}
+            >
+              <Icon name="copy" size={12} strokeWidth={2.2} />
+            </button>
+            <JsonColore texte={jsonDe(columns, ligne)} />
+          </div>
+        )}
 
         {onglet === 'liens' &&
           (relations.length === 0 ? (
