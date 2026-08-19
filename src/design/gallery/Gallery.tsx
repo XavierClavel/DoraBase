@@ -28,6 +28,7 @@ import { SidebarFilterBar } from '../../ui/SidebarFilterBar/SidebarFilterBar'
 import { SidebarSectionTitle } from '../../ui/SidebarSectionTitle/SidebarSectionTitle'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
 import { StatTile } from '../../ui/StatTile/StatTile'
+import { Stepper } from '../../ui/Stepper/Stepper'
 import { type Tab, TabStrip } from '../../ui/TabStrip/TabStrip'
 import { Toggle } from '../../ui/Toggle/Toggle'
 import { TreeRow } from '../../ui/TreeRow/TreeRow'
@@ -1774,6 +1775,52 @@ const DETAIL_DEMO = {
   ddl: '',
 }
 
+/**
+ * Le stepper de `24b`.
+ *
+ * **Vérifiable ici avant que le parcours existe** : la bande est une primitive, et l'agent UI l'avait
+ * noté — elle peut expédier séparément de l'écran qui l'emploiera.
+ */
+function StepperGallery() {
+  return (
+    <Section title="Stepper informatif (24b)">
+      <Note>
+        Le handoff **ne maquette aucun stepper**. Celui-ci reprend la grammaire de bande du produit —
+        `--h-bar` de contenu, fond `--bar`, filet bas `--divider`, comme `TabStrip` — pour qu’il se lise
+        comme une rubrique de la modale plutôt que comme un objet venu d’ailleurs.
+      </Note>
+      <Note>
+        **Rien n’y est cliquable, et il n’en a pas l’air.** Ni bouton, ni curseur de pointeur, ni
+        survol, ni tabulation, ni `role="tablist"` — ce dernier *promettrait* la navigation aux flèches
+        (leçon du défaut n° 52). Passez la souris dessus : rien ne réagit, et c’est le message.
+      </Note>
+      <Sub title="Étape 1 en cours">
+        <div data-testid="stepper-un" style={{ width: 520 }}>
+          <Stepper etapes={[{ libelle: 'PROJET' }, { libelle: 'CONNEXION' }]} courante={0} />
+        </div>
+      </Sub>
+      <Sub title="Étape 1 faite, étape 2 en cours">
+        <div data-testid="stepper-deux" style={{ width: 520 }}>
+          <Stepper etapes={[{ libelle: 'PROJET' }, { libelle: 'CONNEXION' }]} courante={1} />
+        </div>
+      </Sub>
+      <Sub title="Quatre étapes — la bande ne se disperse pas">
+        <div style={{ width: 820 }}>
+          <Stepper
+            etapes={[
+              { libelle: 'PROJET' },
+              { libelle: 'CONNEXION' },
+              { libelle: 'SCHÉMA' },
+              { libelle: 'FIN' },
+            ]}
+            courante={2}
+          />
+        </div>
+      </Sub>
+    </Section>
+  )
+}
+
 function DetailPanelGallery() {
   const [epingle, setEpingle] = useState(false)
 
@@ -1833,6 +1880,7 @@ export function Gallery() {
       <CentreGallery />
       <VirtualGridGallery />
       <PopoverGallery />
+      <StepperGallery />
       <DetailPanelGallery />
       <DotGallery />
       <SplitPaneGallery />

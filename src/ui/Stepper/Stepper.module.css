@@ -1,0 +1,122 @@
+/*
+ * La bande de progression (`24b`).
+ *
+ * # Pourquoi elle a la forme d'une bande
+ *
+ * Le handoff ne maquette **aucun** stepper. Plutôt qu'en inventer la forme, celle-ci reprend la
+ * grammaire de bande que le produit possède déjà — `TabStrip` : `--h-bar` de contenu, fond `--bar`,
+ * filet bas `--divider`, `content-box` donc 35 px rendus. Elle se lit ainsi comme une rubrique de la
+ * modale, du même ordre que le « MOTEUR » de `A2`.
+ *
+ * **Aucun `overflow` déclaré, et c'est délibéré.** Le pixel du filet en `content-box` deviendrait
+ * sinon une barre de défilement fantôme : c'est exactement le défaut n° 69, où `overflow-x: auto` sur
+ * une enveloppe de bande a fait rendre une barre verticale pour un pixel de trop.
+ */
+
+.root {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  box-sizing: content-box;
+  height: var(--h-bar);
+  margin: 0;
+  padding: 0 var(--space-8);
+  border-bottom: 1px solid var(--divider);
+  background: var(--bar);
+  list-style: none;
+}
+
+.etape {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  /* **Rien de ce qui suit n'est un oubli.** Pas de `cursor: pointer`, pas de `:hover`, pas de
+   * `:focus-visible` : ce sont les marques que ce produit pose sur ce qui se clique, et leur absence
+   * est ce qui dit que la bande est informative. Voir la note du composant. */
+}
+
+/* Le trait de liaison. Un pseudo-élément, non un `<span>` : rien de décoratif ne doit entrer dans la
+ * liste que les voix parcourent. */
+.etape:not(:last-child)::after {
+  content: "";
+  width: var(--space-8);
+  height: 1px;
+  margin-left: var(--space-4);
+  background: var(--border);
+}
+
+/*
+ * La pastille.
+ *
+ * 22 px de côté, rayon `--radius-control` : le couple de `Badge lg`. La pastille d'en-tête de `Modal`
+ * est un carré de 24 au rayon 8 — la valeur retenue est entre les deux, et c'est le seul emprunt de
+ * forme de ce dessin.
+ */
+.pastille {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-control);
+  background: var(--muted);
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-size: var(--text-caps);
+  font-weight: var(--weight-black);
+}
+
+/* « En cours » emploie littéralement le vocabulaire de `RadioGroup` actif et de `Chip` sélectionné —
+ * fond accent, encre blanche, ombre d'accent. C'est ainsi que ce produit dit « ceci est actif ». */
+.enCours .pastille {
+  background: var(--accent);
+  color: var(--ink-on-accent);
+  box-shadow: var(--shadow-accent-2);
+}
+
+/* « Faite » emploie celui de `Badge` succès et de la ligne de succès du pied de `A2`. */
+.faite .pastille {
+  background: var(--success-bg);
+  color: var(--success-ink);
+}
+
+/*
+ * Le libellé : exactement le `.blockTitle` de `A2` — le « MOTEUR ».
+ *
+ * **C'est le choix des capitales qui fait le travail sémantique.** Dans ce produit, un texte en
+ * capitales espacées n'est jamais un contrôle : c'est une rubrique. « MOTEUR » ne se clique pas ;
+ * « PROJET » ne se cliquera pas non plus.
+ */
+.libelle {
+  font-family: var(--font-ui);
+  font-size: var(--text-caps);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.enCours .libelle {
+  color: var(--ink);
+}
+
+.faite .libelle {
+  color: var(--ink-2);
+}
+
+/*
+ * La phrase que la couleur ne dit pas.
+ *
+ * `clip-path` plutôt que `display: none` : celui-ci la retirerait de l'arbre d'accessibilité, donc du
+ * seul endroit où elle sert. Même dispositif que la légende de `RadioGroup` et de `SegmentedControl`.
+ */
+.pourLaVoix {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
