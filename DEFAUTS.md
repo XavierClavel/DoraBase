@@ -909,6 +909,35 @@ autre chose que ce qu'elle prétendait.
    danger ; un empêchement est un **état** — `status`, encre secondaire. Les confondre fait passer un
    message pour du décor.
 
+101. **Le nom du commanditaire vivait dans 506 endroits, dont cinq images.** La règle d'`AGENTS.md`
+   interdisait de publier la *structure* d'une base réelle, et elle **autorisait explicitement** les noms
+   venus du handoff — dont le nom du projet du client. C'est cette exception qui a tout laissé passer :
+   décors de test, démo, galerie, identifiant de bundle, service du Trousseau, auteurs du manifeste
+   Cargo, fichier de handoff, et les cinq captures de fidélité, **où le nom était rendu en pixels** et
+   qu'aucun remplacement de texte ne pouvait atteindre. Une règle qui s'énonce avec une exception se
+   souvient de l'exception ; la règle dit maintenant que tous les noms sont inventés, sans exception.
+
+   **Deux enseignements sur la réécriture d'historique** : `--replace-text` de `git filter-repo` ne
+   touche que les **blobs** — quatre messages de commit portaient encore le mot, et il a fallu une
+   seconde passe avec `--replace-message` pour les voir partir. Et une image ne se nettoie pas : les
+   cinq captures ont été **retirées de tous les commits**, puis reposées régénérées. Vérifier après coup
+   ne suffisait pas non plus : `git grep` sur les commits ne lit que les fichiers suivis d'un arbre
+   donné, donc le contrôle a porté sur **tous les objets** du dépôt, un par un.
+102. **Deux actions dans une barre faite pour une.** Le pied de la sidebar portait « Ajouter une
+   connexion » et « Nouveau projet » côte à côte, libellés entiers, dans une colonne de 212 px. Ils
+   revenaient à la ligne — et le retour à la ligne **séparait chaque icône de son texte**, l'icône
+   restant sur la première ligne. Deux actions illisibles là où le handoff n'en dessinait qu'une. Le
+   défaut est celui du n° 68 et du n° 71 : une valeur du handoff reprise dans un contexte où le contenu
+   a changé.
+
+   **Et la mesure écrite pour l'empêcher ne mesurait rien.** Les libellés courts retenus — « Connexion »,
+   « Projet » — tiennent en **un mot**, qu'aucun moteur de rendu ne peut couper : le test passait avec ou
+   sans `nowrap`, sabotage compris. Il fallait **allonger le libellé de force** dans le DOM pour mesurer
+   la mise en page plutôt que la brièveté du texte du jour. C'est la troisième fois de la journée qu'un
+   test vert ne tenait qu'à une coïncidence du décor (n° 97, n° 98) : la question à se poser devant un
+   test qui passe du premier coup n'est pas « est-il juste ? » mais « **qu'est-ce qui le ferait
+   tomber ?** ».
+
 **Ce que ces défauts disent du décor de test.** Presque aucun n'était un défaut de logique : ils
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros
 d'attribut qui coïncident, grille plus étroite que son cadre, `bigserial` partout. Une suite verte
