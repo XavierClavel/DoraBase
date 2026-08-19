@@ -104,6 +104,7 @@
  * `:global` : la classe est appliquée à `document.body`, hors de l'arbre React de ce module.
  */
 :global(body).pendantLeGlissement {
+  -webkit-user-select: none;
   user-select: none;
   /* Le curseur ne doit pas clignoter en passant sur du texte pendant le geste. */
   cursor: col-resize;
@@ -122,6 +123,7 @@
  * pendant le geste, et rend la main dès que la classe tombe.
  */
 :global(body).pendantLeGlissement * {
+  -webkit-user-select: none;
   user-select: none;
   cursor: col-resize;
 }

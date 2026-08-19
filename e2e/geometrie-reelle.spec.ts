@@ -433,7 +433,7 @@ test('les libellés des actions du panneau tiennent dans leur bouton', async ({ 
   expect(debordements).toEqual([])
 })
 
-test('le chrome ne se sélectionne pas, les blocs de données si', async ({ page }) => {
+test('rien ne se sélectionne, sauf ce qui s’édite', async ({ page }) => {
   await ouvrirUneTable(page)
 
   const chrome = await page.evaluate(() =>
@@ -456,9 +456,10 @@ test('le chrome ne se sélectionne pas, les blocs de données si', async ({ page
   // Et le curseur en I disparaît avec : il annonçait une saisie là où il n'y en a pas.
   expect(chrome.filter((mesure) => mesure.curseur === 'text')).toEqual([])
 
-  // **La limite, et elle compte plus que la règle.** Ce produit sert à lire des données : le SQL, le
-  // JSON et le DDL doivent rester sélectionnables à la souris, faute de quoi la seule façon de les
-  // copier serait un bouton — et il n'y en a pas pour tout.
+  // **La limite : ce qui s'édite, et rien d'autre.** Une première version épargnait aussi les blocs de
+  // données — `pre`, `code` — au motif qu'un DDL doit pouvoir se copier à la souris. À l'usage, ces
+  // blocs *sont* l'interface, et la copie ne dépend plus d'eux : chacun a son bouton, et un champ du
+  // panneau se copie au clic droit. Une saisie, elle, ne s'édite pas sans caret.
   await page.getByRole('grid').getByRole('row').nth(2).click()
   await page.getByRole('tab', { name: 'JSON' }).click()
   const donnees = await page.evaluate(() => {
@@ -469,6 +470,17 @@ test('le chrome ne se sélectionne pas, les blocs de données si', async ({ page
       saisie: saisie ? getComputedStyle(saisie).userSelect : null,
     }
   })
-  expect(donnees.bloc).toBe('text')
+  expect(donnees.bloc).toBe('none')
   expect(donnees.saisie).toBe('text')
+
+  // Et un vrai glissement sur un bloc de données ne surligne rien — la propriété, pas la déclaration.
+  const bloc = page.locator('pre').first()
+  const boite = await bloc.boundingBox()
+  if (boite) {
+    await page.mouse.move(boite.x + 8, boite.y + 6)
+    await page.mouse.down()
+    await page.mouse.move(boite.x + boite.width - 8, boite.y + boite.height - 6, { steps: 10 })
+    await page.mouse.up()
+  }
+  expect(await page.evaluate(() => document.getSelection()?.toString() ?? '')).toBe('')
 })
