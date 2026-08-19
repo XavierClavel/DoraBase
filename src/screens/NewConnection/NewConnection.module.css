@@ -358,3 +358,55 @@
   font-weight: var(--weight-semibold);
   color: var(--ink-2);
 }
+
+/*
+ * La ligne « le projet est créé » de l'étape 2 (`24c`).
+ *
+ * Pleine largeur **sous** la rangée de boutons : le pied est en `flex`, et un `flex-basis: 100%` la
+ * fait passer à la ligne sans qu'il faille l'envelopper. En encre secondaire — elle informe, elle
+ * n'instruit pas.
+ */
+.projetCree {
+  flex-basis: 100%;
+  margin: var(--space-3) 0 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-ui);
+  color: var(--ink-meta);
+}
+
+/*
+ * Le constat de projet imposé, à la place du sélecteur (`24c`).
+ *
+ * `28px` de contenu plus les deux filets : **la hauteur du `Select` qu'il remplace**, parce que
+ * l'`align-items: end` de la rangée d'identité est structurel — un constat plus court désalignerait le
+ * nom de la base et les boutons d'environnement.
+ */
+.projetImpose {
+  display: flex;
+  flex-direction: column;
+}
+
+.projetImposeValeur {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  height: calc(var(--h-field) + 2px);
+  padding: 0 var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-control);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+  /* **Aucun curseur de pointeur, aucun survol.** C'est un constat, pas un contrôle : les quatre
+   * marques que ce produit pose sur ce qui se clique sont absentes, et c'est le message. */
+}
+
+.projetIcone {
+  flex: none;
+  color: var(--accent-deep);
+}

@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { StatusBar } from '../../shell/StatusBar/StatusBar'
 import { TitleBar } from '../../shell/TitleBar/TitleBar'
 import { ProjectSidebar } from './ProjectSidebar/ProjectSidebar'
@@ -12,18 +11,13 @@ type WelcomeScreenProps = {
   dimmed?: boolean
 }
 
+/**
+ * `A1`, l'écran des débuts.
+ *
+ * **`⌘N` n'est plus monté ici** (`24d`) : il vivait dans cet écran, donc il ne répondait que sur `A1`.
+ * `useRaccourcisDeCreation` le tient une fois pour l'application entière, avec `⇧⌘N`.
+ */
 export function WelcomeScreen({ onNewProject, projectCount, dimmed = false }: WelcomeScreenProps) {
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.metaKey && event.key.toLowerCase() === 'n') {
-        event.preventDefault()
-        onNewProject()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onNewProject])
-
   return (
     <div className={styles.root}>
       <TitleBar dimmed={dimmed} />

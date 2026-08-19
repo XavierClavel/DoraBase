@@ -48,8 +48,8 @@ et le stepper qui en découle (`24b`). Une seconde modale aurait deux formulaire
 
 ## Done when
 
-- [ ] `A1` et le pied de la sidebar de `A4` offrent « Nouveau projet »
-- [ ] Le pied de la sidebar et le menu de la pastille offrent « Ajouter une connexion »
-- [ ] « Nouvelle connexion » sans projet ouvre l'étape 1, avec sa raison écrite
-- [ ] Aucun libellé ne dit plus « base » là où il s'agit d'une connexion
-- [ ] `⌘N` ouvre « Nouveau projet » sur `A1` **et** sur `A4` ; `⇧⌘N` ouvre « Ajouter une connexion »
+- [x] `A1` et le pied de la sidebar de `A4` offrent « Nouveau projet »
+- [x] Le pied de la sidebar et le menu de la pastille offrent « Ajouter une connexion »
+- [x] « Nouvelle connexion » sans projet ouvre l'étape 1, avec sa raison écrite
+- [x] Aucun libellé ne dit plus « base » là où il s'agit d'une connexion
+- [x] `⌘N` ouvre « Nouveau projet » sur `A1` **et** sur `A4` ; `⇧⌘N` ouvre « Ajouter une connexion »

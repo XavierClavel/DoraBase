@@ -87,7 +87,7 @@ export function ProjectMenu({
               }}
             >
               <Icon name="plus" size={12} strokeWidth={2.2} />
-              Ajouter une base
+              Ajouter une connexion
             </button>
           )}
         </div>

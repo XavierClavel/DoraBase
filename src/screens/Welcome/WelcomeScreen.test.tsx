@@ -11,16 +11,14 @@ test('les deux boutons appellent le même callback', async () => {
   expect(onNewProject).toHaveBeenCalledTimes(2)
 })
 
-test('⌘N appelle le callback', async () => {
+// **Les deux tests de `⌘N` ont déménagé** dans `src/app/useRaccourcisDeCreation.test.tsx` (`24d`), avec
+// le raccourci lui-même : monté dans cet écran, il ne répondait que sur `A1`. Cet écran n'écoute plus
+// le clavier, donc il n'a plus rien à en dire — et un test qui frapperait `⌘N` ici passerait au vert
+// sans que le raccourci existe nulle part.
+test('cet écran n’écoute plus le clavier', async () => {
   const onNewProject = vi.fn()
   render(<WelcomeScreen onNewProject={onNewProject} projectCount={0} />)
   await userEvent.keyboard('{Meta>}n{/Meta}')
-  expect(onNewProject).toHaveBeenCalledOnce()
-})
-
-test('n appelé seul ne déclenche rien', async () => {
-  const onNewProject = vi.fn()
-  render(<WelcomeScreen onNewProject={onNewProject} projectCount={0} />)
   await userEvent.keyboard('n')
   expect(onNewProject).not.toHaveBeenCalled()
 })

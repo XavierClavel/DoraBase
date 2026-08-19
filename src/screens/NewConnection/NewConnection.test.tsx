@@ -84,15 +84,17 @@ test('les six modes SSL du modèle sont proposés', async () => {
   expect(await optionsDeLaListe('Mode SSL')).toEqual([...SSL_MODE_ORDER])
 })
 
-test('sans projet choisi, le trio par défaut est proposé', () => {
-  // **Le trio, parce que le projet n'existe pas encore** (`23d`). `A2` ouvre sur « + Nouveau projet… »
-  // quand aucun projet n'est déclaré : les environnements proposés sont ceux que ce projet recevra à
-  // sa création. Les afficher plutôt que rien suit la règle de `09f`.
+test('sans aucun projet, aucun environnement n’est proposé', () => {
+  // **Ce test disait l'inverse, et il avait raison de son temps** : `A2` ouvrait sur « + Nouveau
+  // projet… », et proposait le trio que ce projet recevrait à sa création. Depuis `24c`, cet écran ne
+  // crée plus de projet : les environnements proposés sont **toujours** ceux d'un projet réellement
+  // déclaré. Sans projet, il n'y a rien à proposer — et `24d` fait en sorte qu'on n'arrive plus ici
+  // dans cet état.
   monter()
   const radios = screen
     .getByRole('group', { name: 'Environnement' })
     .querySelectorAll<HTMLInputElement>('input[type=radio]')
-  expect([...radios].map((r) => r.value)).toEqual(['dev', 'staging', 'prod'])
+  expect([...radios]).toHaveLength(0)
 })
 
 test('les environnements proposés sont **ceux du projet choisi**', async () => {
@@ -123,7 +125,11 @@ test('le formulaire ouvre vide, pas rempli des valeurs du mockup', () => {
 })
 
 test('les valeurs préremplies sont celles qui sont vraies dans presque tous les cas', () => {
-  monter()
+  // **Monté avec un projet, depuis `24c`.** Cet écran déclare une connexion *dans un projet* : sans
+  // projet, il n'a aucun environnement à proposer, et ce test cherchait une radio « dev » qui
+  // n'existait plus. Ce n'est pas le test qui a changé d'intention, c'est l'écran qui a cessé de
+  // savoir créer un projet.
+  monter([{ id: 'print', name: 'Atelier Nord', environments: TRIO_DE_TEST }])
   expect(screen.getByLabelText('Port')).toHaveValue('5432')
   // `dev` et non `prod` : ouvrir sur prod serait une invitation à l'accident.
   expect(screen.getByRole('radio', { name: 'dev' })).toBeChecked()
@@ -177,24 +183,24 @@ test('changer de moteur ne perd pas ce qui a été saisi', async () => {
 
 // --- Projets ---
 
-test('sans aucun projet, la création est proposée d’emblée', () => {
+test('l’enregistrement est bloqué sans aucun projet, et le champ de création n’existe plus', () => {
   monter()
-  // **L'application neuve n'est plus une impasse** (`08f`) : `⌘N` mène ici, et le seul choix
-  // possible est de créer un projet — donc son champ de nom est visible sans rien faire.
-  expect(screen.getByRole('combobox', { name: 'Projet' })).toHaveTextContent(/Nouveau projet/)
-  expect(screen.getByLabelText('Nom du nouveau projet')).toBeInTheDocument()
+  // **`08f` avait fermé cette impasse par le sélecteur ; `24a` la ferme par un écran.** Le champ
+  // « Nom du nouveau projet » n'existe plus ici, et la garde de `08e` revient : sans projet, cet
+  // écran n'a rien où enregistrer. Le cas ne se produit plus dans l'application — `24d` renvoie vers
+  // l'étape 1 — mais un appelant qui l'oublierait verra un refus, non un enregistrement dans le vide.
+  expect(screen.queryByLabelText('Nom du nouveau projet')).toBeNull()
+  expect(screen.getByRole('button', { name: /Enregistrer & ouvrir/ })).toBeDisabled()
 })
 
-test('avec des projets, ils sont proposés, suivis de la création', async () => {
+test('les projets sont proposés, et rien d’autre', async () => {
   monter([
     { id: 'print', name: 'Atelier Nord', environments: TRIO_DE_TEST },
     { id: 'web', name: 'Atelier Sud', environments: TRIO_DE_TEST },
   ])
-  expect(await optionsDeLaListe('Projet')).toEqual([
-    'Atelier Nord',
-    'Atelier Sud',
-    '+ Nouveau projet…',
-  ])
+  // **Plus d'entrée « + Nouveau projet… »** (`24c`) : elle rebouclerait vers l'étape qu'on vient de
+  // quitter, et la création a son propre écran.
+  expect(await optionsDeLaListe('Projet')).toEqual(['Atelier Nord', 'Atelier Sud'])
   // Le champ n'apparaît **que** sous la création : le rendre toujours, désactivé, ferait croire
   // qu'on peut renommer le projet choisi.
   expect(screen.queryByLabelText('Nom du nouveau projet')).not.toBeInTheDocument()
@@ -262,15 +268,15 @@ test('le focus entre sur le premier champ, pas sur la croix', () => {
 })
 
 test('tout le formulaire est atteignable au clavier', async () => {
-  monter()
+  monter([{ id: 'print', name: 'Atelier Nord', environments: TRIO_DE_TEST }])
   const attendus = [
     'PostgreSQL', // groupe de moteurs : une seule entrée
     'Nom de la base',
     'Projet',
     'dev', // groupe d'environnements : une seule entrée
-    // Sans aucun projet, `08f` propose sa création d'emblée : le champ est sur sa propre rangée,
-    // entre la rangée d'identité et l'hôte.
-    'Nom du nouveau projet',
+    // **« Nom du nouveau projet » n'est plus dans le parcours** (`24c`) : le champ existait sous
+    // l'entrée « + Nouveau projet… » du sélecteur, et les deux sont partis avec la création depuis
+    // cet écran.
     'Hôte',
     'Port',
     'Base par défaut',

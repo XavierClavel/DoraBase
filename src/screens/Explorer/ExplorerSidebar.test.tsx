@@ -249,10 +249,19 @@ test('le filtre affiche son compteur, et seulement quand il est actif', async ()
 
 // --- Le pied ---
 
-test('le pied porte les deux actions du handoff', () => {
+test('le pied porte les deux actions du handoff, la seconde renommée', () => {
   render(<Piloté />)
-  expect(screen.getByRole('button', { name: /Ajouter une base/ })).toBeInTheDocument()
+  // **« Ajouter une connexion », et non « une base »** (`24d`) : depuis `23b`, une base présente en dev
+  // et en prod fait deux connexions. Écart au handoff assumé, qui dit « base ».
+  expect(screen.getByRole('button', { name: /Ajouter une connexion/ })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Rafraîchir' })).toBeInTheDocument()
+})
+
+test('« Nouveau projet » n’est rendu que si le geste existe', () => {
+  render(<Piloté />)
+  // Sans la prop, le bouton n'est **pas rendu** — et non rendu inerte : un contrôle qui ne fait rien
+  // est pire qu'un contrôle absent (défaut n° 36). C'est le cas de la galerie.
+  expect(screen.queryByRole('button', { name: /Nouveau projet/ })).toBeNull()
 })
 
 // --- Le menu « … » des lignes (`08h`) ---

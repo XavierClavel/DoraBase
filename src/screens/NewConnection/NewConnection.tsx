@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type {
-  CreateProjectRequest,
   Database,
   EnvironmentDeclaration,
   Project,
@@ -10,6 +9,7 @@ import type {
 import type { ConnectionRequest, ConnectionTest } from '../../domain/engine'
 import { Button } from '../../ui/Button/Button'
 import { Modal } from '../../ui/Modal/Modal'
+import { Stepper } from '../../ui/Stepper/Stepper'
 import {
   type ConnectionDraft,
   draftDepuisLaVariante,
@@ -18,12 +18,11 @@ import {
   type TunnelDraft,
 } from './ConnectionDraft'
 import { ConnectionFailure } from './ConnectionFailure'
-import { ConnectionForm, NOUVEAU_PROJET } from './ConnectionForm'
+import { ConnectionForm } from './ConnectionForm'
 import { draftToRequest } from './draftToRequest'
 import { EngineSelector } from './EngineSelector'
 import { ENGINES, IMPLEMENTED_ENGINES } from './engines'
 import {
-  creerLeProjet,
   draftToSaveRequest,
   draftToUpdateRequest,
   enregistrerLaBase,
@@ -62,8 +61,16 @@ type NewConnectionProps = {
   onTest?: (request: ConnectionRequest) => Promise<ConnectionTest>
   /** Appelle la commande `save_database`. Injectée pour la même raison que `onTest`. */
   onSave?: (request: ReturnType<typeof draftToSaveRequest>) => Promise<Project[]>
-  /** Appelle la commande `create_project` (`08f`), sous « + Nouveau projet… ». */
-  onCreateProject?: (request: CreateProjectRequest) => Promise<Project[]>
+  /**
+   * Le nom du projet, quand il est **imposé** — l'étape 2 du parcours de création (`24c`).
+   *
+   * Présent, le sélecteur cède la place à un constat, la bande de progression paraît, et « Annuler »
+   * devient « Plus tard » : à ce moment, « Annuler » mentirait, le projet étant déjà créé.
+   *
+   * **`onCreateProject` a disparu avec la sentinelle.** Cet écran créait un projet au passage
+   * (`08f`) ; il ne crée plus rien — l'étape 1 le fait, et lui déclare une connexion.
+   */
+  projetImpose?: string
   /**
    * La base à modifier (`08g`). Absente, la modale **crée**.
    *
@@ -123,10 +130,10 @@ export function NewConnection({
   onBrowseKey = ouvrirSelecteurDeCle,
   onTest = testerLaConnexion,
   onSave = enregistrerLaBase,
-  onCreateProject = creerLeProjet,
   edition,
   onUpdate = mettreAJourLaVariante,
   onSaved,
+  projetImpose,
 }: NewConnectionProps) {
   // En mode édition, le brouillon part des réglages enregistrés. `useState` avec initialiseur : le
   // recalculer à chaque rendu écraserait la saisie en cours.
@@ -164,25 +171,19 @@ export function NewConnection({
    * change sous les pieds de l'utilisateur.
    */
   useEffect(() => {
-    // En édition, le projet est **imposé** : il désigne la base à modifier.
-    if (edition) return
-    // La sentinelle de `08f` est une valeur **valable** du `Select` : sans ce test, choisir
-    // « + Nouveau projet… » serait aussitôt remplacé par le premier projet existant.
-    if (draft.project === NOUVEAU_PROJET) return
+    // En édition comme à l'étape 2 du parcours, le projet est **imposé** : il désigne la base à
+    // modifier, ou celui qu'on vient de créer.
+    if (edition || projetImpose) return
     const premier = projects.at(0)
-    // Aucun projet : la sentinelle est le seul choix, donc le brouillon la prend — ce qui rend le
-    // champ de nom visible d'emblée, et l'application neuve n'est plus une impasse.
-    if (!premier) {
-      if (draft.project !== NOUVEAU_PROJET) {
-        setDraft((precedent) => ({ ...precedent, project: NOUVEAU_PROJET }))
-      }
-      return
-    }
+    // **Plus de sentinelle** (`24c`) : « + Nouveau projet… » n'est plus une valeur du sélecteur, donc
+    // il n'y a plus de choix valable-mais-inexistant à préserver. Sans aucun projet, il n'y a rien à
+    // choisir non plus — et ce cas ne se produit plus, `24d` renvoyant vers l'étape 1.
+    if (!premier) return
     const valide = projects.some((projet) => projet.id === draft.project)
     // `setDraft` et non `patch` : `patch` est recréé à chaque rendu, donc le déclarer en
     // dépendance relancerait l'effet en boucle. Le poseur d'état de React, lui, est stable.
     if (!valide) setDraft((precedent) => ({ ...precedent, project: premier.id }))
-  }, [projects, draft.project, edition])
+  }, [projects, draft.project, edition, projetImpose])
 
   /**
    * Toucher un champ du panneau **crée** le tunnel s'il n'existe pas.
@@ -220,14 +221,13 @@ export function NewConnection({
   // Il est aussi désactivé **sans aucun projet** : `A2` déclare une base *dans un projet
   // existant*, et le handoff ne maquette pas le parcours d'un utilisateur qui n'en a aucun.
   // Voir le § « À trancher » de `specs/README.md`, trou n°4.
-  const creeUnProjet = draft.project === NOUVEAU_PROJET
-  const nomDuProjetManque = creeUnProjet && draft.newProjectName.trim() === ''
-
-  // **Il n'est plus désactivé faute de projet** : depuis `08f`, `A2` sait en créer un. Il l'est
-  // en revanche quand « + Nouveau projet… » est choisi sans nom saisi — un refus qui serait sinon
-  // dit par le cœur après un aller-retour, là où l'écran a l'information sous la main.
+  // **Il est de nouveau désactivé faute de projet**, et c'est le retour de la garde de `08e` : cet
+  // écran ne sait plus créer de projet (`24c`), donc sans projet il n'a rien où enregistrer. Le cas
+  // ne se produit plus dans l'application — `24d` renvoie vers l'étape 1 — mais la garde reste : un
+  // appelant qui l'oublierait verrait un refus, non un enregistrement dans le vide.
+  const sansProjet = projetImpose === undefined && projects.length === 0
   const enregistrementBloque =
-    test.phase === 'echoue' || nomDuProjetManque || enregistrement.phase === 'en-cours'
+    test.phase === 'echoue' || sansProjet || enregistrement.phase === 'en-cours'
 
   async function enregistrer() {
     if (enregistrementBloque) return
@@ -247,18 +247,10 @@ export function NewConnection({
         onClose()
         return
       }
-      // **Deux commandes, un geste.** Si la seconde échoue, le projet reste — créé et vide. C'est
-      // le comportement honnête : le défaire supprimerait un projet à la suite d'un échec de
-      // connexion, et détruirait un homonyme préexistant en cas de course. `08f` le dit.
-      let nom = draft.project
-      if (creeUnProjet) {
-        nom = draft.newProjectName.trim()
-        // **`environments: []` : le cœur reprend le trio par défaut** (`24a`). Ce chemin — créer un
-        // projet depuis `A2` — est celui que `24c` retire ; en attendant, il ne peut pas proposer de
-        // libellés d'environnement, n'ayant pas l'écran pour les saisir.
-        const apresCreation = await onCreateProject({ name: nom, environments: [] })
-        onSaved?.(apresCreation)
-      }
+      // **Cet écran ne crée plus de projet** (`24c`). Il en créait un au passage, par la sentinelle
+      // du sélecteur : deux commandes pour un geste. Le projet est désormais créé par l'étape 1, et
+      // arrive ici en `projetImpose` — une seule commande, un seul acte.
+      const nom = projetImpose ?? draft.project
       const projets = await onSave(draftToSaveRequest({ ...draft, project: nom }))
       onSaved?.(projets)
       // La modale se ferme : `08e` § Hors périmètre — « ouvrir » veut dire aller vers `A4`,
@@ -269,7 +261,16 @@ export function NewConnection({
       // Le refus s'affiche là où `08d` affiche déjà les échecs : le message inline du pied.
       // `A2` ne maquette aucun message d'erreur de champ — réemploi plutôt qu'invention, et la
       // question d'un affichage par champ est consignée au § « À trancher ».
-      setEnregistrement({ phase: 'refuse', message: messageDe(cause) })
+      setEnregistrement({
+        phase: 'refuse',
+        // **Le message dit que le projet est gardé** (`24c`). Sans cette précision, l'utilisateur
+        // ferme, recommence par « Nouveau projet », et se heurte à « ce nom est déjà pris » — le
+        // défaut se produirait à coup sûr.
+        message:
+          projetImpose === undefined
+            ? messageDe(cause)
+            : `${messageDe(cause)} Le projet « ${projetImpose} » est créé ; la connexion n’a pas été enregistrée.`,
+      })
     }
   }
 
@@ -337,8 +338,11 @@ export function NewConnection({
             </span>
           )}
           <span className={styles.footerSpacer} />
+          {/* **« Plus tard », et non « Annuler », quand le projet vient d'être créé** (`24c`). À ce
+              moment, « Annuler » mentirait : le projet reste, et un bouton ne doit pas nommer un
+              défaissement qui n'a pas lieu. C'est la règle de `08j` prise par l'autre bout. */}
           <Button variant="secondary" size="lg" onClick={onClose}>
-            Annuler
+            {projetImpose === undefined ? 'Annuler' : 'Plus tard'}
           </Button>
           {/* `08e` le branchera, avec son raccourci ⌘↩. */}
           <Button
@@ -350,11 +354,33 @@ export function NewConnection({
             <Icon name="save" size={14} strokeWidth={2.2} />
             {edition ? 'Enregistrer les modifications' : <>Enregistrer &amp; ouvrir</>}
           </Button>
+          {/* **Dite avant le clic, non après** (`24c`). Elle fait trois choses en une phrase : elle
+              confirme l'écriture de l'étape 1, elle rend « Plus tard » sans conséquence, et elle nomme
+              le chemin de retour. Sans elle, « Plus tard » demanderait de deviner ce qu'il advient du
+              projet. */}
+          {projetImpose !== undefined && (
+            <p className={styles.projetCree} role="status">
+              Le projet <strong>{projetImpose}</strong> est créé. Vous pouvez déclarer sa première
+              connexion maintenant, ou plus tard depuis la sidebar.
+            </p>
+          )}
         </>
       }
     >
+      {/* La bande de progression : **seulement à l'étape 2 du parcours** (`24b`). Ouvert pour un
+          projet existant, cet écran n'a qu'une étape, et une bande à une seule étape utile
+          affirmerait que cette modale a créé le projet. */}
+      {projetImpose !== undefined && (
+        <Stepper etapes={[{ libelle: 'PROJET' }, { libelle: 'CONNEXION' }]} courante={1} />
+      )}
       <EngineSelector value={draft.engine} onValueChange={(engine) => patch({ engine })} />
-      <ConnectionForm draft={draft} onChange={patch} projects={projects} verrouille={!!edition} />
+      <ConnectionForm
+        draft={draft}
+        onChange={patch}
+        projects={projects}
+        verrouille={!!edition}
+        projetImpose={projetImpose}
+      />
       <TunnelPanel
         tunnel={draft.tunnel}
         onChange={patchTunnel}

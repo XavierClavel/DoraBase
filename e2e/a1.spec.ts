@@ -34,25 +34,41 @@ test('A1 est conforme à la référence', async ({ page }) => {
 // **Les trois feux ne sont pas dans la capture** : ils sont dessinés par macOS par-dessus la
 // fenêtre, hors du DOM et hors de portée de Playwright comme du CSS. Le mockup les grise ;
 // nous ne pouvons pas. Voir `specs/README.md` § « À trancher ».
-test('A2 est conforme à la référence', async ({ page }) => {
+// **Les trois captures suivantes ont changé de décor le 19 août 2026** (`24d`). Le bouton de `A1`
+// ouvrait `A2` ; il ouvre maintenant l'étape 1 du parcours de création. Par-dessus `A1`, c'est donc
+// l'étape 1 qui se capture — et c'est juste : c'est ce que ce bouton fait. `A2` et `A3`, eux, se
+// capturent depuis la démo, seul décor où les deux étapes s'enchaînent (`create_project` est une
+// commande Tauri, qui ne répond pas dans un navigateur).
+test('l’étape 1 par-dessus A1 est conforme à la référence', async ({ page }) => {
   await page.goto('/')
   await page
     .getByRole('button', { name: /Nouveau projet/ })
     .first()
     .click()
-  await page.waitForSelector('[role=dialog]')
+  await page.waitForSelector('[role=dialog][aria-label="Nouveau projet"]')
   await page.evaluate(() => document.fonts.ready)
+  await expect(page).toHaveScreenshot('a1-etape-projet.png', { fullPage: true })
+})
+
+/** Les deux étapes, jusqu'à `A2` — dans la démo, où la création répond. */
+async function allerAA2(page: import('@playwright/test').Page) {
+  await page.goto('/?demo')
+  await page.getByRole('button', { name: /Nouveau projet/ }).click()
+  await page.getByLabel('Nom du projet').fill('Atelier Nord')
+  await page.getByRole('button', { name: /Continuer/ }).click()
+  await page.waitForSelector('[data-testid=projet-impose]')
+  await page.evaluate(() => document.fonts.ready)
+}
+
+test('A2 est conforme à la référence', async ({ page }) => {
+  await allerAA2(page)
   await expect(page).toHaveScreenshot('a2-nouvelle-connexion.png', { fullPage: true })
 })
 
 // Le panneau proxy / tunnel déplié et renseigné, comme le mockup le montre. Capturé
 // séparément parce que `A2` s'ouvre panneau replié : les deux états méritent une référence.
 test('A2 avec le panneau tunnel est conforme à la référence', async ({ page }) => {
-  await page.goto('/')
-  await page
-    .getByRole('button', { name: /Nouveau projet/ })
-    .first()
-    .click()
+  await allerAA2(page)
   await page.getByRole('button', { name: /Proxy \/ tunnel/ }).click()
   await page.getByLabel('Hôte du bastion').fill('bastion.exemple.net')
   await page.getByLabel('Clé privée').fill('~/.ssh/id_ed25519')
@@ -89,11 +105,7 @@ test('A3 est conforme à la référence', async ({ page }) => {
       configurable: true,
     })
   })
-  await page.goto('/')
-  await page
-    .getByRole('button', { name: /Nouveau projet/ })
-    .first()
-    .click()
+  await allerAA2(page)
   await page.getByRole('button', { name: /Tester la connexion/ }).click()
   await page.waitForSelector('[role=dialog][aria-label="Connexion impossible"]')
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())

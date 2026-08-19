@@ -75,28 +75,6 @@
   text-overflow: ellipsis;
 }
 
-/* Filets verticaux, entre colonnes seulement — pas de filet au bord gauche du tableau. */
-.th + .th,
-.td + .td,
-.td + .th {
-  border-left: 1px solid var(--gridline);
-}
-
-.tr[aria-selected] {
-  cursor: pointer;
-}
-
-.tr:hover:not(.selected) {
-  background: var(--hover-row);
-}
-
-.selected {
-  background: var(--selected);
-  /* Liseré intérieur à gauche, et **non une bordure** : une bordure ajouterait 2px à la boîte
-   * et décalerait le contenu de la ligne sélectionnée par rapport aux autres. */
-  box-shadow: inset 2px 0 0 var(--accent);
-}
-
 .td,
 .rowHeader {
   height: var(--rowh);
@@ -111,6 +89,34 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Filets verticaux, entre colonnes seulement — pas de filet au bord gauche du tableau. */
+.th + .th,
+.td + .td,
+.td + .th {
+  border-left: 1px solid var(--gridline);
+}
+
+.tr[aria-selected] {
+  cursor: pointer;
+}
+
+/* **Les règles simples avant celles qui les surspécifient** — c'est l'ordre que réclame
+ * `noDescendingSpecificity`, et ce fichier le viole deux fois : `.td` après `.td + .td`, et
+ * `.selected` après `.tr:hover:not(.selected)`. Ce n'est pas cosmétique : `.selected` (spécificité 0,1,0)
+ * déclaré *après* un sélecteur plus spécifique qui le nomme est la faute que `noDescendingSpecificity`
+ * signale — une règle qui ne peut plus gagner par la cascade et dont on croit qu'elle gagne. Le rendu
+ * est identique parce que le `:not(.selected)` rend déjà les deux exclusifs. */
+.selected {
+  background: var(--selected);
+  /* Liseré intérieur à gauche, et **non une bordure** : une bordure ajouterait 2px à la boîte
+   * et décalerait le contenu de la ligne sélectionnée par rapport aux autres. */
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.tr:hover:not(.selected) {
+  background: var(--hover-row);
 }
 
 /* La seule exception du mockup : la colonne du nom, en Nunito 600 12px. */

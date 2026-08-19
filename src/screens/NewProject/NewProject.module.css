@@ -184,3 +184,18 @@
   font-weight: var(--weight-medium);
   color: var(--ink-meta);
 }
+
+/* La phrase qui dit pourquoi l'étape 1 s'ouvre alors qu'on demandait une connexion (`24d`).
+   Encadrée, à la différence de la note sous le nom : celle-ci répond à un geste, et une phrase
+   au fil du texte se lit comme de la documentation. */
+.raisonDOuverture {
+  margin: 0 0 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--divider);
+  border-left: 2px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bar);
+  color: var(--ink);
+  font-size: 11.5px;
+  line-height: 1.45;
+}

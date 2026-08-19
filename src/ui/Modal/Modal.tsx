@@ -180,8 +180,10 @@ export function Modal({
         if (evenement.target === evenement.currentTarget) onClose()
       }}
     >
-      {/* biome-ignore lint/a11y/useSemanticElements: `<dialog>` impose son propre voile et
-          sa pile de superposition, incompatibles avec les deux voiles superposés de `A3`. */}
+      {/* **`<div role="dialog">` et non `<dialog>`** : l'élément natif impose son propre voile et sa
+          pile de superposition, incompatibles avec les deux voiles superposés de `A3`. (La directive
+          `biome-ignore` qui portait cette note a été retirée : la règle `useSemanticElements` ne la
+          réclame plus, et une suppression inutile est elle-même une erreur de lint.) */}
       <div
         ref={coquille}
         role="dialog"

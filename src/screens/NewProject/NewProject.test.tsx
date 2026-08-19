@@ -5,7 +5,7 @@ import { Sprite } from '../../design/icons/Sprite'
 import type { CreateProjectRequest, Project } from '../../domain/config'
 import { NewProject } from './NewProject'
 
-function monter(projets: readonly { name: string }[] = []) {
+function monter(projets: readonly { name: string }[] = [], raison?: string) {
   const creations: CreateProjectRequest[] = []
   const crees: string[] = []
   const onCreate = vi.fn(async (request: CreateProjectRequest) => {
@@ -20,6 +20,7 @@ function monter(projets: readonly { name: string }[] = []) {
         onClose={() => {}}
         onCreate={onCreate}
         onCreated={(_projects, nom) => crees.push(nom)}
+        {...(raison === undefined ? {} : { raison })}
       />
     </>,
   )
@@ -160,4 +161,18 @@ test('un refus du cœur s’affiche là où les autres s’affichent', async () 
 
   // L'utilisateur n'a pas à savoir lequel des deux a parlé — l'écran ou le cœur.
   await waitFor(() => expect(screen.getByText(/lecture seule/)).toBeInTheDocument())
+})
+
+// **La raison n'est pas décorative** : sans elle, une modale « Nouveau projet » répond à un clic sur
+// « Ajouter une connexion » sans que rien n'explique l'écart (`24d`).
+test('la raison d’ouverture s’affiche quand elle est donnée', () => {
+  monter([], 'Une connexion appartient à un projet. Commençons par le projet.')
+  expect(
+    screen.getByText('Une connexion appartient à un projet. Commençons par le projet.'),
+  ).toBeInTheDocument()
+})
+
+test('sans raison, rien ne s’ajoute au-dessus du nom', () => {
+  monter()
+  expect(screen.queryByTestId('raison-d-ouverture')).toBeNull()
 })

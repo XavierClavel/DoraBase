@@ -111,12 +111,23 @@ couvre, et les deux manquants n'attendent qu'un compte.
 | `18a`–`18g` | **le moteur MongoDB** — contrat, connexion, introspection, schéma déduit, lecture, écriture, console | **fait** |
 | `17a`–`17b` | **le moteur SQLite** — un fichier, pas un serveur | **fait** |
 | `16a`–`16c` | **le moteur MySQL / MariaDB** — connexion, introspection, lecture et écriture | **fait** |
+| `22` | l'inventaire des écarts au handoff | **fait** |
+| `23a`, `23b`, `23d`, `23g` | **les environnements par projet** — déclaration, une connexion = un environnement, formulaire, arbre groupé | **fait** |
+| `23c`, `23e`, `23f` | les commandes d'environnement, l'édition d'un projet, la suppression d'un environnement | **écrites, à faire** |
+| `24a`–`24d` | **le parcours de création en deux étapes** — projet, bande de progression, enchaînement, deux gestes | **fait** |
 | `19a` | Redis — **n'entre pas dans le contrat**, et pourquoi | écrite, conclusion négative |
 | `20`, `21` | Snowflake, BigQuery — **aucun décor de test** | écrites, bloquées |
 
 **Comptes de tests, mesurés le 18 août 2026 par `./scripts/verifier-tout.sh`** — 513 Rust (dont ceux
 sur PostgreSQL 17.6 **en TLS**, un MongoDB 8 en jeu de réplicas, un MySQL 8.4 en TLS, un fichier
 SQLite, et un vrai bastion SSH), 746 Vitest, 184 Playwright.
+
+**Au 19 août 2026, après `23`/`24`** — 396 Rust en `cargo test --lib` (sans les décors, qui demandent
+`--features db-tests`), **796 Vitest**, **209 Playwright**. Les cinq références de fidélité de
+`e2e/a1.spec.ts` ont changé de décor ce jour-là : le bouton de `A1` ouvre désormais l'étape 1 du
+parcours de création, donc `A2`, `A2`+tunnel et `A3` se capturent depuis `?demo` — seul décor où les
+deux étapes s'enchaînent, `create_project` étant une commande Tauri. Voir l'en-tête du fichier, qui
+dit d'où chaque capture est prise et pourquoi.
 
 **Les tests SQLite tournent sans décor à monter** : le fichier est temporaire et créé par le test
 lui-même, donc ils passent sur une machine sans Docker — le seul moteur du projet dans ce cas.
@@ -475,9 +486,25 @@ Chromium. L'expérience à tenter est au § 0, ligne 8.
 
 ## 11. La suite
 
-**Les dix écrans sont livrés, et quatre moteurs répondent. Il n'y a plus de chantier prêt.**
+**Trois specs sont prêtes à coder** — les seules du projet dans ce cas, et elles se tiennent :
 
-Ce qui reste demande une **décision humaine**, pas du code :
+1. **`23c`** — les cinq commandes d'environnement (déclarer, renommer le libellé, recolorier, marquer
+   production, retirer). Le modèle les porte déjà : `Project::declare`, `environnement`,
+   `connexions_de` et les cinq variantes de `ModelError` existent et sont testées. Il manque la couche
+   commande et l'allowlist.
+2. **`23e`** — la modale d'édition d'un projet, qui **absorbe** `RenameProjectDialog` : renommer un
+   projet devient un champ de cet écran, non une modale à part. Dépend de `23c`.
+3. **`23f`** — l'avertissement avant de retirer un environnement, **nommant les connexions qu'il
+   emporte**. Dépend de `23c` et de `23e`. C'est la seule des trois qui touche à une suppression, donc
+   la seule où la règle du commanditaire s'applique : on supprime la déclaration locale et son mot de
+   passe du Trousseau, jamais la base distante, et on demande confirmation.
+
+**Un rappel qui n'est pas dans les specs** : l'identifiant d'un environnement est **figé à la
+création** (`23a`), parce que la référence du Trousseau est `dorabase/<projet>/<base>/<environnement>`.
+`24a` autorise donc de modifier les libellés à la création du projet, et `23e` devra dire ce qu'il fait
+d'un libellé changé plus tard — divergence assumée entre identifiant et libellé, ou refus.
+
+Le reste demande une **décision humaine**, pas du code :
 
 1. **Redis** (`19a`) — un écran de parcours de clés à maquetter. Le forcer dans le contrat donnerait
    des colonnes inventées.

@@ -10,6 +10,7 @@ import {
   retirerLeProjet,
 } from '../screens/NewConnection/enregistrerLaBase'
 import { NewConnection } from '../screens/NewConnection/NewConnection'
+import { ParcoursDeCreation } from '../screens/NewProject/ParcoursDeCreation'
 import { PreferencesDialog } from '../screens/Preferences/PreferencesDialog'
 import { jetonsDe, PREFERENCES_PAR_DEFAUT, themeApplique } from '../screens/Preferences/preferences'
 import { WelcomeScreen } from '../screens/Welcome/WelcomeScreen'
@@ -17,6 +18,7 @@ import { Workbench } from '../screens/Workbench/Workbench'
 import { useClicDroitDesactive } from '../shell/useClicDroit'
 import { useZoom } from '../shell/useZoom'
 import { BarresDeDefilement } from '../ui/BarresDeDefilement/BarresDeDefilement'
+import { useRaccourcisDeCreation } from './useRaccourcisDeCreation'
 
 // La galerie (`src/design/gallery/`) ne doit jamais partir dans le bundle livré : elle
 // est montée derrière deux conditions, `import.meta.env.DEV` ET `?gallery` dans l'URL.
@@ -50,6 +52,13 @@ export function App() {
   useClicDroitDesactive()
 
   const [connexionOuverte, setConnexionOuverte] = useState(false)
+  /**
+   * Le parcours de création est ouvert (`24d`).
+   *
+   * **Deux états distincts, non un mode d'un seul** : « ajouter une connexion » et « nouveau projet »
+   * sont deux gestes, et les confondre ramènerait la sentinelle du sélecteur que `24c` a retirée.
+   */
+  const [projetOuvert, setProjetOuvert] = useState<{ raison?: string } | null>(null)
   /**
    * La base en cours de modification (`08g`), ou `null` quand la modale **crée**.
    *
@@ -129,6 +138,40 @@ export function App() {
     }
   }
 
+  /**
+   * « Ajouter une connexion » — **le geste, non le bouton** (`24d`).
+   *
+   * Sans aucun projet déclaré, il entre à l'étape 1 avec sa raison écrite, au lieu d'ouvrir un
+   * formulaire dont le sélecteur de projet serait vide et le bouton d'enregistrement inerte (l'état
+   * que `08e` rendait, faute de mieux). Le parcours aboutit là où l'on voulait aller ; il passe par ce
+   * qui manquait.
+   */
+  const ajouterUneConnexion = () => {
+    if (projects.length === 0)
+      setProjetOuvert({
+        raison: 'Une connexion appartient à un projet. Commençons par le projet.',
+      })
+    else setConnexionOuverte(true)
+  }
+
+  useRaccourcisDeCreation({
+    nouveauProjet: () => setProjetOuvert({}),
+    ajouterUneConnexion,
+  })
+
+  /**
+   * Les projets sous la forme que les écrans de création attendent.
+   *
+   * **Calculée une fois** : l'expression était recopiée à chaque point de montage, et une recopie qui
+   * oublie un champ ne se voit qu'à l'écran concerné.
+   */
+  const projetsPourLesEcrans = projects.map((projet) => ({
+    id: projet.name,
+    name: projet.name,
+    // Ses environnements déclarés : c'est ce que `A2` propose (`23d`).
+    environments: projet.environments,
+  }))
+
   return (
     <>
       <Sprite />
@@ -158,7 +201,8 @@ export function App() {
             projects={projects}
             onOpenPreferences={() => setPreferencesOuvertes(true)}
             rowHeight={preferences.rowHeight}
-            onNewDatabase={() => setConnexionOuverte(true)}
+            onNewDatabase={ajouterUneConnexion}
+            onNewProject={() => setProjetOuvert({})}
             onEditDatabase={(project, database) => setEdition({ project, database })}
             // Le renommage rend les projets à jour : les reposer ici évite un second aller-retour,
             // et supprime la fenêtre pendant laquelle l'arbre montrerait l'ancien nom.
@@ -202,12 +246,7 @@ export function App() {
                 setConnexionOuverte(false)
                 setEdition(null)
               }}
-              projects={projects.map((projet) => ({
-                id: projet.name,
-                name: projet.name,
-                // Ses environnements déclarés : c'est ce que `A2` propose (`23d`).
-                environments: projet.environments,
-              }))}
+              projects={projetsPourLesEcrans}
               edition={edition ?? undefined}
               onSaved={setProjects}
             />
@@ -215,29 +254,35 @@ export function App() {
         </>
       ) : (
         <>
-          {/* **Le bouton dit « Nouveau projet », la modale « Nouvelle connexion ».**
-              Ce n'est pas une erreur d'assemblage : `A1` n'offre que cette action et `⌘N`, et
-              depuis `08f` la modale sait créer le projet **et** sa première base en un geste —
-              sans aucun projet, elle propose la création d'emblée. Le trou consigné au
-              § « À trancher » est donc fermé : l'application neuve n'est plus une impasse. */}
+          {/* **Le bouton dit « Nouveau projet », et ouvre « Nouveau projet »** (`24d`). Il ouvrait la
+              modale de connexion : ce n'était pas une erreur d'assemblage — `08f` créait le projet au
+              passage, par une entrée du sélecteur — mais le geste s'est inversé, et l'écran de
+              création existe désormais. */}
           <WelcomeScreen
-            onNewProject={() => setConnexionOuverte(true)}
+            // **`A1` mène à l'étape 1**, non à la modale de connexion (`24d`). Le bouton disait
+            // « Nouveau projet » et ouvrait « Nouvelle connexion » : ce n'était pas une erreur
+            // d'assemblage — `08f` créait le projet au passage — mais le geste s'est inversé.
+            onNewProject={() => setProjetOuvert({})}
             projectCount={projects.length}
-            dimmed={connexionOuverte}
+            dimmed={connexionOuverte || projetOuvert !== null}
           />
-          {connexionOuverte && (
-            <NewConnection
-              onClose={() => setConnexionOuverte(false)}
-              projects={projects.map((projet) => ({
-                id: projet.name,
-                name: projet.name,
-                // Ses environnements déclarés : c'est ce que `A2` propose (`23d`).
-                environments: projet.environments,
-              }))}
-              onSaved={setProjects}
-            />
-          )}
         </>
+      )}
+      {/* **Monté hors des deux branches** — et c'est un défaut corrigé, non un rangement : le parcours
+          ne vivait que dans la branche `A1`, si bien que « Nouveau projet » au pied de la sidebar de
+          `A4` appelait un état que rien n'écoutait. Le geste existe sur les deux écrans (`24d`), donc
+          la modale doit vivre au-dessus du choix de l'écran — la raison même qui met les préférences
+          ici. */}
+      {projetOuvert !== null && (
+        <ParcoursDeCreation
+          depart={{
+            etape: 'projet',
+            ...(projetOuvert.raison === undefined ? {} : { raison: projetOuvert.raison }),
+          }}
+          projets={projetsPourLesEcrans}
+          onClose={() => setProjetOuvert(null)}
+          onProjets={setProjects}
+        />
       )}
       {/* **Au niveau de l'application, pas de l'écran de travail.** Les préférences règlent des
           jetons de la racine et des garde-fous globaux : les monter dans `Workbench` les rendrait

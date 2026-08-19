@@ -76,6 +76,8 @@ type WorkbenchProps = {
   /** Injectable comme les autres commandes : le pont ne répond pas hors de la webview (`08d`). */
   rowAsInsert?: typeof rowAsInsertTauri
   onNewDatabase?: () => void
+  /** Ouvre l'étape 1 du parcours de création, depuis le pied de la sidebar (`24d`). */
+  onNewProject?: () => void
   /** Ouvre `A2` en mode édition sur cette base (`08g`). */
   onEditDatabase?: (project: string, database: Database) => void
   /**
@@ -126,6 +128,7 @@ export function Workbench({
   passerelleLignes,
   rowAsInsert = rowAsInsertTauri,
   onNewDatabase,
+  onNewProject,
   onEditDatabase,
   onEnvironmentChange,
   onRenameProject,
@@ -720,6 +723,7 @@ export function Workbench({
               }}
               onToggle={basculer}
               onAddDatabase={onNewDatabase}
+              onNewProject={onNewProject}
               onRefresh={rafraichir}
               // **La section suit l'objet lu, pas l'onglet ouvert.** Le mockup d'`A8` montre
               // « Schéma déduit » dans la sidebar *pendant* qu'une console est active : les champs
