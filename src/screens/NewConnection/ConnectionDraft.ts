@@ -1,15 +1,15 @@
 import type {
+  ConnectionSettings,
   Database,
   Engine,
-  Environment,
-  EnvironmentVariant,
+  EnvironmentId,
   SslMode,
 } from '../../domain/config'
 
 /**
  * L'état saisi dans `A2`, avant tout enregistrement.
  *
- * **Distinct de `Database` et `EnvironmentVariant`** de `05a`, et pas par paresse : le
+ * **Distinct de `Database` et `ConnectionSettings`** de `05a`, et pas par paresse : le
  * brouillon porte un mot de passe *en clair* là où la configuration porte une `SecretRef`,
  * son port est une chaîne (un champ de saisie peut être vide ou invalide, un `u16` non), et
  * il mêle des données de deux niveaux du modèle — la base et sa variante. Le convertir est le
@@ -28,7 +28,7 @@ export type ConnectionDraft = {
    * frappe une valeur de `Select`, et le champ perdrait sa saisie à chaque rendu.
    */
   newProjectName: string
-  environment: Environment
+  environment: EnvironmentId
   host: string
   /** Chaîne et non nombre : un champ de saisie passe par des états qu'un `u16` interdit. */
   port: string
@@ -51,7 +51,7 @@ export type ConnectionDraft = {
   /**
    * Le tunnel SSH, quand la connexion passe par un bastion. `null` sinon.
    *
-   * **`null` et non un objet à champs vides** : `EnvironmentVariant.tunnel` de `05a` est
+   * **`null` et non un objet à champs vides** : `ConnectionSettings.tunnel` de `05a` est
    * `Option<Tunnel>`, et `06b` refuse une variante déclarant un tunnel qu'on n'a pas ouvert.
    * Un objet vide se convertirait en `Some(Tunnel { host: "" })`, donc en tentative de
    * connexion vers un bastion sans nom. L'absence doit rester représentable.
@@ -132,14 +132,17 @@ export function emptyDraft(): ConnectionDraft {
 export function draftDepuisLaVariante(
   project: string,
   database: Database,
-  variant: EnvironmentVariant,
+  variant: ConnectionSettings,
 ): ConnectionDraft {
+  // L'environnement appartient à la connexion (`23b`), non à ses réglages.
+  const environnement = database.environment
   return {
     engine: database.engine,
     name: database.name,
     project,
     newProjectName: '',
-    environment: variant.environment,
+    // L'environnement vient de la **connexion**, non de ses réglages (`23b`).
+    environment: environnement,
     host: variant.host,
     port: String(variant.port),
     defaultDatabase: variant.defaultDatabase,

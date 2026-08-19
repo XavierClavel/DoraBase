@@ -1,23 +1,51 @@
-import type { Environment, SslMode } from '../../domain/config'
+import type { EnvironmentColor, EnvironmentDeclaration, SslMode } from '../../domain/config'
 
 /**
- * Les trois variantes d'environnement de `A2`.
+ * La couleur d'un environnement, en jeton de la palette.
  *
- * `prod` porte un habillage propre — fond rouge pâle, bordure 1.5 px, icône warning — que le
- * handoff décrit comme une propriété de **prod**, pas de « actif ». Le mockup ne montrant que
- * `prod` actif, l'état actif de `dev` et `staging` est l'accent générique de `RadioGroup`.
- * Question ouverte au § « À trancher » de `specs/README.md`.
- *
- * Comme `ENGINES`, typé `Record<Environment, …>` : ajouter un environnement en Rust casse la
- * compilation ici jusqu'à ce qu'il soit traité.
+ * **Ce fichier portait le trio `dev` / `staging` / `prod` en dur**, typé `Record<EnvironmentId, …>`
+ * pour qu'ajouter un environnement en Rust casse la compilation ici. C'était juste tant que les
+ * environnements étaient une énumération ; depuis `23a`, chaque projet déclare les siens, et une table
+ * en dur serait une seconde source — celle qu'on oublie de corriger. Ne reste donc que la traduction
+ * d'une couleur déclarée en jeton, qui n'appartient à aucun projet.
  */
-export const ENVIRONMENTS: Record<Environment, { label: string; danger: boolean }> = {
-  dev: { label: 'dev', danger: false },
-  staging: { label: 'staging', danger: false },
-  prod: { label: 'prod', danger: true },
+export const COULEURS_D_ENVIRONNEMENT: Record<EnvironmentColor, string> = {
+  green: 'var(--success)',
+  amber: 'var(--warn)',
+  red: 'var(--danger)',
+  slate: 'var(--ink-4)',
+  violet: 'var(--violet)',
 }
 
-export const ENVIRONMENT_ORDER: readonly Environment[] = ['dev', 'staging', 'prod']
+/**
+ * L'habillage d'alerte suit le **drapeau de production**, jamais le libellé.
+ *
+ * Un environnement nommé « live » et marqué production porte le fond rouge pâle et l'icône
+ * d'avertissement que le handoff décrivait pour `prod` ; un environnement nommé « prod » que
+ * l'utilisateur n'a pas marqué ne les porte pas. Accrocher une garantie à une chaîne de caractères la
+ * rendrait fausse au premier renommage.
+ */
+export function estSensible(declaration: EnvironmentDeclaration): boolean {
+  return declaration.production
+}
+
+/**
+ * Le trio d'un projet neuf, **côté écran**.
+ *
+ * Le même que `EnvironmentDeclaration::trio_par_defaut` en Rust, et c'est une duplication assumée : un
+ * projet qui n'existe pas encore n'a pas d'environnements à proposer, et `A2` doit tout de même
+ * afficher ce qu'il recevra (`23d`). L'aller-retour par une commande IPC pour lire trois constantes
+ * serait un appel réseau pour une valeur figée.
+ *
+ * **Ce n'est pas la source de vérité** : dès que le projet existe, ce sont ses déclarations qui
+ * s'affichent. Si les deux divergeaient, l'écran montrerait trois environnements et le disque en
+ * porterait d'autres — un test de `23d` compare donc les deux listes.
+ */
+export const TRIO_PAR_DEFAUT: readonly EnvironmentDeclaration[] = [
+  { id: 'dev', label: 'dev', color: 'green', production: false },
+  { id: 'staging', label: 'staging', color: 'amber', production: false },
+  { id: 'prod', label: 'prod', color: 'red', production: true },
+]
 
 /**
  * Les six modes SSL, dans l'ordre croissant d'exigence de `libpq` — celui du type Rust.

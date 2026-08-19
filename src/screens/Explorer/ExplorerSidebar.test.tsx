@@ -2,8 +2,9 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { Sprite } from '../../design/icons/Sprite'
-import type { Environment, Project } from '../../domain/config'
+import type { EnvironmentId, Project } from '../../domain/config'
 import type { ColumnInfo, ConnectionState, SchemaInfo, TableSummary } from '../../domain/engine'
+import { REGLAGES, TRIO_DE_TEST } from '../NewConnection/pourLesTests'
 import { type Charge, idBase, idProjet, idSchema, type Noeud } from './arbre'
 import type { CibleDeSuppression } from './DeleteConnectionDialog'
 import { ExplorerSidebar, filtrer } from './ExplorerSidebar'
@@ -12,10 +13,14 @@ const PROJETS: Project[] = [
   {
     name: 'Atelier Nord',
     activeEnvironment: 'prod',
+    environments: TRIO_DE_TEST,
     queries: [],
     databases: [
-      { name: 'analytics', engine: 'postgresql', variants: [] },
-      { name: 'shop', engine: 'mysql', variants: [] },
+      // **Les connexions sont dans l'environnement actif du projet** (`23g`) : l'arbre ne montre que
+      // celles-là, et un décor qui les déclare ailleurs afficherait un arbre vide — ce qui ferait
+      // échouer trente tests pour une raison qui n'a rien à voir avec eux.
+      { name: 'analytics', engine: 'postgresql', environment: 'prod', connection: REGLAGES },
+      { name: 'shop', engine: 'mysql', environment: 'prod', connection: REGLAGES },
     ],
   },
 ]
@@ -51,7 +56,7 @@ function Piloté({
   initial?: string[]
   etat?: ConnectionState
   onToggleSpy?: (n: Noeud) => void
-  onEditDatabase?: (project: string, database: string, environment: Environment) => void
+  onEditDatabase?: (project: string, database: string, environment: EnvironmentId) => void
   onRenameProject?: (
     project: string,
     nom: string,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Database, Preferences, Project } from '../../domain/config'
+import type { Database, EnvironmentDeclaration, Preferences, Project } from '../../domain/config'
 import type { SchemaInfo, TableDetail, TableSummary } from '../../domain/engine'
 import { NewConnection } from '../NewConnection/NewConnection'
 import { PreferencesDialog } from '../Preferences/PreferencesDialog'
@@ -8,6 +8,21 @@ import type { PasserelleLignes } from '../TableView/useLignes'
 import type { PasserelleArbre } from './useArbre'
 import type { PasserelleDetail } from './useDetailTable'
 import { Workbench } from './Workbench'
+
+/**
+ * Les environnements déclarés par les projets de la démo (`23g`).
+ *
+ * **Quatre, dont un que personne ne codait en dur.** Le trio `dev` / `staging` / `prod` était une
+ * énumération : un décor qui s'y limite laisserait passer un écran qui relit une table de constantes au
+ * lieu des déclarations du projet. `preprod` est la sonde — s'il s'affiche partout, plus aucun trio ne
+ * survit.
+ */
+const ENVIRONNEMENTS_DE_DEMO: EnvironmentDeclaration[] = [
+  { id: 'dev', label: 'dev', color: 'green', production: false },
+  { id: 'preprod', label: 'preprod', color: 'violet', production: false },
+  { id: 'staging', label: 'staging', color: 'amber', production: false },
+  { id: 'prod', label: 'prod', color: 'red', production: true },
+]
 
 /**
  * L'écran de travail sur des données figées, **en développement seulement**.
@@ -26,6 +41,10 @@ const PROJETS: Project[] = [
   {
     name: 'Atelier Nord',
     activeEnvironment: 'prod',
+    // **Quatre environnements, et non trois** (`23g`) : un décor qui n'en porte que
+    // trois laisserait passer un écran qui relit le trio en dur. `preprod` est
+    // justement celui qu'aucune table de constantes ne connaît.
+    environments: ENVIRONNEMENTS_DE_DEMO,
     // Trois requêtes enregistrées : la section « Mes requêtes » de `12f` n'existe pas quand la liste
     // est vide, et une démo sans elles ne montrerait pas cette moitié de la spec.
     queries: [
@@ -43,21 +62,19 @@ const PROJETS: Project[] = [
       {
         name: 'analytics',
         engine: 'postgresql',
-        variants: [
-          {
-            environment: 'prod',
-            host: 'localhost',
-            port: 5432,
-            defaultDatabase: 'analytics',
-            username: 'dorabase',
-            password: null,
-            sslMode: 'prefer',
-            caCertificate: null,
-            readOnly: true,
-            reconnectOnStartup: false,
-            tunnel: null,
-          },
-        ],
+        environment: 'prod',
+        connection: {
+          host: 'localhost',
+          port: 5432,
+          defaultDatabase: 'analytics',
+          username: 'dorabase',
+          password: null,
+          sslMode: 'prefer',
+          caCertificate: null,
+          readOnly: true,
+          reconnectOnStartup: false,
+          tunnel: null,
+        },
       },
       // **Une base mongo, pour qu'`A8` soit atteignable en démo** (`13a`). Le dialecte de la
       // console se dérive du moteur : sans base documentaire dans le décor, aucun chemin de
@@ -65,25 +82,29 @@ const PROJETS: Project[] = [
       {
         name: 'evenements',
         engine: 'mongodb',
-        variants: [
-          {
-            environment: 'prod',
-            host: 'localhost',
-            port: 27017,
-            defaultDatabase: 'atelier_journal',
-            username: '',
-            password: null,
-            sslMode: 'disable',
-            caCertificate: null,
-            readOnly: true,
-            reconnectOnStartup: false,
-            tunnel: null,
-          },
-        ],
+        environment: 'prod',
+        connection: {
+          host: 'localhost',
+          port: 27017,
+          defaultDatabase: 'atelier_journal',
+          username: '',
+          password: null,
+          sslMode: 'disable',
+          caCertificate: null,
+          readOnly: true,
+          reconnectOnStartup: false,
+          tunnel: null,
+        },
       },
     ],
   },
-  { name: 'Outils internes', activeEnvironment: 'dev', databases: [], queries: [] },
+  {
+    name: 'Outils internes',
+    activeEnvironment: 'dev',
+    environments: ENVIRONNEMENTS_DE_DEMO,
+    databases: [],
+    queries: [],
+  },
 ]
 
 const SCHEMAS: SchemaInfo[] = [

@@ -3,10 +3,17 @@ import userEvent from '@testing-library/user-event'
 import { Sprite } from '../../design/icons/Sprite'
 import { choisirDansLaListe, optionsDeLaListe } from '../../ui/Select/pourLesTests'
 import { ENGINE_ORDER, ENGINES } from './engines'
-import { ENVIRONMENT_ORDER, SSL_MODE_ORDER } from './environments'
+import { SSL_MODE_ORDER } from './environments'
 import { NewConnection } from './NewConnection'
+import { TRIO_DE_TEST } from './pourLesTests'
 
-function monter(projects: readonly { id: string; name: string }[] = []) {
+function monter(
+  projects: readonly {
+    id: string
+    name: string
+    environments: readonly import('../../domain/config').EnvironmentDeclaration[]
+  }[] = [],
+) {
   return render(
     <>
       <Sprite />
@@ -77,12 +84,30 @@ test('les six modes SSL du modèle sont proposés', async () => {
   expect(await optionsDeLaListe('Mode SSL')).toEqual([...SSL_MODE_ORDER])
 })
 
-test('les trois variantes d’environnement du modèle sont proposées', () => {
+test('sans projet choisi, le trio par défaut est proposé', () => {
+  // **Le trio, parce que le projet n'existe pas encore** (`23d`). `A2` ouvre sur « + Nouveau projet… »
+  // quand aucun projet n'est déclaré : les environnements proposés sont ceux que ce projet recevra à
+  // sa création. Les afficher plutôt que rien suit la règle de `09f`.
   monter()
   const radios = screen
-    .getByRole('group', { name: 'Variante d’environnement' })
+    .getByRole('group', { name: 'Environnement' })
     .querySelectorAll<HTMLInputElement>('input[type=radio]')
-  expect([...radios].map((r) => r.value)).toEqual([...ENVIRONMENT_ORDER])
+  expect([...radios].map((r) => r.value)).toEqual(['dev', 'staging', 'prod'])
+})
+
+test('les environnements proposés sont **ceux du projet choisi**', async () => {
+  // La garantie de `23d` : un projet à quatre environnements en montre quatre, dont un que nulle table
+  // de constantes ne connaît.
+  const quatre = [
+    ...TRIO_DE_TEST,
+    { id: 'preprod', label: 'preprod', color: 'violet' as const, production: false },
+  ]
+  monter([{ id: 'print', name: 'Atelier Nord', environments: quatre }])
+
+  const radios = screen
+    .getByRole('group', { name: 'Environnement' })
+    .querySelectorAll<HTMLInputElement>('input[type=radio]')
+  expect([...radios].map((r) => r.value)).toEqual(['dev', 'staging', 'prod', 'preprod'])
 })
 
 // --- Valeurs par défaut ---
@@ -162,8 +187,8 @@ test('sans aucun projet, la création est proposée d’emblée', () => {
 
 test('avec des projets, ils sont proposés, suivis de la création', async () => {
   monter([
-    { id: 'print', name: 'Atelier Nord' },
-    { id: 'web', name: 'Atelier Sud' },
+    { id: 'print', name: 'Atelier Nord', environments: TRIO_DE_TEST },
+    { id: 'web', name: 'Atelier Sud', environments: TRIO_DE_TEST },
   ])
   expect(await optionsDeLaListe('Projet')).toEqual([
     'Atelier Nord',
@@ -187,7 +212,7 @@ test('les trois boutons du pied sont présents', () => {
 // Un bouton désactivé sans explication ferait croire à un bug : les deux sont donc actifs dès
 // qu'il y a un projet où enregistrer.
 test('« Tester » et « Enregistrer » sont actifs quand un projet existe', () => {
-  monter([{ id: 'print', name: 'Atelier Nord' }])
+  monter([{ id: 'print', name: 'Atelier Nord', environments: TRIO_DE_TEST }])
   expect(screen.getByRole('button', { name: /Tester la connexion/ })).toBeEnabled()
   expect(screen.getByRole('button', { name: /Enregistrer & ouvrir/ })).toBeEnabled()
 })

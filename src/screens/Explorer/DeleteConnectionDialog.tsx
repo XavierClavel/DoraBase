@@ -4,7 +4,20 @@ import { Modal } from '../../ui/Modal/Modal'
 import styles from './DeleteConnectionDialog.module.css'
 
 export type CibleDeSuppression =
-  | { kind: 'database'; project: string; database: string; connexions: number }
+  | {
+      kind: 'database'
+      project: string
+      database: string
+      /**
+       * L'environnement de la connexion (`23b`).
+       *
+       * **Il fait partie de son identité** : sans lui, retirer « analytics » d'un projet qui la
+       * déclare en dev et en prod supprimerait la première venue — et son mot de passe. Le modèle Rust
+       * l'exige désormais dans sa signature ; ce champ est ce qui le porte depuis l'arbre.
+       */
+      environment: string
+      connexions: number
+    }
   | { kind: 'project'; project: string; connexions: number }
 
 type DeleteConnectionDialogProps = {

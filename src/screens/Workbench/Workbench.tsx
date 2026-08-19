@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { rowAsInsert as rowAsInsertTauri } from '../../data/commandes'
-import type { Database, Environment, Project } from '../../domain/config'
+import type { Database, EnvironmentId, Project } from '../../domain/config'
 import type {
   DatabaseKey,
   Filter,
@@ -78,6 +78,13 @@ type WorkbenchProps = {
   onNewDatabase?: () => void
   /** Ouvre `A2` en mode édition sur cette base (`08g`). */
   onEditDatabase?: (project: string, database: Database) => void
+  /**
+   * Change l'environnement actif du projet (`23g`).
+   *
+   * Absent, le sélecteur reste **affiché mais sans effet** — ce qui n'arrive qu'en galerie, où aucune
+   * commande ne répond. Dans l'application, l'absence serait le défaut n° 36.
+   */
+  onEnvironmentChange?: (project: string, environment: EnvironmentId) => void
   /** Renommer un projet depuis le « … » de l'arbre (`08i`) — passé tel quel à la sidebar. */
   onRenameProject?: (
     project: string,
@@ -120,6 +127,7 @@ export function Workbench({
   rowAsInsert = rowAsInsertTauri,
   onNewDatabase,
   onEditDatabase,
+  onEnvironmentChange,
   onRenameProject,
   onDelete,
   onSaveQuery,
@@ -187,7 +195,7 @@ export function Workbench({
       : null
 
   const projetActif = projects.find((p) => p.name === contexte?.project) ?? projects[0] ?? null
-  const environnement: Environment = projetActif?.activeEnvironment ?? 'dev'
+  const environnement: EnvironmentId = projetActif?.activeEnvironment ?? 'dev'
 
   /**
    * Le dialecte que la base parle (`13a`).
@@ -521,7 +529,15 @@ export function Workbench({
             </ProjectMenu>
           </>
         }
-        right={<EnvironmentPicker value={environnement} onValueChange={() => {}} />}
+        right={
+          projetActif ? (
+            <EnvironmentPicker
+              environments={projetActif.environments}
+              value={environnement}
+              onValueChange={(suivant) => onEnvironmentChange?.(projetActif.name, suivant)}
+            />
+          ) : undefined
+        }
       />
       {/* Le bandeau du mode édition, **sous la barre de titre** et au-dessus du corps : c'est là que
           le mockup le place, et il court sur toute la largeur. */}
@@ -556,7 +572,14 @@ export function Workbench({
           nature={execution.aConfirmer.nature}
           sansRestriction={execution.aConfirmer.sansWhere}
           cible={contexte ? `${contexte.database} · ${contexte.schema}` : '—'}
-          production={environnement === 'prod'}
+          // **Le drapeau de production, non le libellé** (`23g`) : un environnement nommé « live » et
+          // marqué production doit porter l'encart rouge, et un environnement nommé « prod » que
+          // l'utilisateur n'a pas marqué ne doit pas. Comparer une chaîne rendrait la garantie fausse
+          // au premier renommage.
+          production={
+            projetActif?.environments.find((declaration) => declaration.id === environnement)
+              ?.production ?? false
+          }
           enCours={execution.enCours}
           onClose={execution.annulerLaConfirmation}
           onConfirmer={execution.executer}

@@ -202,6 +202,15 @@ pub struct SaveDatabaseRequest {
     pub password: Option<String>,
 }
 
+/// Ce que `23g` envoie pour changer l'environnement actif d'un projet.
+#[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct SetActiveEnvironmentRequest {
+    pub project: String,
+    pub environment: super::model::EnvironmentId,
+}
+
 /// Ce que `08i` envoie pour renommer un projet.
 #[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -235,6 +244,59 @@ pub struct DeleteDatabaseRequest {
     /// **L'environnement fait partie de l'identité d'une connexion** (`23b`) : sans lui, retirer
     /// « analytics » d'un projet qui la déclare en dev et en prod supprimerait la première venue.
     pub environment: super::model::EnvironmentId,
+}
+
+/// Change l'environnement actif d'un projet, et le persiste (`23g`).
+///
+/// # Pourquoi une commande, et non un état d'écran
+///
+/// L'environnement actif est une propriété **du projet**, persistée depuis `05b` : le handoff le
+/// traite ainsi, et c'est ce qui permet de retrouver son contexte au démarrage. Le garder en état de
+/// composant le perdrait à chaque relance, et la sidebar afficherait `dev` alors que l'utilisateur
+/// travaillait en prod.
+///
+/// **Jusqu'ici, le sélecteur ne faisait rien** : son `onValueChange` était vide, faute de commande
+/// pour l'écrire. C'était un contrôle inerte — exactement ce que le défaut n° 36 décrit, et que `23g`
+/// vient corriger.
+///
+/// L'environnement doit être **déclaré** par le projet : la validation du modèle (`23a`) refuse un
+/// actif inconnu, et cette commande s'y appuie plutôt que de revérifier.
+#[tauri::command]
+pub fn set_active_environment(
+    request: SetActiveEnvironmentRequest,
+    state: State<'_, ConfigState>,
+) -> Result<Vec<Project>, String> {
+    let garde = state
+        .0
+        .lock()
+        .map_err(|_| "état de configuration corrompu".to_owned())?;
+    let store = garde
+        .as_ref()
+        .ok_or_else(|| "la configuration doit être lue avant d'être écrite".to_owned())?;
+
+    let mut projects: Vec<Project> = store.load_projects()?;
+    let index = projects
+        .iter()
+        .position(|projet| projet.name == request.project)
+        .ok_or_else(|| format!("le projet « {} » n'existe pas", request.project))?;
+
+    // Un candidat validé à part, puis substitué : le motif de `mettre_a_jour`, pour qu'un modèle à
+    // moitié muté n'existe jamais — même le temps d'une ligne.
+    let mut candidat = projects[index].clone();
+    candidat.active_environment = request.environment.clone();
+    candidat.valider().map_err(|erreur| erreur.to_string())?;
+    projects[index] = candidat;
+
+    let preferences = store.load_preferences().unwrap_or_default();
+    store
+        .save(&projects, &preferences)
+        .map_err(|erreur| erreur.to_string())?;
+    log::info!(
+        "set_active_environment ← {} / {}",
+        request.project,
+        request.environment
+    );
+    Ok(projects)
 }
 
 /// Ce que `08j` envoie pour retirer un projet entier.

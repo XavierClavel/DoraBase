@@ -793,6 +793,12 @@ autre chose que ce qu'elle prétendait.
    comptage exact ne peut porter que sur une table qu'aucun autre test ne touche** : c'est la leçon du
    n° 55, où un compteur du serveur mesurait vingt-trois lectures voisines, appliquée cette fois à une
    ligne posée par un test voisin. Corriger un défaut de rejouabilité peut en créer un de concurrence.
+88. **Le port 5173 tenu par ma propre suite de tests, pendant que l'utilisateur lançait l'application.**
+   `pnpm tauri dev` a échoué sur « Port 5173 is already in use » : le serveur du `webServer` de
+   Playwright, encore vivant le temps d'un passage complet. C'est le n° 66 vu de l'autre côté — là il
+   faisait échouer mes tests, ici il empêche l'application de démarrer. **Une suite de tests qui occupe
+   un port de développement est un effet de bord sur l'environnement de travail**, pas seulement sur
+   elle-même : lancer la suite entière pendant que quelqu'un travaille sur la même machine se paie.
 
 **Ce que ces défauts disent du décor de test.** Presque aucun n'était un défaut de logique : ils
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros

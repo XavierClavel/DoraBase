@@ -196,16 +196,26 @@ export function ListeDeroulante<T extends string>({
         <Icon name="chevd" size={13} strokeWidth={2.2} className={styles.chevron} />
       </button>
       {ouvert && (
-        // biome-ignore lint/a11y/useKeyWithClickEvents: le clavier est porté par le champ, qui garde
-        // le focus pendant que la liste est ouverte — c'est ce que prescrit le motif « combobox », et
-        // ce qui permet à `aria-activedescendant` d'annoncer l'option courante.
-        <ul ref={panneau} className={styles.panneau} role="listbox" aria-label={label}>
+        /* Un `<ul role="listbox">` est **exactement** ce que prescrit le motif ARIA 1.2 « combobox
+           avec liste ». La règle suppose qu'un rôle interactif sur une liste est une erreur, ce qui
+           est vrai partout ailleurs ; l'alternative — des `<div>` nus — perdrait la structure que les
+           lecteurs d'écran annoncent (« 3 éléments »). */
+        <ul
+          ref={panneau}
+          className={styles.panneau}
+          // biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: voir la note ci-dessus
+          role="listbox"
+          aria-label={label}
+        >
           {options.map((option, index) => (
-            // biome-ignore lint/a11y/useFocusableInteractive: une `option` ne prend pas le focus dans
-            // ce motif ; il reste sur le champ, et `aria-activedescendant` désigne la courante.
+            /* `<li role="option">` est la forme prescrite par le même motif. Et une option **ne doit
+               pas** prendre le focus : il reste sur le champ, `aria-activedescendant` désignant
+               l'option courante. La rendre focalisable casserait l'annonce et la navigation. */
+            // biome-ignore lint/a11y/useFocusableInteractive: voir la note ci-dessus
             <li
               key={option.value}
               id={`${idChamp}-${index}`}
+              // biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: voir la note ci-dessus
               role="option"
               aria-selected={option.value === value}
               className={cx(styles.option, index === survolee && styles.parcourue)}

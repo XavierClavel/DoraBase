@@ -6,6 +6,7 @@ import type { Database, Project, SecretRef, UpdateVariantRequest } from '../../d
 import { emptyDraft } from './ConnectionDraft'
 import { draftToUpdateRequest } from './enregistrerLaBase'
 import { NewConnection } from './NewConnection'
+import { TRIO_DE_TEST } from './pourLesTests'
 
 // **Noms inventés.** Ce test portait les identifiants d'une base réelle du commanditaire, ce qui
 // publiait un nom d'utilisateur et un nom de base dans le dépôt. Un décor de test n'a jamais besoin
@@ -13,27 +14,31 @@ import { NewConnection } from './NewConnection'
 const BASE: Database = {
   name: 'analytics',
   engine: 'postgresql',
-  variants: [
-    {
-      environment: 'prod',
-      host: 'localhost',
-      port: 5432,
-      defaultDatabase: 'atelier',
-      username: 'atelier',
-      // `SecretRef` est un type **nominal** (`05a`) : une chaîne ne s'y affecte pas, ce qui empêche
-      // d'y mettre une valeur de secret par erreur. Le cast est donc explicite, et cantonné au test.
-      password: 'Atelier/analytics/prod' as SecretRef,
-      sslMode: 'prefer',
-      caCertificate: null,
-      readOnly: true,
-      reconnectOnStartup: false,
-      tunnel: null,
-    },
-  ],
+  environment: 'prod',
+  connection: {
+    host: 'localhost',
+    port: 5432,
+    defaultDatabase: 'atelier',
+    username: 'atelier',
+    // `SecretRef` est un type **nominal** (`05a`) : une chaîne ne s'y affecte pas, ce qui empêche
+    // d'y mettre une valeur de secret par erreur. Le cast est donc explicite, et cantonné au test.
+    password: 'Atelier/analytics/prod' as SecretRef,
+    sslMode: 'prefer',
+    caCertificate: null,
+    readOnly: true,
+    reconnectOnStartup: false,
+    tunnel: null,
+  },
 }
 
 const APRES: Project[] = [
-  { name: 'Atelier', activeEnvironment: 'prod', databases: [BASE], queries: [] },
+  {
+    name: 'Atelier',
+    activeEnvironment: 'prod',
+    environments: TRIO_DE_TEST,
+    databases: [BASE],
+    queries: [],
+  },
 ]
 
 function monter(over: { onUpdate?: (r: UpdateVariantRequest) => Promise<Project[]> } = {}) {
@@ -43,7 +48,7 @@ function monter(over: { onUpdate?: (r: UpdateVariantRequest) => Promise<Project[
       <Sprite />
       <NewConnection
         onClose={() => {}}
-        projects={[{ id: 'Atelier', name: 'Atelier' }]}
+        projects={[{ id: 'Atelier', name: 'Atelier', environments: TRIO_DE_TEST }]}
         edition={{ project: 'Atelier', database: BASE }}
         onBrowseKey={async () => null}
         onTest={async () => {
@@ -164,28 +169,29 @@ describe('modifier une connexion (08g)', () => {
   })
 
   it('un tunnel enregistré est prérempli, panneau compris', () => {
+    // **Le tunnel est le sujet du test**, et une conversion mécanique du décor l'avait remplacé par
+    // des réglages neutres : le test échouait alors sur l'absence de « SSH activé », c'est-à-dire sur
+    // son propre décor.
     const avecTunnel: Database = {
       ...BASE,
-      variants: [
-        {
-          ...BASE.variants[0],
-          tunnel: {
-            kind: 'ssh',
-            bastionHost: 'bastion.interne',
-            bastionPort: 2222,
-            username: 'ops',
-            privateKeyPath: '/Users/moi/.ssh/id_ed25519',
-            localPort: null,
-          },
+      connection: {
+        ...BASE.connection,
+        tunnel: {
+          kind: 'ssh',
+          bastionHost: 'bastion.interne',
+          bastionPort: 22,
+          username: 'dora',
+          privateKeyPath: '/Users/dora/.ssh/id_ed25519',
+          localPort: null,
         },
-      ],
-    } as Database
+      },
+    }
     render(
       <>
         <Sprite />
         <NewConnection
           onClose={() => {}}
-          projects={[{ id: 'Atelier', name: 'Atelier' }]}
+          projects={[{ id: 'Atelier', name: 'Atelier', environments: TRIO_DE_TEST }]}
           edition={{ project: 'Atelier', database: avecTunnel }}
           onBrowseKey={async () => null}
           onTest={async () => {

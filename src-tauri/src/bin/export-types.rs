@@ -17,6 +17,7 @@
 
 use dorabase_lib::config::{
     ConfigLoad, CreateProjectRequest, DeleteDatabaseRequest, DeleteProjectRequest, DeleteResult,
+    SetActiveEnvironmentRequest,
     Project, RenameProjectRequest, RenameProjectResult, SaveDatabaseRequest, SavedQuery,
     SavedQueryRequest, UpdateVariantRequest,
 };
@@ -54,6 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ConfigLoad::export_all(&config)?;
     SaveDatabaseRequest::export_all(&config)?;
     CreateProjectRequest::export_all(&config)?;
+    SetActiveEnvironmentRequest::export_all(&config)?;
     RenameProjectRequest::export_all(&config)?;
     SavedQuery::export_all(&config)?;
     SavedQueryRequest::export_all(&config)?;

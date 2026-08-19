@@ -1,5 +1,6 @@
 import type { Project } from '../../domain/config'
 import type { ConnectionState, SchemaInfo, TableSummary } from '../../domain/engine'
+import { REGLAGES, TRIO_DE_TEST } from '../NewConnection/pourLesTests'
 import { aplatir, type Charge, idBase, idProjet, idSchema } from './arbre'
 
 const RIEN: Charge = { schemas: {}, objets: {}, enCours: new Set(), echecs: {} }
@@ -9,10 +10,12 @@ function projet(overrides: Partial<Project> = {}): Project {
   return {
     name: 'Atelier Nord',
     activeEnvironment: 'prod',
+    environments: TRIO_DE_TEST,
     queries: [],
     databases: [
-      { name: 'analytics', engine: 'postgresql', variants: [] },
-      { name: 'shop', engine: 'mysql', variants: [] },
+      // **Dans l'environnement actif du projet** (`23g`) : l'arbre ne liste que celles-là.
+      { name: 'analytics', engine: 'postgresql', environment: 'prod', connection: REGLAGES },
+      { name: 'shop', engine: 'mysql', environment: 'prod', connection: REGLAGES },
     ],
     ...overrides,
   }
@@ -199,7 +202,11 @@ test('un projet replié annonce son nombre de bases', () => {
 })
 
 test('un projet à une seule base l’annonce au singulier', () => {
-  const p = projet({ databases: [{ name: 'analytics', engine: 'postgresql', variants: [] }] })
+  const p = projet({
+    databases: [
+      { name: 'analytics', engine: 'postgresql', environment: 'dev', connection: REGLAGES },
+    ],
+  })
   expect(aplatir([p], new Set(), RIEN, JAMAIS)[0]?.meta).toBe('1 base')
 })
 

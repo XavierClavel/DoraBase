@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
+import type { EnvironmentDeclaration } from '../../domain/config'
 import { type Charge, idBase, idProjet, idSchema } from '../../screens/Explorer/arbre'
 import { BreadcrumbBar, type TypeObjet } from '../../screens/Explorer/BreadcrumbBar'
 import { DetailPanel } from '../../screens/Explorer/DetailPanel'
@@ -1227,7 +1228,9 @@ function DataTableGallery() {
 // --- Barre de titre de A4 (`09c`) --------------------------------------------------
 
 function TitleBarGallery() {
-  const [env, setEnv] = useState<'dev' | 'staging' | 'prod'>('prod')
+  // Un identifiant d'environnement est une chaîne libre depuis `23a` : le typer par une union de
+  // trois valeurs reconstruirait le trio en dur, ici même.
+  const [env, setEnv] = useState('prod')
 
   return (
     <Section title="Barre de titre (A4)">
@@ -1247,21 +1250,23 @@ function TitleBarGallery() {
         <div data-testid="titlebar-a4">
           <TitleBar
             showConsole
-            center={
-              <>
-                <ProjectPill
-                  projectName="Atelier Nord"
-                  breadcrumb="analytics · public"
-                  connection={{
-                    kind: 'connected',
-                    serverVersion: 'PostgreSQL 17.6',
-                    tunnelLocalPort: null,
-                  }}
-                  readOnly
-                />
-              </>
+            center=<ProjectPill
+              projectName="Atelier Nord"
+              breadcrumb="analytics · public"
+              connection={{
+                kind: 'connected',
+                serverVersion: 'PostgreSQL 17.6',
+                tunnelLocalPort: null,
+              }}
+              readOnly
+            />
+            right={
+              <EnvironmentPicker
+                environments={ENVIRONNEMENTS_DE_GALERIE}
+                value={env}
+                onValueChange={setEnv}
+              />
             }
-            right={<EnvironmentPicker value={env} onValueChange={setEnv} />}
           />
         </div>
       </Sub>
@@ -1285,22 +1290,72 @@ function TitleBarGallery() {
 
 // --- Sidebar de A4 (`09d`) --------------------------------------------------------
 
+/**
+ * Les réglages de connexion du décor de galerie.
+ *
+ * Ils étaient absents — `variants: []` — parce que l'arbre n'en lit aucun. Depuis `23b`, une connexion
+ * en porte un et un seul, non optionnel : le modèle refuse une connexion sans réglages, et c'est ce qui
+ * empêche une déclaration à moitié écrite.
+ */
+const REGLAGES_DE_GALERIE = {
+  host: 'localhost',
+  port: 5432,
+  defaultDatabase: 'analytics',
+  username: 'dorabase',
+  password: null,
+  sslMode: 'prefer' as const,
+  caCertificate: null,
+  readOnly: true,
+  reconnectOnStartup: false,
+  tunnel: null,
+}
+
+const ENVIRONNEMENTS_DE_GALERIE: EnvironmentDeclaration[] = [
+  { id: 'dev', label: 'dev', color: 'green', production: false },
+  { id: 'staging', label: 'staging', color: 'amber', production: false },
+  { id: 'prod', label: 'prod', color: 'red', production: true },
+]
+
 const PROJETS_DEMO = [
   {
     name: 'Atelier Nord',
-    activeEnvironment: 'prod' as const,
+    activeEnvironment: 'prod',
+    environments: ENVIRONNEMENTS_DE_GALERIE,
     queries: [],
     databases: [
-      { name: 'analytics', engine: 'postgresql' as const, variants: [] },
-      { name: 'shop', engine: 'mysql' as const, variants: [] },
-      { name: 'cache', engine: 'redis' as const, variants: [] },
+      {
+        name: 'analytics',
+        engine: 'postgresql' as const,
+        environment: 'prod',
+        connection: REGLAGES_DE_GALERIE,
+      },
+      {
+        name: 'shop',
+        engine: 'mysql' as const,
+        environment: 'prod',
+        connection: REGLAGES_DE_GALERIE,
+      },
+      {
+        name: 'cache',
+        engine: 'redis' as const,
+        environment: 'prod',
+        connection: REGLAGES_DE_GALERIE,
+      },
     ],
   },
   {
     name: 'Atelier Sud',
-    activeEnvironment: 'dev' as const,
+    activeEnvironment: 'dev',
+    environments: ENVIRONNEMENTS_DE_GALERIE,
     queries: [],
-    databases: [{ name: 'tracking', engine: 'mongodb' as const, variants: [] }],
+    databases: [
+      {
+        name: 'tracking',
+        engine: 'mongodb' as const,
+        environment: 'dev',
+        connection: REGLAGES_DE_GALERIE,
+      },
+    ],
   },
 ]
 

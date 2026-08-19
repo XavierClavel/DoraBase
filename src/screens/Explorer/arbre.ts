@@ -1,4 +1,4 @@
-import type { Environment, Project } from '../../domain/config'
+import type { EnvironmentId, Project } from '../../domain/config'
 import type { ConnectionState, SchemaInfo, TableSummary } from '../../domain/engine'
 import { formatRowCount } from '../../ui/format'
 
@@ -54,7 +54,7 @@ export type Noeud = {
   /** Les coordonnées, pour que l'écran sache quoi demander au dépliage. */
   project?: string
   database?: string
-  environment?: Environment
+  environment?: EnvironmentId
   schema?: string
 }
 
@@ -85,7 +85,7 @@ export function aplatir(
   projects: readonly Project[],
   deplies: Deplies,
   charge: Charge,
-  etats: (project: string, database: string, environment: Environment) => ConnectionState,
+  etats: (project: string, database: string, environment: EnvironmentId) => ConnectionState,
 ): Noeud[] {
   const noeuds: Noeud[] = []
 
@@ -115,10 +115,24 @@ export function aplatir(
 
     if (!projetDeplie) continue
 
-    for (const base of projet.databases) {
+    /*
+     * **Les connexions de l'environnement actif, et elles seules** (`23g`).
+     *
+     * L'arbre listait toutes les bases du projet, chacune montrant les réglages de l'environnement
+     * courant : une base était un objet, l'environnement un point de vue. Depuis `23b`, une connexion
+     * *appartient* à un environnement — les lister toutes afficherait côte à côte deux entrées
+     * homonymes dont une seule est joignable, et cliquer la mauvaise ouvrirait le mauvais serveur.
+     *
+     * Basculer d'environnement change donc la **liste** des bases, non l'hôte d'une même base.
+     */
+    const connexions = projet.databases.filter(
+      (base) => base.environment === projet.activeEnvironment,
+    )
+
+    for (const base of connexions) {
       const idB = idBase(projet.name, base.name)
       const baseDepliee = deplies.has(idB)
-      const etat = etats(projet.name, base.name, projet.activeEnvironment)
+      const etat = etats(projet.name, base.name, base.environment)
 
       noeuds.push({
         id: idB,
@@ -134,10 +148,11 @@ export function aplatir(
         announce: `${base.name} · ${resumeEtat(etat)}`,
         project: projet.name,
         database: base.name,
-        environment: projet.activeEnvironment,
-        // Les environnements déclarés pour cette base : c'est ce que le retrait efface, et non la
-        // seule variante courante.
-        connexions: base.variants.length,
+        environment: base.environment,
+        // **Une connexion, une déclaration** (`23b`). Ce compte valait « les environnements où cette
+        // base est déclarée », du temps où une base portait des variantes : le retrait en effaçait
+        // plusieurs. Il en efface exactement une désormais, et le dire ainsi évite de reposer la
+        // question à l'écran de confirmation.
       })
 
       if (!baseDepliee) continue
@@ -157,7 +172,7 @@ export function aplatir(
 function noeudsDeSchema(
   project: string,
   database: string,
-  environment: Environment,
+  environment: EnvironmentId,
   schema: SchemaInfo,
   deplies: Deplies,
   charge: Charge,
@@ -231,7 +246,7 @@ function message(id: string, depth: 2 | 3, label: string): Noeud {
   return { id, kind: 'message', depth, label, message: true }
 }
 
-function badgeEnvironnement(environment: Environment): Noeud['badge'] {
+function badgeEnvironnement(environment: EnvironmentId): Noeud['badge'] {
   if (environment === 'prod') return { text: 'PROD', tone: 'danger' }
   if (environment === 'staging') return { text: 'STAGING', tone: 'warn' }
   return { text: 'DEV', tone: 'muted' }

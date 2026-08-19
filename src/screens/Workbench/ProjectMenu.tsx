@@ -1,7 +1,6 @@
 import { Icon } from '../../design/icons/Icon'
 import type { Database, Project } from '../../domain/config'
 import { Popover } from '../../ui/Popover/Popover'
-import { ENVIRONMENTS } from '../NewConnection/environments'
 import styles from './ProjectMenu.module.css'
 
 type ProjectMenuProps = {
@@ -64,12 +63,11 @@ export function ProjectMenu({
                       >
                         <Icon name="db" size={12} strokeWidth={1.8} className={styles.db} />
                         <span className={styles.baseNom}>{base.name}</span>
-                        {/* Les environnements déclarés : c'est ce qui distingue deux entrées de même
-                          nom, et ce que l'utilisateur cherche quand il corrige un port. */}
+                        {/* **L'environnement de la connexion**, qui est ce qui distingue deux entrées
+                          de même nom (`23b`) — et ce que l'utilisateur cherche quand il corrige un
+                          port. C'était la liste des variantes d'une même base ; il n'y en a plus. */}
                         <span className={styles.envs}>
-                          {base.variants
-                            .map((variante) => ENVIRONMENTS[variante.environment].label)
-                            .join(' · ')}
+                          {libelleDeLEnvironnement(projet, base.environment)}
                         </span>
                         <Icon name="pencil" size={12} strokeWidth={1.9} className={styles.crayon} />
                       </button>
@@ -97,5 +95,19 @@ export function ProjectMenu({
     >
       {children}
     </Popover>
+  )
+}
+
+/**
+ * Le libellé d'un environnement, tel que **son projet** le déclare (`23a`).
+ *
+ * Un identifiant à défaut : le modèle refuse une connexion visant un environnement non déclaré, donc
+ * ce cas ne s'affiche jamais — mais afficher l'identifiant vaut mieux qu'une chaîne vide, qui se
+ * lirait comme une connexion sans environnement.
+ */
+function libelleDeLEnvironnement(projet: Project, environnement: string): string {
+  return (
+    projet.environments.find((declaration) => declaration.id === environnement)?.label ??
+    environnement
   )
 }

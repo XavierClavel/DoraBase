@@ -23,6 +23,7 @@ pub fn run() {
             config::commands::save_preferences,
             config::commands::save_database,
             config::commands::create_project,
+            config::commands::set_active_environment,
             config::commands::rename_project,
             config::commands::save_query,
             config::commands::delete_query,

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
-import type { Environment, SslMode } from '../../domain/config'
+import type { EnvironmentDeclaration, EnvironmentId, SslMode } from '../../domain/config'
 import { Badge } from '../../ui/Badge/Badge'
 import { cx } from '../../ui/cx'
 import { Field } from '../../ui/Field/Field'
@@ -9,13 +9,7 @@ import { Select } from '../../ui/Select/Select'
 import { Toggle } from '../../ui/Toggle/Toggle'
 import type { ConnectionDraft } from './ConnectionDraft'
 import { estUnFichier } from './engines'
-import {
-  authentifie,
-  ENVIRONMENT_ORDER,
-  ENVIRONMENTS,
-  SSL_MODE_ORDER,
-  SSL_MODES,
-} from './environments'
+import { authentifie, SSL_MODE_ORDER, SSL_MODES, TRIO_PAR_DEFAUT } from './environments'
 import styles from './NewConnection.module.css'
 
 /**
@@ -35,8 +29,11 @@ const RAISON_VERROU =
 type ConnectionFormProps = {
   draft: ConnectionDraft
   onChange: (patch: Partial<ConnectionDraft>) => void
-  /** Les projets existants. Vide, `08e` désactivera l'enregistrement. */
-  projects: readonly { id: string; name: string }[]
+  /**
+   * Les projets existants, **avec leurs environnements** (`23d`). Vide, `08e` désactivera
+   * l'enregistrement.
+   */
+  projects: readonly { id: string; name: string; environments: readonly EnvironmentDeclaration[] }[]
   /**
    * Verrouille les champs qui **désignent** la base : son nom, son projet, son environnement.
    *
@@ -49,16 +46,27 @@ type ConnectionFormProps = {
 
 const OPTIONS_SSL = SSL_MODE_ORDER.map((mode) => ({ value: mode, label: SSL_MODES[mode].label }))
 
-const OPTIONS_ENV = ENVIRONMENT_ORDER.map((environment) => ({
-  value: environment,
-  label: ENVIRONMENTS[environment].label,
-  // L'icône warning de `prod` : décorative, `RadioGroup` la masque à l'accessibilité
-  // puisqu'elle redouble un mot déjà écrit.
-  prefix: ENVIRONMENTS[environment].danger ? (
-    <Icon name="warn" size={13} strokeWidth={2} />
-  ) : undefined,
-  className: cx(styles.envOption, ENVIRONMENTS[environment].danger && styles.envDanger),
-}))
+/**
+ * Les entrées du groupe d'environnements, **construites depuis les déclarations du projet** (`23d`).
+ *
+ * C'était une constante de module, dérivée du trio en dur : elle ne pouvait pas dépendre du projet
+ * choisi. Depuis `23a`, chaque projet déclare les siens — un projet à cinq environnements en montre
+ * cinq, et changer de projet change la liste.
+ *
+ * **L'habillage d'alerte suit le drapeau `production`, jamais le libellé.** Un environnement nommé
+ * « live » et marqué production porte le fond rouge pâle et l'icône d'avertissement ; un environnement
+ * nommé « prod » que l'utilisateur n'a pas marqué ne les porte pas.
+ */
+function optionsDEnvironnement(declarations: readonly EnvironmentDeclaration[]) {
+  return declarations.map((declaration) => ({
+    value: declaration.id,
+    label: declaration.label,
+    // L'icône d'avertissement : décorative, `RadioGroup` la masque à l'accessibilité puisqu'elle
+    // redouble un mot déjà écrit.
+    prefix: declaration.production ? <Icon name="warn" size={13} strokeWidth={2} /> : undefined,
+    className: cx(styles.envOption, declaration.production && styles.envDanger),
+  }))
+}
 
 /**
  * Un interrupteur suivi de son libellé **visible**.
@@ -118,6 +126,16 @@ export function ConnectionForm({
     { value: NOUVEAU_PROJET, label: '+ Nouveau projet…' },
   ]
   const creeUnProjet = draft.project === NOUVEAU_PROJET
+  /**
+   * Les environnements proposés : ceux du projet choisi.
+   *
+   * **Le trio par défaut pour un projet à créer** (`23d`) : il n'existe pas encore, et le recevra à sa
+   * création. Les afficher plutôt que rien suit la règle de `09f` — montrer ce qui viendra vaut mieux
+   * qu'un vide qui se lit comme une panne.
+   */
+  const environnementsDuProjet = creeUnProjet
+    ? TRIO_PAR_DEFAUT
+    : (projects.find((projet) => projet.id === draft.project)?.environments ?? TRIO_PAR_DEFAUT)
 
   return (
     <div className={styles.form}>
@@ -145,14 +163,16 @@ export function ConnectionForm({
           onValueChange={(project) => onChange({ project })}
         />
         <div>
-          <div className={styles.label}>Variante d’environnement</div>
+          {/* « Environnement », et non plus « Variante d'environnement » : le mot décrivait le modèle
+              à variantes, que `23b` a retiré. */}
+          <div className={styles.label}>Environnement</div>
           <RadioGroup
-            label="Variante d’environnement"
-            options={OPTIONS_ENV}
+            label="Environnement"
+            options={optionsDEnvironnement(environnementsDuProjet)}
             value={draft.environment}
             disabled={verrouille}
             title={verrouille ? RAISON_VERROU : undefined}
-            onValueChange={(environment) => onChange({ environment: environment as Environment })}
+            onValueChange={(environment) => onChange({ environment: environment as EnvironmentId })}
           />
         </div>
       </div>
