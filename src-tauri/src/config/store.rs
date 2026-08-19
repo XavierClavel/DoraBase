@@ -679,7 +679,7 @@ mod tests_preferences {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::model::{Database, Engine, EnvironmentId, ConnectionSettings, SslMode};
+    use crate::config::model::{ConnectionSettings, Database, Engine, EnvironmentId, SslMode};
 
     fn variante() -> ConnectionSettings {
         ConnectionSettings {

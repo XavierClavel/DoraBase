@@ -5,7 +5,8 @@
 //! `commands.rs` : la logique d'ordonnancement et de rattrapage se teste sans Tauri.
 
 use crate::config::model::{
-    Database, Engine, EnvironmentId, ConnectionSettings, ModelError, Project, SavedQuery, SecretRef,};
+    ConnectionSettings, Database, Engine, EnvironmentId, ModelError, Project, SavedQuery, SecretRef,
+};
 use crate::config::query::validate;
 use crate::secrets::{Secret, SecretError, SecretStore};
 
@@ -403,11 +404,8 @@ pub fn renommer_projet(
     candidat.name = nouveau.to_owned();
     for base in &mut candidat.databases {
         if base.connection.password.is_some() {
-            base.connection.password = Some(reference_de(
-                nouveau,
-                &base.name,
-                base.environment.as_str(),
-            ));
+            base.connection.password =
+                Some(reference_de(nouveau, &base.name, base.environment.as_str()));
         }
     }
     validate(&candidat).map_err(|erreur| RenameError::Config {
@@ -1000,7 +998,8 @@ mod tests {
 
     #[test]
     fn un_projet_cree_est_vide_et_porte_l_environnement_demande() {
-        let suivants = creer_projet(&[], "Atelier Nord", EnvironmentId::brut("prod")).expect("création");
+        let suivants =
+            creer_projet(&[], "Atelier Nord", EnvironmentId::brut("prod")).expect("création");
 
         assert_eq!(suivants.len(), 1);
         assert_eq!(suivants[0].name, "Atelier Nord");
@@ -1041,8 +1040,12 @@ mod tests {
     /// et le second serait injoignable puisque la clé de base emploie le nom.
     #[test]
     fn les_blancs_de_bord_ne_creent_pas_un_second_projet() {
-        let erreur = creer_projet(&projets(), "  Atelier Nord  ", EnvironmentId::brut("dev"))
-            .expect_err("c'est le même projet");
+        let erreur = creer_projet(
+            &projets(),
+            "  Atelier Nord  ",
+            EnvironmentId::brut("dev"),
+        )
+        .expect_err("c'est le même projet");
         assert_eq!(
             erreur,
             CreateError::NomDeja {
@@ -1135,7 +1138,8 @@ mod tests {
     fn un_mot_de_passe_absent_laisse_le_secret_en_place() {
         let m = magasin();
         let mut p = projets_avec_base(&m);
-        let reference = p[0].databases[0].connection
+        let reference = p[0].databases[0]
+            .connection
             .password
             .clone()
             .expect("le décor a rangé un secret");
@@ -1168,7 +1172,8 @@ mod tests {
     fn un_mot_de_passe_fourni_remplace_le_secret() {
         let m = magasin();
         let mut p = projets_avec_base(&m);
-        let reference = p[0].databases[0].connection
+        let reference = p[0].databases[0]
+            .connection
             .password
             .clone()
             .expect("le décor a rangé un secret");
@@ -1576,11 +1581,7 @@ mod tests {
         )
         .expect("enregistrement");
 
-        assert_eq!(
-            p[0].databases[0].connection
-                .password,
-            None
-        );
+        assert_eq!(p[0].databases[0].connection.password, None);
     }
 
     /// La référence est **prévisible**, donc rouvrir la même base retrouve son secret sans
@@ -1653,12 +1654,12 @@ mod tests_parcours {
             active_environment: EnvironmentId::brut("dev"),
             environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
             queries: Vec::new(),
-            databases: vec![crate::config::model::Database::new(
-                "analytics",
-                Engine::PostgreSql,
-                vec![variante_de(1)],
-            )
-            .expect("base")],
+            databases: vec![crate::config::model::Database {
+                name: "analytics".to_owned(),
+                engine: Engine::PostgreSql,
+                environment: EnvironmentId::brut("dev"),
+                connection: variante_de(1),
+            }],
         }];
 
         mettre_a_jour(
@@ -2209,10 +2210,17 @@ mod tests_suppression {
         }
         let mut ecrits = 0;
 
-        let issue = supprimer_base(&projets, "Print", "analytics", &EnvironmentId::brut("dev"), &m, &mut |_| {
-            ecrits += 1;
-            Ok(())
-        })
+        let issue = supprimer_base(
+            &projets,
+            "Print",
+            "analytics",
+            &EnvironmentId::brut("dev"),
+            &m,
+            &mut |_| {
+                ecrits += 1;
+                Ok(())
+            },
+        )
         .expect("suppression");
 
         assert_eq!(ecrits, 1);
@@ -2281,8 +2289,15 @@ mod tests_suppression {
         // Magasin vide : les mots de passe ont été effacés à la main dans le Trousseau.
         let m = magasin();
 
-        let issue = supprimer_base(&projets, "Print", "analytics", &EnvironmentId::brut("dev"), &m, &mut |_| Ok(()))
-            .expect("un mot de passe déjà absent ne doit pas rendre l'entrée indélébile");
+        let issue = supprimer_base(
+            &projets,
+            "Print",
+            "analytics",
+            &EnvironmentId::brut("dev"),
+            &m,
+            &mut |_| Ok(()),
+        )
+        .expect("un mot de passe déjà absent ne doit pas rendre l'entrée indélébile");
 
         // Deux connexions restantes : `analytics` en prod et `shop` en prod (`23b`).
         assert_eq!(issue.projects[0].databases.len(), 2);
@@ -2298,8 +2313,15 @@ mod tests_suppression {
             m.poser(&reference_de("Print", "analytics", env), "mdp");
         }
 
-        let issue = supprimer_base(&projets, "Print", "analytics", &EnvironmentId::brut("dev"), &m, &mut |_| Ok(()))
-            .expect("un magasin qui refuse d'effacer ne doit pas rendre l'entrée indélébile");
+        let issue = supprimer_base(
+            &projets,
+            "Print",
+            "analytics",
+            &EnvironmentId::brut("dev"),
+            &m,
+            &mut |_| Ok(()),
+        )
+        .expect("un magasin qui refuse d'effacer ne doit pas rendre l'entrée indélébile");
 
         assert_eq!(issue.projects[0].databases.len(), 2);
         // **Dit, jamais tu** : le mot de passe reste dans le Trousseau, et l'écran doit pouvoir
@@ -2317,9 +2339,14 @@ mod tests_suppression {
         let m = magasin();
         m.poser(&reference_de("Print", "shop", "prod"), "mdp");
 
-        let erreur = supprimer_base(&projets, "Print", "shop", &EnvironmentId::brut("prod"), &m, &mut |_| {
-            Err("disque plein".to_owned())
-        })
+        let erreur = supprimer_base(
+            &projets,
+            "Print",
+            "shop",
+            &EnvironmentId::brut("prod"),
+            &m,
+            &mut |_| Err("disque plein".to_owned()),
+        )
         .expect_err("la suppression doit échouer");
 
         assert!(matches!(erreur, DeleteError::Config { .. }));
@@ -2334,9 +2361,14 @@ mod tests_suppression {
         let m = magasin();
         m.poser(&reference_de("Print", "shop", "prod"), "mdp");
 
-        supprimer_base(&projets, "Print", "shop", &EnvironmentId::brut("prod"), &m, &mut |_| {
-            Err("disque plein".to_owned())
-        })
+        supprimer_base(
+            &projets,
+            "Print",
+            "shop",
+            &EnvironmentId::brut("prod"),
+            &m,
+            &mut |_| Err("disque plein".to_owned()),
+        )
         .expect_err("la suppression doit échouer");
 
         // **La phase destructive vient en dernier, et c'est ce test qui l'exige.** Dans l'ordre
@@ -2355,7 +2387,14 @@ mod tests_suppression {
         let projets = decor_partage();
         let m = magasin();
         assert!(matches!(
-            supprimer_base(&projets, "Print", "absente", &EnvironmentId::brut("dev"), &m, &mut |_| Ok(())),
+            supprimer_base(
+                &projets,
+                "Print",
+                "absente",
+                &EnvironmentId::brut("dev"),
+                &m,
+                &mut |_| Ok(())
+            ),
             Err(DeleteError::BaseInconnue { .. })
         ));
         assert!(matches!(

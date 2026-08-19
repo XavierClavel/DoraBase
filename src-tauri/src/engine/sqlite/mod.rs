@@ -317,7 +317,7 @@ impl EngineAdapter for SqliteAdapter {
 #[cfg(test)]
 mod tests_fichier {
     use super::*;
-    use crate::config::{SslMode};
+    use crate::config::SslMode;
     use crate::engine::{Filter, FilterOperator, KeyKind, ObjectKind, PendingUpdate, TypeCategory};
 
     /// Le décor de `scripts/schema-test-sqlite.sql`, appliqué à un fichier neuf.
