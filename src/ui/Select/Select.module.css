@@ -56,39 +56,19 @@
   flex: none;
 }
 
-.select {
-  flex: 1;
-  min-width: 0;
-  /* **La surface cliquable doit être tout le champ.** Sans cela le `<select>` garde sa
-   * hauteur intrinsèque — 16px mesurés dans une boîte de 32 — et cliquer dans le
-   * remplissage du champ n'ouvre pas la liste. Défaut trouvé à la mesure, invisible en
-   * test unitaire. */
+/*
+ * Le champ de la liste déroulante.
+ *
+ * Il remplace le `<select>` natif et son chevron dessiné à côté : `ListeDeroulante` porte le sien. Ce
+ * qui restait ici — `appearance: none`, le remplissage nul, la teinte du chevron — appartenait au
+ * natif et part avec lui.
+ */
+.champ {
+  /* **La surface cliquable doit être tout le champ.** Le natif gardait sa hauteur intrinsèque, 16 px
+   * mesurés dans une boîte de 32, et cliquer dans le remplissage n'ouvrait pas la liste. Le défaut
+   * était le sien ; l'étirement reste juste. */
   align-self: stretch;
-  /* Retire le chevron du système : celui du handoff est dessiné à côté. */
-  appearance: none;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--ink);
   font-family: var(--font-ui);
   font-size: var(--text-control);
-  font-weight: var(--weight-medium);
-}
-
-.select:focus-visible {
-  outline: none;
-}
-
-.select:disabled {
-  color: var(--ink-3);
-  cursor: not-allowed;
-}
-
-.chevron {
-  display: flex;
-  flex: none;
-  color: var(--ink-4);
-  /* Le chevron n'intercepte pas le clic : il doit ouvrir la liste, comme le reste du
-   * champ. Sans ça, cliquer précisément dessus ne ferait rien. */
-  pointer-events: none;
+  color: var(--ink);
 }

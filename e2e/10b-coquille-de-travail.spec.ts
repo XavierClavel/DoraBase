@@ -31,14 +31,31 @@ test('la coquille a les dimensions du mockup', async ({ page }) => {
       poignees: [...document.querySelectorAll('[role=separator]')].map((p) =>
         Math.round(p.getBoundingClientRect().width),
       ),
+      // La zone attrapable, elle, déborde : c'est un pseudo-élément, donc invisible aux mesures de
+      // boîte. Elle se constate au point (voir la spec du séparateur dans `geometrie-reelle`).
+      saisie: [...document.querySelectorAll('[role=separator]')].map((p) => {
+        const boite = p.getBoundingClientRect()
+        const gauche = document.elementFromPoint(boite.left - 2, boite.top + 40)
+        const droite = document.elementFromPoint(boite.right + 2, boite.top + 40)
+        return [p.contains(gauche) || gauche === p, p.contains(droite) || droite === p]
+      }),
     }
   })
 
   expect(mesures.titre).toBe('40px')
   expect(mesures.sidebar).toBe(212)
   expect(mesures.bande).toBe('34px')
-  // Deux poignées de 5 px : sidebar | centre, et centre | panneau de détail.
-  expect(mesures.poignees).toEqual([5, 5])
+  // **Deux poignées d'un pixel, et non de cinq.** Elles en faisaient cinq, transparents : entre une
+  // sidebar en `--paper-alt` et un centre en `--paper`, ces cinq pixels dessinaient une bande claire
+  // avec le trait perdu au milieu. La poignée **est** le trait désormais, et ce qu'on attrape déborde
+  // sans rien occuper.
+  expect(mesures.poignees).toEqual([1, 1])
+  // Trois pixels de part et d'autre restent attrapables : viser un trait d'un pixel relèverait de
+  // l'adresse.
+  expect(mesures.saisie).toEqual([
+    [true, true],
+    [true, true],
+  ])
 })
 
 test('ouvrir une table depuis l’arbre ouvre un onglet, et la sidebar liste ses colonnes', async ({

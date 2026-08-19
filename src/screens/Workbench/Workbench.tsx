@@ -519,9 +519,9 @@ export function Workbench({
                 }
               />
             </ProjectMenu>
-            <EnvironmentPicker value={environnement} onValueChange={() => {}} />
           </>
         }
+        right={<EnvironmentPicker value={environnement} onValueChange={() => {}} />}
       />
       {/* Le bandeau du mode édition, **sous la barre de titre** et au-dessus du corps : c'est là que
           le mockup le place, et il court sur toute la largeur. */}

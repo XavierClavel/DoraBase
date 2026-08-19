@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Sprite } from '../../design/icons/Sprite'
+import { choisirDansLaListe, optionsDeLaListe } from '../../ui/Select/pourLesTests'
 import { ENGINE_ORDER, ENGINES } from './engines'
 import { ENVIRONMENT_ORDER, SSL_MODE_ORDER } from './environments'
 import { NewConnection } from './NewConnection'
@@ -71,12 +72,9 @@ test('choisir un moteur sans adaptateur le dit, au lieu de le masquer', async ()
 // `Record<T, …>`, donc ajouter une variante en Rust fait échouer `tsc` jusqu'à ce qu'elle soit
 // traitée. Vérifié par sabotage (ajout d'un `SslMode` en Rust → erreur TS2741). Ces tests
 // vérifient le complément que le type ne dit pas : que l'écran rend bien *toutes* les options.
-test('les six modes SSL du modèle sont proposés', () => {
+test('les six modes SSL du modèle sont proposés', async () => {
   monter()
-  const options = screen
-    .getByRole('combobox', { name: 'Mode SSL' })
-    .querySelectorAll<HTMLOptionElement>('option')
-  expect([...options].map((o) => o.value)).toEqual([...SSL_MODE_ORDER])
+  expect(await optionsDeLaListe('Mode SSL')).toEqual([...SSL_MODE_ORDER])
 })
 
 test('les trois variantes d’environnement du modèle sont proposées', () => {
@@ -104,7 +102,9 @@ test('les valeurs préremplies sont celles qui sont vraies dans presque tous les
   expect(screen.getByLabelText('Port')).toHaveValue('5432')
   // `dev` et non `prod` : ouvrir sur prod serait une invitation à l'accident.
   expect(screen.getByRole('radio', { name: 'dev' })).toBeChecked()
-  expect(screen.getByRole('combobox', { name: 'Mode SSL' })).toHaveValue('prefer')
+  // **Le contenu du champ, et non `toHaveValue`.** Le champ n'est plus un `<select>` : il n'a pas de
+  // `value`, il affiche le libellé de l'option choisie. Ce qui compte est ce que l'utilisateur lit.
+  expect(screen.getByRole('combobox', { name: 'Mode SSL' })).toHaveTextContent('prefer')
 })
 
 test('« Ouvrir en lecture seule » est actif, « Se reconnecter » non', () => {
@@ -160,15 +160,12 @@ test('sans aucun projet, la création est proposée d’emblée', () => {
   expect(screen.getByLabelText('Nom du nouveau projet')).toBeInTheDocument()
 })
 
-test('avec des projets, ils sont proposés, suivis de la création', () => {
+test('avec des projets, ils sont proposés, suivis de la création', async () => {
   monter([
     { id: 'print', name: 'Atelier Nord' },
     { id: 'web', name: 'Atelier Sud' },
   ])
-  const options = screen
-    .getByRole('combobox', { name: 'Projet' })
-    .querySelectorAll<HTMLOptionElement>('option')
-  expect([...options].map((o) => o.textContent)).toEqual([
+  expect(await optionsDeLaListe('Projet')).toEqual([
     'Atelier Nord',
     'Atelier Sud',
     '+ Nouveau projet…',
@@ -263,6 +260,13 @@ test('tout le formulaire est atteignable au clavier', async () => {
     if (!element) return null
     const direct = element.getAttribute('aria-label')
     if (direct) return direct
+
+    // **`aria-labelledby` en plus de `<label for>`.** Les listes déroulantes maison ne sont plus des
+    // contrôles natifs : leur étiquette visible est un `<span>` qu'elles désignent par cet attribut,
+    // et `element.labels` ne les connaît pas. Sans cette branche, le parcours au clavier trouvait un
+    // nom nul là où l'écran affiche « Projet ».
+    const designee = element.getAttribute('aria-labelledby')
+    if (designee) return document.getElementById(designee)?.textContent?.trim() ?? null
 
     const etiquette =
       (element as HTMLInputElement).labels?.[0] ??
@@ -363,19 +367,19 @@ test('le champ d’autorité n’apparaît que pour les modes qui authentifient'
   expect(screen.queryByLabelText('Certificat d’autorité')).toBeNull()
 
   // Le mode SSL est un `Select`, pas un groupe de radios.
-  await userEvent.selectOptions(screen.getByLabelText('Mode SSL'), 'verify-ca')
+  await choisirDansLaListe('Mode SSL', 'verify-ca')
   expect(screen.getByLabelText('Certificat d’autorité')).toBeInTheDocument()
 
   // **`require` chiffre sans authentifier** : le champ n'y servirait à rien, et l'afficher ferait
   // croire qu'il change quelque chose. C'est « l'erreur classique » que `06b` désignait, rendue
   // visible à l'écran.
-  await userEvent.selectOptions(screen.getByLabelText('Mode SSL'), 'require')
+  await choisirDansLaListe('Mode SSL', 'require')
   expect(screen.queryByLabelText('Certificat d’autorité')).toBeNull()
 })
 
 test('le champ d’autorité dit ce qu’un vide veut dire', async () => {
   monter()
-  await userEvent.selectOptions(screen.getByLabelText('Mode SSL'), 'verify-full')
+  await choisirDansLaListe('Mode SSL', 'verify-full')
   const champ = screen.getByLabelText('Certificat d’autorité')
   // Sans cette indication, un champ vide se lirait comme un réglage manquant plutôt que comme
   // « les autorités publiques suffisent ».

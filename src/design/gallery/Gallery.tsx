@@ -1232,9 +1232,12 @@ function TitleBarGallery() {
   return (
     <Section title="Barre de titre (A4)">
       <Note>
-        **Deux boîtes, pas une.** Le handoff insiste : la pastille projet, puis « dans une seconde
-        boîte blanche séparée (margin-left 8 px) » le sélecteur d’environnement. Les fondre ferait
-        lire l’environnement comme une propriété du fil d’Ariane plutôt que comme un commutateur.
+        **Le sélecteur d’environnement est à droite, et il n’a plus qu’un encadré** — deux écarts au
+        handoff, demandés à l’écran le 19 août 2026. Le mockup le pose contre la pastille projet,
+        dans une seconde boîte blanche séparée de 8 px : il se déplaçait alors avec la longueur du
+        fil d’Ariane, et un commutateur qui bouge quand on change de schéma est un commutateur qu’on
+        cherche. Ses deux filets emboîtés, eux, se lisaient comme deux contrôles pour un seul
+        réglage.
       </Note>
       <Note>
         Le point d’état est celui de la base **ouverte** : un projet n’a pas d’état de connexion,
@@ -1256,9 +1259,9 @@ function TitleBarGallery() {
                   }}
                   readOnly
                 />
-                <EnvironmentPicker value={env} onValueChange={setEnv} />
               </>
             }
+            right={<EnvironmentPicker value={env} onValueChange={setEnv} />}
           />
         </div>
       </Sub>

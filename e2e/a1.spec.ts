@@ -1,5 +1,16 @@
 import { expect, test } from '@playwright/test'
 
+// **Trois références régénérées le 19 août 2026**, en remplaçant les `<select>` natifs par la liste
+// déroulante maison (« pas de composant natif » — décision de ce jour). L'écart mesuré valait
+// 387 pixels sur 1,1 million, tous dans le texte des deux champs de liste ; il est tombé à 90 en
+// retirant le remplissage `1px 6px` que Chromium pose sur tout `<button>`, et le reste tient à la
+// rastérisation des glyphes dans un `<button>` plutôt que dans un `<select>`.
+//
+// **La géométrie, elle, a été vérifiée au chiffre avant de toucher aux références** : même abscisse de
+// texte, même corps, valeur centrée dans un champ de 30 px, boîtes de 32 et 19 px inchangées — ce que
+// les mesures de `a2-nouvelle-connexion` et `a4-barre-de-titre` affirment indépendamment. Une capture
+// régénérée sans cette vérification n'aurait plus rien gardé.
+
 test('A1 est conforme à la référence', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => document.fonts.ready)

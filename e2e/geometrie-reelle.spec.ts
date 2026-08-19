@@ -358,40 +358,53 @@ test('la barre de fil d’Ariane contient son contrôle segmenté, même à l’
   expect(mesures?.largeurDuControle).toBe(269)
 })
 
-test('le séparateur est un trait, et devient une barre au survol', async ({ page }) => {
+test('le séparateur est un trait d’un pixel, et une barre au survol', async ({ page }) => {
   await ouvrirUneTable(page)
-  // **Le trait est un `::before`, donc c'est lui qu'on mesure.** Un enfant réel aurait été un élément
-  // décoratif dans l'arbre d'accessibilité d'un `role="separator"` ; `getComputedStyle` sait lire un
-  // pseudo-élément, il n'y avait donc rien à sacrifier.
-  const traitDe = (etat: 'repos' | 'survol') =>
-    page.evaluate(() => {
-      const poignee = document.querySelector('[role=separator]')
-      if (!poignee) return null
-      const style = getComputedStyle(poignee, '::before')
-      return { largeur: style.width, fond: style.backgroundColor }
-    }, etat)
+  const poignee = page.locator('[role=separator]').first()
 
-  const repos = await traitDe('repos')
-  // Un pixel, et la même encre que toutes les séparations de l'interface : la jointure ressemble à ce
-  // qu'elle est. Ce qu'elle était — un dégradé de 5 px plus une pastille — se lisait comme une *zone*
-  // entre deux colonnes, alors qu'une jointure n'a rien à dire.
-  expect(repos?.largeur).toBe('1px')
+  const trait = await page.evaluate(() => {
+    const separateur = document.querySelector('[role=separator]') as HTMLElement
+    return {
+      // **La poignée est le trait.** Elle faisait 5 px transparents autour d'un trait de 1 : entre une
+      // sidebar en `--paper-alt` et un centre en `--paper`, ces 5 px dessinaient une bande claire.
+      largeur: Math.round(separateur.getBoundingClientRect().width),
+      fond: getComputedStyle(separateur).backgroundColor,
+      // La barre du survol est un `::after` en débord : invisible aux mesures de boîte, donc elle ne
+      // déplace pas les panneaux quand elle paraît.
+      barreAuRepos: Number(getComputedStyle(separateur, '::after').opacity),
+    }
+  })
+  expect(trait.largeur).toBe(1)
+  expect(trait.fond).not.toBe('rgba(0, 0, 0, 0)')
+  expect(trait.barreAuRepos).toBe(0)
 
-  await page.locator('[role=separator]').first().hover()
-  // **`poll` et non une lecture directe** : l'épaississement est une transition de 120 ms, donc une
-  // mesure prise dans la foulée du survol lit une largeur intermédiaire — le test échouerait sur la
-  // durée de l'animation plutôt que sur ce qu'il vérifie.
-  await expect.poll(async () => (await traitDe('survol'))?.largeur).toBe('3px')
-  const survol = await traitDe('survol')
-  // Et il s'assombrit : trois pixels de la même encre très pâle ne diraient pas « ça s'attrape ».
-  expect(survol?.fond).not.toBe(repos?.fond)
+  // **`mouse.move` et non `hover()`.** Sur un élément d'un pixel de large, les vérifications
+  // d'actionnabilité de Playwright n'aboutissent pas — elles exigent que l'élément *lui-même* soit
+  // sous le point, et le débord attrapable est un pseudo-élément. Ce que ce test veut est le geste ;
+  // la preuve que la zone est bien attrapable de part et d'autre est dans `10b`, au point.
+  const boite = await poignee.boundingBox()
+  if (!boite) throw new Error('la poignée doit être visible')
+  await page.mouse.move(boite.x + boite.width / 2, boite.y + 40)
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Number(
+          getComputedStyle(document.querySelector('[role=separator]') as Element, '::after')
+            .opacity,
+        ),
+      ),
+    )
+    .toBe(1)
 
-  // La zone de saisie, elle, garde ses 5 px : ce qu'on voit et ce qu'on peut attraper sont deux
-  // mesures différentes, et un trait d'un pixel serait introuvable au pointeur (défaut n° 53).
-  const saisie = await page.evaluate(
-    () => document.querySelector('[role=separator]')?.getBoundingClientRect().width,
+  // Et les panneaux n'ont pas bougé d'un pixel : c'est ce que le débord garantit.
+  const apres = await page.evaluate(() =>
+    Math.round(
+      (
+        document.querySelector('[role=separator]')?.previousElementSibling as HTMLElement
+      ).getBoundingClientRect().width,
+    ),
   )
-  expect(saisie).toBe(5)
+  expect(apres).toBe(212)
 })
 
 test('les libellés des actions du panneau tiennent dans leur bouton', async ({ page }) => {
@@ -436,20 +449,32 @@ test('les libellés des actions du panneau tiennent dans leur bouton', async ({ 
 test('rien ne se sélectionne, sauf ce qui s’édite', async ({ page }) => {
   await ouvrirUneTable(page)
 
-  const chrome = await page.evaluate(() =>
-    [
+  const chrome = await page.evaluate(() => {
+    const selecteurs = [
       '[role=treeitem]',
       '[role=tab]',
       '[role=columnheader]',
       '[role=row] [class*="td"]',
       'button',
-      'label',
-    ].map((selecteur) => ({
+      '[role=combobox]',
+    ]
+    // **Les absents sont écartés, et l'assertion vérifie qu'il en reste.** La liste contenait `label`,
+    // qui n'existe plus dans cet écran depuis que les listes déroulantes ne sont pas des contrôles
+    // natifs : `getComputedStyle(null)` levait une exception, et un test qui explose ne dit rien de ce
+    // qu'il mesurait.
+    const presents = selecteurs
+      .map((selecteur) => ({ selecteur, element: document.querySelector(selecteur) }))
+      .filter(
+        (entree): entree is { selecteur: string; element: Element } => entree.element !== null,
+      )
+    return presents.map(({ selecteur, element }) => ({
       selecteur,
-      selection: getComputedStyle(document.querySelector(selecteur) as Element).userSelect,
-      curseur: getComputedStyle(document.querySelector(selecteur) as Element).cursor,
-    })),
-  )
+      selection: getComputedStyle(element).userSelect,
+      curseur: getComputedStyle(element).cursor,
+    }))
+  })
+  // Le garde de l'ensemble vide : la leçon du n° 72.
+  expect(chrome.length).toBeGreaterThanOrEqual(5)
   // Glisser sur un libellé, un onglet, une ligne d'arbre ou une cellule ne surligne plus rien : dans
   // une application de bureau, le texte de l'interface n'est pas du contenu.
   expect(chrome.filter((mesure) => mesure.selection !== 'none')).toEqual([])
