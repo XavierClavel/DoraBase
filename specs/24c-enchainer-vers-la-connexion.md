@@ -42,8 +42,9 @@ d'environnements est désormais alimenté par des environnements **réellement d
 
 ## Approach
 
-Un projet vide peut donc rester, et **rien ne le nettoie**. C'est la reconduction explicite de
-l'arbitrage de `08f` : défaire la création à la suite d'un abandon supprimerait un projet pour un échec
+Un projet vide peut donc rester, et **rien ne le nettoie** — tranché par le commanditaire le 19 août
+2026, après examen des trois réponses possibles. C'est la reconduction explicite de l'arbitrage de
+`08f` : défaire la création à la suite d'un abandon supprimerait un projet pour un échec
 de connexion, et détruirait un homonyme en cas de course. L'arbre le montre, `23g` lui fait dire
 « aucune connexion déclarée en *dev* », et `08j` sait le retirer avec une confirmation qui compte
 « 0 connexion, 0 mot de passe ».

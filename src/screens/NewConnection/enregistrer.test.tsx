@@ -220,23 +220,29 @@ test('créer un projet et sa base est un seul geste, en deux commandes', async (
 
   await waitFor(() => expect(espion.creations).toHaveLength(1))
   expect(espion.creations[0]?.name).toBe('Data science')
-  // L'environnement du projet vient de la variante déclarée : le coder à `dev` afficherait un
-  // arbre vide juste après l'enregistrement d'une base `prod`.
-  expect(espion.creations[0]?.activeEnvironment).toBe('dev')
+  // **Aucun environnement envoyé** depuis ce chemin (`24a`) : ils se déclarent dans leur propre
+  // écran, et le cœur reprend le trio par défaut. Ce que ce test affirmait — l'environnement pris de
+  // la variante — n'avait de sens que du temps où `A2` était le seul endroit d'où un projet naissait.
+  expect(espion.creations[0]?.environments).toEqual([])
 
   // Puis la base, dans le projet qui vient d'être créé — et non sous la sentinelle du `Select`.
   await waitFor(() => expect(espion.requetes).toHaveLength(1))
   expect(espion.requetes[0]?.project).toBe('Data science')
 })
 
-test('l’environnement du projet suit la variante choisie', async () => {
+test('la création depuis `A2` n’envoie aucun environnement, et le cœur reprend le trio', async () => {
   const utilisateur = userEvent.setup()
   const espion = monter()
   await utilisateur.click(screen.getByRole('radio', { name: /prod/ }))
   await creerLeProjet(utilisateur, 'Data science')
   await utilisateur.click(enregistrer())
 
-  await waitFor(() => expect(espion.creations[0]?.activeEnvironment).toBe('prod'))
+  // **Ce test disait l'inverse, et il avait raison de son temps** : la requête portait
+  // `activeEnvironment`, pris de la variante choisie, parce qu'`A2` était le seul endroit d'où un
+  // projet naissait. Depuis `24a`, les environnements se déclarent dans leur propre écran — et ce
+  // chemin, que `24c` retirera, n'a rien à en dire. Le cœur reprend donc le trio par défaut, ce que
+  // `creer_projet` garantit et qu'un test Rust affirme.
+  await waitFor(() => expect(espion.creations[0]?.environments).toEqual([]))
 })
 
 test('le nom du projet est rogné avant d’être envoyé', async () => {

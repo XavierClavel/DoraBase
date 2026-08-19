@@ -253,10 +253,10 @@ export function NewConnection({
       let nom = draft.project
       if (creeUnProjet) {
         nom = draft.newProjectName.trim()
-        const apresCreation = await onCreateProject({
-          name: nom,
-          activeEnvironment: draft.environment,
-        })
+        // **`environments: []` : le cœur reprend le trio par défaut** (`24a`). Ce chemin — créer un
+        // projet depuis `A2` — est celui que `24c` retire ; en attendant, il ne peut pas proposer de
+        // libellés d'environnement, n'ayant pas l'écran pour les saisir.
+        const apresCreation = await onCreateProject({ name: nom, environments: [] })
         onSaved?.(apresCreation)
       }
       const projets = await onSave(draftToSaveRequest({ ...draft, project: nom }))

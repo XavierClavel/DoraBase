@@ -493,7 +493,7 @@ pub struct NouvelleBase<'a> {
 pub fn creer_projet(
     projects: &[Project],
     nom: &str,
-    active_environment: EnvironmentId,
+    environments: Vec<crate::config::model::EnvironmentDeclaration>,
 ) -> Result<Vec<Project>, CreateError> {
     let nom = nom.trim();
     if nom.is_empty() {
@@ -505,16 +505,39 @@ pub fn creer_projet(
         });
     }
 
-    let mut suivants = projects.to_vec();
-    suivants.push(Project {
+    // **Les environnements viennent de l'écran, et le trio n'est que leur défaut** (`24a`). La création
+    // les recevait figés ; or `23a` fige l'identifiant au libellé donné **à la création**, et jamais
+    // après : c'est le seul moment où renommer est sans dette. Les imposer ici aurait rendu la seule
+    // version propre du geste inatteignable.
+    let environments = if environments.is_empty() {
+        crate::config::model::EnvironmentDeclaration::trio_par_defaut()
+    } else {
+        environments
+    };
+
+    let candidat = Project {
         name: nom.to_owned(),
-        active_environment,
-        // **Le trio du handoff** (`23a`) : un projet sans environnement ne pourrait rien déclarer,
-        // une connexion appartenant désormais à un environnement.
-        environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
+        // **Le premier déclaré**, et non un choix de l'écran. La règle de `08f` tient : proposer de
+        // choisir l'environnement actif demanderait de comprendre la notion avant d'avoir déclaré la
+        // moindre base, et la première connexion enregistrée le fixera de toute façon.
+        active_environment: environments
+            .first()
+            .map(|declaration| declaration.id.clone())
+            .unwrap_or_else(|| EnvironmentId::brut("dev")),
+        environments,
         databases: Vec::new(),
         queries: Vec::new(),
-    });
+    };
+
+    // **Validé avant d'être poussé** : deux libellés identiques donnent deux identifiants identiques,
+    // ce que `23a` refuse — et l'écran doit l'apprendre par un refus nommé, non par une configuration
+    // invalide écrite sur disque.
+    candidat
+        .valider()
+        .map_err(|erreur| CreateError::Modele(erreur.to_string()))?;
+
+    let mut suivants = projects.to_vec();
+    suivants.push(candidat);
     Ok(suivants)
 }
 
@@ -785,11 +808,16 @@ impl std::fmt::Display for QueryError {
     }
 }
 
-/// Les deux refus de `creer_projet`.
+/// Les trois refus de `creer_projet`.
 #[derive(Debug, PartialEq, Eq)]
 pub enum CreateError {
     NomVide,
-    NomDeja { project: String },
+    NomDeja {
+        project: String,
+    },
+    /// Le projet candidat viole un invariant de `23a` — deux environnements de même identifiant, ou
+    /// aucun environnement. Le message vient du modèle, qui nomme le fautif.
+    Modele(String),
 }
 
 impl std::fmt::Display for CreateError {
@@ -797,6 +825,7 @@ impl std::fmt::Display for CreateError {
         match self {
             Self::NomVide => write!(f, "le nom du projet ne peut pas être vide"),
             Self::NomDeja { project } => write!(f, "un projet « {project} » existe déjà"),
+            Self::Modele(raison) => write!(f, "{raison}"),
         }
     }
 }
@@ -996,34 +1025,80 @@ mod tests {
 
     // --- Création de projet (08f) ---
 
+    /// Trois environnements aux libellés choisis, comme `24a` les envoie.
+    fn declares(libelles: [&str; 3]) -> Vec<crate::config::model::EnvironmentDeclaration> {
+        libelles
+            .iter()
+            .map(|libelle| crate::config::model::EnvironmentDeclaration {
+                id: EnvironmentId::depuis_le_libelle(libelle),
+                label: (*libelle).to_owned(),
+                color: crate::config::model::EnvironmentColor::Slate,
+                production: false,
+            })
+            .collect()
+    }
+
     #[test]
-    fn un_projet_cree_est_vide_et_porte_l_environnement_demande() {
-        let suivants =
-            creer_projet(&[], "Atelier Nord", EnvironmentId::brut("prod")).expect("création");
+    fn un_projet_cree_est_vide_et_porte_les_environnements_declares() {
+        let suivants = creer_projet(&[], "Atelier Nord", declares(["recette", "live", "bac"]))
+            .expect("création");
 
         assert_eq!(suivants.len(), 1);
         assert_eq!(suivants[0].name, "Atelier Nord");
-        // L'environnement vient de la variante qu'on déclare : le coder à `dev` afficherait un
-        // arbre vide juste après l'enregistrement d'une base `prod`.
-        assert_eq!(suivants[0].active_environment, EnvironmentId::brut("prod"));
+        // **Les libellés de l'écran, non le trio.** C'est tout l'objet de `24a` : `23a` fige
+        // l'identifiant au libellé de la création, donc un utilisateur dont les environnements
+        // s'appellent « recette » et « live » doit pouvoir le dire à ce moment-là, et à ce moment-là
+        // seulement.
+        let libelles: Vec<_> = suivants[0]
+            .environments
+            .iter()
+            .map(|declaration| declaration.label.as_str())
+            .collect();
+        assert_eq!(libelles, vec!["recette", "live", "bac"]);
+        // L'actif est le **premier déclaré** : la règle de `08f`, qui évite de faire choisir une
+        // notion avant d'avoir déclaré la moindre base.
+        assert_eq!(
+            suivants[0].active_environment,
+            EnvironmentId::brut("recette")
+        );
         assert!(suivants[0].databases.is_empty());
     }
 
     #[test]
+    fn sans_environnement_declare_le_coeur_reprend_le_trio() {
+        // Ce qui garde `08f` vrai pour un appelant qui n'a rien à en dire — et ce que fait la
+        // migration d'une configuration ancienne.
+        let suivants = creer_projet(&[], "Neuf", Vec::new()).expect("création");
+        let ids: Vec<_> = suivants[0]
+            .environments
+            .iter()
+            .map(|declaration| declaration.id.as_str().to_owned())
+            .collect();
+        assert_eq!(ids, vec!["dev", "staging", "prod"]);
+        assert_eq!(suivants[0].active_environment, EnvironmentId::brut("dev"));
+    }
+
+    #[test]
+    fn deux_libelles_identiques_sont_refuses_par_le_modele() {
+        // Deux libellés identiques donnent deux identifiants identiques, ce que `23a` refuse. L'écran
+        // doit l'apprendre par un refus nommé, non par une configuration invalide écrite sur disque.
+        let erreur = creer_projet(&[], "Print", declares(["prod", "prod", "dev"]))
+            .expect_err("deux identifiants identiques");
+        assert!(matches!(erreur, CreateError::Modele(_)), "{erreur:?}");
+    }
+
+    #[test]
     fn un_nom_vide_ou_en_blancs_est_refuse() {
+        assert_eq!(creer_projet(&[], "", Vec::new()), Err(CreateError::NomVide));
         assert_eq!(
-            creer_projet(&[], "", EnvironmentId::brut("dev")),
-            Err(CreateError::NomVide)
-        );
-        assert_eq!(
-            creer_projet(&[], "   ", EnvironmentId::brut("dev")),
+            creer_projet(&[], "   ", Vec::new()),
             Err(CreateError::NomVide)
         );
     }
 
     #[test]
     fn un_nom_deja_pris_est_refuse_et_le_dit() {
-        let erreur = creer_projet(&projets(), "Atelier Nord", EnvironmentId::brut("dev"))
+        let erreur = creer_projet(&projets(), "Atelier Nord", Vec::new())
             .expect_err("le nom est déjà pris");
         assert_eq!(
             erreur,
@@ -1040,12 +1115,8 @@ mod tests {
     /// et le second serait injoignable puisque la clé de base emploie le nom.
     #[test]
     fn les_blancs_de_bord_ne_creent_pas_un_second_projet() {
-        let erreur = creer_projet(
-            &projets(),
-            "  Atelier Nord  ",
-            EnvironmentId::brut("dev"),
-        )
-        .expect_err("c'est le même projet");
+        let erreur = creer_projet(&projets(), "  Atelier Nord  ", Vec::new())
+            .expect_err("c'est le même projet");
         assert_eq!(
             erreur,
             CreateError::NomDeja {
@@ -1053,16 +1124,14 @@ mod tests {
             }
         );
 
-        let suivants =
-            creer_projet(&[], "  Outils internes  ", EnvironmentId::brut("dev")).expect("création");
+        let suivants = creer_projet(&[], "  Outils internes  ", Vec::new()).expect("création");
         assert_eq!(suivants[0].name, "Outils internes");
     }
 
     #[test]
     fn creer_un_projet_ne_touche_pas_aux_projets_existants() {
         let avant = projets();
-        let suivants =
-            creer_projet(&avant, "Data science", EnvironmentId::brut("staging")).expect("création");
+        let suivants = creer_projet(&avant, "Data science", Vec::new()).expect("création");
 
         // Une fonction pure : la liste d'entrée n'est pas mutée, et l'appelant décide d'écrire.
         assert_eq!(avant.len(), 1);
