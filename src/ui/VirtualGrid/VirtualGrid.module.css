@@ -166,13 +166,38 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Teintes des colonnes filtrées et triées — 10 % et 6 % d'accent, valeurs du mockup. */
+/* Teintes des colonnes filtrées et triées — 10 % et 6 % d'accent, valeurs du mockup.
+ *
+ * **Sur `transparent` dans les cellules de données, et c'est voulu** : le fond de la ligne doit se
+ * voir au travers, sans quoi une colonne triée effacerait le liseré de la ligne sélectionnée et la
+ * teinte ambre d'une ligne modifiée. */
 .filtered {
   background: color-mix(in oklab, var(--accent) 10%, transparent);
 }
 
 .sorted {
   background: color-mix(in oklab, var(--accent) 6%, transparent);
+}
+
+/*
+ * **Dans l'en-tête, la même teinte doit être opaque.**
+ *
+ * Les deux règles ci-dessus s'appliquent aussi aux cellules d'en-tête, où elles **remplaçaient** le
+ * fond `--bar` par une couleur translucide. L'en-tête devenait alors une vitre : les lignes qui
+ * défilent dessous se voyaient au travers, et leurs valeurs se lisaient par-dessus le nom de la
+ * colonne. Signalé à l'écran le 19 août 2026 sur une colonne triée — le symptôme ressemblait à une
+ * erreur d'index de virtualisation, alors qu'aucune ligne n'était mal placée : elles étaient
+ * exactement où il faut, sous un en-tête qui avait cessé d'être opaque.
+ *
+ * La teinte est donc composée **sur `--bar`** plutôt que sur du vide. Même couleur perçue au-dessus
+ * d'un en-tête, et plus rien ne passe. `z-index` n'y était pour rien : l'ordre de peinture était juste.
+ */
+.th.filtered {
+  background: color-mix(in oklab, var(--accent) 10%, var(--bar));
+}
+
+.th.sorted {
+  background: color-mix(in oklab, var(--accent) 6%, var(--bar));
 }
 
 .empty {

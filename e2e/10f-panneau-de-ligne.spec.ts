@@ -124,3 +124,121 @@ test('le bouton de copie du JSON ne recouvre ni le texte ni la barre de défilem
   // l'icône.
   expect(mesures?.opaque).not.toBe('rgba(0, 0, 0, 0)')
 })
+
+test('une valeur trop longue est coupée à l’ellipse, sur une seule ligne', async ({ page }) => {
+  const mesures = await page.evaluate(() => {
+    const champs = [...document.querySelectorAll('[aria-label="Détail de la ligne 1"] dd')]
+    const debordants = champs.filter((dd) => dd.scrollWidth > dd.clientWidth + 1)
+    const hauteurs = champs.map((dd) => Math.round(dd.getBoundingClientRect().height))
+    return {
+      // Au moins une valeur du décor dépasse : sinon la mesure ne mesurerait rien.
+      coupes: debordants.length,
+      ellipse: debordants.map((dd) => getComputedStyle(dd).textOverflow),
+      // **Toutes sur une ligne.** Avant, la valeur revenait à la ligne : un identifiant de 36
+      // caractères prenait trois lignes, un JSON quinze, et la liste des champs devenait un pavé où
+      // l'on ne repérait plus les noms de colonnes.
+      surPlusieursLignes: hauteurs.filter((h) => h > 20).length,
+    }
+  })
+  expect(mesures.coupes).toBeGreaterThan(0)
+  expect(mesures.ellipse.every((valeur) => valeur === 'ellipsis')).toBe(true)
+  expect(mesures.surPlusieursLignes).toBe(0)
+})
+
+test('le survol assombrit l’écriture du champ, sans teinter son fond', async ({ page }) => {
+  // **`.at(-1)` et non `dd:last-of-type`** : chaque `dd` est seul dans son bloc de champ, donc
+  // `last-of-type` les désigne tous les neuf. Le mode strict de Playwright l'a dit ; sans lui, la
+  // mesure aurait porté sur le premier venu.
+  const styleDe = () =>
+    page.evaluate(() => {
+      const dd = [...document.querySelectorAll('[aria-label="Détail de la ligne 1"] dd')].at(
+        -1,
+      ) as HTMLElement
+      const champ = dd.parentElement as HTMLElement
+      return {
+        encre: getComputedStyle(dd).color,
+        fond: getComputedStyle(dd).backgroundColor,
+        fondDuChamp: getComputedStyle(champ).backgroundColor,
+      }
+    })
+
+  const repos = await styleDe()
+  await page.locator('[aria-label="Détail de la ligne 1"] dd').last().hover()
+  const survol = await styleDe()
+
+  // **L'encre change, le fond non.** Un fond teinté sur une ligne de 21 px se lit comme une
+  // sélection — donc comme un état, alors que le survol n'en est pas un.
+  expect(survol.encre).not.toBe(repos.encre)
+  expect(survol.fond).toBe(repos.fond)
+  expect(survol.fondDuChamp).toBe(repos.fondDuChamp)
+
+  // Et elle va vers le sombre : `rgb(35, 32, 28)` est `--ink`, le repos étant un cran plus clair.
+  expect(survol.encre).toBe('rgb(35, 32, 28)')
+})
+
+test('l’aperçu ne paraît qu’après un demi-seconde, et seulement pour une valeur coupée', async ({
+  page,
+}) => {
+  const apercu = page.locator('[class*="apercu"]')
+
+  // 1. Une valeur **courte** : rien, jamais. Un aperçu qui répète une valeur entièrement lisible
+  //    n'apprend rien et masque ses voisines.
+  await page.locator('[aria-label="Détail de la ligne 1"] dd').nth(2).hover()
+  await page.waitForTimeout(900)
+  await expect(apercu).toHaveCount(0)
+
+  // 2. Une valeur **coupée** : rien tout de suite — traverser la liste à la souris ne doit rien
+  //    allumer. C'est la moitié de l'exigence, et la seule que mesurer trop tard ferait passer par
+  //    accident.
+  await page.locator('[aria-label="Détail de la ligne 1"] dd').last().hover()
+  await page.waitForTimeout(200)
+  await expect(apercu).toHaveCount(0)
+
+  // 3. Puis il paraît, et montre la valeur en entier.
+  await expect(apercu).toBeVisible({ timeout: 2000 })
+  await expect(apercu).toContainText('suite-qui-deborde-largement')
+
+  const place = await page.evaluate(() => {
+    const boite = document.querySelector('[class*="apercu"]')?.getBoundingClientRect()
+    if (!boite) return null
+    return {
+      // Posé en coordonnées de fenêtre, il pourrait en sortir par la droite d'un panneau qui touche
+      // le bord.
+      dansLaFenetre: boite.right <= window.innerWidth && boite.bottom <= window.innerHeight,
+      // Et il n'intercepte pas le pointeur, sans quoi il disparaîtrait dès que le curseur l'atteint
+      // et le survol clignoterait.
+      transparentAuPointeur: getComputedStyle(
+        document.querySelector('[class*="apercu"]') as Element,
+      ).pointerEvents,
+    }
+  })
+  expect(place?.dansLaFenetre).toBe(true)
+  expect(place?.transparentAuPointeur).toBe('none')
+
+  // 4. Il s'efface en quittant le champ.
+  await page.getByRole('tab', { name: 'Champs' }).hover()
+  await expect(apercu).toHaveCount(0)
+})
+
+test('le clic droit ouvre le menu au pointeur, et il est cliquable', async ({ page }) => {
+  const champ = page.locator('[aria-label="Détail de la ligne 1"] dd').first()
+  await champ.click({ button: 'right' })
+
+  const menu = page.getByRole('menu')
+  await expect(menu).toBeVisible()
+  const atteignable = await page.evaluate(() => {
+    const entree = document.querySelector('[role=menuitem]')
+    if (!entree) return null
+    const boite = entree.getBoundingClientRect()
+    const dessus = document.elementFromPoint(boite.x + boite.width / 2, boite.y + boite.height / 2)
+    // **`elementFromPoint`, pas `toBeVisible`.** Le menu s'ouvre au-dessus d'un panneau qui défile et
+    // qui découpe son contenu : un `overflow: hidden` d'ancêtre le rognerait sans qu'aucune assertion
+    // de visibilité s'en aperçoive — c'est le défaut n° 35.
+    return entree.contains(dessus) || dessus === entree
+  })
+  expect(atteignable).toBe(true)
+
+  // Un clic ailleurs referme.
+  await page.getByRole('tab', { name: 'JSON' }).click()
+  await expect(page.getByRole('menu')).toHaveCount(0)
+})

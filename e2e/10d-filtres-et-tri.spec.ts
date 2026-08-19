@@ -63,3 +63,47 @@ async function fondDeColonne(page: import('@playwright/test').Page, colonne: str
     .getByRole('button', { name: `Trier par ${colonne}` })
     .evaluate((element) => getComputedStyle(element.parentElement as Element).backgroundColor)
 }
+
+test('l’en-tête d’une colonne triée reste opaque : rien ne se lit au travers', async ({ page }) => {
+  await page
+    .getByRole('columnheader', { name: /total_cents/ })
+    .first()
+    .click()
+  // La flèche de tri est une icône du sprite, pas un caractère : c'est la classe de teinte qui dit
+  // que le tri a pris.
+  await expect(page.getByRole('columnheader', { name: /total_cents/ }).first()).toHaveClass(
+    /sorted/,
+  )
+
+  const fond = await page.evaluate(() => {
+    const entete = [...document.querySelectorAll('[role=columnheader]')].find((cellule) =>
+      /total_cents/.test(cellule.textContent ?? ''),
+    )
+    return entete ? getComputedStyle(entete).backgroundColor : null
+  })
+  // **La teinte de colonne triée est composée sur `--bar`, pas sur du vide.** Posée sur `transparent`,
+  // elle remplaçait le fond de l'en-tête : celui-ci devenait une vitre, et les lignes qui défilent
+  // dessous se lisaient par-dessus le nom de la colonne. Le symptôme ressemblait à une erreur d'index
+  // de virtualisation ; aucune ligne n'était mal placée.
+  //
+  // **La canal alpha se cherche sur `/ 0,xx`, non sur `rgba(…)`.** Un `color-mix` calcule en oklab :
+  // le style calculé rend `oklab(0.67 0.14 0.11 / 0.06)`, qu'une expression écrite pour `rgba` ne
+  // reconnaît pas — la première version de cette assertion passait donc sur le défaut lui-même.
+  expect(fond).not.toMatch(/\/\s*0(\.\d+)?\s*\)/)
+
+  // **Et la preuve par les pixels** : l'en-tête doit être identique avant et après un défilement. Une
+  // assertion sur l'alpha dit que la couleur est opaque ; celle-ci dit que rien ne traverse, ce qui
+  // est la propriété qu'on veut — elle attraperait aussi un fond opaque sur le mauvais élément.
+  const zone = '[role=grid] > [role=presentation]'
+  // **La cellule triée, et non la première de la rangée.** La première est la gouttière `#`, qui n'a
+  // jamais été teintée : la capturer laissait le sabotage passer inaperçu. Une mesure de pixels ne
+  // vaut que par ce qu'elle cadre.
+  const celluleTriee = page.getByRole('columnheader', { name: /total_cents/ }).first()
+  const avant = await celluleTriee.screenshot()
+  await page.evaluate((selecteur) => {
+    ;(document.querySelector(selecteur) as HTMLElement).scrollTop = 600
+  }, zone)
+  await expect
+    .poll(async () => (await celluleTriee.screenshot()).equals(avant), { timeout: 3000 })
+    .toBe(true)
+})

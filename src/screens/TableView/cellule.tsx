@@ -12,12 +12,32 @@ import styles from './TableView.module.css'
  * composant pour être testable valeur par valeur.
  */
 export function rendreValeur(value: Value): ReactNode {
+  // **`NULL` écrit, jamais du vide.** Une cellule vide se confondrait avec la chaîne vide, qui est
+  // une valeur parfaitement différente — et la distinction est l'une des rares choses qu'un client de
+  // bases doit absolument ne pas brouiller. Le seul genre à demander un élément, pour sa teinte.
+  if (value.kind === 'null') return <span className={styles.nul}>NULL</span>
+  return texteDeValeur(value)
+}
+
+/**
+ * La même valeur, **en texte**.
+ *
+ * # Pourquoi elle existe, et pourquoi elle est la source
+ *
+ * L'aperçu du survol prolongé et « Copier la valeur » (`10f`) ont besoin d'une chaîne, là où la
+ * grille a besoin d'un nœud. Deux fonctions parallèles auraient divergé au premier genre ajouté —
+ * exactement ce qui a produit une cellule vide en ajoutant `decimal` (voir le garde ci-dessous).
+ * `rendreValeur` délègue donc ici pour tout sauf `null`, dont la teinte demande un élément.
+ *
+ * **C'est le texte affiché, pas la valeur brute.** Copier ce qu'on lit est la promesse la plus simple
+ * à tenir et à vérifier : un JSON y est donc replié sur une ligne comme à l'écran, et un binaire y
+ * donne sa taille et non ses octets. Le JSON d'origine reste accessible en entier par l'onglet JSON,
+ * qui a son propre bouton de copie.
+ */
+export function texteDeValeur(value: Value): string {
   switch (value.kind) {
     case 'null':
-      // **`NULL` écrit, jamais du vide.** Une cellule vide se confondrait avec la chaîne vide,
-      // qui est une valeur parfaitement différente — et la distinction est l'une des rares
-      // choses qu'un client de bases doit absolument ne pas brouiller.
-      return <span className={styles.nul}>NULL</span>
+      return 'NULL'
     case 'bool':
       return value.value ? 'true' : 'false'
     case 'int':

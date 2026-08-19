@@ -749,6 +749,40 @@ autre chose que ce qu'elle prétendait.
    désormais posé (`scrollTop = 0`) et suivi de deux trames, et le test **affirme** `scrollTop === 0`
    avant de comparer. *Passe seul, échoue dans la suite* est la signature d'une attente implicite, pas
    d'un défaut du code mesuré.
+83. **Un en-tête devenu vitre, pris pour une erreur d'index.** Sur une colonne triée, les valeurs des
+   lignes se lisaient **par-dessus** le nom de la colonne : le symptôme ressemblait trait pour trait à
+   une virtualisation qui place ses lignes trop haut. Aucune ligne n'était mal placée. Les teintes de
+   colonne `filtered` et `sorted` sont composées sur `transparent` — voulu dans les cellules, pour que
+   le fond de la ligne sélectionnée se voie au travers — et elles s'appliquaient aussi aux cellules
+   d'**en-tête**, où elles **remplaçaient** le fond opaque `--bar`. L'en-tête laissait donc passer ce
+   qui défilait dessous. Corrigé en composant la teinte sur `--bar` dans l'en-tête. `z-index` n'y était
+   pour rien : l'ordre de peinture était juste depuis le début. **Un symptôme qui désigne un mécanisme
+   n'est pas un diagnostic** — et reproduire le défaut par sabotage, capture à l'appui, est ce qui a
+   évité de corriger l'empilement.
+84. **Une assertion d'opacité écrite pour `rgba`, sur une couleur en `oklab`.** Le test du défaut
+   ci-dessus cherchait un canal alpha avec `/rgba\(.*, 0\.\d+\)/`. Or un `color-mix` se calcule en
+   oklab : le style calculé rend `oklab(0.67 0.14 0.11 / 0.06)`. L'expression ne reconnaissait rien,
+   donc l'assertion **passait sur le défaut lui-même**. Et la seconde moitié du même test comparait des
+   pixels de la **mauvaise cellule** — la première de la rangée, la gouttière `#`, qui n'a jamais été
+   teintée. Deux façons différentes de ne rien mesurer dans un seul test, toutes deux révélées par le
+   sabotage. **Une mesure de pixels ne vaut que par ce qu'elle cadre.**
+85. **Une colonne ajoutée au décor a cassé deux assertions étrangères.** Le panneau de ligne avait
+   besoin d'une valeur trop longue pour que son ellipse et son aperçu soient mesurables ; la neuvième
+   colonne du décor de démo a fait échouer un compte en dur (« 7/8 » dans `10e`) et une assertion de
+   débordement (`geometrie-reelle`) qui comptait tout élément dépassant le bord droit de la fenêtre —
+   or une grille de neuf colonnes déborde **par conception**, dans un conteneur qui défile. La première
+   est un lien vers le décor, qu'il faut suivre. La seconde était fausse depuis le début et ne s'en
+   apercevait que maintenant : **une assertion qui repose sur une propriété accidentelle du décor finit
+   par se déclencher sur autre chose que ce qu'elle garde.** Elle ignore désormais ce qui vit dans un
+   défilement horizontal.
+86. **Une règle retirée comme inutile, redevenue nécessaire par une autre.** Le sélecteur descendant de
+   `.pendantLeGlissement` avait été supprimé avec raison : `user-select` s'hérite, et aucune règle du
+   projet ne la redéfinissait. En rendant les blocs de données sélectionnables (`pre`, `code`, les
+   saisies), `reset.css` en a introduit une — et une règle posée sur l'élément l'emporte sur une valeur
+   héritée. Sans le sélecteur descendant, glisser une poignée au-dessus d'un DDL aurait de nouveau
+   surligné son texte : le défaut du 11 août, revenu par une autre porte. **Le commentaire qui
+   justifiait la suppression est ce qui a permis de la refaire correctement** — il nommait la condition
+   qui a cessé d'être vraie.
 
 **Ce que ces défauts disent du décor de test.** Presque aucun n'était un défaut de logique : ils
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros

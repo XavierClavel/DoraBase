@@ -104,12 +104,25 @@
  * `:global` : la classe est appliquée à `document.body`, hors de l'arbre React de ce module.
  */
 :global(body).pendantLeGlissement {
-  /* **Héritée, donc posée une seule fois.** Un sélecteur descendant (`… *`) avait été ajouté en
-   * ceinture ; le retirer ne changeait aucune mesure — `user-select` se transmet, et aucune règle du
-   * projet ne la redéfinit. Retiré plutôt que gardé sans rien défendre, comme l'`align-items:
-   * stretch` de la grille et la règle `:has` du menu de ligne. */
   user-select: none;
   /* Le curseur ne doit pas clignoter en passant sur du texte pendant le geste. */
+  cursor: col-resize;
+}
+
+/*
+ * **Le sélecteur descendant est revenu, et il défend quelque chose de précis.**
+ *
+ * Il avait été retiré comme inutile : `user-select` s'hérite, et aucune règle du projet ne la
+ * redéfinissait. Ce n'est plus vrai — `reset.css` rend les **blocs de données** sélectionnables
+ * (`pre`, `code`, les saisies), et une règle posée sur l'élément l'emporte sur une valeur héritée.
+ * Sans cette ligne, glisser une poignée au-dessus d'un DDL ou d'une console surlignerait leur texte
+ * sur tout le passage du curseur : exactement le défaut du 11 août 2026, revenu par une autre porte.
+ *
+ * `(0, 1, 1)` de spécificité contre `(0, 0, 0)` pour les `:where()` de `reset.css` : celle-ci gagne
+ * pendant le geste, et rend la main dès que la classe tombe.
+ */
+:global(body).pendantLeGlissement * {
+  user-select: none;
   cursor: col-resize;
 }
 

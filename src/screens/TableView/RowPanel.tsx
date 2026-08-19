@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { type MouseEvent as MouseEventReact, useEffect, useRef, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type { ColumnInfo, DatabaseKey, Relation, Value } from '../../domain/engine'
 import { cx } from '../../ui/cx'
+import { MenuContextuel } from '../../ui/MenuContextuel/MenuContextuel'
 import type { PasserelleDetail } from '../Workbench/useDetailTable'
-import { rendreValeur } from './cellule'
+import { rendreValeur, texteDeValeur } from './cellule'
 import { JsonColore } from './JsonColore'
 import { relationDe, valeurDeCle } from './ligneLiee'
 import styles from './RowPanel.module.css'
@@ -11,6 +12,17 @@ import { useLigneLiee } from './useLigneLiee'
 import type { PasserelleLignes } from './useLignes'
 
 type Onglet = 'champs' | 'json' | 'liens'
+
+/**
+ * Le temps de survol avant l'aperçu.
+ *
+ * Un demi-seconde : assez pour que traverser la liste à la souris n'allume rien, assez peu pour que
+ * s'arrêter sur une valeur coupée la révèle sans qu'on ait à y penser.
+ */
+const SURVOL_MS = 500
+
+/** Ce que le survol prolongé montre : un texte, et où le poser. */
+type Apercu = { texte: string; haut: number; gauche: number }
 
 type RowPanelProps = {
   cle: DatabaseKey
@@ -54,6 +66,53 @@ export function RowPanel({
   passerelleLignes,
 }: RowPanelProps) {
   const [onglet, setOnglet] = useState<Onglet>('champs')
+  const [revelation, setRevelation] = useState<Apercu | null>(null)
+  const [menu, setMenu] = useState<{
+    x: number
+    y: number
+    /** « la clé » ou « la valeur » : ce que l'entrée du menu annonce copier. */
+    quoi: string
+    colonne: string
+    texte: string
+  } | null>(null)
+  const minuteur = useRef<number | undefined>(undefined)
+
+  // Le minuteur ne doit pas survivre au démontage : changer de ligne pendant l'attente ferait
+  // apparaître l'aperçu d'une valeur qui n'est plus affichée.
+  useEffect(() => () => window.clearTimeout(minuteur.current), [])
+
+  function armer(partie: HTMLElement, texte: string) {
+    window.clearTimeout(minuteur.current)
+    // **Seulement si c'est coupé.** Un aperçu qui répète un texte entièrement lisible n'apprend rien
+    // et masque ses voisins. La coupure se mesure sur le rendu — `scrollWidth` contre `clientWidth` —
+    // plutôt que sur la longueur du texte : c'est la police, la largeur de la colonne et le zoom qui
+    // décident, et aucun seuil de caractères ne les connaît.
+    if (partie.scrollWidth <= partie.clientWidth + 1) {
+      setRevelation(null)
+      return
+    }
+    // **La boîte est mesurée maintenant, pas à l'échéance.** Dans un demi-seconde, la souris peut
+    // avoir fait défiler le panneau ; mesurer au départ garantit que l'aperçu désigne le champ qu'on
+    // survolait — et le défilement, lui, referme (voir `desarmer` sur `mouseleave`).
+    const boite = partie.getBoundingClientRect()
+    minuteur.current = window.setTimeout(() => {
+      setRevelation({ texte, haut: boite.bottom + 4, gauche: boite.left })
+    }, SURVOL_MS)
+  }
+
+  function ouvrirLeMenu(evenement: MouseEventReact, quoi: string, colonne: string, texte: string) {
+    evenement.preventDefault()
+    // **Et la propagation s'arrête ici** : sans cela, le menu du parent — s'il en vient un — s'ouvrirait
+    // par-dessus celui-ci, et le dernier ouvert gagnerait.
+    evenement.stopPropagation()
+    desarmer()
+    setMenu({ x: evenement.clientX, y: evenement.clientY, quoi, colonne, texte })
+  }
+
+  function desarmer() {
+    window.clearTimeout(minuteur.current)
+    setRevelation(null)
+  }
 
   // La première clé étrangère de la ligne, et sa valeur. Le mockup n'en montre qu'une, et rien
   // ne dit comment il en présenterait plusieurs — trou consigné dans la spec.
@@ -101,18 +160,54 @@ export function RowPanel({
       <div className={styles.corps}>
         {onglet === 'champs' && (
           <dl className={styles.champs}>
-            {columns.map((colonne, index) => (
-              <div key={colonne.name} className={styles.champ}>
-                <dt className={styles.etiquette}>{colonne.name}</dt>
-                <dd className={styles.valeur}>{rendreValeur(ligne[index] ?? { kind: 'null' })}</dd>
-                {colonne.key === 'primary' && (
-                  <Icon name="key" size={11} strokeWidth={2} className={styles.cle} />
-                )}
-                {colonne.key === 'foreign' && (
-                  <Icon name="fk" size={11} strokeWidth={2} className={styles.fk} />
-                )}
-              </div>
-            ))}
+            {columns.map((colonne, index) => {
+              const valeur = ligne[index] ?? { kind: 'null' as const }
+              // Deux formes de la même valeur : l'une pour l'œil — `NULL` y est teinté — l'autre pour
+              // l'aperçu et le presse-papiers. `texteDeValeur` est la source des deux (voir `cellule`).
+              const texte = texteDeValeur(valeur)
+              // **Ni `<dt>` ni `<dd>` ne sont des contrôles**, et biome ne s'en plaint pas : la règle
+              // `noStaticElementInteractions` épargne les éléments qui portent déjà un rôle implicite
+              // de terme et de définition. Le choix reste à justifier : le survol et le clic droit
+              // **ajoutent** des chemins vers la donnée, ils n'en sont pas le seul. L'onglet JSON la
+              // montre en entier et « Copier la ligne en INSERT » la copie, tous deux au clavier —
+              // là où rendre chaque champ focalisable ajouterait dix-huit arrêts de tabulation dans
+              // un panneau qui en a trois.
+              return (
+                <div key={colonne.name} className={styles.champ}>
+                  {/* **Survol et clic droit sont portés par chaque partie, pas par la ligne.** Une clé
+                      coupée révèle la clé, une valeur coupée révèle la valeur ; le clic droit copie
+                      ce sur quoi il tombe. Survoler `external_ref` pour lire le nom de la colonne et
+                      recevoir sa valeur serait répondre à côté — et un menu unique posé sur la ligne
+                      aurait forcé à choisir laquelle des deux données il copie. */}
+                  <dt
+                    className={styles.etiquette}
+                    onMouseEnter={(evenement) => armer(evenement.currentTarget, colonne.name)}
+                    onMouseLeave={desarmer}
+                    onContextMenu={(evenement) =>
+                      ouvrirLeMenu(evenement, 'la clé', colonne.name, colonne.name)
+                    }
+                  >
+                    {colonne.name}
+                  </dt>
+                  <dd
+                    className={styles.valeur}
+                    onMouseEnter={(evenement) => armer(evenement.currentTarget, texte)}
+                    onMouseLeave={desarmer}
+                    onContextMenu={(evenement) =>
+                      ouvrirLeMenu(evenement, 'la valeur', colonne.name, texte)
+                    }
+                  >
+                    {rendreValeur(valeur)}
+                  </dd>
+                  {colonne.key === 'primary' && (
+                    <Icon name="key" size={11} strokeWidth={2} className={styles.cle} />
+                  )}
+                  {colonne.key === 'foreign' && (
+                    <Icon name="fk" size={11} strokeWidth={2} className={styles.fk} />
+                  )}
+                </div>
+              )
+            })}
           </dl>
         )}
 
@@ -185,6 +280,33 @@ export function RowPanel({
           </button>
         )}
       </div>
+
+      {/* **Rendus en fin de panneau, pas dans le champ.** Tous deux sont en `position: fixed` : les
+          poser dans la liste les ferait rogner par le corps qui défile — défaut n° 35. */}
+      {revelation && onglet === 'champs' && (
+        <div className={styles.apercu} style={{ top: revelation.haut, left: revelation.gauche }}>
+          {revelation.texte}
+        </div>
+      )}
+      {menu && (
+        <MenuContextuel
+          x={menu.x}
+          y={menu.y}
+          label={`Actions sur ${menu.quoi} de ${menu.colonne}`}
+          entrees={[
+            {
+              // Le libellé nomme **ce qui sera copié**, pas l'endroit du clic : « Copier la clé » sur
+              // le nom de colonne, « Copier la valeur » sur la donnée. Un libellé unique obligerait à
+              // se souvenir de ce qu'on visait.
+              libelle: `Copier ${menu.quoi}`,
+              // Le texte **tel qu'il est rendu**, donc tel qu'on le lit. Copier la représentation
+              // brute donnerait une chaîne vide là où l'écran affiche « NULL ».
+              onClick: () => void navigator.clipboard?.writeText(menu.texte),
+            },
+          ]}
+          onFermer={() => setMenu(null)}
+        />
+      )}
     </aside>
   )
 }
