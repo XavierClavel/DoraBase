@@ -41,28 +41,36 @@ body {
    * des surlignages bleus involontaires au moindre glissement — et un curseur en I au-dessus de
    * choses qui ne s'éditent pas. Demandé à l'écran le 19 août 2026.
    *
-   * **La limite est posée juste dessous, et elle compte plus que la règle.** Ce produit sert à lire
-   * des données : un DDL, un JSON, une requête SQL et une valeur de cellule doivent rester
-   * sélectionnables à la souris, faute de quoi la seule façon de les copier serait un bouton — et
-   * il n'y en a pas pour tout. La règle vaut donc pour l'interface, pas pour ce qu'elle affiche.
+   * **Y compris les blocs de données, et c'est une décision revue.** Une première version épargnait
+   * `pre` et `code` — le DDL, le JSON, le SQL coloré — au motif qu'un texte de données doit pouvoir
+   * se copier à la souris. À l'usage, ces blocs *sont* l'interface : glisser dedans surlignait, et
+   * l'exception se voyait plus que la règle. Elle est retirée parce que la copie ne dépend plus d'elle
+   * — chaque bloc a son bouton (le DDL, le JSON, l'arbre de la console), une ligne a son « Copier la
+   * ligne en INSERT », et un champ du panneau se copie au clic droit, clé ou valeur.
+   *
+   * `-webkit-user-select` en plus de la propriété standard : le build préfixe pour la cible
+   * `safari16.4`, **mais le serveur de développement ne le fait pas** — vérifié en lisant ce que
+   * chacun envoie. Sans la ligne explicite, `pnpm tauri dev` sous un WebKit antérieur à Safari 17 se
+   * comporterait autrement que l'application livrée, ce qui est la pire façon de tester.
    */
+  -webkit-user-select: none;
   user-select: none;
   cursor: default;
 }
 
 /*
- * Ce qui reste sélectionnable : les **blocs de données**.
+ * Ce qui reste sélectionnable : **ce qui s'édite**, et rien d'autre.
  *
- * `pre` et `code` couvrent le DDL (`14c`), le JSON du panneau de ligne et de la console (`13b`), et
- * le SQL coloré des aperçus. `input`, `textarea` et `[contenteditable]` couvrent toute saisie, dont
- * l'éditeur CodeMirror de `12b` — qui est un `contenteditable` et deviendrait inutilisable sans cela.
- * `[data-selectionnable]` est la porte de sortie explicite pour un cas qui n'entre dans aucun des
- * précédents.
+ * `input`, `textarea` et `[contenteditable]` couvrent toute saisie, dont l'éditeur CodeMirror de
+ * `12b` — un `contenteditable`, qui deviendrait inutilisable sans caret ni sélection.
+ * `[data-selectionnable]` est la porte de sortie explicite, pour le cas qui viendra et qu'aucun des
+ * trois ne couvre : le déclarer sur un élément est alors un geste visible en revue.
  *
  * `:where()` pour une spécificité nulle : ces règles ne doivent jamais l'emporter sur une décision
- * locale, seulement rattraper le défaut posé sur `body`.
+ * locale, seulement rattraper celle posée sur `body`.
  */
-:where(pre, code, input, textarea, [contenteditable], [data-selectionnable]) {
+:where(input, textarea, [contenteditable], [data-selectionnable]) {
+  -webkit-user-select: text;
   user-select: text;
   cursor: auto;
 }
