@@ -51,11 +51,23 @@ test('la sélection redevient possible après le glissement', async ({ page }) =
   await page.mouse.move(boite.x + 60, boite.y + boite.height / 2)
   await page.mouse.up()
 
-  // **Suspendre la sélection sans la rendre serait pire que le défaut d'origine** : la page entière
-  // deviendrait inélectable jusqu'au rechargement.
-  const selectionnable = await page.evaluate(() => {
-    const cible = document.querySelector('[role=tree] [role=treeitem]')
-    return cible ? getComputedStyle(cible).userSelect : null
+  // **Suspendre la sélection sans la rendre serait pire que le défaut d'origine** : les blocs de
+  // données deviendraient inélectables jusqu'au rechargement.
+  //
+  // **La sonde a changé de cible, et c'est une conséquence assumée.** Elle interrogeait une ligne de
+  // l'arbre ; depuis que le chrome est délibérément inélectable (`reset.css`), une ligne d'arbre rend
+  // `none` en permanence et cette assertion serait devenue une tautologie inversée — elle échouerait
+  // toujours. Ce qui doit redevenir sélectionnable, c'est ce qui l'est par décision : une saisie, un
+  // bloc de code.
+  const mesures = await page.evaluate(() => {
+    const saisie = document.querySelector('input')
+    return {
+      saisie: saisie ? getComputedStyle(saisie).userSelect : null,
+      // La classe posée sur `<body>` le temps du geste doit être retirée : c'est elle qui neutralise
+      // aussi les descendants, et l'oublier laisserait tout figé.
+      classeRetiree: !/pendantLeGlissement/.test(document.body.className),
+    }
   })
-  expect(selectionnable).not.toBe('none')
+  expect(mesures.saisie).not.toBe('none')
+  expect(mesures.classeRetiree).toBe(true)
 })

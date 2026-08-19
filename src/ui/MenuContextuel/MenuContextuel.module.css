@@ -1,0 +1,65 @@
+/*
+ * Le menu au clic droit.
+ *
+ * L'habillage vient de `RowMenu` (`08h`), lui-même déduit de ce qui l'entoure : le handoff ne
+ * maquette aucun menu. Deux menus d'actions qui ne se ressembleraient pas donneraient l'impression
+ * de deux produits.
+ */
+
+/*
+ * Le panneau : **compact**.
+ *
+ * 3 px de remplissage plutôt que les 5 de `RowMenu`, et une largeur minimale de 120 px : ce menu
+ * s'ouvre au pointeur, au milieu des données, et non ancré dans un bord de fenêtre. Un panneau qui
+ * respire y recouvre trois lignes de valeurs pour une seule action.
+ */
+.root {
+  /* `fixed` : ouvert au pointeur, au-dessus de panneaux qui défilent et qui découpent leur contenu.
+   * Voir la note du composant. */
+  position: fixed;
+  z-index: 320;
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--paper);
+  box-shadow: var(--shadow-popover);
+}
+
+/*
+ * Une entrée : arrondie, et espacée **dans les deux axes**.
+ *
+ * Le remplissage vertical vient du `padding` et non d'une hauteur imposée : c'est ce qui permet à
+ * l'arrondi de se voir au survol — une entrée qui touche les bords du panneau y dessinerait des coins
+ * carrés dans un cadre arrondi. Les 3 px du panneau lui laissent la place de son arrondi.
+ */
+.entree {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  padding: 4px var(--space-4);
+  border: none;
+  border-radius: var(--radius-control-2);
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.entree:hover {
+  background: var(--hover-row);
+}
+
+.entree:focus-visible {
+  outline: none;
+  /* Le liseré intérieur plutôt que l'ombre portée : dans un panneau de 3 px de remplissage, une ombre
+   * portée serait coupée par le bord. */
+  box-shadow: inset 0 0 0 2px var(--accent);
+}

@@ -226,6 +226,22 @@ const DETAIL: TableDetail = {
       comment: null,
       frequency: null,
     },
+    {
+      // **Une valeur qui ne tient pas dans la colonne, délibérément.** Sans elle, deux mesures de
+      // `10f` ne mordraient pas : l'ellipse d'une valeur trop longue, et l'aperçu du survol prolongé
+      // qui ne paraît **que** pour ce qui est coupé. Un décor qui n'a que des valeurs courtes ne
+      // mesure que le décor — la leçon des défauts n° 51 et 57.
+      position: 9,
+      name: 'external_ref',
+      typeName: 'text',
+      category: 'text',
+      nullable: true,
+      default: null,
+      identity: null,
+      key: null,
+      comment: null,
+      frequency: null,
+    },
   ],
   // **Renseignés depuis `14a`** : tant qu'`A9` n'existait pas, personne ne lisait ces trois
   // listes, et les laisser vides ne coûtait rien. La démo servant aussi de décor aux mesures de
@@ -279,6 +295,7 @@ const DETAIL: TableDetail = {
     created_at timestamptz DEFAULT now() NOT NULL,
     shipped_at timestamptz,
     coupon_code text,
+    external_ref text,
     CONSTRAINT orders_pkey PRIMARY KEY (id),
     CONSTRAINT orders_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );`,
@@ -500,6 +517,11 @@ const LIGNES = Array.from({ length: 500 }, (_, i) => [
     ? { kind: 'null' as const }
     : { kind: 'timestamp' as const, value: '2026-07-31 11:02:10' },
   i % 2 === 0 ? { kind: 'null' as const } : { kind: 'text' as const, value: 'SUMMER26' },
+  // Soixante-huit caractères : la colonne de valeurs en offre une vingtaine.
+  {
+    kind: 'text' as const,
+    value: `ref-8f2c1a-${i}-lot-hiver-atelier-nord-suite-qui-deborde-largement`,
+  },
 ])
 
 const PASSERELLE_LIGNES: PasserelleLignes = {

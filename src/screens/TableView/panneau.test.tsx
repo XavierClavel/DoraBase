@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
@@ -34,6 +34,11 @@ const COLONNES = [
   colonne('id', { category: 'number', key: 'primary' }),
   colonne('user_id', { category: 'number', key: 'foreign' }),
   colonne('status'),
+  // **Une colonne nulle et une valeur longue, délibérément.** Sans elles, deux mesures de `10f` ne
+  // mordraient pas : celle qui distingue « `NULL` affiché » de « chaîne vide copiée », et celle qui
+  // vérifie que l'aperçu montre en entier ce que l'ellipse a coupé.
+  colonne('shipped_at', { category: 'timestamp', nullable: true }),
+  colonne('reference'),
 ]
 
 const RELATION: Relation = {
@@ -45,10 +50,14 @@ const RELATION: Relation = {
   targetColumns: ['id'],
 }
 
+const REFERENCE_LONGUE = '041ff6ac-ca09-4c57-b1fe-e4055c074abf-suite-qui-deborde-de-la-colonne'
+
 const LIGNE: Value[] = [
   { kind: 'int', value: 184_220 },
   { kind: 'int', value: 90_233 },
   { kind: 'text', value: 'paid' },
+  { kind: 'null' },
+  { kind: 'text', value: REFERENCE_LONGUE },
 ]
 
 function detail(colonnesCible: ColumnInfo[]): TableDetail {
@@ -173,6 +182,73 @@ describe('panneau de ligne', () => {
     // sabotage qui copie `textContent` du bloc affiché **passe** : `textContent` recolle les fragments
     // à l'identique. La distinction n'est donc pas observable ici, et prétendre le contraire dans un
     // commentaire de test serait une garantie inventée.
+  })
+
+  /** Le presse-papiers, remplacé par un espion. */
+  function espionnerLePressePapiers() {
+    const writeText = vi.fn(async (_texte: string) => {})
+    // `navigator.clipboard` n'a qu'un accesseur sous jsdom : `Object.assign` échoue, il faut
+    // redéfinir la propriété.
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    return writeText
+  }
+
+  /** La cellule de valeur d'un champ, par le nom de sa colonne. */
+  function valeurDe(colonne: string) {
+    const champ = screen.getByText(colonne).parentElement as HTMLElement
+    return champ.querySelector('dd') as HTMLElement
+  }
+
+  it('le clic droit sur la valeur copie la valeur, telle qu’elle s’affiche', async () => {
+    const utilisateur = userEvent.setup()
+    const writeText = espionnerLePressePapiers()
+    monter()
+
+    await utilisateur.pointer({ target: valeurDe('status'), keys: '[MouseRight]' })
+
+    const menu = screen.getByRole('menu', { name: /la valeur de status/ })
+    await utilisateur.click(within(menu).getByRole('menuitem', { name: 'Copier la valeur' }))
+    expect(writeText).toHaveBeenCalledWith('paid')
+  })
+
+  it('le clic droit sur la clé copie la clé, et le libellé le dit', async () => {
+    const utilisateur = userEvent.setup()
+    const writeText = espionnerLePressePapiers()
+    monter()
+
+    await utilisateur.pointer({ target: screen.getByText('status'), keys: '[MouseRight]' })
+
+    // **Le libellé nomme ce qui sera copié**, pas l'endroit du clic : un libellé unique obligerait à
+    // se souvenir de ce qu'on visait.
+    const menu = screen.getByRole('menu', { name: /la clé de status/ })
+    await utilisateur.click(within(menu).getByRole('menuitem', { name: 'Copier la clé' }))
+    expect(writeText).toHaveBeenCalledWith('status')
+  })
+
+  it('la valeur copiée est celle qu’on lit, `NULL` comprise', async () => {
+    const utilisateur = userEvent.setup()
+    const writeText = espionnerLePressePapiers()
+    monter()
+
+    // **Le cas qui distingue « ce qu'on lit » de « la valeur brute ».** Une cellule nulle affiche
+    // `NULL` ; copier une chaîne vide donnerait un presse-papiers qui ne dit pas la même chose que
+    // l'écran, et coller ce vide dans une requête produirait autre chose que ce qui était visé.
+    await utilisateur.pointer({ target: valeurDe('shipped_at'), keys: '[MouseRight]' })
+    await utilisateur.click(screen.getByRole('menuitem', { name: 'Copier la valeur' }))
+    expect(writeText).toHaveBeenCalledWith('NULL')
+  })
+
+  it('le menu se referme sur `Échap` sans rien copier', async () => {
+    const utilisateur = userEvent.setup()
+    const writeText = espionnerLePressePapiers()
+    monter()
+
+    await utilisateur.pointer({ target: valeurDe('status'), keys: '[MouseRight]' })
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+
+    await utilisateur.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(writeText).not.toHaveBeenCalled()
   })
 
   it('le bouton de copie n’apparaît pas sur les autres onglets', async () => {

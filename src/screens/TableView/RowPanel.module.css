@@ -123,12 +123,28 @@
   min-height: 21px;
 }
 
+/*
+ * **Une ligne par champ, coupée à l'ellipse — et c'est un changement de parti.**
+ *
+ * La valeur revenait à la ligne (`overflow-wrap: anywhere`), donc un identifiant de 36 caractères
+ * prenait trois lignes et une ligne JSON en prenait quinze : la liste des champs devenait un pavé où
+ * l'on ne repérait plus les noms de colonnes. À l'ellipse, chaque champ occupe une ligne et la liste
+ * se parcourt. Ce qui est coupé reste atteignable — survol prolongé pour le lire en entier, clic
+ * droit pour le copier. Demandé à l'écran le 19 août 2026.
+ *
+ * `min-width: 0` sur les deux : sans lui, un enfant flex refuse de descendre sous la largeur de son
+ * contenu et l'ellipse ne se déclenche jamais — c'est la faute classique de `text-overflow`.
+ */
 .etiquette {
   flex: none;
   width: 96px;
+  min-width: 0;
+  overflow: hidden;
   font-size: var(--text-label);
   font-weight: var(--weight-semibold);
   color: var(--ink-8);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .valeur {
@@ -138,7 +154,59 @@
   font-family: var(--font-mono);
   font-size: var(--text-dense);
   font-weight: var(--weight-medium);
+  /* Un cran plus clair que `--ink`, pour que le survol ait de quoi assombrir — voir la note du
+   * survol juste dessous. */
+  color: var(--ink-6);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/*
+ * Le survol **assombrit l'écriture**, il ne surligne pas le fond.
+ *
+ * Un fond teinté sur une ligne de 21 px dans une colonne de 296 se lit comme une sélection — donc
+ * comme un état, alors que le survol n'en est pas un. L'encre, elle, désigne la ligne sans rien
+ * ajouter à la trame. Demandé à l'écran le 19 août 2026.
+ *
+ * **La contrepartie est que l'état de repos s'éclaircit.** Rien n'est plus sombre que `--ink` : pour
+ * que le survol assombrisse, la valeur au repos passe de `--ink` à `--ink-6`. L'écart est faible —
+ * 0,75 contre 1 — et c'est voulu : la liste au repos doit rester lisible, c'est le survol qui gagne un
+ * cran, pas le repos qui en perd trois.
+ */
+.champ:hover .etiquette,
+.champ:hover .valeur {
+  color: var(--ink);
+}
+
+/*
+ * L'aperçu du survol prolongé.
+ *
+ * `position: fixed` : le corps du panneau défile et découpe son contenu ; ancré dans le flux, cet
+ * aperçu serait rogné par lui — défaut n° 35. Ses coordonnées viennent donc de la boîte du champ.
+ *
+ * `pointer-events: none` : un aperçu qui intercepte le pointeur disparaît au moment où le curseur
+ * l'atteint, et le survol clignote. Même raison que l'infobulle de `Tooltip`.
+ */
+.apercu {
+  position: fixed;
+  z-index: 310;
+  max-width: 320px;
+  /* Douze lignes : au-delà, ce n'est plus un aperçu mais un document, et l'onglet JSON est fait pour
+   * ça. La coupure se voit, elle ne se devine pas. */
+  max-height: calc(12 * 1.45em);
+  overflow: hidden;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--dark);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  line-height: 1.45;
+  box-shadow: var(--shadow-popover);
+  pointer-events: none;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .cle {

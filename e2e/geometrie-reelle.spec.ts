@@ -32,10 +32,26 @@ test('rien ne dépasse le bord droit de la fenêtre', async ({ page }) => {
 
   const hors = await page.evaluate(() => {
     const limite = window.innerWidth
+    /**
+     * Un ancêtre qui défile horizontalement **autorise** le débordement : c'est même sa raison d'être.
+     *
+     * Sans ce filtre, l'assertion comptait les 113 éléments d'une grille de neuf colonnes plus large
+     * que sa fenêtre — un état parfaitement sain, qui n'a rien à voir avec le défaut visé. Elle
+     * passait tant que le décor de démo tenait dans la largeur, et une colonne ajoutée pour une autre
+     * mesure l'a fait basculer : **une assertion qui dépend d'une propriété accidentelle du décor
+     * finit par se déclencher sur autre chose que ce qu'elle garde.**
+     */
+    const dansUnDefilement = (element: Element) => {
+      for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+        if (/auto|scroll/.test(getComputedStyle(parent).overflowX)) return true
+      }
+      return false
+    }
     // Tout élément dont la boîte franchit le bord droit, avec son nom de classe : c'est ainsi que les
     // quatre coupables d'origine ont été trouvés, et c'est la mesure qui les empêche de revenir.
     return [...document.querySelectorAll('body *')]
       .filter((element) => element.getBoundingClientRect().right > limite + 1)
+      .filter((element) => !dansUnDefilement(element))
       .map((element) => `${element.tagName}.${element.className}`)
   })
   // La cause de la coupure du bord droit n'était pas un seul élément mais **une chaîne d'un pixel** :
@@ -415,4 +431,44 @@ test('les libellés des actions du panneau tiennent dans leur bouton', async ({ 
   // porte exactement le même défaut** — mêmes colonnes, même corps, même libellé — donc la fidélité ne
   // pouvait pas trancher. C'est une mesure que le handoff n'avait pas faite.
   expect(debordements).toEqual([])
+})
+
+test('le chrome ne se sélectionne pas, les blocs de données si', async ({ page }) => {
+  await ouvrirUneTable(page)
+
+  const chrome = await page.evaluate(() =>
+    [
+      '[role=treeitem]',
+      '[role=tab]',
+      '[role=columnheader]',
+      '[role=row] [class*="td"]',
+      'button',
+      'label',
+    ].map((selecteur) => ({
+      selecteur,
+      selection: getComputedStyle(document.querySelector(selecteur) as Element).userSelect,
+      curseur: getComputedStyle(document.querySelector(selecteur) as Element).cursor,
+    })),
+  )
+  // Glisser sur un libellé, un onglet, une ligne d'arbre ou une cellule ne surligne plus rien : dans
+  // une application de bureau, le texte de l'interface n'est pas du contenu.
+  expect(chrome.filter((mesure) => mesure.selection !== 'none')).toEqual([])
+  // Et le curseur en I disparaît avec : il annonçait une saisie là où il n'y en a pas.
+  expect(chrome.filter((mesure) => mesure.curseur === 'text')).toEqual([])
+
+  // **La limite, et elle compte plus que la règle.** Ce produit sert à lire des données : le SQL, le
+  // JSON et le DDL doivent rester sélectionnables à la souris, faute de quoi la seule façon de les
+  // copier serait un bouton — et il n'y en a pas pour tout.
+  await page.getByRole('grid').getByRole('row').nth(2).click()
+  await page.getByRole('tab', { name: 'JSON' }).click()
+  const donnees = await page.evaluate(() => {
+    const bloc = document.querySelector('pre')
+    const saisie = document.querySelector('input')
+    return {
+      bloc: bloc ? getComputedStyle(bloc).userSelect : null,
+      saisie: saisie ? getComputedStyle(saisie).userSelect : null,
+    }
+  })
+  expect(donnees.bloc).toBe('text')
+  expect(donnees.saisie).toBe('text')
 })

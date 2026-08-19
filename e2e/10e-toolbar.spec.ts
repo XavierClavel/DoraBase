@@ -49,7 +49,10 @@ test('masquer une colonne la retire de la grille', async ({ page }) => {
   await page.getByRole('dialog', { name: 'Colonnes affichées' }).getByText('currency').click()
 
   await expect(page.getByRole('button', { name: 'Trier par currency' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Colonnes affichées' })).toContainText('7/8')
+  // 8 sur 9 : le décor de démo porte une neuvième colonne depuis `10f`, dont la valeur ne tient pas
+  // dans le panneau de ligne — c'est ce qui rend l'ellipse et l'aperçu mesurables. Un compte en dur
+  // dans un test est un lien vers le décor, et il faut le suivre quand le décor change.
+  await expect(page.getByRole('button', { name: 'Colonnes affichées' })).toContainText('8/9')
 })
 
 test('un filtre actif produit un chip d’accent, distinct du chip de tri', async ({ page }) => {

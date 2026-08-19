@@ -33,6 +33,38 @@ body {
   background: var(--canvas);
   color: var(--ink);
   font-family: var(--font-ui);
+  /*
+   * **Le chrome ne se sélectionne pas, et son curseur est une flèche.**
+   *
+   * Dans une application de bureau, glisser sur un libellé, un onglet ou une étiquette de champ ne
+   * surligne rien : le texte de l'interface n'est pas du contenu. Le laisser sélectionnable produit
+   * des surlignages bleus involontaires au moindre glissement — et un curseur en I au-dessus de
+   * choses qui ne s'éditent pas. Demandé à l'écran le 19 août 2026.
+   *
+   * **La limite est posée juste dessous, et elle compte plus que la règle.** Ce produit sert à lire
+   * des données : un DDL, un JSON, une requête SQL et une valeur de cellule doivent rester
+   * sélectionnables à la souris, faute de quoi la seule façon de les copier serait un bouton — et
+   * il n'y en a pas pour tout. La règle vaut donc pour l'interface, pas pour ce qu'elle affiche.
+   */
+  user-select: none;
+  cursor: default;
+}
+
+/*
+ * Ce qui reste sélectionnable : les **blocs de données**.
+ *
+ * `pre` et `code` couvrent le DDL (`14c`), le JSON du panneau de ligne et de la console (`13b`), et
+ * le SQL coloré des aperçus. `input`, `textarea` et `[contenteditable]` couvrent toute saisie, dont
+ * l'éditeur CodeMirror de `12b` — qui est un `contenteditable` et deviendrait inutilisable sans cela.
+ * `[data-selectionnable]` est la porte de sortie explicite pour un cas qui n'entre dans aucun des
+ * précédents.
+ *
+ * `:where()` pour une spécificité nulle : ces règles ne doivent jamais l'emporter sur une décision
+ * locale, seulement rattraper le défaut posé sur `body`.
+ */
+:where(pre, code, input, textarea, [contenteditable], [data-selectionnable]) {
+  user-select: text;
+  cursor: auto;
 }
 
 /*
