@@ -887,6 +887,28 @@ autre chose que ce qu'elle prétendait.
    trois tentatives. **Un correctif qu'on n'a pas vu échouer n'est pas un correctif vérifié** : celui du
    matin était plausible, documenté, et faux.
 
+100. **Créer un projet était impossible depuis l'écran fait pour ça.** « Je saisis un projet avec deux
+   environnements, je clique sur Continuer, rien ne se passe » — constaté par le commanditaire le
+   19 août 2026. L'écran de `24a` envoie `id: ""` pour chaque environnement, avec un commentaire
+   affirmant que la dérivation vit côté Rust ; `creer_projet` prenait les déclarations **telles quelles**.
+   Deux environnements donnaient donc deux identifiants vides, `valider` refusait pour doublon, et
+   l'`active_environment` valait `""`. À un seul environnement, le geste passait — un identifiant vide
+   n'est pas un doublon de lui-même : d'où un défaut invisible sur le cas le plus simple.
+
+   **Personne ne l'avait vu parce que chaque côté testait sa moitié du contrat.** Les tests de l'écran
+   injectent leur propre création et n'atteignent jamais le cœur ; les tests du cœur fabriquaient des
+   déclarations **déjà dérivées** par leur fonction d'aide, donc jamais celles que l'écran envoie. Un
+   commentaire annonçait le partage des responsabilités et **tenait lieu de vérification** — c'est le
+   même vide que le n° 89, et c'est le plus coûteux du projet : il rendait la fonction principale
+   inutilisable pendant deux séances vertes.
+
+   **Le second défaut, dans le même geste** : le refus *était* rendu, mais invisible. Il partageait avec
+   l'empêchement calculé son `role` (`undefined` quand rien n'empêche, donc **aucune annonce**) et son
+   gris d'aide à la saisie. « Rien ne se passe » n'était pas une hypothèse de l'utilisateur, c'était une
+   description exacte de ce que l'écran donnait à voir. Un refus est un **événement** — `alert`, encre de
+   danger ; un empêchement est un **état** — `status`, encre secondaire. Les confondre fait passer un
+   message pour du décor.
+
 **Ce que ces défauts disent du décor de test.** Presque aucun n'était un défaut de logique : ils
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros
 d'attribut qui coïncident, grille plus étroite que son cadre, `bigserial` partout. Une suite verte

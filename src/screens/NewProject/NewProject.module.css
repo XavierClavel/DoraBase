@@ -199,3 +199,11 @@
   font-size: 11.5px;
   line-height: 1.45;
 }
+
+/* Le refus rendu par le cœur — un **événement**, pas une aide à la saisie. Il partageait le gris de
+ * `.raison`, ce qui le rendait indistinguable du rappel « Donnez un nom au projet » ; le lecteur d'un
+ * refus doit voir qu'il s'est passé quelque chose. */
+.refus {
+  font-weight: var(--weight-semibold);
+  color: var(--danger-ink);
+}

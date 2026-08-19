@@ -176,3 +176,36 @@ test('sans raison, rien ne s’ajoute au-dessus du nom', () => {
   monter()
   expect(screen.queryByTestId('raison-d-ouverture')).toBeNull()
 })
+
+// **Le refus du cœur doit se voir et s'annoncer.** Il partageait le `role` et l'encre de
+// l'empêchement calculé : `role={undefined}` quand `empeche` était nul, donc rien n'était annoncé, et
+// le même gris qu'une aide à la saisie. C'est ce qui a fait dire « je clique et rien ne se passe »
+// (défaut n° 100) — alors qu'un refus était bien rendu.
+test('un refus du cœur est annoncé comme une alerte', async () => {
+  const utilisateur = userEvent.setup()
+  render(
+    <>
+      <Sprite />
+      <NewProject
+        projets={[]}
+        onClose={() => {}}
+        onCreate={async () => {
+          throw 'deux environnements portent le même identifiant'
+        }}
+        onCreated={() => {}}
+      />
+    </>,
+  )
+  await nommer(utilisateur, 'Atelier Nord')
+  await utilisateur.click(continuer())
+
+  const alerte = await screen.findByRole('alert')
+  expect(alerte).toHaveTextContent('même identifiant')
+})
+
+test('un empêchement reste un état, non une alerte', () => {
+  monter()
+  // Rien n'a encore été tenté : la phrase dit ce qui manque, elle ne signale pas d'échec.
+  expect(screen.queryByRole('alert')).toBeNull()
+  expect(screen.getByRole('status')).toHaveTextContent('Donnez un nom au projet')
+})
