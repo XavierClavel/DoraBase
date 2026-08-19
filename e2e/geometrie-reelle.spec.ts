@@ -112,6 +112,56 @@ test('aucun conteneur défilant ne rebondit aux extrémités', async ({ page }) 
   expect(rebondissants).toEqual([])
 })
 
+test('un défilement rapide ne laisse aucune bande vide', async ({ page }) => {
+  await ouvrirUneTable(page)
+
+  const mesures = await page.evaluate(async () => {
+    const zone = document.querySelector('[role=grid] > [role=presentation]') as HTMLElement
+    // Le vide **au-dessus et au-dessous** des lignes montées, dans la fenêtre visible. Une valeur
+    // négative dit que les lignes dépassent de la fenêtre : c'est l'état sain, celui où l'overscan
+    // travaille.
+    const vide = () => {
+      const fenetre = zone.getBoundingClientRect()
+      const boites = [...zone.querySelectorAll('[role=row][aria-rowindex]')]
+        .map((ligne) => ligne.getBoundingClientRect())
+        .filter((boite) => boite.height > 0)
+      return {
+        enHaut: Math.round(Math.min(...boites.map((b) => b.top)) - fenetre.top),
+        enBas: Math.round(fenetre.bottom - Math.max(...boites.map((b) => b.bottom))),
+      }
+    }
+
+    // **Un lancer, trame par trame** : vingt sauts de 400 px, et on retient le pire vide observé. Le
+    // geste réel du trackpad produit exactement cette suite — un `scroll` par trame, sans pause.
+    let pire = { enHaut: 0, enBas: 0 }
+    for (let trame = 0; trame < 20; trame++) {
+      zone.scrollTop += 400
+      await new Promise((resoudre) => requestAnimationFrame(() => resoudre(null)))
+      const actuel = vide()
+      pire = {
+        enHaut: Math.max(pire.enHaut, actuel.enHaut),
+        enBas: Math.max(pire.enBas, actuel.enBas),
+      }
+    }
+
+    // Puis un saut brusque, le cas le plus dur : la barre de défilement traînée d'un bloc.
+    zone.scrollTop = 6000
+    await new Promise((resoudre) => requestAnimationFrame(() => resoudre(null)))
+    return { pire, apresUnSaut: vide() }
+  })
+
+  // **La mesure porte sur une seule trame après le geste, et c'est tout le sujet.** Un `scroll` est un
+  // événement *continu* pour React : la mise à jour qu'il déclenche est de priorité non urgente, donc
+  // différable. Le temps qu'elle passe, la toile est à sa nouvelle position et les lignes montées sont
+  // restées à l'ancienne — 265 px de blanc pendant un lancer, près de la hauteur entière de la fenêtre
+  // après un saut. Attendre 300 ms avant de mesurer aurait tout montré vert : le défaut n'est pas que
+  // l'affichage soit faux, c'est qu'il le soit **le temps d'une trame**.
+  expect(mesures.pire.enBas).toBeLessThanOrEqual(0)
+  expect(mesures.pire.enHaut).toBeLessThanOrEqual(0)
+  expect(mesures.apresUnSaut.enBas).toBeLessThanOrEqual(0)
+  expect(mesures.apresUnSaut.enHaut).toBeLessThanOrEqual(0)
+})
+
 test('la grille défile horizontalement au lieu d’écraser ses colonnes', async ({ page }) => {
   await ouvrirUneTable(page)
 

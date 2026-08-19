@@ -714,6 +714,19 @@ autre chose que ce qu'elle prétendait.
    chacun des quatorze conteneurs défilants, à côté de son `overflow`, et une mesure refuse le
    quinzième qui l'oublierait. **« Sans effet d'après la spécification » n'est pas « sans effet », et
    c'est une mesure qui fait la différence, pas une lecture.**
+79. **La virtualisation montrait du blanc pendant une trame, et 300 ms d'attente le cachaient.** Un
+   `scroll` est un événement *continu* pour React : la mise à jour d'état qu'il déclenche est de
+   priorité non urgente, donc React a le droit de la différer. Le temps qu'elle passe, la toile est à
+   sa nouvelle position et les lignes montées sont restées à l'ancienne. Mesuré : **265 px de blanc**
+   pendant un lancer au trackpad, et près de la hauteur entière de la fenêtre après un saut de barre de
+   défilement. `flushSync` rend la trame avant qu'elle ne soit peinte ; le coût est borné, le navigateur
+   n'émettant qu'un `scroll` par trame.
+   **Ce qui rendait le défaut invisible aux tests, c'est le `await`.** Toutes les mesures de grille
+   existantes lisent le DOM après une attente, donc après que le rendu différé a eu lieu : elles
+   voyaient un affichage juste. Le défaut n'était pas que l'affichage soit faux, mais qu'il le soit
+   *le temps d'une trame* — et une trame ne se mesure qu'en lisant sans attendre, trame par trame.
+   L'overscan, lui, n'y était pour rien : il valait déjà 4 lignes, et aucune valeur n'aurait couvert
+   un saut de 6 000 px.
 
 **Ce que ces défauts disent du décor de test.** Presque aucun n'était un défaut de logique : ils
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros

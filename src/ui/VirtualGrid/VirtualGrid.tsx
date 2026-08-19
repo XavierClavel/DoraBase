@@ -14,6 +14,7 @@
 // biome-ignore-all lint/a11y/useKeyWithClickEvents: voir ci-dessus
 
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { cx } from '../cx'
 import styles from './VirtualGrid.module.css'
 
@@ -180,7 +181,25 @@ export function VirtualGrid<Row>({
         role="presentation"
         className={styles.viewport}
         style={{ height: viewportHeight }}
-        onScroll={(evenement) => setScrollTop(evenement.currentTarget.scrollTop)}
+        /*
+         * **`flushSync`, et c'est la correction d'un vide au défilement rapide.**
+         *
+         * Un `scroll` est un événement *continu* pour React, donc la mise à jour qu'il déclenche est
+         * de priorité non urgente : React a le droit de la différer d'une trame ou plus. Le temps
+         * qu'elle passe, la toile est à sa nouvelle position et les lignes montées sont restées à
+         * l'ancienne — mesuré sur un saut de 6 000 px : **621 px de vide au bas de la fenêtre**, et
+         * les lignes montées à près de 6 000 px au-dessus. C'est le clignotement blanc qu'on voit en
+         * lâchant un défilement rapide.
+         *
+         * Différer est le bon défaut de React presque partout ; ici l'affichage *est* la position de
+         * défilement, et une position différée n'est pas une position. `flushSync` rend donc la trame
+         * courante avant qu'elle ne soit peinte. Le coût est réel et connu — un rendu synchrone par
+         * événement — et il est borné par ce que le navigateur émet : un `scroll` par trame au plus.
+         */
+        onScroll={(evenement) => {
+          const haut = evenement.currentTarget.scrollTop
+          flushSync(() => setScrollTop(haut))
+        }}
       >
         {/* **L'en-tête vit dans la zone défilante**, collé en haut. Hors d'elle, il ne suivait pas
             le défilement **horizontal** : au-delà de la largeur de la fenêtre, les en-têtes ne
