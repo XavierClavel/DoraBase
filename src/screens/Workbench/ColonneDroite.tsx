@@ -44,7 +44,12 @@ export function ColonneDroite({ vue, onVueChange, navigation, children }: Colonn
     <div className={styles.root}>
       <header className={styles.header}>
         {vue !== undefined && (
-          <div className={styles.vues} role="group" aria-label="Vue de l’objet">
+          // `<fieldset>` et non `<div role="group">` : c'est la convention du projet pour un groupe
+          // de contrôles nommé — `SegmentedControl` et `RadioGroup` font de même, et la règle
+          // `useSemanticElements` de biome l'exige. La légende nomme le groupe à la voix sans occuper
+          // de place ; `display: none` la retirerait du nom accessible.
+          <fieldset className={styles.vues}>
+            <legend className={styles.legende}>Vue de l’objet</legend>
             <BoutonDeVue
               vue="donnees"
               courante={vue}
@@ -59,7 +64,7 @@ export function ColonneDroite({ vue, onVueChange, navigation, children }: Colonn
               icone="plan"
               libelle="Structure"
             />
-          </div>
+          </fieldset>
         )}
         <span className={styles.espace} />
         {/* Précédent / suivant se déplacent dans la **fenêtre**, et se désactivent aux bords —
