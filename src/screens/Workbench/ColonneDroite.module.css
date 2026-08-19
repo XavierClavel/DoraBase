@@ -1,0 +1,111 @@
+/*
+ * Le cadre de la colonne de droite (`22`).
+ *
+ * L'en-tête reprend les mesures de celui du panneau de ligne — 34 px, filet bas `--divider-2`,
+ * remplissage horizontal de 11 px — parce que c'est la même barre : elle a seulement changé de
+ * contenu. Les boutons de vue gardent, eux, les mesures qu'ils avaient dans la bande d'onglets.
+ */
+
+.root {
+  /* Pas de largeur ici : c'est le `SplitPane` de l'écran de travail qui la porte, et qui la rend
+     réglable. Le mockup donne 296 px, valeur par défaut de ce panneau. */
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  background: var(--paper-alt);
+  font-family: var(--font-ui);
+}
+
+.header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  height: var(--h-bar);
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--divider-2);
+}
+
+/*
+ * Le corps.
+ *
+ * `min-height: 0` : sans lui, un enfant flex refuse de descendre sous la hauteur de son contenu, et
+ * un panneau qui défile — le DDL, la liste des champs — pousserait le cadre au lieu de défiler.
+ * `overflow: hidden` plutôt que `auto` : c'est au panneau de décider ce qui défile chez lui, et deux
+ * conteneurs défilants imbriqués donnent deux barres.
+ */
+.corps {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.vues {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-meta);
+}
+
+.vue {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 var(--space-5);
+  border: 0;
+  border-radius: var(--radius-control-2);
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.vue:hover {
+  background: var(--hover-row);
+  color: var(--ink-6);
+}
+
+/* La pastille sombre du mockup d'`A9` : c'est ce qui dit laquelle des deux vues est à l'écran. */
+.vueActive {
+  background: var(--dark);
+  color: var(--paper);
+}
+
+.vueActive:hover {
+  background: var(--dark);
+  color: var(--paper);
+}
+
+.espace {
+  flex: 1;
+}
+
+.fleche {
+  display: flex;
+  align-items: center;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--ink-4);
+  cursor: pointer;
+}
+
+.fleche:disabled {
+  color: var(--disabled);
+  cursor: default;
+}
+
+/* La flèche du haut est celle du bas retournée — le sprite n'en porte qu'une. */
+.haut {
+  transform: rotate(180deg);
+}

@@ -818,8 +818,6 @@ describe('mode édition', () => {
     const utilisateur = userEvent.setup()
     monter({ passerellePreview: PREVIEW })
     await ouvrirEtEditer(utilisateur)
-    // Avant toute modification, c'est le panneau de `10f` qui occupe la place.
-    expect(screen.getByLabelText('Détail de la ligne')).toBeInTheDocument()
 
     await modifier(utilisateur)
 
@@ -827,7 +825,12 @@ describe('mode édition', () => {
     // panneaux là où le mockup n'en montre qu'un ; en éditant, ce qu'on veut voir est ce qu'on a
     // changé.
     expect(await screen.findByLabelText('Modifications en attente de la table')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Détail de la ligne')).not.toBeInTheDocument()
+
+    // **Et le couple de vues survit à la substitution** (`22`). C'est ce que la première version de
+    // ce test ne pouvait pas voir : elle mesurait la disparition du panneau de ligne, ce qui reste
+    // vrai, sans rien dire de l'en-tête. Poser le couple dans `RowPanel` l'aurait fait disparaître
+    // ici même, en pleine édition — le cadre existe pour ça.
+    expect(screen.getByRole('button', { name: 'Données' })).toBeInTheDocument()
   })
 
   it('le SQL du panneau vient du moteur, avec la clé primaire de l’introspection', async () => {

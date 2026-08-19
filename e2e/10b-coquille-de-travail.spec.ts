@@ -70,13 +70,15 @@ test('les trois colonnes se partagent la largeur, et la grille en garde l’esse
   const mesures = await page.evaluate(() => {
     const separateurs = [...document.querySelectorAll('[role=separator]')]
     const grille = document.querySelector('[role=grid]')
-    const panneau = document.querySelector('aside[aria-label^="Détail de la ligne"]')
+    // **La colonne de droite se mesure par sa poignée**, comme la sidebar juste au-dessus : depuis
+    // `22`, son cadre est une mise en page sans nom accessible — et le panneau de ligne qu'elle
+    // contenait n'existe pas tant qu'aucune ligne n'est sélectionnée.
     return {
       sidebar: Math.round(
         separateurs[0]?.previousElementSibling?.getBoundingClientRect().width ?? 0,
       ),
       grille: Math.round(grille?.getBoundingClientRect().width ?? 0),
-      panneau: Math.round(panneau?.getBoundingClientRect().width ?? 0),
+      panneau: Math.round(separateurs[1]?.nextElementSibling?.getBoundingClientRect().width ?? 0),
       fenetre: window.innerWidth,
     }
   })
@@ -97,9 +99,8 @@ test('la barre d’état court sur toute la largeur, sous les trois colonnes', a
 
   const mesures = await page.evaluate(() => {
     const barre = document.querySelector('[role=status]')?.getBoundingClientRect()
-    const panneau = document
-      .querySelector('aside[aria-label^="Détail de la ligne"]')
-      ?.getBoundingClientRect()
+    const separateurs = [...document.querySelectorAll('[role=separator]')]
+    const panneau = separateurs[1]?.nextElementSibling?.getBoundingClientRect()
     return {
       largeur: Math.round(barre?.width ?? 0),
       fenetre: window.innerWidth,
@@ -111,7 +112,7 @@ test('la barre d’état court sur toute la largeur, sous les trois colonnes', a
   expect(mesures.sousLePanneau).toBe(true)
 })
 
-test('avec beaucoup d’onglets, la bande défile et ne recouvre pas « Données »', async ({
+test('avec beaucoup d’onglets, la bande défile et le couple de vues reste atteignable', async ({
   page,
 }) => {
   await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
@@ -130,22 +131,29 @@ test('avec beaucoup d’onglets, la bande défile et ne recouvre pas « Données
   ]) {
     await page.getByRole('treeitem', { name: nom }).click()
   }
-  await expect(page.getByRole('tab')).toHaveCount(7)
+  // **Puis trois consoles, et c'est un fait sur la largeur.** Sept onglets débordaient de la bande
+  // tant que le couple « Données / Structure » lui prenait 180 px sur la droite ; depuis `22`, la
+  // bande occupe toute la largeur du centre et sept onglets y tiennent. Le cas à exercer étant le
+  // débordement, il faut donc de quoi déborder — sans quoi ce test se vérifierait lui-même.
+  for (let i = 0; i < 3; i++) {
+    await page.getByRole('button', { name: 'Nouvelle console' }).click()
+  }
+  await expect(page.getByRole('tab')).toHaveCount(10)
+  // Une console masque le couple (décision de `12a`) : on revient sur une table pour le mesurer.
+  await page.getByRole('tab', { name: /orders/ }).click()
 
-  const recouvrement = await page.evaluate(() => {
+  const mesures = await page.evaluate(() => {
     const bande = document.querySelector('[role=tablist]')
-    // « Données » est un **bouton** depuis `14a`, qui a fait basculer le couple : il portait
-    // `aria-current="page"` tant qu'il n'était qu'un état affiché.
+    const enveloppe = bande?.parentElement
     const vues = [...document.querySelectorAll('button')].find(
       (bouton) => bouton.textContent?.trim() === 'Données',
     )
-    const enveloppe = bande?.parentElement
-    if (!bande || !vues || !enveloppe) return null
+    if (!bande || !enveloppe || !vues) return null
 
     // **Le recouvrement se mesure au point, pas au rectangle.** `getBoundingClientRect` rend la
-    // géométrie réelle d'un élément même découpé par un `overflow`, et l'enveloppe, elle, reste
-    // toujours dans ses bornes : deux premières versions de ce test étaient vertes sans le
-    // correctif. Ce qui compte est **ce qui se trouve sous le pixel** où « Données » s'affiche.
+    // géométrie réelle d'un élément même découpé par un `overflow` : deux premières versions de ce
+    // test étaient vertes sans le correctif. Ce qui compte est **ce qui se trouve sous le pixel** où
+    // « Données » s'affiche.
     const boite = vues.getBoundingClientRect()
     const dessus = document.elementFromPoint(
       Math.round(boite.left + boite.width / 2),
@@ -159,9 +167,14 @@ test('avec beaucoup d’onglets, la bande défile et ne recouvre pas « Données
     }
   })
 
-  expect(recouvrement?.deborde).toBe(true)
-  expect(recouvrement?.recouvertParUnOnglet).toBe(false)
-  await expect(page.getByText('Données')).toBeVisible()
+  // **Ce que ce test verrouillait, et ce qu'il verrouille maintenant.** « Données » était à droite de
+  // la bande d'onglets, et sept onglets ouverts passaient **par-dessus** — `TabStrip` portait
+  // `flex: none`, juste dans son contexte et faux dans celui-là. Depuis `22`, le couple est dans une
+  // autre colonne : le recouvrement est devenu structurellement impossible, et ce test le constate
+  // plutôt que de disparaître — c'est la garantie qui compte, pas le mécanisme qui la tenait.
+  expect(mesures?.deborde).toBe(true)
+  expect(mesures?.recouvertParUnOnglet).toBe(false)
+  await expect(page.getByRole('button', { name: 'Données' })).toBeVisible()
 })
 
 test('fermer le dernier onglet laisse l’écran de travail debout', async ({ page }) => {

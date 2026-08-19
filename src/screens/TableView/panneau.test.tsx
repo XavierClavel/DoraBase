@@ -85,9 +85,7 @@ function monter({
   columns = COLONNES,
   ligne = LIGNE,
   rang = 1,
-  total = 2,
   onCopyInsert,
-  onNavigate = () => {},
 }: Options = {}) {
   const readRows = vi.fn(async (_cle: DatabaseKey, _requete: RowQuery) => ({
     offset: 0,
@@ -112,8 +110,6 @@ function monter({
         relations={relations}
         ligne={ligne}
         rang={rang}
-        total={total}
-        onNavigate={onNavigate}
         onCopyInsert={onCopyInsert}
         passerelleDetail={{ describeTable } as unknown as PasserelleDetail}
         passerelleLignes={{ readRows } as unknown as PasserelleLignes}
@@ -124,54 +120,19 @@ function monter({
 }
 
 describe('panneau de ligne', () => {
-  it('sans sélection, il le dit plutôt que de rester blanc', () => {
-    monter({ ligne: null, rang: null })
-    expect(screen.getByLabelText('Détail de la ligne')).toHaveTextContent('Sélectionnez une ligne')
+  it('sans sélection, il ne rend rien du tout', () => {
+    const { rendu } = monter({ ligne: null, rang: null })
+    // **Rien, et non une phrase.** « Sélectionnez une ligne pour en voir le détail. » y était ; depuis
+    // `22`, l'en-tête permanent de la colonne rend celle-ci lisible sans elle, et une phrase qui
+    // décrit un geste évident finit par se lire comme du remplissage. C'est le cadre qui est vérifié
+    // dans `ColonneDroite.test.tsx` : l'en-tête, lui, reste.
+    expect(rendu.container.querySelector('aside')).toBeNull()
   })
 
-  it('l’en-tête nomme la clé primaire et sa valeur', () => {
-    monter()
-    const panneau = screen.getByLabelText('Détail de la ligne 1')
-    expect(panneau).toHaveTextContent('Ligne 1')
-    expect(panneau).toHaveTextContent('id 184220')
-  })
-
-  it('une table sans clé primaire ne prétend pas en avoir une', () => {
-    monter({
-      columns: [colonne('message'), colonne('niveau')],
-      ligne: [
-        { kind: 'text', value: 'ok' },
-        { kind: 'text', value: 'info' },
-      ],
-      relations: [],
-    })
-    const panneau = screen.getByLabelText('Détail de la ligne 1')
-    expect(panneau).toHaveTextContent('Ligne 1')
-    // Aucun identifiant inventé à partir du rang.
-    expect(panneau.querySelector('[class*="identite"]')).toBeNull()
-  })
-
-  it('précédent se désactive à la première ligne, suivant à la dernière', () => {
-    const premiere = monter({ rang: 1, total: 2 })
-    expect(screen.getByRole('button', { name: 'Ligne précédente' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Ligne suivante' })).toBeEnabled()
-    premiere.rendu.unmount()
-
-    monter({ rang: 2, total: 2 })
-    // Au bout, la flèche se désactive plutôt que de boucler — ce qui ferait croire à un parcours
-    // infini sur une fenêtre de 500 lignes.
-    expect(screen.getByRole('button', { name: 'Ligne suivante' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Ligne précédente' })).toBeEnabled()
-  })
-
-  it('naviguer demande le rang voisin, il ne le décide pas seul', async () => {
-    const utilisateur = userEvent.setup()
-    const onNavigate = vi.fn()
-    monter({ rang: 1, total: 3, onNavigate })
-
-    await utilisateur.click(screen.getByRole('button', { name: 'Ligne suivante' }))
-    expect(onNavigate).toHaveBeenCalledWith(2)
-  })
+  // **Trois tests ont disparu avec l'en-tête, et non été « adaptés ».** Ils vérifiaient que le titre
+  // nomme le rang et la clé primaire, et qu'une table sans clé primaire n'invente pas d'identifiant.
+  // Ce titre n'existe plus (`22`) : le rang est dans la gouttière `#` de la grille, l'identifiant est
+  // la première valeur du corps. Les flèches, elles, sont mesurées dans `ColonneDroite.test.tsx`.
 
   it('l’onglet JSON rend la ligne en objet typé', async () => {
     const utilisateur = userEvent.setup()
