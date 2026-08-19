@@ -462,7 +462,22 @@ le schéma déduit, et la console dont le langage n'est pas du SQL.
 | [`23d`](23d-choisir-l-environnement-d-une-connexion.md) | Choisir l'environnement d'une connexion (`A2`) | à faire |
 | [`23e`](23e-editer-un-projet.md) | Éditer un projet, et ses environnements | à faire |
 | [`23f`](23f-supprimer-un-environnement.md) | Supprimer un environnement, et ce que ça emporte | à faire |
-| [`23g`](23g-les-ecrans-face-aux-environnements-declares.md) | Les écrans face aux environnements déclarés | à faire |
+| [`23g`](23g-les-ecrans-face-aux-environnements-declares.md) | Les écrans face aux environnements déclarés | livrée |
+| [`24a`](24a-creer-un-projet.md) | Créer un projet : l'étape 1 | à faire |
+| [`24b`](24b-stepper-informatif.md) | Le stepper informatif | à faire |
+| [`24c`](24c-enchainer-vers-la-connexion.md) | Enchaîner vers la première connexion | à faire |
+| [`24d`](24d-deux-gestes.md) | Deux gestes : « Nouveau projet » et « Nouvelle connexion » | à faire |
+
+**`24` renverse `08f`.** Le projet se créait au passage, depuis le sélecteur de `A2` : le geste
+principal était « je déclare une connexion ». Il devient « je déclare un projet, puis on me propose sa
+première connexion ». `08f` reste à lire pour ses arbitrages — un projet vide n'est pas défait, la
+création est une commande à part — que `24` reconduit explicitement.
+
+Les specs `24a`–`24d` ont été conçues avec deux agents, l'un UX et l'autre UI, dont les documents ont
+tranché la plupart des questions. Deux les opposaient : la couleur des environnements à la création
+(retenue : non, elle n'a aucune conséquence différée, contrairement au libellé) et la cellule « Projet »
+de l'étape 2 (retenue : du texte étiqueté, non un `Chip` — la conception UI signalait elle-même qu'un
+chip inerte se lit comme un contrôle en panne).
 
 **`23` est le premier chantier qui invalide le format de configuration.** Les onze specs précédentes
 ont employé `serde(default)`, justement parce qu'aucune n'invalidait ce qui était écrit sur disque.
