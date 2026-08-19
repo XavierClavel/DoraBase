@@ -20,6 +20,11 @@ use crate::config::SecretRef;
 
 /// Le service sous lequel les entrées sont rangées. Identique à l'identifiant du bundle,
 /// pour que les entrées soient reconnaissables dans « Accès au trousseau ».
+///
+/// **Il a changé le 19 août 2026**, en même temps que l'identifiant du bundle. Les entrées écrites
+/// sous l'ancien service restent dans le Trousseau, orphelines : rien ne les lit plus, et rien ne les
+/// efface. C'est sans conséquence — l'application n'a jamais été diffusée — mais une machine de
+/// développement peut en porter, et elles s'effacent à la main depuis « Accès au trousseau ».
 const SERVICE: &str = "com.dorabase.desktop";
 
 pub struct KeychainStore;

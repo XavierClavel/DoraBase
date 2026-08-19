@@ -80,7 +80,7 @@ test('un nom déjà pris est dit avant le clic, sans aller-retour', async () => 
 test('deux libellés identiques sont refusés, en nommant le doublon', async () => {
   const utilisateur = userEvent.setup()
   monter()
-  await nommer(utilisateur, 'Print')
+  await nommer(utilisateur, 'Halle')
   const staging = screen.getAllByRole('textbox')[2] as HTMLInputElement
   await utilisateur.clear(staging)
   await utilisateur.type(staging, 'dev')
@@ -94,7 +94,7 @@ test('deux libellés identiques sont refusés, en nommant le doublon', async () 
 test('un libellé vide est refusé', async () => {
   const utilisateur = userEvent.setup()
   monter()
-  await nommer(utilisateur, 'Print')
+  await nommer(utilisateur, 'Halle')
   await utilisateur.clear(screen.getAllByRole('textbox')[1] as HTMLInputElement)
   expect(continuer()).toBeDisabled()
   expect(screen.getByRole('status')).toHaveTextContent('besoin d’un libellé')
@@ -156,7 +156,7 @@ test('un refus du cœur s’affiche là où les autres s’affichent', async () 
       />
     </>,
   )
-  await nommer(utilisateur, 'Print')
+  await nommer(utilisateur, 'Halle')
   await utilisateur.click(continuer())
 
   // L'utilisateur n'a pas à savoir lequel des deux a parlé — l'écran ou le cœur.

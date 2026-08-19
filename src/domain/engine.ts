@@ -126,7 +126,7 @@ export type ConstraintInfo = { name: string, definition: string, };
 /**
  * Désigne une base dans un projet, pour un environnement.
  *
- * **Trois chaînes plutôt qu'une clé préformée.** Envoyer `"Print/analytics/dev"` depuis le
+ * **Trois chaînes plutôt qu'une clé préformée.** Envoyer `"Halle/analytics/dev"` depuis le
  * front demanderait au JavaScript de connaître la convention de composition, donc de la
  * dupliquer — le même piège que la référence de secret de `08e`, tranché de la même façon.
  */

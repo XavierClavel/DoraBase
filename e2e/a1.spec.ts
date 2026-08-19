@@ -54,7 +54,11 @@ test('l’étape 1 par-dessus A1 est conforme à la référence', async ({ page 
 async function allerAA2(page: import('@playwright/test').Page) {
   await page.goto('/?demo')
   await page.getByRole('button', { name: /Nouveau projet/ }).click()
-  await page.getByLabel('Nom du projet').fill('Atelier Nord')
+  // **Un nom que le décor ne porte pas.** Le projet de la démo s'appelle « Atelier Nord » depuis la
+  // relecture du 19 août 2026 ; créer un homonyme fait refuser la création — à juste titre — et le
+  // bouton « Continuer » reste désactivé. Vingt-quatre tests sont tombés d'un coup sur ce point, tous
+  // pour la même raison.
+  await page.getByLabel('Nom du projet').fill('Comptoir Sud')
   await page.getByRole('button', { name: /Continuer/ }).click()
   await page.waitForSelector('[data-testid=projet-impose]')
   await page.evaluate(() => document.fonts.ready)

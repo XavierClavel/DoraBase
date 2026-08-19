@@ -488,7 +488,7 @@ pub struct NouvelleBase<'a> {
 /// substance de `08f`, et une fonction qui prend `State<ConfigState>` ne se teste pas sans
 /// application Tauri. Même découpage qu'`enregistrer`.
 ///
-/// Le nom est **rogné** : « Print » et « Print  » désigneraient sinon deux projets, dont un
+/// Le nom est **rogné** : « Halle » et « Halle  » désigneraient sinon deux projets, dont un
 /// invisiblement différent dans la sidebar.
 pub fn creer_projet(
     projects: &[Project],
@@ -1162,7 +1162,7 @@ mod tests {
     fn deux_libelles_identiques_sont_refuses_par_le_modele() {
         // Deux libellés identiques donnent deux identifiants identiques, ce que `23a` refuse. L'écran
         // doit l'apprendre par un refus nommé, non par une configuration invalide écrite sur disque.
-        let erreur = creer_projet(&[], "Print", declares(["prod", "prod", "dev"]))
+        let erreur = creer_projet(&[], "Halle", declares(["prod", "prod", "dev"]))
             .expect_err("deux identifiants identiques");
         assert!(matches!(erreur, CreateError::Modele(_)), "{erreur:?}");
     }
@@ -1178,8 +1178,8 @@ mod tests {
 
     #[test]
     fn un_nom_deja_pris_est_refuse_et_le_dit() {
-        let erreur = creer_projet(&projets(), "Atelier Nord", Vec::new())
-            .expect_err("le nom est déjà pris");
+        let erreur =
+            creer_projet(&projets(), "Atelier Nord", Vec::new()).expect_err("le nom est déjà pris");
         assert_eq!(
             erreur,
             CreateError::NomDeja {
@@ -1189,7 +1189,7 @@ mod tests {
         assert!(erreur.to_string().contains("Atelier Nord"));
     }
 
-    /// **Le nom est rogné**, donc « Print » et « Print  » sont le même projet.
+    /// **Le nom est rogné**, donc « Halle » et « Halle  » sont le même projet.
     ///
     /// Sans cela, deux projets coexisteraient dans la sidebar sous un libellé identique à l'œil —
     /// et le second serait injoignable puisque la clé de base emploie le nom.
@@ -1738,12 +1738,12 @@ mod tests {
     #[test]
     fn la_reference_est_derivee_du_triplet_et_stable() {
         assert_eq!(
-            reference_de("Print", "analytics", "prod").as_str(),
-            "Print/analytics/prod"
+            reference_de("Halle", "analytics", "prod").as_str(),
+            "Halle/analytics/prod"
         );
         assert_ne!(
-            reference_de("Print", "analytics", "dev"),
-            reference_de("Print", "analytics", "prod"),
+            reference_de("Halle", "analytics", "dev"),
+            reference_de("Halle", "analytics", "prod"),
             "deux environnements de la même base ont deux mots de passe distincts"
         );
     }
@@ -1872,7 +1872,7 @@ mod tests_renommage {
     fn decor() -> Vec<Project> {
         vec![
             Project {
-                name: "Print".into(),
+                name: "Halle".into(),
                 active_environment: EnvironmentId::brut("prod"),
                 environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
                 queries: Vec::new(),
@@ -1885,19 +1885,19 @@ mod tests_renommage {
                         name: "analytics".to_owned(),
                         engine: crate::config::model::Engine::PostgreSql,
                         environment: EnvironmentId::brut("dev"),
-                        connection: variante(Some(reference_de("Print", "analytics", "dev"))),
+                        connection: variante(Some(reference_de("Halle", "analytics", "dev"))),
                     },
                     Database {
                         name: "analytics".to_owned(),
                         engine: crate::config::model::Engine::PostgreSql,
                         environment: EnvironmentId::brut("prod"),
-                        connection: variante(Some(reference_de("Print", "analytics", "prod"))),
+                        connection: variante(Some(reference_de("Halle", "analytics", "prod"))),
                     },
                     Database {
                         name: "shop".to_owned(),
                         engine: crate::config::model::Engine::MySql,
                         environment: EnvironmentId::brut("prod"),
-                        connection: variante(Some(reference_de("Print", "shop", "prod"))),
+                        connection: variante(Some(reference_de("Halle", "shop", "prod"))),
                     },
                 ],
             },
@@ -1919,7 +1919,7 @@ mod tests_renommage {
             ("shop", "prod"),
         ] {
             magasin.poser(
-                &reference_de("Print", base, env),
+                &reference_de("Halle", base, env),
                 &format!("mdp-{base}-{env}"),
             );
         }
@@ -1932,7 +1932,7 @@ mod tests_renommage {
         garnir(&m);
         let mut ecrits = 0;
 
-        let issue = renommer_projet(&mut projets, "Print", "Atelier Nord", &m, &mut |_| {
+        let issue = renommer_projet(&mut projets, "Halle", "Atelier Nord", &m, &mut |_| {
             ecrits += 1;
             Ok(())
         })
@@ -1956,7 +1956,7 @@ mod tests_renommage {
                 "{base}/{env} doit être lisible sous le nouveau nom"
             );
             assert!(
-                m.retrieve(&reference_de("Print", base, env))
+                m.retrieve(&reference_de("Halle", base, env))
                     .expect("relecture")
                     .is_none(),
                 "{base}/{env} ne doit plus exister sous l'ancien"
@@ -1971,7 +1971,7 @@ mod tests_renommage {
 
         // Les clés de registre rendues portent l'**ancien** nom : ce sont celles à fermer.
         assert_eq!(issue.cles_a_fermer.len(), 3);
-        assert!(issue.cles_a_fermer.iter().all(|cle| cle.contains("Print")));
+        assert!(issue.cles_a_fermer.iter().all(|cle| cle.contains("Halle")));
         assert!(issue.secrets_absents.is_empty());
     }
 
@@ -1982,7 +1982,7 @@ mod tests_renommage {
         garnir(&m);
         let mut vu_au_moment_de_l_ecriture = None;
 
-        renommer_projet(&mut projets, "Print", "Nouveau", &m, &mut |_| {
+        renommer_projet(&mut projets, "Halle", "Nouveau", &m, &mut |_| {
             // **L'ordre est la garantie de cette spec**, et il ne se vérifie pas après coup : au
             // moment où la configuration s'écrit, les secrets doivent déjà avoir bougé. L'inverse
             // laisserait une base sans mot de passe si l'écriture échouait.
@@ -2008,7 +2008,7 @@ mod tests_renommage {
         garnir(&m);
         let mut ecrits = 0;
 
-        let erreur = renommer_projet(&mut projets, "Print", "Nouveau", &m, &mut |_| {
+        let erreur = renommer_projet(&mut projets, "Halle", "Nouveau", &m, &mut |_| {
             ecrits += 1;
             Ok(())
         })
@@ -2018,10 +2018,10 @@ mod tests_renommage {
         // **La configuration n'a pas été écrite du tout** : un projet à moitié renommé serait pire
         // qu'un refus.
         assert_eq!(ecrits, 0);
-        assert_eq!(projets[0].name, "Print");
+        assert_eq!(projets[0].name, "Halle");
         assert_eq!(
             projets[0].databases[0].connection.password,
-            Some(reference_de("Print", "analytics", "dev"))
+            Some(reference_de("Halle", "analytics", "dev"))
         );
     }
 
@@ -2031,7 +2031,7 @@ mod tests_renommage {
         let defaillant = magasin_defaillant(false, true);
         garnir(&defaillant);
 
-        let issue = renommer_projet(&mut projets, "Print", "Nouveau", &defaillant, &mut |_| {
+        let issue = renommer_projet(&mut projets, "Halle", "Nouveau", &defaillant, &mut |_| {
             Ok(())
         })
         .expect("un magasin qui refuse de supprimer ne doit pas empêcher un renommage");
@@ -2107,9 +2107,9 @@ mod tests_renommage {
     fn une_reference_ecrite_juste_avant_l_echec_est_retiree() {
         let mut projets = decor();
         let contenu = HashMap::from([
-            ("Print/analytics/dev".to_owned(), "un".to_owned()),
-            ("Print/analytics/prod".to_owned(), "deux".to_owned()),
-            ("Print/shop/prod".to_owned(), "trois".to_owned()),
+            ("Halle/analytics/dev".to_owned(), "un".to_owned()),
+            ("Halle/analytics/prod".to_owned(), "deux".to_owned()),
+            ("Halle/shop/prod".to_owned(), "trois".to_owned()),
         ]);
         // Deux déplacements passent, le troisième échoue à l'écriture.
         let m = MagasinCapricieux {
@@ -2117,7 +2117,7 @@ mod tests_renommage {
             ecritures_avant_panne: std::sync::Mutex::new(2),
         };
 
-        let erreur = renommer_projet(&mut projets, "Print", "Nouveau", &m, &mut |_| Ok(()))
+        let erreur = renommer_projet(&mut projets, "Halle", "Nouveau", &m, &mut |_| Ok(()))
             .expect_err("le renommage doit échouer");
         assert!(matches!(
             erreur,
@@ -2142,13 +2142,13 @@ mod tests_renommage {
                 "{base}/{env} ne doit rien laisser sous le nouveau nom"
             );
             assert!(
-                m.retrieve(&reference_de("Print", base, env))
+                m.retrieve(&reference_de("Halle", base, env))
                     .expect("relecture")
                     .is_some(),
                 "{base}/{env} doit être repris sous l'ancien"
             );
         }
-        assert_eq!(projets[0].name, "Print");
+        assert_eq!(projets[0].name, "Halle");
     }
 
     #[test]
@@ -2157,7 +2157,7 @@ mod tests_renommage {
         let m = magasin();
         garnir(&m);
 
-        let erreur = renommer_projet(&mut projets, "Print", "Nouveau", &m, &mut |_| {
+        let erreur = renommer_projet(&mut projets, "Halle", "Nouveau", &m, &mut |_| {
             Err("disque plein".to_owned())
         })
         .expect_err("le renommage doit échouer");
@@ -2173,7 +2173,7 @@ mod tests_renommage {
             autre => panic!("issue inattendue : {autre:?}"),
         }
         // Le modèle en mémoire est rendu : le laisser renommé ferait divorcer l'écran du fichier.
-        assert_eq!(projets[0].name, "Print");
+        assert_eq!(projets[0].name, "Halle");
         // **Désigné par nom et environnement, non par index.** Le décor porte trois connexions
         // depuis `23b`, et `databases[1]` est devenu `analytics` en prod : un index dans un décor qui
         // grandit désigne autre chose sans le dire.
@@ -2184,10 +2184,10 @@ mod tests_renommage {
             .expect("le décor déclare shop en prod");
         assert_eq!(
             shop.connection.password,
-            Some(reference_de("Print", "shop", "prod"))
+            Some(reference_de("Halle", "shop", "prod"))
         );
         assert!(m
-            .retrieve(&reference_de("Print", "shop", "prod"))
+            .retrieve(&reference_de("Halle", "shop", "prod"))
             .expect("relecture")
             .is_some());
     }
@@ -2198,12 +2198,12 @@ mod tests_renommage {
         let m = magasin();
         // Deux secrets sur trois : le troisième a été effacé à la main dans le Trousseau.
         m.store(
-            &reference_de("Print", "analytics", "dev"),
+            &reference_de("Halle", "analytics", "dev"),
             &Secret::new("mdp"),
         )
         .expect("garnissage");
 
-        let issue = renommer_projet(&mut projets, "Print", "Nouveau", &m, &mut |_| Ok(()))
+        let issue = renommer_projet(&mut projets, "Halle", "Nouveau", &m, &mut |_| Ok(()))
             .expect("un secret absent ne doit pas rendre le projet irrenommable");
 
         assert_eq!(projets[0].name, "Nouveau");
@@ -2236,13 +2236,13 @@ mod tests_renommage {
         ] {
             magasin
                 .store(
-                    &reference_de("Print", base, env),
+                    &reference_de("Halle", base, env),
                     &Secret::new(format!("mdp-{base}-{env}")),
                 )
                 .expect("garnissage");
         }
 
-        renommer_projet(&mut projets, "Print", "Atelier", magasin, &mut |_| Ok(()))
+        renommer_projet(&mut projets, "Halle", "Atelier", magasin, &mut |_| Ok(()))
             .expect("renommage");
 
         for (base, env) in [
@@ -2258,7 +2258,7 @@ mod tests_renommage {
                 "{base}/{env} doit rester lisible — sinon la base redemanderait son mot de passe"
             );
             assert!(magasin
-                .retrieve(&reference_de("Print", base, env))
+                .retrieve(&reference_de("Halle", base, env))
                 .expect("relecture")
                 .is_none());
         }
@@ -2270,11 +2270,11 @@ mod tests_renommage {
         let m = magasin();
         garnir(&m);
 
-        let erreur = renommer_projet(&mut projets, "Print", "Outils", &m, &mut |_| Ok(()))
+        let erreur = renommer_projet(&mut projets, "Halle", "Outils", &m, &mut |_| Ok(()))
             .expect_err("deux projets homonymes rendraient les clés ambiguës");
 
         assert!(matches!(erreur, RenameError::DejaPris { .. }));
-        assert_eq!(projets[0].name, "Print");
+        assert_eq!(projets[0].name, "Halle");
         assert!(
             m.retrieve(&reference_de("Outils", "analytics", "dev"))
                 .expect("relecture")
@@ -2290,7 +2290,7 @@ mod tests_renommage {
         garnir(&m);
         let mut ecrits = 0;
 
-        let issue = renommer_projet(&mut projets, "Print", "Print", &m, &mut |_| {
+        let issue = renommer_projet(&mut projets, "Halle", "Halle", &m, &mut |_| {
             ecrits += 1;
             Ok(())
         })
@@ -2299,7 +2299,7 @@ mod tests_renommage {
         // Ni écriture ni fermeture de connexion : l'utilisateur a validé sans changer le champ.
         assert_eq!(ecrits, 0);
         assert!(issue.cles_a_fermer.is_empty());
-        assert_eq!(projets[0].name, "Print");
+        assert_eq!(projets[0].name, "Halle");
     }
 
     #[test]
@@ -2307,7 +2307,7 @@ mod tests_renommage {
         let mut projets = decor();
         let m = magasin();
         assert!(matches!(
-            renommer_projet(&mut projets, "Print", "   ", &m, &mut |_| Ok(())),
+            renommer_projet(&mut projets, "Halle", "   ", &m, &mut |_| Ok(())),
             Err(RenameError::NomVide)
         ));
     }
@@ -2327,7 +2327,7 @@ mod tests_renommage {
         let mut projets = decor();
         let m = magasin();
         garnir(&m);
-        renommer_projet(&mut projets, "Print", "  Atelier  ", &m, &mut |_| Ok(()))
+        renommer_projet(&mut projets, "Halle", "  Atelier  ", &m, &mut |_| Ok(()))
             .expect("renommage");
         // Sinon la référence du secret porterait les espaces, et le nom affiché aussi.
         assert_eq!(projets[0].name, "Atelier");
@@ -2355,13 +2355,13 @@ mod tests_suppression {
             ("analytics", "prod"),
             ("shop", "prod"),
         ] {
-            m.poser(&reference_de("Print", base, env), "mdp");
+            m.poser(&reference_de("Halle", base, env), "mdp");
         }
         let mut ecrits = 0;
 
         let issue = supprimer_base(
             &projets,
-            "Print",
+            "Halle",
             "analytics",
             &EnvironmentId::brut("dev"),
             &m,
@@ -2379,7 +2379,7 @@ mod tests_suppression {
         // n'est pas concernée par la suppression de `analytics` en dev.
         assert_eq!(issue.projects[0].databases.len(), 2);
         assert!(
-            m.retrieve(&reference_de("Print", "analytics", "dev"))
+            m.retrieve(&reference_de("Halle", "analytics", "dev"))
                 .expect("relecture")
                 .is_none(),
             "le secret de la connexion retirée doit être effacé"
@@ -2387,7 +2387,7 @@ mod tests_suppression {
         // **L'homonyme survit, secret compris.** C'est la garantie la plus facile à casser du nouveau
         // modèle : une suppression qui filtrerait sur le seul nom emporterait les deux.
         assert!(
-            m.retrieve(&reference_de("Print", "analytics", "prod"))
+            m.retrieve(&reference_de("Halle", "analytics", "prod"))
                 .expect("relecture")
                 .is_some(),
             "analytics/prod est une autre connexion, elle reste"
@@ -2395,7 +2395,7 @@ mod tests_suppression {
         // Et le voisin d'un autre nom aussi : sans lui, « supprimer la bonne » serait indiscernable
         // de « tout supprimer ».
         assert!(m
-            .retrieve(&reference_de("Print", "shop", "prod"))
+            .retrieve(&reference_de("Halle", "shop", "prod"))
             .expect("relecture")
             .is_some());
         // Une seule connexion fermée : celle qu'on a retirée.
@@ -2412,10 +2412,10 @@ mod tests_suppression {
             ("analytics", "prod"),
             ("shop", "prod"),
         ] {
-            m.poser(&reference_de("Print", base, env), "mdp");
+            m.poser(&reference_de("Halle", base, env), "mdp");
         }
 
-        let issue = supprimer_projet(&projets, "Print", &m, &mut |_| Ok(())).expect("suppression");
+        let issue = supprimer_projet(&projets, "Halle", &m, &mut |_| Ok(())).expect("suppression");
 
         assert_eq!(issue.projects.len(), 1);
         assert_eq!(issue.projects[0].name, "Outils", "le voisin reste");
@@ -2426,7 +2426,7 @@ mod tests_suppression {
             ("shop", "prod"),
         ] {
             assert!(m
-                .retrieve(&reference_de("Print", base, env))
+                .retrieve(&reference_de("Halle", base, env))
                 .expect("relecture")
                 .is_none());
         }
@@ -2440,7 +2440,7 @@ mod tests_suppression {
 
         let issue = supprimer_base(
             &projets,
-            "Print",
+            "Halle",
             "analytics",
             &EnvironmentId::brut("dev"),
             &m,
@@ -2459,12 +2459,12 @@ mod tests_suppression {
         let projets = decor_partage();
         let m = magasin_defaillant(false, true);
         for env in ["dev", "prod"] {
-            m.poser(&reference_de("Print", "analytics", env), "mdp");
+            m.poser(&reference_de("Halle", "analytics", env), "mdp");
         }
 
         let issue = supprimer_base(
             &projets,
-            "Print",
+            "Halle",
             "analytics",
             &EnvironmentId::brut("dev"),
             &m,
@@ -2486,11 +2486,11 @@ mod tests_suppression {
     fn une_ecriture_impossible_fait_echouer_la_suppression() {
         let projets = decor_partage();
         let m = magasin();
-        m.poser(&reference_de("Print", "shop", "prod"), "mdp");
+        m.poser(&reference_de("Halle", "shop", "prod"), "mdp");
 
         let erreur = supprimer_base(
             &projets,
-            "Print",
+            "Halle",
             "shop",
             &EnvironmentId::brut("prod"),
             &m,
@@ -2508,11 +2508,11 @@ mod tests_suppression {
     fn une_ecriture_impossible_laisse_le_mot_de_passe_intact() {
         let projets = decor_partage();
         let m = magasin();
-        m.poser(&reference_de("Print", "shop", "prod"), "mdp");
+        m.poser(&reference_de("Halle", "shop", "prod"), "mdp");
 
         supprimer_base(
             &projets,
-            "Print",
+            "Halle",
             "shop",
             &EnvironmentId::brut("prod"),
             &m,
@@ -2524,7 +2524,7 @@ mod tests_suppression {
         // inverse — secrets d'abord — la base restait déclarée sans son mot de passe, et le
         // redemandait à la prochaine connexion sans que rien l'explique.
         assert!(
-            m.retrieve(&reference_de("Print", "shop", "prod"))
+            m.retrieve(&reference_de("Halle", "shop", "prod"))
                 .expect("relecture")
                 .is_some(),
             "une configuration non écrite ne doit rien avoir effacé"
@@ -2538,7 +2538,7 @@ mod tests_suppression {
         assert!(matches!(
             supprimer_base(
                 &projets,
-                "Print",
+                "Halle",
                 "absente",
                 &EnvironmentId::brut("dev"),
                 &m,
@@ -2579,7 +2579,7 @@ mod tests_suppression {
 
         let projets = decor_partage();
         let vigile = Vigile(std::sync::Mutex::new(Vec::new()));
-        supprimer_projet(&projets, "Print", &vigile, &mut |_| Ok(())).expect("suppression");
+        supprimer_projet(&projets, "Halle", &vigile, &mut |_| Ok(())).expect("suppression");
 
         let vus = vigile.0.lock().expect("vigile").clone();
         assert_eq!(vus.len(), 3, "trois secrets déclarés, trois suppressions");
@@ -2594,7 +2594,7 @@ mod tests_requetes {
 
     fn projets() -> Vec<Project> {
         vec![Project {
-            name: "Print".into(),
+            name: "Halle".into(),
             active_environment: EnvironmentId::brut("prod"),
             environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
             databases: Vec::new(),
@@ -2604,10 +2604,10 @@ mod tests_requetes {
 
     #[test]
     fn enregistrer_ajoute_puis_remplace_sous_le_meme_nom() {
-        let p = enregistrer_requete(&projets(), "Print", "CA par jour", "select 1").expect("ajout");
+        let p = enregistrer_requete(&projets(), "Halle", "CA par jour", "select 1").expect("ajout");
         assert_eq!(p[0].queries.len(), 1);
 
-        let p = enregistrer_requete(&p, "Print", "CA par jour", "select 2").expect("remplacement");
+        let p = enregistrer_requete(&p, "Halle", "CA par jour", "select 2").expect("remplacement");
         // **Le même nom remplace, il ne duplique pas.** Sinon la liste se remplirait de variantes
         // homonymes qu'on ne saurait plus distinguer — et « Enregistrer » n'est pas
         // « Enregistrer sous ».
@@ -2618,14 +2618,14 @@ mod tests_requetes {
     #[test]
     fn un_nom_vide_ou_blanc_est_refuse() {
         assert_eq!(
-            enregistrer_requete(&projets(), "Print", "   ", "select 1"),
+            enregistrer_requete(&projets(), "Halle", "   ", "select 1"),
             Err(QueryError::NomVide)
         );
     }
 
     #[test]
     fn le_nom_est_debarrasse_de_ses_espaces() {
-        let p = enregistrer_requete(&projets(), "Print", "  CA  ", "select 1").expect("ajout");
+        let p = enregistrer_requete(&projets(), "Halle", "  CA  ", "select 1").expect("ajout");
         // Sinon « CA » et « CA » (avec espace) seraient deux entrées, indiscernables dans la liste.
         assert_eq!(p[0].queries[0].name, "CA");
     }
@@ -2634,29 +2634,29 @@ mod tests_requetes {
     fn retirer_une_requete_absente_n_est_pas_un_echec() {
         // Le geste a déjà eu son effet. Refuser rendrait la suppression dépendante d'un état qu'on ne
         // voit plus — même arbitrage qu'en `08j` pour un secret déjà effacé.
-        let p = retirer_requete(&projets(), "Print", "jamais écrite").expect("pas un échec");
+        let p = retirer_requete(&projets(), "Halle", "jamais écrite").expect("pas un échec");
         assert!(p[0].queries.is_empty());
     }
 
     #[test]
     fn renommer_refuse_un_nom_deja_pris() {
-        let p = enregistrer_requete(&projets(), "Print", "A", "select 1").expect("ajout");
-        let p = enregistrer_requete(&p, "Print", "B", "select 2").expect("ajout");
+        let p = enregistrer_requete(&projets(), "Halle", "A", "select 1").expect("ajout");
+        let p = enregistrer_requete(&p, "Halle", "B", "select 2").expect("ajout");
         // Deux requêtes homonymes seraient indiscernables dans la liste, et « Enregistrer » ne saurait
         // plus laquelle mettre à jour.
         assert_eq!(
-            renommer_requete(&p, "Print", "A", "B"),
+            renommer_requete(&p, "Halle", "A", "B"),
             Err(QueryError::NomDeja { nom: "B".into() })
         );
         // Renommer en son propre nom est accepté sans rien faire.
-        let p = renommer_requete(&p, "Print", "A", "A").expect("le même nom est l'état voulu");
+        let p = renommer_requete(&p, "Halle", "A", "A").expect("le même nom est l'état voulu");
         assert_eq!(p[0].queries[0].name, "A");
     }
 
     #[test]
     fn renommer_une_requete_inconnue_est_refuse() {
         assert_eq!(
-            renommer_requete(&projets(), "Print", "absente", "autre"),
+            renommer_requete(&projets(), "Halle", "absente", "autre"),
             Err(QueryError::Inconnue {
                 nom: "absente".into()
             })
@@ -2684,7 +2684,7 @@ mod tests_requetes {
             databases: Vec::new(),
             queries: Vec::new(),
         });
-        let p = enregistrer_requete(&deux, "Print", "A", "select 1").expect("ajout");
+        let p = enregistrer_requete(&deux, "Halle", "A", "select 1").expect("ajout");
         // Sans ce test, une écriture sur « le premier projet » passerait inaperçue.
         assert_eq!(p[0].queries.len(), 1);
         assert!(p[1].queries.is_empty());

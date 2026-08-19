@@ -14,7 +14,7 @@ import type { PasserelleDetail } from '../Workbench/useDetailTable'
 import { RowPanel } from './RowPanel'
 import type { PasserelleLignes } from './useLignes'
 
-const CLE: DatabaseKey = { project: 'Print', database: 'analytics', environment: 'prod' }
+const CLE: DatabaseKey = { project: 'Halle', database: 'analytics', environment: 'prod' }
 
 const colonne = (name: string, over: Partial<ColumnInfo> = {}): ColumnInfo => ({
   position: 1,

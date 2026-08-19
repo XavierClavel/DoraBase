@@ -64,22 +64,57 @@
   border-top: 1px solid var(--divider-2);
 }
 
-.footerSpacer {
-  flex: 1;
-}
-
+/*
+ * Les deux actions de création (`24d`), refondues le 19 août 2026.
+ *
+ * **Ce qui ne marchait pas** : deux libellés entiers dans une colonne de 212 px revenaient à la ligne,
+ * et le retour à la ligne détachait chaque icône de son texte — l'icône restant sur la première ligne,
+ * le mot descendant sur la seconde. Une barre de 28 px de haut ne peut pas grandir : c'est donc au
+ * texte de céder, et il ne cédait pas.
+ *
+ * **La forme retenue** est celle d'une pastille — le fond au survol, le rayon de badge — plutôt que le
+ * texte nu du handoff, qui ne dessinait qu'une seule action. Deux textes nus côte à côte ne se lisent
+ * pas comme deux boutons ; deux pastilles, oui, et elles disent où l'on clique.
+ */
 .add {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 0;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  /* `1 1 auto` : les deux pastilles se partagent la place et **rétrécissent** avant de déborder.
+   * `min-width: 0` est ce qui autorise l'ellipse — sans lui, le contenu impose sa largeur et la barre
+   * déborde, le défaut n° 67 sous une autre forme. */
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 20px;
+  padding: 0 var(--space-4);
   border: none;
+  border-radius: var(--radius-badge-2);
   background: none;
   color: var(--ink-2);
   font-family: var(--font-ui);
   font-size: var(--text-label);
   font-weight: var(--weight-semibold);
   cursor: pointer;
+}
+
+.add:hover {
+  background: var(--hover-row);
+  color: var(--ink);
+}
+
+/* L'icône ne rétrécit jamais : c'est elle qui reste lisible quand le mot cède. */
+.add svg {
+  flex: none;
+}
+
+/* **`nowrap` et ellipse.** Le `title` du bouton porte le libellé entier, et son `aria-label` le nom
+ * complet de l'action : ce que la voix annonce ne dépend donc pas de la largeur de la colonne. */
+.addTexte {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .add:focus-visible,
@@ -89,11 +124,14 @@
   box-shadow: var(--shadow-focus);
 }
 
+/* Poussé à droite par sa propre marge, et non par un `<span>` vide : un élément qui n'existe que pour
+ * occuper de la place est un élément que le lecteur d'écran traverse pour rien. */
 .refresh {
   display: flex;
   align-items: center;
   justify-content: center;
   flex: none;
+  margin-left: auto;
   padding: 0;
   border: none;
   background: none;

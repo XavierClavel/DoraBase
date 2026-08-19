@@ -165,8 +165,8 @@ export function ongletActif(etat: EtatOnglets): Onglet | null {
  * Vrai quand un identifiant d'onglet appartient à la cible d'un retrait (`08j`).
  *
  * **Sur les coordonnées, pas sur le préfixe de la chaîne.** `idOnglet` compose
- * `projet/base/env::schema.table`, et un test de préfixe ferait de « Print » un préfixe de
- * « Printemps » — deux projets distincts dont l'un emporterait les onglets de l'autre.
+ * `projet/base/env::schema.table`, et un test de préfixe ferait de « Halle » un préfixe de
+ * « Halles » — deux projets distincts dont l'un emporterait les onglets de l'autre.
  */
 export function viseeParLId(
   cible: { kind: 'database' | 'project'; project: string; database?: string },
