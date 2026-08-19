@@ -60,9 +60,9 @@ qui désinforme.
 
 ## Done when
 
-- [ ] La bande fait 35 px rendus, pleine largeur, collée à l'en-tête, sans jour entre les deux
-- [ ] Elle contient exactement deux entrées, et **aucun** `button`, `a`, `[role=button]` ni `[tabindex]`
-- [ ] Le curseur y est `auto`, et aucune règle de survol ne s'y applique
-- [ ] Une seule entrée porte `aria-current="step"`, et son texte accessible dit « Étape 2 sur 2 »
-- [ ] Le conteneur a le rôle `list`, non `tablist`
-- [ ] Elle est absente quand la modale est ouverte pour un projet existant
+- [x] La bande fait 35 px rendus, pleine largeur, collée à l'en-tête, sans jour entre les deux
+- [x] Elle contient exactement deux entrées, et **aucun** `button`, `a`, `[role=button]` ni `[tabindex]`
+- [x] Le curseur y est `auto`, et aucune règle de survol ne s'y applique
+- [x] Une seule entrée porte `aria-current="step"`, et son texte accessible dit « Étape 2 sur 2 »
+- [x] Le conteneur a le rôle `list`, non `tablist`
+- [x] Elle est absente quand la modale est ouverte pour un projet existant
