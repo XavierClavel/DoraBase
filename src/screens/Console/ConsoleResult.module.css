@@ -33,6 +33,8 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
+  /* Pas de rebond élastique aux extrémités sous WKWebView — voir la note de `reset.css`. */
+  overscroll-behavior: none;
 }
 
 .barre {

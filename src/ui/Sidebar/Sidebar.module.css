@@ -50,6 +50,8 @@
      descendre sous la hauteur de son contenu et la colonne entière déborderait. */
   min-height: 0;
   overflow-y: auto;
+  /* Pas de rebond élastique aux extrémités sous WKWebView — voir la note de `reset.css`. */
+  overscroll-behavior: none;
   /* 5 px de respiration en haut et en bas de l'arbre, relevés dans le mockup. */
   padding: var(--space-2) 0;
 }

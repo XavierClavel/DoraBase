@@ -63,8 +63,15 @@
   border-bottom: 1px solid var(--border);
 }
 
+/* Les cellules de la ligne de filtres (`10d`).
+ *
+ * **3 px en haut et en bas, et c'est une correction.** Sans eux, les champs touchaient les deux filets
+ * de la bande : la ligne se lisait comme une barre pleine plutôt que comme une rangée de champs, et
+ * les coins arrondis se perdaient contre les bords. Demandé à l'écran le 19 août 2026. La bande passe
+ * ainsi de 21 à 27 px rendus ; rien n'en dépend, la virtualisation positionnant les lignes de données
+ * dans une zone qui commence *après* l'en-tête, quelle que soit sa hauteur. */
 .tf {
-  padding: 0 4px;
+  padding: 3px 4px;
   min-width: 0;
 }
 
@@ -74,6 +81,8 @@
 .viewport {
   min-height: 0;
   overflow: auto;
+  /* Pas de rebond élastique aux extrémités sous WKWebView — voir la note de `reset.css`. */
+  overscroll-behavior: none;
   position: relative;
 }
 

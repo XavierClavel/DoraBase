@@ -90,6 +90,28 @@ test('la racine ne défile pas horizontalement', async ({ page }) => {
   expect(debordement).toBeLessThanOrEqual(0)
 })
 
+test('aucun conteneur défilant ne rebondit aux extrémités', async ({ page }) => {
+  await ouvrirUneTable(page)
+
+  const rebondissants = await page.evaluate(() => {
+    return [...document.querySelectorAll('body *')]
+      .filter((element) => {
+        const style = getComputedStyle(element)
+        const defile = /auto|scroll/.test(style.overflowX) || /auto|scroll/.test(style.overflowY)
+        return defile && style.overscrollBehavior !== 'none'
+      })
+      .map((element) => `${element.tagName}.${element.className}`)
+  })
+  // **Une vérification de déclaration, et elle est assumée comme telle.** Le rebond élastique est un
+  // comportement de WKWebView : Chromium ne le rend pas, donc il n'y a rien à mesurer géométriquement
+  // — c'est le même mur que la discrétion des barres de défilement (`DEFAUTS.md` n° 73), et il est dit
+  // plutôt que contourné par une fausse mesure. Ce que ce test attrape est réel malgré tout : le
+  // prochain panneau défilant qui redéclare `overscroll-behavior` pour son compte, ou une régression
+  // de la règle universelle de `reset.css`. Quatorze feuilles déclarent un débordement aujourd'hui ;
+  // les nommer une à une ici serait la quinzième à oublier.
+  expect(rebondissants).toEqual([])
+})
+
 test('la grille défile horizontalement au lieu d’écraser ses colonnes', async ({ page }) => {
   await ouvrirUneTable(page)
 

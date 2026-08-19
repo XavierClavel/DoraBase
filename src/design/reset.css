@@ -36,6 +36,46 @@ body {
 }
 
 /*
+ * Aucun rebond élastique, sur aucun conteneur défilant.
+ *
+ * # Pourquoi une règle universelle, dans un reset qui se veut minimal
+ *
+ * `html`/`body` sont déjà en `overflow: hidden`, ce qui suffit à empêcher le rebond du **document**.
+ * Mais chaque panneau qui défile — la grille, l'arbre de la sidebar, le résultat de la console, les
+ * préférences : quatorze feuilles à ce jour — rebondit pour son propre compte sous WKWebView. Le
+ * signaler quatorze fois, c'est l'oublier à la quinzième.
+ *
+ * Cette règle n'est pas de la même nature que le `box-sizing` que ce fichier refuse : `box-sizing`
+ * **change la géométrie**, et sa valeur juste dépend de ce que le mockup mesure — c'est un arbitrage
+ * par primitive. `overscroll-behavior` ne déplace aucun pixel et n'a qu'une valeur juste dans une
+ * application de bureau : il n'y a pas de document défilant vers lequel enchaîner, donc ni rebond ni
+ * chaînage. Elle ne peut donc rien casser en silence, ce qui est la raison pour laquelle l'autre est
+ * refusée.
+ *
+ * Le rebond lui-même est un comportement de WKWebView : **il ne s'observe pas depuis Chromium**. Ce
+ * qui se vérifie est que tout conteneur défilant calcule bien `none` — c'est ce que fait
+ * `e2e/geometrie-reelle.spec.ts`, et c'est ce qui attrapera le prochain panneau qui s'en dispense.
+ */
+
+/*
+ * Le rebond élastique, et pourquoi il n'y a pas de règle ici.
+ *
+ * `html`/`body` sont en `overflow: hidden` (voir la note ci-dessus), ce qui suffit pour le **document**.
+ * Chaque panneau qui défile rebondit en revanche pour son propre compte sous WKWebView, et la réponse
+ * est `overscroll-behavior: none` — **posé sur le conteneur défilant lui-même**, à côté de son
+ * `overflow`. Quatorze feuilles le déclarent ; `e2e/geometrie-reelle.spec.ts` refuse la quinzième qui
+ * l'oublierait, en nommant tout conteneur défilant qui ne calcule pas `none`.
+ *
+ * **Une règle universelle a été essayée et retirée : elle casse la molette.** `* { overscroll-behavior:
+ * none }` se lisait comme la version sûre — la propriété ne déplace aucun pixel, et la spécification
+ * dit qu'elle est sans effet sur un élément qui n'est pas un conteneur de défilement. En pratique, le
+ * geste part de l'élément sous le curseur — une cellule — et remonte jusqu'au premier conteneur
+ * défilant ; posée sur les éléments traversés, la propriété **coupe cette remontée**, et la grille ne
+ * défilait plus du tout. Mesuré par le test de la molette, qui est passé au rouge sur-le-champ
+ * (`DEFAUTS.md` n° 78).
+ */
+
+/*
  * Les barres de défilement, discrètes.
  *
  * # Pourquoi cette règle existe
