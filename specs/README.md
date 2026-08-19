@@ -463,10 +463,10 @@ le schéma déduit, et la console dont le langage n'est pas du SQL.
 | [`23e`](23e-editer-un-projet.md) | Éditer un projet, et ses environnements | à faire |
 | [`23f`](23f-supprimer-un-environnement.md) | Supprimer un environnement, et ce que ça emporte | à faire |
 | [`23g`](23g-les-ecrans-face-aux-environnements-declares.md) | Les écrans face aux environnements déclarés | livrée |
-| [`24a`](24a-creer-un-projet.md) | Créer un projet : l'étape 1 | à faire |
+| [`24a`](24a-creer-un-projet.md) | Créer un projet : l'étape 1 | livrée |
 | [`24b`](24b-stepper-informatif.md) | Le stepper informatif | livrée |
-| [`24c`](24c-enchainer-vers-la-connexion.md) | Enchaîner vers la première connexion | à faire |
-| [`24d`](24d-deux-gestes.md) | Deux gestes : « Nouveau projet » et « Nouvelle connexion » | à faire |
+| [`24c`](24c-enchainer-vers-la-connexion.md) | Enchaîner vers la première connexion | livrée |
+| [`24d`](24d-deux-gestes.md) | Deux gestes : « Nouveau projet » et « Nouvelle connexion » | livrée |
 
 **`24` renverse `08f`.** Le projet se créait au passage, depuis le sélecteur de `A2` : le geste
 principal était « je déclare une connexion ». Il devient « je déclare un projet, puis on me propose sa

@@ -1,8 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Sprite } from '../../design/icons/Sprite'
-import type { CreateProjectRequest, Project, SaveDatabaseRequest } from '../../domain/config'
-import { choisirDansLaListe } from '../../ui/Select/pourLesTests'
+import type { Project, SaveDatabaseRequest } from '../../domain/config'
 import { emptyDraft } from './ConnectionDraft'
 import { draftToSaveRequest } from './enregistrerLaBase'
 import { NewConnection } from './NewConnection'
@@ -23,7 +22,6 @@ const APRES: Project[] = [
 type Espion = {
   requetes: SaveDatabaseRequest[]
   projets: Project[][]
-  creations: CreateProjectRequest[]
 }
 
 function monter(
@@ -31,10 +29,10 @@ function monter(
     onSave?: (request: SaveDatabaseRequest) => Promise<Project[]>
     projects?: readonly { id: string; name: string; environments: typeof TRIO_DE_TEST }[]
     onClose?: () => void
-    onCreateProject?: (request: CreateProjectRequest) => Promise<Project[]>
+    projetImpose?: string
   } = {},
 ) {
-  const espion: Espion = { requetes: [], projets: [], creations: [] }
+  const espion: Espion = { requetes: [], projets: [] }
   render(
     <>
       <Sprite />
@@ -52,13 +50,7 @@ function monter(
             return APRES
           })
         }
-        onCreateProject={
-          options.onCreateProject ??
-          (async (request) => {
-            espion.creations.push(request)
-            return APRES
-          })
-        }
+        projetImpose={options.projetImpose}
         onSaved={(projets) => espion.projets.push(projets)}
       />
     </>,
@@ -202,100 +194,109 @@ test('pendant l’enregistrement, le bouton ne se reclique pas', async () => {
   debloquer?.()
 })
 
-// --- Créer un projet (08f) ---
+// --- L'étape 2 du parcours de création (`24c`) ---
+//
+// **Six tests ont disparu ici, et ils n'ont pas été « adaptés ».** Ils vérifiaient que `A2` créait un
+// projet au passage, par l'entrée « + Nouveau projet… » de son sélecteur — le geste de `08f`, où
+// déclarer un projet et sa première base était un seul acte en deux commandes. Le geste s'est inversé
+// (`24a`) : le projet se crée dans son propre écran, et cet écran ne crée plus rien. Les garanties
+// qu'ils portaient ont déménagé — le rognage du nom et le refus d'un nom vide sont dans
+// `NewProject.test.tsx`, le trio repris par défaut est un test Rust de `creer_projet`.
+//
+// Ce qui suit vérifie ce qui **reste** : qu'un projet imposé remplace le sélecteur, que la sortie ne
+// mente pas, et qu'un échec dise que le projet est gardé.
 
-/** Choisit « + Nouveau projet… » et saisit un nom. */
-async function creerLeProjet(utilisateur: ReturnType<typeof userEvent.setup>, nom: string) {
-  await choisirDansLaListe('Projet', '+ Nouveau projet…')
-  await utilisateur.type(screen.getByLabelText('Nom du nouveau projet'), nom)
-}
+test('un projet imposé remplace le sélecteur par un constat', () => {
+  monter({ projetImpose: 'Data science', projects: PROJETS })
 
-test('créer un projet et sa base est un seul geste, en deux commandes', async () => {
+  // Le sélecteur serait faux de deux façons : il proposerait de changer un choix que l'étape 1 vient
+  // de trancher, et son entrée « + Nouveau projet… » rebouclerait vers cette étape.
+  expect(screen.queryByRole('combobox', { name: 'Projet' })).toBeNull()
+  // **Par son `data-testid`** : le nom du projet apparaît aussi dans la ligne d'information du pied,
+  // et un sélecteur par texte trouverait les deux.
+  expect(screen.getByTestId('projet-impose')).toHaveTextContent('Data science')
+})
+
+test('les environnements proposés sont ceux du projet **imposé**', () => {
+  monter({ projetImpose: 'Atelier Nord', projects: PROJETS })
+  // **Le défaut que ce test garde.** L'effet qui ramène le brouillon sur un projet valable rend la main
+  // quand le projet est imposé : `draft.project` reste vide, et chercher les environnements avec lui
+  // n'en trouvait aucun. Le groupe était vide, donc l'étape 2 ne permettait pas de déclarer une
+  // connexion. Trouvé par une mesure de `08b`, qui compte les trois boutons.
+  const radios = screen
+    .getByRole('group', { name: 'Environnement' })
+    .querySelectorAll('input[type=radio]')
+  expect(radios).toHaveLength(3)
+})
+
+test('le constat n’est pas un contrôle', () => {
+  monter({ projetImpose: 'Data science' })
+  const constat = screen.getByTestId('projet-impose')
+  // **Pas un `Chip`, et pas cliquable** : un chip est un contrôle partout ailleurs dans ce produit, et
+  // un chip inerte se lit comme un contrôle en panne. Les quatre marques du cliquable sont absentes.
+  expect(constat.closest('button')).toBeNull()
+  expect(constat).not.toHaveAttribute('role')
+  expect(screen.queryAllByRole('combobox', { name: 'Projet' })).toHaveLength(0)
+})
+
+test('la bande de progression paraît, et dit qu’on est à la seconde étape', () => {
+  monter({ projetImpose: 'Data science' })
+  const bande = screen.getByRole('list', { name: 'Progression' })
+  expect(within(bande).getByRole('listitem', { current: 'step' })).toHaveTextContent(
+    'Étape 2 sur 2, en cours',
+  )
+  // La première est **faite** : l'utilisateur vient de la faire, et le dire est exact.
+  expect(within(bande).getAllByRole('listitem')[0]).toHaveTextContent('Étape 1 sur 2, faite')
+})
+
+test('sans projet imposé, la bande est absente', () => {
+  monter({ projects: PROJETS })
+  // Ouvert pour un projet existant, cet écran n'a qu'une étape. Une bande qui montrerait « 1 ✓ »
+  // affirmerait que cette modale a créé le projet.
+  expect(screen.queryByRole('list', { name: 'Progression' })).toBeNull()
+})
+
+test('« Annuler » devient « Plus tard » quand le projet est déjà créé', () => {
+  monter({ projetImpose: 'Data science' })
+  // À ce moment, « Annuler » mentirait : le projet reste. Un bouton ne doit pas nommer un
+  // défaissement qui n'a pas lieu.
+  expect(screen.getByRole('button', { name: 'Plus tard' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Annuler' })).toBeNull()
+})
+
+test('la ligne d’information nomme le projet créé et le chemin de retour', () => {
+  monter({ projetImpose: 'Data science' })
+  const ligne = screen.getByRole('status')
+  expect(ligne).toHaveTextContent('Le projet Data science est créé')
+  // Elle nomme le chemin de retour : c'est ce qui rend « Plus tard » sans conséquence.
+  expect(ligne).toHaveTextContent('plus tard depuis la sidebar')
+})
+
+test('la connexion est enregistrée dans le projet imposé, non dans celui du brouillon', async () => {
   const utilisateur = userEvent.setup()
-  const espion = monter()
+  const espion = monter({ projetImpose: 'Data science', projects: PROJETS })
   await utilisateur.type(screen.getByLabelText('Nom de la base'), 'analytics')
-  await creerLeProjet(utilisateur, 'Data science')
-
   await utilisateur.click(enregistrer())
 
-  await waitFor(() => expect(espion.creations).toHaveLength(1))
-  expect(espion.creations[0]?.name).toBe('Data science')
-  // **Aucun environnement envoyé** depuis ce chemin (`24a`) : ils se déclarent dans leur propre
-  // écran, et le cœur reprend le trio par défaut. Ce que ce test affirmait — l'environnement pris de
-  // la variante — n'avait de sens que du temps où `A2` était le seul endroit d'où un projet naissait.
-  expect(espion.creations[0]?.environments).toEqual([])
-
-  // Puis la base, dans le projet qui vient d'être créé — et non sous la sentinelle du `Select`.
   await waitFor(() => expect(espion.requetes).toHaveLength(1))
+  // Le brouillon porte encore le premier projet de la liste ; c'est le projet **imposé** qui compte.
   expect(espion.requetes[0]?.project).toBe('Data science')
 })
 
-test('la création depuis `A2` n’envoie aucun environnement, et le cœur reprend le trio', async () => {
+test('un échec d’enregistrement dit que le projet est gardé', async () => {
   const utilisateur = userEvent.setup()
-  const espion = monter()
-  await utilisateur.click(screen.getByRole('radio', { name: /prod/ }))
-  await creerLeProjet(utilisateur, 'Data science')
-  await utilisateur.click(enregistrer())
-
-  // **Ce test disait l'inverse, et il avait raison de son temps** : la requête portait
-  // `activeEnvironment`, pris de la variante choisie, parce qu'`A2` était le seul endroit d'où un
-  // projet naissait. Depuis `24a`, les environnements se déclarent dans leur propre écran — et ce
-  // chemin, que `24c` retirera, n'a rien à en dire. Le cœur reprend donc le trio par défaut, ce que
-  // `creer_projet` garantit et qu'un test Rust affirme.
-  await waitFor(() => expect(espion.creations[0]?.environments).toEqual([]))
-})
-
-test('le nom du projet est rogné avant d’être envoyé', async () => {
-  const utilisateur = userEvent.setup()
-  const espion = monter()
-  await creerLeProjet(utilisateur, '  Data science  ')
-  await utilisateur.click(enregistrer())
-
-  // Rogné des deux côtés : « Print » et « Print  » désigneraient sinon deux projets, dont un
-  // invisiblement différent dans la sidebar. Le cœur le rogne aussi — ceinture et bretelles, et
-  // c'est la requête envoyée qui doit être propre.
-  await waitFor(() => expect(espion.creations[0]?.name).toBe('Data science'))
-  expect(espion.requetes[0]?.project).toBe('Data science')
-})
-
-test('sans nom saisi, l’enregistrement est bloqué et rien n’est envoyé', async () => {
-  const utilisateur = userEvent.setup()
-  const espion = monter()
-  await choisirDansLaListe('Projet', '+ Nouveau projet…')
-
-  // L'écran a l'information sous la main : l'envoyer pour se faire refuser coûterait un
-  // aller-retour et un message venu du cœur là où le formulaire sait déjà.
-  expect(enregistrer()).toBeDisabled()
-  await utilisateur.click(enregistrer())
-  expect(espion.creations).toHaveLength(0)
-  expect(espion.requetes).toHaveLength(0)
-})
-
-test('un projet existant choisi ne déclenche aucune création', async () => {
-  const utilisateur = userEvent.setup()
-  const espion = monter({ projects: PROJETS })
-  await utilisateur.type(screen.getByLabelText('Nom de la base'), 'analytics')
-  await utilisateur.click(enregistrer())
-
-  await waitFor(() => expect(espion.requetes).toHaveLength(1))
-  expect(espion.creations).toHaveLength(0)
-})
-
-test('un projet créé dont la base échoue reste créé, et l’écran le dit', async () => {
-  const utilisateur = userEvent.setup()
-  const espion = monter({
+  monter({
+    projetImpose: 'Data science',
     onSave: async () => {
       throw new Error('la base « analytics » existe déjà dans ce projet')
     },
   })
-  await creerLeProjet(utilisateur, 'Data science')
+  await utilisateur.type(screen.getByLabelText('Nom de la base'), 'analytics')
   await utilisateur.click(enregistrer())
 
-  // Le défaire supprimerait un projet à la suite d'un échec, et détruirait un homonyme
-  // préexistant en cas de course. `08f` l'assume : le projet reste, vide, et se remplit au geste
-  // suivant.
-  await waitFor(() => expect(espion.creations).toHaveLength(1))
-  // Les projets à jour ont été publiés dès la création : l'arbre montre le projet vide.
-  expect(espion.projets).toHaveLength(1)
-  expect(await screen.findByText(/existe déjà dans ce projet/)).toBeInTheDocument()
+  // **Sans cette précision, le défaut se produirait à coup sûr** : l'utilisateur ferme, recommence par
+  // « Nouveau projet », et se heurte à « ce nom est déjà pris ».
+  expect(
+    await screen.findByText(/est créé ; la connexion n’a pas été enregistrée/),
+  ).toBeInTheDocument()
 })

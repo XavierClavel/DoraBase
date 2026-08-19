@@ -7,20 +7,50 @@ import { Field } from '../../ui/Field/Field'
 import { Modal } from '../../ui/Modal/Modal'
 import { Stepper } from '../../ui/Stepper/Stepper'
 import { Toggle } from '../../ui/Toggle/Toggle'
+import { creerLeProjet } from '../NewConnection/enregistrerLaBase'
 import { COULEURS_D_ENVIRONNEMENT, TRIO_PAR_DEFAUT } from '../NewConnection/environments'
 import styles from './NewProject.module.css'
 
 /** Une ligne d'environnement en cours d'édition. La couleur suit l'ordre, elle ne se choisit pas. */
-type LigneEnv = { label: string; color: EnvironmentDeclaration['color']; production: boolean }
+type LigneEnv = {
+  /**
+   * L'identité de la ligne **pour React**, et pour rien d'autre : elle ne part pas dans la requête,
+   * où l'identifiant est dérivé côté Rust.
+   *
+   * L'index servait de clé. Retirer la deuxième de trois lignes décale alors les clés des suivantes,
+   * et React réutilise l'état du champ de la ligne supprimée pour celle qui remonte — c'est-à-dire
+   * qu'une suppression peut laisser le libellé effacé à sa place.
+   */
+  cle: number
+  label: string
+  color: EnvironmentDeclaration['color']
+  production: boolean
+}
+
+/** Le compteur des clés de ligne : monotone, donc jamais réattribué à une autre ligne. */
+let prochaineCle = 0
 
 type NewProjectProps = {
   /** Les projets déjà déclarés, pour refuser un nom en doublon **avant** le clic. */
   projets: readonly { name: string }[]
   onClose: () => void
-  /** Crée le projet. Rejette avec le refus à afficher. */
-  onCreate: (request: CreateProjectRequest) => Promise<Project[]>
+  /**
+   * Crée le projet. Rejette avec le refus à afficher.
+   *
+   * Injectée pour la même raison que les autres passerelles du projet : la commande ne répond pas hors
+   * de la webview, et un test qui simulerait `invoke` ne vérifierait que le simulacre.
+   */
+  onCreate?: (request: CreateProjectRequest) => Promise<Project[]>
   /** Le projet créé : c'est l'appelant qui enchaîne sur l'étape 2 (`24c`). */
   onCreated: (projects: Project[], nom: string) => void
+  /**
+   * Pourquoi cet écran s'ouvre, quand ce n'est pas l'utilisateur qui l'a demandé.
+   *
+   * Le cas de `24d` : « Ajouter une connexion » sans aucun projet. Le parcours aboutit là où l'on
+   * voulait aller, mais il passe d'abord par ce qui manquait — et il le dit, sinon la modale paraît
+   * répondre à côté du geste.
+   */
+  raison?: string
 }
 
 /** Les cinq couleurs de `23a`, dans l'ordre où elles sont attribuées aux lignes ajoutées. */
@@ -48,10 +78,17 @@ const COULEURS: EnvironmentDeclaration['color'][] = ['green', 'amber', 'red', 's
  * ne coûte rien. La faire entrer dans une modale de création transformerait la déclaration d'un projet
  * en séance de coloriage.
  */
-export function NewProject({ projets, onClose, onCreate, onCreated }: NewProjectProps) {
+export function NewProject({
+  projets,
+  onClose,
+  onCreate = creerLeProjet,
+  onCreated,
+  raison,
+}: NewProjectProps) {
   const [nom, setNom] = useState('')
   const [lignes, setLignes] = useState<LigneEnv[]>(() =>
     TRIO_PAR_DEFAUT.map((declaration) => ({
+      cle: prochaineCle++,
       label: declaration.label,
       color: declaration.color,
       production: declaration.production,
@@ -150,6 +187,17 @@ export function NewProject({ projets, onClose, onCreate, onCreated }: NewProject
           rien à compenser. */}
       <Stepper etapes={[{ libelle: 'PROJET' }, { libelle: 'CONNEXION' }]} courante={0} />
       <div className={styles.form}>
+        {/* Au-dessus du nom, parce qu'elle explique l'écran entier et non le champ. `role="status"` :
+            l'écran vient d'apparaître sans que la voix n'ait de raison de le lire. */}
+        {raison === undefined ? null : (
+          // **Pas de `role="status"`** : le pied en porte déjà un pour son refus, et deux régions
+          // vives dans une même modale se disputent la voix. Celle-ci est présente **dès** l'ouverture
+          // — c'est le premier paragraphe du corps, donc elle se lit à l'arrivée dans la modale, sans
+          // qu'il faille l'annoncer comme un changement.
+          <p className={styles.raisonDOuverture} data-testid="raison-d-ouverture">
+            {raison}
+          </p>
+        )}
         <Field
           label="Nom du projet"
           value={nom}
@@ -166,7 +214,7 @@ export function NewProject({ projets, onClose, onCreate, onCreated }: NewProject
           <div className={styles.blocTitre}>Environnements</div>
           <ul className={styles.liste}>
             {lignes.map((ligne, index) => (
-              <li key={index} className={styles.ligne}>
+              <li key={ligne.cle} className={styles.ligne}>
                 <span
                   className={styles.pastille}
                   style={{ background: COULEURS_D_ENVIRONNEMENT[ligne.color] }}
@@ -187,7 +235,12 @@ export function NewProject({ projets, onClose, onCreate, onCreated }: NewProject
                   autoCorrect="off"
                   onChange={(evenement) => modifier(index, { label: evenement.target.value })}
                 />
-                <label className={styles.production}>
+                {/* **Pas un `<label>`** : `Toggle` rend un `<button role="switch">`, et un `<label>`
+                    ne s'associe pas à un bouton — il n'aurait donc rendu le mot cliquable pour
+                    personne, tout en le promettant. L'interrupteur porte son nom par `aria-label`
+                    (« Production pour dev »), donc le mot est une légende, et le contrôle est à
+                    côté. */}
+                <div className={styles.production}>
                   <Toggle
                     label={`Production pour ${ligne.label || `l’environnement ${index + 1}`}`}
                     checked={ligne.production}
@@ -196,7 +249,7 @@ export function NewProject({ projets, onClose, onCreate, onCreated }: NewProject
                   <span className={cx(styles.productionTexte, ligne.production && styles.actif)}>
                     Production
                   </span>
-                </label>
+                </div>
                 <button
                   type="button"
                   className={styles.retirer}
@@ -225,6 +278,7 @@ export function NewProject({ projets, onClose, onCreate, onCreated }: NewProject
               setLignes((precedentes) => [
                 ...precedentes,
                 {
+                  cle: prochaineCle++,
                   label: '',
                   color: COULEURS[precedentes.length % COULEURS.length] ?? 'slate',
                   production: false,

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Database, EnvironmentDeclaration, Preferences, Project } from '../../domain/config'
 import type { SchemaInfo, TableDetail, TableSummary } from '../../domain/engine'
 import { NewConnection } from '../NewConnection/NewConnection'
+import { ParcoursDeCreation } from '../NewProject/ParcoursDeCreation'
 import { PreferencesDialog } from '../Preferences/PreferencesDialog'
 import { jetonsDe, PREFERENCES_PAR_DEFAUT, themeApplique } from '../Preferences/preferences'
 import type { PasserelleLignes } from '../TableView/useLignes'
@@ -583,6 +584,10 @@ export function WorkbenchDemo() {
   // dans la galerie. Les commandes du formulaire ne répondent pas en Chromium ; ce qui se vérifie
   // ici est qu'il s'ouvre, et sur la bonne base.
   const [edition, setEdition] = useState<{ project: string; database: Database } | null>(null)
+  /** Le parcours de création, quand il est ouvert (`24d`) — étape 1 ou étape 2 selon le geste. */
+  const [creationOuverte, setCreationOuverte] = useState<
+    { etape: 'projet' } | { etape: 'connexion'; projet: string } | null
+  >(null)
   // **Les requêtes de la démo vivent en mémoire.** Rien n'est persisté : le pont ne répond pas en
   // Chromium, et une démo qui écrirait sur le disque de l'utilisateur serait une mauvaise surprise.
   // Ce qui se vérifie ici est le parcours d'écran, pas la persistance — que les tests Rust couvrent.
@@ -624,6 +629,41 @@ export function WorkbenchDemo() {
   return (
     <>
       {edition && <NewConnection edition={edition} onClose={() => setEdition(null)} />}
+      {/* **Le parcours de création, dans la démo** (`24d`). `create_project` ne répond pas hors de la
+          webview : la démo fournit donc sa propre création, qui ajoute le projet à son état local. Sans
+          elle, l'étape 1 refuserait, et l'étape 2 — c'est-à-dire `A2` — serait inatteignable pour les
+          mesures de `08b`. */}
+      {creationOuverte && (
+        <ParcoursDeCreation
+          depart={creationOuverte}
+          projets={projets.map((projet) => ({
+            id: projet.name,
+            name: projet.name,
+            environments: projet.environments,
+          }))}
+          onClose={() => setCreationOuverte(null)}
+          onProjets={setProjets}
+          onCreate={async (request) => {
+            const suivants: Project[] = [
+              ...projets,
+              {
+                name: request.name,
+                // Le premier déclaré, comme le cœur le fait (`24a`).
+                activeEnvironment: request.environments[0]?.id ?? 'dev',
+                environments: request.environments.map((declaration) => ({
+                  ...declaration,
+                  // L'identifiant est dérivé en Rust ; la démo reprend la même règle, en plus simple.
+                  id: declaration.label.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+                })),
+                databases: [],
+                queries: [],
+              },
+            ]
+            setProjets(suivants)
+            return suivants
+          }}
+        />
+      )}
       {preferencesOuvertes && (
         <PreferencesDialog
           preferences={preferences}
@@ -749,6 +789,12 @@ export function WorkbenchDemo() {
         // `?demo` ouvre l'écran en **mode édition** : c'est le seul moyen de voir `A6` sans base
         // réelle, Playwright ne pilotant pas le pont Tauri.
         onEditDatabase={(projet, base) => setEdition({ project: projet, database: base })}
+        onNewProject={() => setCreationOuverte({ etape: 'projet' })}
+        onNewDatabase={() =>
+          setCreationOuverte(
+            projets[0] ? { etape: 'connexion', projet: projets[0].name } : { etape: 'projet' },
+          )
+        }
         onSaveQuery={async (projet, nom, sql) =>
           surRequetes(projet, (requetes) =>
             requetes.some((r) => r.name === nom)

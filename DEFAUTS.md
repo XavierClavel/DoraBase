@@ -800,6 +800,48 @@ autre chose que ce qu'elle prétendait.
    un port de développement est un effet de bord sur l'environnement de travail**, pas seulement sur
    elle-même : lancer la suite entière pendant que quelqu'un travaille sur la même machine se paie.
 
+89. **« Nouveau projet » au pied de la sidebar de `A4` n'ouvrait rien.** L'état existait, le bouton
+   l'écrivait, et le parcours de création n'était monté que dans la branche `A1` du rendu : un `useState`
+   dont personne ne lisait la valeur sur l'écran où le geste était offert. Aucun test ne l'a vu parce que
+   les tests du parcours montent `ParcoursDeCreation` directement, et ceux de la sidebar vérifient que le
+   bouton *appelle son callback*. **Entre « le geste est branché » et « la modale est montée », il y a un
+   trou que ni le test de l'un ni celui de l'autre ne couvre** — le n° 72 sous une autre forme, où une
+   mesure portait sur un ensemble vide. La modale est désormais montée au-dessus du choix de l'écran,
+   pour la raison même qui y met déjà les préférences.
+90. **`⌘N` ne répondait que sur `A1`**, parce que le raccourci vivait dans `WelcomeScreen`. Le geste
+   était offert sur les deux écrans, l'écoute sur un seul. Un raccourci monté par un écran ne peut pas
+   être « le raccourci de l'application » : il disparaît avec l'écran, et personne ne s'en aperçoit
+   puisqu'il fonctionne là où on l'a écrit. C'est le pendant du n° 89 : le même défaut, du côté du
+   clavier.
+91. **Sept erreurs de lint sont parties dans un commit.** `pnpm lint` était rouge — un `<label>` sans
+   contrôle, des clés de liste par index, deux règles CSS dominées par une plus spécifique, une
+   directive `biome-ignore` devenue inutile, trois concaténations. J'avais vérifié le lint **du
+   répertoire que je venais de toucher**, `biome check src e2e`, et non celui du projet. Encore la leçon
+   des trois passages de CI de la veille : **la commande que je lance n'est pas celle qui juge.** L'une
+   de ces erreurs n'était pas cosmétique — la clé par index fait qu'une suppression de ligne
+   d'environnement laisse le libellé d'une autre à sa place.
+92. **Un test d'autocomplétion vert seul, rouge dans la suite complète — et ma première explication
+   était fausse.** J'ai cru à une liste en cours de recalcul, et remplacé l'attente de sa *visibilité*
+   par celle de l'option sélectionnée. Le test a continué d'échouer une fois sur huit sous charge. La
+   vraie cause n'était pas dans le test : `acceptCompletion` de CodeMirror **refuse `⇥` dans les 75 ms
+   qui suivent l'ouverture de la liste** (`interactionDelay`), pour qu'une liste apparue sous les doigts
+   ne soit pas acceptée par la frappe en cours. Refusé, `⇥` retombe sur son effet par défaut : le focus
+   quittait l'éditeur pour la poignée du `SplitPane`. **C'est l'instrumentation qui l'a dit** — un
+   diagnostic jetable qui relevait, après la frappe, l'élément actif et la présence de l'infobulle : le
+   focus sur la poignée était le seul indice qui menait au bon endroit, et aucune relecture du test ne
+   l'aurait donné. Deux leçons : *attendre la visibilité d'un conteneur n'est pas attendre son contenu*,
+   et *un correctif qui ne fait pas passer le test réfute l'explication qui l'a motivé* — je l'avais
+   gardée en la croyant partiellement vraie. Le test voisin `↑↓` porte la même course, jamais vue, et a
+   reçu la même attente.
+93. **Trois références de fidélité capturaient un écran qui n'existe plus.** Le bouton de `A1` ouvrait
+   `A2` ; depuis `24d` il ouvre l'étape 1, et les captures `A2` / `A2`+tunnel / `A3` ne pouvaient plus
+   être atteintes de là. La correction n'est pas de rafraîchir les images : c'est de dire **d'où** chaque
+   référence est prise — l'étape 1 par-dessus `A1`, `A2` et `A3` depuis la démo, seul décor où les deux
+   étapes s'enchaînent. Et lors du repointage, un remplacement mécanique a donné à la référence nommée
+   « étape 1 » une capture de l'étape 2 : **une référence régénérée sans être regardée n'est plus une
+   référence**, elle est la trace de ce que le code faisait ce jour-là. C'est la lecture de l'image qui
+   l'a vu, pas la suite verte.
+
 **Ce que ces défauts disent du décor de test.** Presque aucun n'était un défaut de logique : ils
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros
 d'attribut qui coïncident, grille plus étroite que son cadre, `bigserial` partout. Une suite verte

@@ -61,7 +61,7 @@ reste l'autorité pour la course entre deux fenêtres, et son refus s'affiche au
 
 ## Done when
 
-- [ ] « Nouveau projet » **ouvre** cette modale — le câblage des points d'entrée est `24d` ; la modale,
+- [x] « Nouveau projet » **ouvre** cette modale — le câblage des points d'entrée est `24d` ; la modale,
       elle, existe et ne demande que le nom et les environnements
 - [x] Le trio de `23a` est prérempli, ses libellés modifiables, sa couleur non
 - [x] Un environnement s'ajoute et se retire ; le dernier ne se retire pas, et la ligne dit pourquoi

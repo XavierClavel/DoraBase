@@ -132,7 +132,7 @@ ventes.createCollection('paniers_abandonnes')
 // 20 000 documents : assez pour que `skip` se voie, assez peu pour que le décor se charge vite.
 const lot = []
 for (let i = 1; i <= 20000; i++) {
-  lot.push({ rang: i, canal: i % 4 === 0 ? 'boutique' : 'ligne', valeur: 'v' + i })
+  lot.push({ rang: i, canal: i % 4 === 0 ? 'boutique' : 'ligne', valeur: `v${i}` })
 }
 ventes.mouvements.insertMany(lot)
 ventes.mouvements.createIndex({ rang: 1 }, { name: 'mouvements_rang_idx' })
@@ -153,5 +153,5 @@ journal.evenements.insertMany([
 ])
 
 print('décor mongo prêt')
-print('  atelier_ventes  : ' + ventes.getCollectionNames().sort().join(', '))
-print('  atelier_journal : ' + journal.getCollectionNames().sort().join(', '))
+print(`  atelier_ventes  : ${ventes.getCollectionNames().sort().join(', ')}`)
+print(`  atelier_journal : ${journal.getCollectionNames().sort().join(', ')}`)

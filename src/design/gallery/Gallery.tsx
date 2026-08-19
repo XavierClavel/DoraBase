@@ -1785,14 +1785,15 @@ function StepperGallery() {
   return (
     <Section title="Stepper informatif (24b)">
       <Note>
-        Le handoff **ne maquette aucun stepper**. Celui-ci reprend la grammaire de bande du produit —
-        `--h-bar` de contenu, fond `--bar`, filet bas `--divider`, comme `TabStrip` — pour qu’il se lise
-        comme une rubrique de la modale plutôt que comme un objet venu d’ailleurs.
+        Le handoff **ne maquette aucun stepper**. Celui-ci reprend la grammaire de bande du produit
+        — `--h-bar` de contenu, fond `--bar`, filet bas `--divider`, comme `TabStrip` — pour qu’il
+        se lise comme une rubrique de la modale plutôt que comme un objet venu d’ailleurs.
       </Note>
       <Note>
         **Rien n’y est cliquable, et il n’en a pas l’air.** Ni bouton, ni curseur de pointeur, ni
-        survol, ni tabulation, ni `role="tablist"` — ce dernier *promettrait* la navigation aux flèches
-        (leçon du défaut n° 52). Passez la souris dessus : rien ne réagit, et c’est le message.
+        survol, ni tabulation, ni `role="tablist"` — ce dernier *promettrait* la navigation aux
+        flèches (leçon du défaut n° 52). Passez la souris dessus : rien ne réagit, et c’est le
+        message.
       </Note>
       <Sub title="Étape 1 en cours">
         <div data-testid="stepper-un" style={{ width: 520 }}>

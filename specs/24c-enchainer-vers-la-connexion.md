@@ -55,10 +55,10 @@ Restaurer un brouillon de connexion voudrait dire écrire un secret quelque part
 
 ## Done when
 
-- [ ] Après création du projet, la modale montre le formulaire de connexion, projet imposé et affiché
-- [ ] La cellule « Projet » n'est pas un contrôle : ni `role`, ni curseur de pointeur, ni survol
-- [ ] Sa hauteur est celle du sélecteur qu'elle remplace, et la rangée d'identité reste alignée
-- [ ] « Plus tard » ferme, garde le projet, et l'arbre le montre avec sa phrase de `23g`
-- [ ] La ligne d'information nomme le projet créé et le chemin de retour
-- [ ] Un échec d'enregistrement dit que le projet est gardé
-- [ ] `NOUVEAU_PROJET`, la rangée « Nom du nouveau projet » et le repli sur le trio n'existent plus
+- [x] Après création du projet, la modale montre le formulaire de connexion, projet imposé et affiché
+- [x] La cellule « Projet » n'est pas un contrôle : ni `role`, ni curseur de pointeur, ni survol
+- [x] Sa hauteur est celle du sélecteur qu'elle remplace, et la rangée d'identité reste alignée
+- [x] « Plus tard » ferme, garde le projet, et l'arbre le montre avec sa phrase de `23g`
+- [x] La ligne d'information nomme le projet créé et le chemin de retour
+- [x] Un échec d'enregistrement dit que le projet est gardé
+- [x] `NOUVEAU_PROJET`, la rangée « Nom du nouveau projet » et le repli sur le trio n'existent plus

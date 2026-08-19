@@ -5,15 +5,21 @@ import { expect, test } from '@playwright/test'
 // s'alignent pas y passe tous les tests unitaires. Les mesures ci-dessous sont la vérification
 // principale de cette spec, pas un complément.
 //
-// L'écran est atteint depuis `A1` par son bouton, seule entrée qui existe — voir la note
-// d'`App.tsx` sur le décalage « Nouveau projet » / « Nouvelle connexion ».
+// **L'écran est atteint par les deux étapes du parcours** (`24d`). Le bouton de `A1` ouvrait
+// directement cette modale, du temps où elle savait créer un projet au passage (`08f`) ; il ouvre
+// maintenant l'étape 1, et `A2` est l'étape 2. Le chemin a changé, les mesures non — et c'est
+// précisément ce que ce passage vérifie en s'y rendant.
 test.beforeEach(async ({ page }) => {
-  await page.goto('/')
-  await page
-    .getByRole('button', { name: /Nouveau projet/ })
-    .first()
-    .click()
-  await page.waitForSelector('[role=dialog]')
+  // **Par la démo, où le parcours répond.** `create_project` est une commande Tauri : sur `/`, l'étape 1
+  // refuse hors de la webview, et l'étape 2 — c'est-à-dire cet écran — serait inatteignable. La démo
+  // fournit sa propre création (`24d`), donc les deux étapes s'enchaînent.
+  await page.goto('/?demo')
+  await page.getByRole('button', { name: /Nouveau projet/ }).click()
+  // Étape 1 : un nom suffit, les environnements arrivant préremplis du trio de `23a`.
+  await page.getByLabel('Nom du projet').fill('Atelier Nord')
+  await page.getByRole('button', { name: /Continuer/ }).click()
+  // Étape 2 : la modale de connexion, projet imposé.
+  await page.waitForSelector('[data-testid=projet-impose]')
   await page.evaluate(() => document.fonts.ready)
 })
 
@@ -24,14 +30,18 @@ async function boite(page: import('@playwright/test').Page, etiquette: string) {
     // son `<label for>` ; une liste déroulante maison n'est pas un contrôle de formulaire, son
     // étiquette est un `<span>` qu'elle désigne par `aria-labelledby`. Chercher les `<label>` seuls
     // rendait `undefined` sur « Projet » et « Mode SSL », et trois mesures de grille avec.
-    const etiquettes = [...document.querySelectorAll('label, span[id]')]
+    // **Trois façons d'être étiqueté.** Un `<input>` garde son `<label for>` ; une liste déroulante
+    // maison désigne un `<span id>` par `aria-labelledby` (`23d`) ; et le constat de projet imposé
+    // (`24c`) n'est ni l'un ni l'autre — c'est du texte sous un `div` d'étiquette. Le troisième
+    // sélecteur le rattrape, sans quoi trois mesures de grille rendaient `undefined`.
+    const etiquettes = [...document.querySelectorAll('label, span[id], [class*="label"]')]
     const cible = etiquettes.find((l) => l.textContent?.trim() === nom)
     const champ =
       cible instanceof HTMLLabelElement && cible.htmlFor
         ? document.getElementById(cible.htmlFor)
-        : cible
+        : cible?.id
           ? document.querySelector(`[aria-labelledby="${cible.id}"]`)
-          : null
+          : (cible?.nextElementSibling ?? null)
     // Le champ à suffixe est enveloppé : c'est l'enveloppe qui porte la bordure, donc la
     // boîte visible.
     // L'enveloppe porte la bordure, donc la boîte visible. Pour une liste, le champ est le `button`
@@ -105,9 +115,11 @@ test('les trois cellules de la rangée d’identité s’alignent en bas', async
     // Les **boîtes visibles** des trois contrôles. Pour le select c'est son enveloppe, qui
     // porte la bordure : une première version mesurait le `<select>` lui-même et trouvait
     // 16 px de haut, ce qui a révélé un autre défaut — voir le test suivant.
+    // **Le second contrôle est un constat à l'étape 2** (`24c`) : le sélecteur cède la place à du
+    // texte étiqueté, qui n'a pas d'enveloppe `wrap`. On mesure donc celui des deux qui est là.
     const controles = [
       rangee.querySelector('input'),
-      rangee.querySelector('[class*=wrap]'),
+      rangee.querySelector('[class*=wrap], [data-testid=projet-impose]'),
       rangee.querySelector('fieldset label'),
     ]
     return controles.map((c) => (c ? Math.round(c.getBoundingClientRect().bottom) : null))
@@ -160,11 +172,15 @@ test('les trois boutons d’environnement ont la même boîte, prod compris', as
   expect(new Set(boites.map((b) => b.hauteur))).toHaveProperty('size', 1)
 })
 
+// **Portée à la modale.** Le décor est la démo depuis `24d`, et sa barre de titre porte un sélecteur
+// d'environnement dont la valeur est aussi « prod » : une recherche à l'échelle de la page en trouve
+// deux, et le mode strict de Playwright refuse — à juste titre.
 test('prod garde son habillage rouge même sélectionné', async ({ page }) => {
   // C'est le `<label>` qu'on clique, pas l'`<input>` : celui-ci est masqué visuellement et en
   // `pointer-events: none`, comme il doit l'être. Un vrai utilisateur clique le libellé.
-  await page.getByText('prod', { exact: true }).click()
-  await expect(page.getByRole('radio', { name: 'prod' })).toBeChecked()
+  const modale = page.getByRole('dialog')
+  await modale.getByText('prod', { exact: true }).click()
+  await expect(modale.getByRole('radio', { name: 'prod' })).toBeChecked()
 
   const couleurs = await page.evaluate(() => {
     const input = document.querySelector<HTMLInputElement>('input[value=prod]')
@@ -197,23 +213,10 @@ test('le sélecteur de moteur tient sur une seule ligne', async ({ page }) => {
   expect(lignes).toBe(1)
 })
 
-test('la barre de titre se ternit, et le wordmark s’estompe', async ({ page }) => {
-  const effets = await page.evaluate(() => {
-    const barre = document.querySelector('[data-tauri-drag-region]')
-    const wordmark = barre?.querySelector('[class*=wordmark]')
-    if (!barre || !wordmark) return null
-    return {
-      filtre: getComputedStyle(barre).filter,
-      opacite: getComputedStyle(wordmark).opacity,
-    }
-  })
-
-  // Les deux effets du mockup qui sont à notre portée. Le troisième — les feux en `#DCD6CB` —
-  // ne l'est pas : macOS les dessine lui-même sous `titleBarStyle: "Overlay"`. Voir le
-  // § « À trancher » de `specs/README.md`.
-  expect(effets?.filtre).toBe('saturate(0.6)')
-  expect(effets?.opacite).toBe('0.55')
-})
+// **Ce test a déménagé.** Il vérifiait que la barre de titre de `A1` se ternit derrière la modale ;
+// depuis `24d`, le bouton de `A1` ouvre l'étape 1, et cette spec atteint `A2` par la démo — où il n'y a
+// pas d'écran d'accueil à ternir. La propriété reste vraie et reste vérifiée : `a1.spec.ts` la mesure
+// sur `A1`, qui est son écran.
 
 test('à 960 px la modale reste entièrement visible et la grille tient', async ({ page }) => {
   await page.setViewportSize({ width: 960, height: 600 })
@@ -446,27 +449,21 @@ test('esc ferme la sous-modale sans fermer A2', async ({ page }) => {
 // Sans aucun projet, `A2` ne peut rien enregistrer : elle déclare une base *dans un projet
 // existant*, et le handoff ne maquette pas le parcours d'un utilisateur qui n'en a aucun.
 // Trou n°4, consigné au § « À trancher » de `specs/README.md`.
-test('sans projet, la création est proposée, et « Enregistrer » attend son nom', async ({
-  page,
-}) => {
-  // **Depuis `08f`, l'application neuve n'est plus une impasse** : le seul choix possible est de
-  // créer un projet, donc son champ de nom est visible d'emblée.
-  await expect(page.getByRole('combobox', { name: 'Projet' })).toContainText(/Nouveau projet/)
-  await expect(page.getByLabel('Nom du nouveau projet')).toBeVisible()
-  // Tant que le nom manque, l'enregistrement reste bloqué — l'écran a l'information sous la main.
-  await expect(page.getByRole('button', { name: /Enregistrer & ouvrir/ })).toBeDisabled()
-
-  await page.getByLabel('Nom du nouveau projet').fill('Data science')
-  await expect(page.getByRole('button', { name: /Enregistrer & ouvrir/ })).toBeEnabled()
-
-  // Tester une connexion, en revanche, n'exige aucun projet : c'est justement ce qu'on veut
-  // pouvoir faire avant de s'engager.
-  await expect(page.getByRole('button', { name: /Tester la connexion/ })).toBeEnabled()
-})
+// **Ce test a disparu avec la sentinelle** (`24c`). Il vérifiait que sans projet, `A2` proposait
+// « + Nouveau projet… » et attendait un nom avant d'activer « Enregistrer ». Cet écran ne crée plus de
+// projet : la garantie a déménagé dans `NewProject.test.tsx`, où le nom vide désactive « Continuer » en
+// disant pourquoi.
 
 test('le bouton désactivé porte l’habillage du handoff, pas seulement l’attribut', async ({
   page,
 }) => {
+  // **L'état désactivé se produit, il ne s'attend plus.** Ce bouton était désactivé faute de nom de
+  // projet — l'écran ouvrait sur « + Nouveau projet… » (`08f`). Depuis `24c`, l'étape 2 arrive avec un
+  // projet : il est actif. La cause de désactivation qui reste est l'échec du test de connexion, et
+  // c'est elle que ce test provoque — la commande Tauri ne répond pas hors de la webview.
+  await page.getByRole('button', { name: /Tester la connexion/ }).click()
+  await expect(page.getByRole('button', { name: /Enregistrer & ouvrir/ })).toBeDisabled()
+
   const styles = await page.evaluate(() => {
     const bouton = [...document.querySelectorAll('button')].find((b) =>
       b.textContent?.includes('Enregistrer'),

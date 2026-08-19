@@ -28,6 +28,13 @@ type ExplorerSidebarProps = {
   onToggle: (noeud: Noeud) => void
   onSelect: (noeud: Noeud) => void
   onAddDatabase?: () => void
+  /**
+   * Ouvre l'étape 1 du parcours de création (`24d`).
+   *
+   * Absent, le bouton n'est pas rendu — et non rendu inerte : un contrôle qui ne fait rien est pire
+   * qu'un contrôle absent (défaut n° 36). C'est le cas de la galerie, où aucune commande ne répond.
+   */
+  onNewProject?: () => void
   onRefresh?: () => void
   /** Ouvre une console SQL sur la base courante (`12a`). */
   onNewConsole?: () => void
@@ -122,6 +129,7 @@ export function ExplorerSidebar({
   onToggle,
   onSelect,
   onAddDatabase,
+  onNewProject,
   onRefresh,
   onNewConsole,
   requetes,
@@ -186,10 +194,21 @@ export function ExplorerSidebar({
           <>
             {onNewConsole && <ConsoleFooterButton onClick={onNewConsole} />}
             <div className={styles.footer}>
+              {/* **« Ajouter une connexion », et non « une base »** (`24d`). Depuis `23b`, ce qu'on
+                  ajoute est une connexion : une base présente en dev et en prod en fait deux. Écart au
+                  handoff assumé, qui dit « base ». */}
               <button type="button" className={styles.add} onClick={onAddDatabase}>
                 <Icon name="plus" size={12} strokeWidth={2.2} />
-                Ajouter une base
+                Ajouter une connexion
               </button>
+              {/* **Le second geste de création, ici même** (`24d`). La sidebar est l'endroit où l'on
+                  regarde ses projets, donc l'endroit où l'on en ajoute un. */}
+              {onNewProject && (
+                <button type="button" className={styles.add} onClick={onNewProject}>
+                  <Icon name="bag" size={12} strokeWidth={2.2} />
+                  Nouveau projet
+                </button>
+              )}
               <span className={styles.footerSpacer} />
               <button
                 type="button"

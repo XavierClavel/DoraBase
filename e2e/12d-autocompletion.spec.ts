@@ -34,7 +34,17 @@ test('⇥ insère la suggestion, et garde le qualifiant', async ({ page }) => {
   await page.keyboard.insertText('select o.stat from orders o')
   for (let i = 0; i < ' from orders o'.length; i++) await page.keyboard.press('ArrowLeft')
   await page.keyboard.type('u')
-  await expect(page.locator('.cm-tooltip-autocomplete')).toBeVisible()
+  await expect(page.locator('.cm-tooltip-autocomplete li[aria-selected]')).toContainText('status')
+  // **`⇥` dans les 75 ms qui suivent l'ouverture de la liste n'accepte rien**, et c'est voulu :
+  // `acceptCompletion` de CodeMirror compare l'horodatage de l'ouverture à son `interactionDelay`
+  // (75 ms par défaut) pour qu'une liste apparue sous les doigts ne soit pas acceptée par la frappe
+  // en cours. Refusé, `⇥` retombe sur son effet par défaut — le focus quittait l'éditeur pour la
+  // poignée du `SplitPane`, et le texte restait `o.statu`.
+  //
+  // Cette attente n'est donc pas un délai de confort : elle **franchit un garde-fou du produit** que
+  // seule la charge de la suite complète rendait visible (une fois sur huit ; jamais seul). Attendre
+  // l'infobulle, puis l'option sélectionnée, ne suffisait pas — les deux sont là avant le délai.
+  await page.waitForTimeout(150)
 
   await page.keyboard.press('Tab')
   // **`o.status`, pas `status`** : l'insertion remplace le mot après le point, jamais le qualifiant.
@@ -48,6 +58,10 @@ test('↑↓ navigue dans la liste', async ({ page }) => {
 
   const liste = page.locator('.cm-tooltip-autocomplete')
   await expect(liste).toBeVisible()
+  // Le même garde-fou de 75 ms que pour `⇥` ci-dessus : `moveCompletionSelection` le consulte aussi.
+  // Ce test n'a pas encore échoué, et c'est exactement pourquoi l'attente est posée maintenant — la
+  // course est la même, seule la charge décide du jour où elle se voit.
+  await page.waitForTimeout(150)
   const premier = await page.evaluate(
     () => document.querySelector('.cm-tooltip-autocomplete [aria-selected=true]')?.textContent,
   )
