@@ -688,6 +688,22 @@ autre chose que ce qu'elle prétendait.
    ce que rendait 26 en `content-box` — et non de garder le modèle de boîte qui arrangeait un axe.
    Une mesure ciblée existe désormais : tout élément en `content-box` qui franchit le bord utile de son
    parent.
+76. **Le décor le plus simple était le plus divergent entre macOS et Linux.** PostgreSQL refuse de
+   démarrer si sa clé privée est lisible par d'autres, donc `pg-test.sh` la posait en `chmod 600` —
+   600 pour *l'utilisateur de l'hôte*, alors que le serveur tourne sous `postgres` (uid 999). Sur
+   macOS, le montage de Docker Desktop réécrit la propriété des fichiers et le serveur lisait la clé ;
+   sur Linux, la propriété est préservée, et `postgres` ne pouvait pas l'ouvrir. Le conteneur mourait
+   au démarrage — **en CI seulement**, et après que le décor a été déclaré vérifié en local. Les
+   certificats passent désormais par un volume Docker où un conteneur `root` repose la propriété et les
+   droits du point de vue du conteneur : aucun `sudo`, et le même comportement des deux côtés.
+   **Un montage de fichiers avec des droits qui comptent n'est pas portable** — ce qui marche en local
+   ne prouve rien pour Linux.
+77. **Une attente qui ne distinguait pas « pas encore prêt » de « mort ».** La boucle de `pg-test.sh`
+   tournait ses soixante tours quoi qu'il arrive, puis lançait `psql` — d'où le seul message qu'a
+   produit la CI : « container is not running ». Il ne dit ni que le serveur a refusé de démarrer, ni
+   pourquoi, alors que `docker logs` contenait la phrase exacte : *private key file has group or world
+   access*. **Une boucle d'attente doit surveiller la mort de ce qu'elle attend**, et cracher son
+   journal — sans quoi le diagnostic part du mauvais bout.
 
 **Ce que ces défauts disent du décor de test.** Presque aucun n'était un défaut de logique : ils
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros
