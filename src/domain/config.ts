@@ -67,13 +67,18 @@ readOnly: boolean, reconnectOnStartup: boolean, tunnel: Tunnel | null, };
  */
 export type CreateProjectRequest = { name: string, 
 /**
- * L'environnement actif du projet, qui est celui de la variante qu'on lui déclare.
+ * Les environnements que le projet déclare (`24a`).
  *
- * `05a` en fait une propriété du **projet**, et `A2` ne propose que celui de la variante. Le
- * coder à `dev` afficherait un arbre vide juste après l'enregistrement d'une base `prod` : la
- * base existe, mais dans un autre environnement que celui affiché.
+ * **C'était l'environnement actif, seul.** La création se faisait depuis `A2`, qui ne connaissait
+ * que celui de la connexion en cours de déclaration ; le projet recevait le trio de `23a`, figé.
+ * Depuis `24a`, la création est un écran à part et les libellés y sont modifiables — parce que
+ * `23a` fige l'identifiant au libellé donné **à la création**, et que c'est donc le seul moment où
+ * renommer est sans dette.
+ *
+ * Vide, le cœur reprend le trio par défaut : c'est ce qui garde `08f` vrai pour un appelant qui
+ * n'a rien à en dire.
  */
-activeEnvironment: EnvironmentId, };
+environments: Array<EnvironmentDeclaration>, };
 
 /**
  * Une connexion déclarée : une base, dans **un** environnement (`23b`).

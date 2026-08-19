@@ -337,12 +337,18 @@ pub struct SavedQueryRequest {
 #[ts(export_to = "config.ts")]
 pub struct CreateProjectRequest {
     pub name: String,
-    /// L'environnement actif du projet, qui est celui de la variante qu'on lui déclare.
+    /// Les environnements que le projet déclare (`24a`).
     ///
-    /// `05a` en fait une propriété du **projet**, et `A2` ne propose que celui de la variante. Le
-    /// coder à `dev` afficherait un arbre vide juste après l'enregistrement d'une base `prod` : la
-    /// base existe, mais dans un autre environnement que celui affiché.
-    pub active_environment: super::model::EnvironmentId,
+    /// **C'était l'environnement actif, seul.** La création se faisait depuis `A2`, qui ne connaissait
+    /// que celui de la connexion en cours de déclaration ; le projet recevait le trio de `23a`, figé.
+    /// Depuis `24a`, la création est un écran à part et les libellés y sont modifiables — parce que
+    /// `23a` fige l'identifiant au libellé donné **à la création**, et que c'est donc le seul moment où
+    /// renommer est sans dette.
+    ///
+    /// Vide, le cœur reprend le trio par défaut : c'est ce qui garde `08f` vrai pour un appelant qui
+    /// n'a rien à en dire.
+    #[serde(default)]
+    pub environments: Vec<super::model::EnvironmentDeclaration>,
 }
 
 /// Crée un projet vide, et rend les projets à jour.
@@ -370,9 +376,8 @@ pub fn create_project(
     // Les projets viennent du disque, pas du front : le même arbitrage qu'en `08e`, pour la même
     // raison — une liste envoyée par l'écran pourrait être périmée et écraser une écriture.
     let projects: Vec<Project> = store.load_projects()?;
-    let suivants =
-        super::enregistrer::creer_projet(&projects, &request.name, request.active_environment)
-            .map_err(|erreur| erreur.to_string())?;
+    let suivants = super::enregistrer::creer_projet(&projects, &request.name, request.environments)
+        .map_err(|erreur| erreur.to_string())?;
 
     // Les préférences sont relues, pas remplacées : voir `save_config`.
     let preferences = store.load_preferences().unwrap_or_default();

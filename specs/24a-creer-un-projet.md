@@ -61,9 +61,10 @@ reste l'autorité pour la course entre deux fenêtres, et son refus s'affiche au
 
 ## Done when
 
-- [ ] « Nouveau projet » ouvre une modale de 820 px qui ne demande que le nom et les environnements
-- [ ] Le trio de `23a` est prérempli, ses libellés modifiables, sa couleur non
-- [ ] Un environnement s'ajoute et se retire ; le dernier ne se retire pas, et la ligne dit pourquoi
-- [ ] Le projet est écrit par `create_project` à la validation
-- [ ] Nom vide, nom déjà pris et libellés en doublon sont dits avant le clic, près du champ
-- [ ] Cinq environnements font défiler la liste ; le pied reste dans la fenêtre à 960 × 600
+- [ ] « Nouveau projet » **ouvre** cette modale — le câblage des points d'entrée est `24d` ; la modale,
+      elle, existe et ne demande que le nom et les environnements
+- [x] Le trio de `23a` est prérempli, ses libellés modifiables, sa couleur non
+- [x] Un environnement s'ajoute et se retire ; le dernier ne se retire pas, et la ligne dit pourquoi
+- [x] Le projet est écrit par `create_project` à la validation
+- [x] Nom vide, nom déjà pris et libellés en doublon sont dits avant le clic, près du champ
+- [x] Cinq environnements font défiler la liste ; le pied reste dans la fenêtre à 960 × 600
