@@ -31,55 +31,66 @@
   min-width: 0;
 }
 
+/*
+ * La poignée : **un trait d'un pixel, et une barre au survol.**
+ *
+ * # Ce qu'elle était, et pourquoi ça ne tenait pas
+ *
+ * Le mockup dessine la jointure par un dégradé de 5 px qui s'assombrit du côté du panneau, plus une
+ * pastille blanche de 3×26 en son milieu. Rendu dans l'application, cet empilement se lit comme une
+ * **zone** entre deux colonnes, alors qu'une jointure n'a rien à dire : elle sépare. Signalé à l'écran
+ * le 19 août 2026 — « un simple trait avec une barre au survol suffirait ».
+ *
+ * Le trait est donc permanent et fait un pixel, dans le même `--divider` que toutes les séparations de
+ * l'interface : la jointure ressemble enfin à ce qu'elle est. La **barre** — le trait épaissi à 3 px et
+ * assombri, sur toute la hauteur — ne paraît qu'au survol et au focus, c'est-à-dire au moment où
+ * l'information « ça s'attrape » sert à quelque chose.
+ *
+ * # Deux choses qui ne changent pas
+ *
+ * La zone de saisie garde ses 5 px. Ce qu'on voit et ce qu'on peut attraper sont deux mesures
+ * différentes, et un trait d'un pixel serait invisible au pointeur — c'est la leçon du défaut n° 53,
+ * où un `radio` rogné à 1 px était cliquable en jsdom et introuvable en vrai.
+ *
+ * Le sens du dégradé, lui, disparaît avec le dégradé : un trait n'a pas de côté. La propriété
+ * `handleShadow` qui le pilotait a donc été retirée de l'API plutôt que gardée sans effet — un réglage
+ * qui ne fait rien est pire qu'un réglage absent (défaut n° 36).
+ */
 .handle {
   width: 5px;
   flex: none;
   position: relative;
   cursor: col-resize;
-  /* .06 : littéral relevé dans le mockup (DoraBase.dc.html l. 386). Aucun rôle
-     sémantique propre — il n'existe que dans ce dégradé, d'où l'absence de token. */
-  background: linear-gradient(90deg, rgba(35, 32, 28, 0.06), transparent);
+  background: transparent;
 }
 
-/* Le mockup inverse le sens du dégradé selon le panneau que la poignée borde : elle
-   s'assombrit du côté du panneau, pas systématiquement à gauche. */
-.handleEnd {
-  background: linear-gradient(-90deg, rgba(35, 32, 28, 0.06), transparent);
+/* Le trait. `::before` plutôt qu'un enfant : la poignée porte déjà `role="separator"`, et un trait
+ * décoratif n'a pas à exister dans l'arbre d'accessibilité. */
+.handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 1px;
+  background: var(--divider);
+  transition:
+    width 120ms ease-out,
+    left 120ms ease-out,
+    background-color 120ms ease-out;
+}
+
+.handle:hover::before,
+.handle:focus-visible::before {
+  left: 1px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--ink-3);
 }
 
 .handle:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
-}
-
-/*
- * La pastille de la poignée.
- *
- * **Elle ne se voit qu'au survol et au focus**, et c'est une correction. Une pastille blanche de 3×26
- * posée en permanence sur un dégradé très pâle est la chose la plus contrastée de la séparation : elle
- * attirait l'œil plus que les deux colonnes qu'elle sépare. Signalé à l'écran le 18 août 2026 —
- * « séparateur de section pas assez discret ».
- *
- * Le dégradé, lui, reste : c'est lui qui **dit** qu'il y a une séparation. La pastille dit qu'on peut
- * l'attraper, et cette information n'a d'utilité qu'au moment où l'on s'en approche. Le focus la
- * révèle aussi, sans quoi elle serait invisible au clavier.
- */
-.grip {
-  position: absolute;
-  top: 50%;
-  left: 1px;
-  width: 3px;
-  height: 26px;
-  border-radius: 2px;
-  background: var(--field);
-  transform: translateY(-50%);
-  opacity: 0;
-  transition: opacity 120ms ease-out;
-}
-
-.handle:hover .grip,
-.handle:focus-visible .grip {
-  opacity: 1;
 }
 
 /*
@@ -120,4 +131,28 @@
   width: auto;
   height: 5px;
   cursor: row-resize;
+}
+
+/* Le trait tourne avec elle : les deux axes sont échangés, pas seulement la hauteur. Sans cette
+ * règle, le partage empilé de `12a` gardait un trait **vertical** de 1 px au bord gauche de sa
+ * poignée horizontale. */
+.handleH::before {
+  top: 2px;
+  bottom: auto;
+  left: 0;
+  right: 0;
+  width: auto;
+  height: 1px;
+  transition:
+    height 120ms ease-out,
+    top 120ms ease-out,
+    background-color 120ms ease-out;
+}
+
+.handleH:hover::before,
+.handleH:focus-visible::before {
+  top: 1px;
+  left: 0;
+  width: auto;
+  height: 3px;
 }

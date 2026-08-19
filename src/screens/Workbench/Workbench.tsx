@@ -610,7 +610,6 @@ export function Workbench({
           defaultSize={212}
           min={180}
           max={360}
-          handleShadow="start"
           start={
             <ExplorerSidebar
               // **212 px, la largeur standard de `A5` → `A9`, y compris quand le centre montre
@@ -759,7 +758,6 @@ export function Workbench({
                 defaultSize={296}
                 min={240}
                 max={420}
-                handleShadow="end"
                 // **Le panneau dimensionné est celui de droite.** Sans cela, c'est le centre qui
                 // recevait 296 px et la grille tombait à zéro pixel de large — défaut de `10b`,
                 // constaté en mesurant `A5` le 10 août 2026.

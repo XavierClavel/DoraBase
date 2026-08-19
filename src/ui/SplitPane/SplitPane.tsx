@@ -14,8 +14,6 @@ type SplitPaneProps = {
   defaultSize: number
   min: number
   max: number
-  /** Côté d'où part le dégradé de la poignée, selon le panneau qu'elle borde. */
-  handleShadow?: 'start' | 'end'
   /**
    * Lequel des deux panneaux porte `defaultSize` ; l'autre prend la place restante.
    *
@@ -73,7 +71,6 @@ export function SplitPane({
   defaultSize,
   min,
   max,
-  handleShadow = 'start',
   sized = 'start',
   orientation = 'horizontal',
   start,
@@ -196,17 +193,13 @@ export function SplitPane({
       >
         {start}
       </div>
-      {/* biome-ignore lint/a11y/useSemanticElements: la règle propose `<hr>`, inutilisable
-          ici pour deux raisons — c'est un élément void, qui ne peut donc pas porter la
-          pastille enfant, et un `<hr>` reste un séparateur thématique inerte. Le motif
-          WAI-ARIA « window splitter » prescrit exactement ce qui est écrit ici :
-          `role="separator"` focalisable, avec `aria-valuenow`/`min`/`max`. */}
+      {/* biome-ignore lint/a11y/useSemanticElements: la règle propose `<hr>`, qui reste un
+          séparateur thématique **inerte** — il ne prend pas le focus et ne porte pas de valeur.
+          Le motif WAI-ARIA « window splitter » prescrit exactement ce qui est écrit ici :
+          `role="separator"` focalisable, avec `aria-valuenow`/`min`/`max`. (L'argument de
+          l'élément void est tombé avec la pastille enfant : le trait est un `::before`.) */}
       <div
-        className={cx(
-          styles.handle,
-          handleShadow === 'end' && styles.handleEnd,
-          orientation === 'vertical' && styles.handleH,
-        )}
+        className={cx(styles.handle, orientation === 'vertical' && styles.handleH)}
         role="separator"
         // **L'orientation ARIA est celle du séparateur, pas celle du partage** : un partage en
         // colonnes est séparé par une barre *verticale*. Les deux mots désignent des choses
@@ -218,9 +211,7 @@ export function SplitPane({
         tabIndex={0}
         onPointerDown={handlePointerDown}
         onKeyDown={handleKeyDown}
-      >
-        <div className={styles.grip} />
-      </div>
+      />
       <div
         ref={sized === 'end' ? dimensionne : undefined}
         className={sized === 'end' ? styles.pane : styles.end}

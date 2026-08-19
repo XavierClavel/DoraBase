@@ -259,25 +259,40 @@ test('la barre de fil d’Ariane contient son contrôle segmenté, même à l’
   expect(mesures?.largeurDuControle).toBe(269)
 })
 
-test('la pastille du séparateur ne se voit qu’au survol', async ({ page }) => {
+test('le séparateur est un trait, et devient une barre au survol', async ({ page }) => {
   await ouvrirUneTable(page)
-  const opaciteDeLaPastille = () =>
+  // **Le trait est un `::before`, donc c'est lui qu'on mesure.** Un enfant réel aurait été un élément
+  // décoratif dans l'arbre d'accessibilité d'un `role="separator"` ; `getComputedStyle` sait lire un
+  // pseudo-élément, il n'y avait donc rien à sacrifier.
+  const traitDe = (etat: 'repos' | 'survol') =>
     page.evaluate(() => {
-      const pastille = document.querySelector('[role=separator] > span, [role=separator] > div')
-      return pastille ? Number(getComputedStyle(pastille).opacity) : null
-    })
+      const poignee = document.querySelector('[role=separator]')
+      if (!poignee) return null
+      const style = getComputedStyle(poignee, '::before')
+      return { largeur: style.width, fond: style.backgroundColor }
+    }, etat)
 
-  // Au repos, elle est invisible : une pastille blanche posée en permanence sur un dégradé très pâle
-  // était la chose la plus contrastée de la séparation, donc elle attirait l'œil plus que les deux
-  // colonnes qu'elle sépare.
-  expect(await opaciteDeLaPastille()).toBe(0)
+  const repos = await traitDe('repos')
+  // Un pixel, et la même encre que toutes les séparations de l'interface : la jointure ressemble à ce
+  // qu'elle est. Ce qu'elle était — un dégradé de 5 px plus une pastille — se lisait comme une *zone*
+  // entre deux colonnes, alors qu'une jointure n'a rien à dire.
+  expect(repos?.largeur).toBe('1px')
 
   await page.locator('[role=separator]').first().hover()
-  // Et elle apparaît quand on s'en approche : c'est le moment où l'information « ça s'attrape » sert.
-  // **`poll` et non une lecture directe** : la révélation est une transition de 120 ms, donc une mesure
-  // prise dans la foulée du survol lit encore une opacité intermédiaire — et le test échouerait sur la
+  // **`poll` et non une lecture directe** : l'épaississement est une transition de 120 ms, donc une
+  // mesure prise dans la foulée du survol lit une largeur intermédiaire — le test échouerait sur la
   // durée de l'animation plutôt que sur ce qu'il vérifie.
-  await expect.poll(opaciteDeLaPastille).toBe(1)
+  await expect.poll(async () => (await traitDe('survol'))?.largeur).toBe('3px')
+  const survol = await traitDe('survol')
+  // Et il s'assombrit : trois pixels de la même encre très pâle ne diraient pas « ça s'attrape ».
+  expect(survol?.fond).not.toBe(repos?.fond)
+
+  // La zone de saisie, elle, garde ses 5 px : ce qu'on voit et ce qu'on peut attraper sont deux
+  // mesures différentes, et un trait d'un pixel serait introuvable au pointeur (défaut n° 53).
+  const saisie = await page.evaluate(
+    () => document.querySelector('[role=separator]')?.getBoundingClientRect().width,
+  )
+  expect(saisie).toBe(5)
 })
 
 test('les libellés des actions du panneau tiennent dans leur bouton', async ({ page }) => {
