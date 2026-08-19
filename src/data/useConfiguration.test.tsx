@@ -31,7 +31,7 @@ test('un fichier lu remplit les projets', async () => {
         kind: 'loaded',
         projects: [
           {
-            name: 'Print',
+            name: 'Halle',
             activeEnvironment: 'dev',
             environments: TRIO_DE_TEST,
             databases: [],

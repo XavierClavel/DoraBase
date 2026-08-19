@@ -95,9 +95,7 @@ test('la métadonnée est séparée du libellé dans le nom accessible', () => {
 })
 
 test('le contenu de fin est séparé lui aussi', () => {
-  render(
-    <TreeRow depth={0} label="Atelier Nord" trailing={<span>PROD</span>} onClick={() => {}} />,
-  )
+  render(<TreeRow depth={0} label="Atelier Nord" trailing={<span>PROD</span>} onClick={() => {}} />)
   expect(screen.getByRole('button', { name: 'Atelier Nord PROD' })).toBeInTheDocument()
 })
 

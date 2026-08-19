@@ -72,8 +72,14 @@ qu'il contient. Un décor de test n'a jamais besoin d'être vrai, seulement **co
 propriétés qu'on mesure (une bande d'onglets qui déborde, une colonne trop longue) dépendent des
 longueurs et des quantités, pas des noms.
 
-**En pratique :** les noms viennent du handoff (`orders`, `users`, `order_items`, `Atelier Nord`)
-ou sont inventés. Les identifiants de connexion sont fictifs, et `localhost:5432`.
+**En pratique :** tous les noms sont **inventés** — projets, bases, tables, colonnes, hôtes. Les
+identifiants de connexion sont fictifs, et `localhost:5432`.
+
+Le 19 août 2026, le dépôt a été **relu entièrement** pour retirer le nom du commanditaire et celui de
+son projet, présents dans 506 endroits : décors de test, démo, galerie, captures de fidélité,
+identifiant de bundle, service du Trousseau, et jusque dans le fichier de handoff. L'historique Git a
+été réécrit dans le même mouvement. Un nom réel dans un décor ne se remarque plus une fois écrit :
+c'est à l'écriture qu'il faut le refuser.
 
 ## Notes
 

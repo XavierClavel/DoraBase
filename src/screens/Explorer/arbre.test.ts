@@ -74,11 +74,7 @@ test('un schéma replié ne produit aucun objet', () => {
 
 test('un schéma déplié produit ses objets', () => {
   const idS = idSchema('Atelier Nord', 'analytics', 'public')
-  const deplies = new Set([
-    idProjet('Atelier Nord'),
-    idBase('Atelier Nord', 'analytics'),
-    idS,
-  ])
+  const deplies = new Set([idProjet('Atelier Nord'), idBase('Atelier Nord', 'analytics'), idS])
   const charge: Charge = {
     ...RIEN,
     schemas: { [idBase('Atelier Nord', 'analytics')]: [schema('public')] },
@@ -111,11 +107,7 @@ test('un dépliage qui échoue le dit sans vider l’arbre', () => {
 // rien afficher laisserait croire que le dépliage n'a pas abouti.
 test('un schéma chargé mais vide le dit', () => {
   const idS = idSchema('Atelier Nord', 'analytics', 'public')
-  const deplies = new Set([
-    idProjet('Atelier Nord'),
-    idBase('Atelier Nord', 'analytics'),
-    idS,
-  ])
+  const deplies = new Set([idProjet('Atelier Nord'), idBase('Atelier Nord', 'analytics'), idS])
   const charge: Charge = {
     ...RIEN,
     schemas: { [idBase('Atelier Nord', 'analytics')]: [schema('public')] },
@@ -174,11 +166,7 @@ test('deux schémas homonymes de bases différentes ont deux identités', () => 
 
 test('les quatre profondeurs sont celles de la table d’indentation de TreeRow', () => {
   const idS = idSchema('Atelier Nord', 'analytics', 'public')
-  const deplies = new Set([
-    idProjet('Atelier Nord'),
-    idBase('Atelier Nord', 'analytics'),
-    idS,
-  ])
+  const deplies = new Set([idProjet('Atelier Nord'), idBase('Atelier Nord', 'analytics'), idS])
   const charge: Charge = {
     ...RIEN,
     schemas: { [idBase('Atelier Nord', 'analytics')]: [schema('public')] },

@@ -180,22 +180,48 @@ export function ExplorerSidebar({
           <>
             {onNewConsole && <ConsoleFooterButton onClick={onNewConsole} />}
             <div className={styles.footer}>
-              {/* **« Ajouter une connexion », et non « une base »** (`24d`). Depuis `23b`, ce qu'on
-                  ajoute est une connexion : une base présente en dev et en prod en fait deux. Écart au
-                  handoff assumé, qui dit « base ». */}
-              <button type="button" className={styles.add} onClick={onAddDatabase}>
+              {/* **Deux pastilles de même facture, aux libellés courts** — refonte du 19 août 2026.
+                  Le pied portait deux libellés entiers (« Ajouter une connexion », « Nouveau projet »)
+                  côte à côte : ils ne tenaient pas dans la colonne, revenaient à la ligne, et le
+                  retour à la ligne **séparait chaque icône de son texte** — deux actions illisibles là
+                  où le handoff n'en dessinait qu'une.
+
+                  Trois décisions :
+
+                  1. **le libellé visible est court** (« Connexion », « Projet ») et le nom accessible
+                     reste entier, par `aria-label` : ce que la voix annonce ne rétrécit pas avec la
+                     colonne, et les tests continuent de désigner l'action par son vrai nom ;
+                  2. **`nowrap` et ellipse plutôt que retour à la ligne** : une barre de 28 px ne peut
+                     pas grandir, donc le texte doit céder — proprement, et son `title` le rend en
+                     entier ;
+                  3. **le raccourci est dans l'infobulle**, comme partout ailleurs dans ce produit
+                     (`⌘E`, `⌘↩`) : un raccourci qui n'est écrit nulle part n'existe pas. */}
+              <button
+                type="button"
+                className={styles.add}
+                onClick={onAddDatabase}
+                aria-label="Ajouter une connexion"
+                title="Ajouter une connexion (⇧⌘N)"
+              >
                 <Icon name="plus" size={12} strokeWidth={2.2} />
-                Ajouter une connexion
+                <span className={styles.addTexte}>Connexion</span>
               </button>
               {/* **Le second geste de création, ici même** (`24d`). La sidebar est l'endroit où l'on
-                  regarde ses projets, donc l'endroit où l'on en ajoute un. */}
+                  regarde ses projets, donc l'endroit où l'on en ajoute un. Le sac est le glyphe du
+                  projet dans tout le produit — pastille de la barre de titre, arbre, modales — donc il
+                  se lit sans son libellé. */}
               {onNewProject && (
-                <button type="button" className={styles.add} onClick={onNewProject}>
+                <button
+                  type="button"
+                  className={styles.add}
+                  onClick={onNewProject}
+                  aria-label="Nouveau projet"
+                  title="Nouveau projet (⌘N)"
+                >
                   <Icon name="bag" size={12} strokeWidth={2.2} />
-                  Nouveau projet
+                  <span className={styles.addTexte}>Projet</span>
                 </button>
               )}
-              <span className={styles.footerSpacer} />
               <button
                 type="button"
                 className={styles.refresh}

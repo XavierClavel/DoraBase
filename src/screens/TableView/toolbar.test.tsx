@@ -6,7 +6,7 @@ import type { ColumnInfo, DatabaseKey, RowQuery } from '../../domain/engine'
 import { TableView } from './TableView'
 import type { PasserelleLignes } from './useLignes'
 
-const CLE: DatabaseKey = { project: 'Print', database: 'analytics', environment: 'prod' }
+const CLE: DatabaseKey = { project: 'Halle', database: 'analytics', environment: 'prod' }
 
 const colonne = (name: string): ColumnInfo => ({
   position: 1,

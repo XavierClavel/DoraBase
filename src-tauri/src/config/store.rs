@@ -1041,7 +1041,7 @@ mod tests {
         // Le fichier tel que `05b` l'écrivait : version 1, aucun champ `queries`.
         std::fs::write(
             &cible,
-            r#"{"version":1,"projects":[{"name":"Print","activeEnvironment":"prod","databases":[]}]}"#,
+            r#"{"version":1,"projects":[{"name":"Halle","activeEnvironment":"prod","databases":[]}]}"#,
         )
         .expect("écriture");
 
@@ -1059,7 +1059,7 @@ mod tests {
     fn les_requetes_enregistrees_survivent_a_un_aller_retour() {
         let dossier = tempfile::tempdir().expect("répertoire temporaire");
         let cible = dossier.path().join("config.json");
-        let mut projets = vec![projet_nomme("Print")];
+        let mut projets = vec![projet_nomme("Halle")];
         projets[0].queries = vec![crate::config::model::SavedQuery {
             name: "CA par jour".into(),
             sql: "select 1".into(),
@@ -1090,7 +1090,7 @@ mod tests_migration_v2 {
       "version": 1,
       "projects": [
         {
-          "name": "Print",
+          "name": "Halle",
           "activeEnvironment": "prod",
           "databases": [
             {
@@ -1100,14 +1100,14 @@ mod tests_migration_v2 {
                 {
                   "environment": "dev",
                   "host": "dev.interne", "port": 5432, "defaultDatabase": "analytics",
-                  "username": "dora", "password": "Print/analytics/dev",
+                  "username": "dora", "password": "Halle/analytics/dev",
                   "sslMode": "require", "readOnly": true, "reconnectOnStartup": false,
                   "tunnel": null
                 },
                 {
                   "environment": "prod",
                   "host": "prod.interne", "port": 5432, "defaultDatabase": "analytics",
-                  "username": "dora", "password": "Print/analytics/prod",
+                  "username": "dora", "password": "Halle/analytics/prod",
                   "sslMode": "verify-full", "readOnly": true, "reconnectOnStartup": true,
                   "tunnel": null
                 }
@@ -1192,8 +1192,8 @@ mod tests_migration_v2 {
                     .map(|reference| reference.as_str().to_owned())
             })
             .collect();
-        assert!(references.contains(&"Print/analytics/dev".to_owned()));
-        assert!(references.contains(&"Print/analytics/prod".to_owned()));
+        assert!(references.contains(&"Halle/analytics/dev".to_owned()));
+        assert!(references.contains(&"Halle/analytics/prod".to_owned()));
         assert_eq!(references.len(), 2, "`journal` n'avait pas de mot de passe");
     }
 

@@ -16,7 +16,11 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
   await page.getByRole('button', { name: /Nouveau projet/ }).click()
   // Étape 1 : un nom suffit, les environnements arrivant préremplis du trio de `23a`.
-  await page.getByLabel('Nom du projet').fill('Atelier Nord')
+  // **Un nom que le décor ne porte pas.** Le projet de la démo s'appelle « Atelier Nord » depuis la
+  // relecture du 19 août 2026 ; créer un homonyme fait refuser la création — à juste titre — et le
+  // bouton « Continuer » reste désactivé. Vingt-quatre tests sont tombés d'un coup sur ce point, tous
+  // pour la même raison.
+  await page.getByLabel('Nom du projet').fill('Comptoir Sud')
   await page.getByRole('button', { name: /Continuer/ }).click()
   // Étape 2 : la modale de connexion, projet imposé.
   await page.waitForSelector('[data-testid=projet-impose]')

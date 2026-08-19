@@ -16,7 +16,7 @@ test('un fichier absent donne un état neuf sans projet', () => {
 test('un fichier lu rend ses projets', () => {
   const projets = [
     {
-      name: 'Print',
+      name: 'Halle',
       activeEnvironment: 'dev',
       environments: TRIO_DE_TEST,
       databases: [],
@@ -71,8 +71,8 @@ test('les deux issues bloquantes ne rendent aucun projet', () => {
 test('la clé envoyée à Rust reste en trois chaînes', () => {
   // Composer côté front dupliquerait la convention. Le front envoie les trois morceaux ;
   // `registry::cle` les assemble.
-  expect(databaseKey('Print', 'analytics', 'dev')).toEqual({
-    project: 'Print',
+  expect(databaseKey('Halle', 'analytics', 'dev')).toEqual({
+    project: 'Halle',
     database: 'analytics',
     environment: 'dev',
   })
@@ -83,7 +83,7 @@ test('la clé envoyée à Rust reste en trois chaînes', () => {
 // Une base absente de la table est `never`, pas `offline` : afficher en rouge une base qu'on n'a
 // pas ouverte serait faux. C'est la décision du 7 août sur l'arbre lisible sans réseau.
 test('une base inconnue est « jamais tentée », pas « hors ligne »', () => {
-  expect(etatDe([], 'Print', 'analytics', 'dev')).toEqual({ kind: 'never' })
+  expect(etatDe([], 'Halle', 'analytics', 'dev')).toEqual({ kind: 'never' })
 })
 
 test('un état connu est rendu tel quel', () => {
@@ -93,9 +93,9 @@ test('un état connu est rendu tel quel', () => {
     tunnelLocalPort: null,
   }
   const entrees = [
-    { key: { project: 'Print', database: 'analytics', environment: 'dev' }, state: etat },
+    { key: { project: 'Halle', database: 'analytics', environment: 'dev' }, state: etat },
   ]
-  expect(etatDe(entrees, 'Print', 'analytics', 'dev')).toEqual(etat)
+  expect(etatDe(entrees, 'Halle', 'analytics', 'dev')).toEqual(etat)
 })
 
 // Deux environnements de la même base sont deux connexions distinctes — c'est ce que le triplet
@@ -103,14 +103,14 @@ test('un état connu est rendu tel quel', () => {
 test('deux environnements de la même base ont deux états distincts', () => {
   const entrees = [
     {
-      key: { project: 'Print', database: 'analytics', environment: 'dev' },
+      key: { project: 'Halle', database: 'analytics', environment: 'dev' },
       state: { kind: 'connected' as const, serverVersion: 'PG', tunnelLocalPort: null },
     },
     {
-      key: { project: 'Print', database: 'analytics', environment: 'prod' },
+      key: { project: 'Halle', database: 'analytics', environment: 'prod' },
       state: { kind: 'offline' as const, reason: 'hôte injoignable' },
     },
   ]
-  expect(etatDe(entrees, 'Print', 'analytics', 'dev').kind).toBe('connected')
-  expect(etatDe(entrees, 'Print', 'analytics', 'prod').kind).toBe('offline')
+  expect(etatDe(entrees, 'Halle', 'analytics', 'dev').kind).toBe('connected')
+  expect(etatDe(entrees, 'Halle', 'analytics', 'prod').kind).toBe('offline')
 })

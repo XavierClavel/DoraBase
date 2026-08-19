@@ -200,8 +200,8 @@ mod tests {
         // `08e` dérive la référence d'un secret du même triplet. Deux conventions divergentes
         // obligeraient à traduire de l'une à l'autre, et une traduction se désynchronise.
         assert_eq!(
-            cle("Print", "analytics", "prod"),
-            crate::config::reference_de("Print", "analytics", "prod").as_str()
+            cle("Halle", "analytics", "prod"),
+            crate::config::reference_de("Halle", "analytics", "prod").as_str()
         );
     }
 
@@ -210,7 +210,7 @@ mod tests {
         let registre = ConnectionRegistry::new();
         // Et non `Offline` : afficher en rouge une base qu'on n'a pas ouverte serait faux.
         assert_eq!(
-            registre.etat("Print/analytics/dev").await,
+            registre.etat("Halle/analytics/dev").await,
             ConnectionState::Never
         );
     }
@@ -219,7 +219,7 @@ mod tests {
     async fn interroger_une_base_non_ouverte_est_refuse_clairement() {
         let registre = ConnectionRegistry::new();
         let erreur = registre
-            .avec::<(), _>("Print/analytics/dev", |_| Box::pin(async { Ok(()) }))
+            .avec::<(), _>("Halle/analytics/dev", |_| Box::pin(async { Ok(()) }))
             .await
             .expect_err("une base non ouverte doit être refusée");
 
@@ -235,7 +235,7 @@ mod tests {
         // Fermer deux fois, ou fermer ce qui n'a jamais été ouvert, arrive quand l'écran et le
         // registre se désynchronisent. Ce doit être sans effet, pas une panique.
         ConnectionRegistry::new()
-            .fermer("Print/analytics/dev")
+            .fermer("Halle/analytics/dev")
             .await;
     }
 
@@ -333,7 +333,7 @@ mod tests_db {
     #[tokio::test]
     async fn lire_une_fenetre_par_le_registre_rend_la_limite_demandee() {
         let registre = ConnectionRegistry::new();
-        let cle = "Print/analytics/dev";
+        let cle = "Halle/analytics/dev";
         registre
             .ouvrir(
                 cle,
@@ -376,7 +376,7 @@ mod tests_db {
             crate::engine::RowLimit::OneHundred,
         );
         let erreur = registre
-            .avec("Print/jamais/dev", move |adaptateur| {
+            .avec("Halle/jamais/dev", move |adaptateur| {
                 Box::pin(async move { adaptateur.rows(&requete).await })
             })
             .await
@@ -388,7 +388,7 @@ mod tests_db {
     #[tokio::test]
     async fn ouvrir_deux_fois_la_meme_base_ne_retente_rien() {
         let registre = ConnectionRegistry::new();
-        let cle = "Print/analytics/dev";
+        let cle = "Halle/analytics/dev";
 
         registre
             .ouvrir(
@@ -427,7 +427,7 @@ mod tests_db {
     #[tokio::test]
     async fn une_base_ouverte_passe_a_connectee_avec_sa_version() {
         let registre = ConnectionRegistry::new();
-        let cle = "Print/analytics/dev";
+        let cle = "Halle/analytics/dev";
 
         assert_eq!(registre.etat(cle).await, ConnectionState::Never);
         registre
@@ -461,7 +461,7 @@ mod tests_db {
         muette.port = 1; // rien n'écoute
         registre
             .ouvrir(
-                "Print/muette/dev",
+                "Halle/muette/dev",
                 crate::config::Engine::PostgreSql,
                 &muette,
                 None,
@@ -472,7 +472,7 @@ mod tests_db {
 
         registre
             .ouvrir(
-                "Print/analytics/dev",
+                "Halle/analytics/dev",
                 crate::config::Engine::PostgreSql,
                 &variante(),
                 secret().as_ref(),
@@ -482,21 +482,21 @@ mod tests_db {
             .expect("la base joignable doit s'ouvrir malgré l'échec de l'autre");
 
         assert!(matches!(
-            registre.etat("Print/muette/dev").await,
+            registre.etat("Halle/muette/dev").await,
             ConnectionState::Offline { .. }
         ));
         assert!(matches!(
-            registre.etat("Print/analytics/dev").await,
+            registre.etat("Halle/analytics/dev").await,
             ConnectionState::Connected { .. }
         ));
 
-        registre.fermer("Print/analytics/dev").await;
+        registre.fermer("Halle/analytics/dev").await;
     }
 
     #[tokio::test]
     async fn fermer_retire_la_connexion_et_son_etat() {
         let registre = ConnectionRegistry::new();
-        let cle = "Print/analytics/dev";
+        let cle = "Halle/analytics/dev";
 
         registre
             .ouvrir(
@@ -518,7 +518,7 @@ mod tests_db {
     #[tokio::test]
     async fn une_base_ouverte_repond_a_l_introspection() {
         let registre = ConnectionRegistry::new();
-        let cle = "Print/analytics/dev";
+        let cle = "Halle/analytics/dev";
         registre
             .ouvrir(
                 cle,
@@ -554,7 +554,7 @@ mod tests_db {
 
         registre
             .ouvrir(
-                "Print/inconnue/dev",
+                "Halle/inconnue/dev",
                 crate::config::Engine::PostgreSql,
                 &inconnue,
                 secret().as_ref(),
@@ -563,7 +563,7 @@ mod tests_db {
             .await
             .expect_err("une base inconnue doit échouer");
 
-        match registre.etat("Print/inconnue/dev").await {
+        match registre.etat("Halle/inconnue/dev").await {
             ConnectionState::Offline { reason } => {
                 assert!(reason.contains("base_qui_n_existe_pas"), "{reason}");
             }
@@ -583,7 +583,7 @@ mod tests_db {
 
         registre
             .ouvrir(
-                "Print/mauvaise/dev",
+                "Halle/mauvaise/dev",
                 crate::config::Engine::PostgreSql,
                 &mauvaise,
                 Some(&Secret::new(sentinelle)),

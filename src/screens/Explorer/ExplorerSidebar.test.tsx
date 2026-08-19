@@ -201,7 +201,7 @@ test('l’état d’une base est dans son nom accessible, pas seulement en coule
 // schéma et sa base produirait une ligne orpheline, indentée sans parent visible.
 test('le filtre garde les ancêtres d’une correspondance', () => {
   const noeuds: Noeud[] = [
-    { id: 'p', kind: 'project', depth: 0, label: 'Print' },
+    { id: 'p', kind: 'project', depth: 0, label: 'Halle' },
     { id: 'd', kind: 'database', depth: 1, label: 'analytics' },
     { id: 's', kind: 'schema', depth: 2, label: 'public' },
     { id: 'o', kind: 'object', depth: 3, label: 'orders' },
@@ -211,7 +211,7 @@ test('le filtre garde les ancêtres d’une correspondance', () => {
 })
 
 test('un filtre vide ne retire rien', () => {
-  const noeuds: Noeud[] = [{ id: 'p', kind: 'project', depth: 0, label: 'Print' }]
+  const noeuds: Noeud[] = [{ id: 'p', kind: 'project', depth: 0, label: 'Halle' }]
   expect(filtrer(noeuds, '   ')).toHaveLength(1)
 })
 
@@ -224,7 +224,7 @@ test('le filtre ignore la casse', () => {
 // apparaître des états au lieu de données.
 test('le filtre ne fait pas correspondre les lignes de message', () => {
   const noeuds: Noeud[] = [
-    { id: 'p', kind: 'project', depth: 0, label: 'Print' },
+    { id: 'p', kind: 'project', depth: 0, label: 'Halle' },
     { id: 'm', kind: 'message', depth: 2, label: 'Chargement…', message: true },
   ]
   expect(filtrer(noeuds, 'chargement')).toHaveLength(0)
