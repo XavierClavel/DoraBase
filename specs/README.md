@@ -42,6 +42,25 @@ données. Si `03` veut restaurer la taille de fenêtre : ajouter
 **Un WebSocket refusé par la CSP lève un `SecurityError` synchrone** sous WKWebView, il
 n'échoue pas silencieusement. Du code qui ne l'attrape pas plantera net.
 
+Les deux points suivants ne sont **pas** établis par exécution, contrairement à ceux
+ci-dessus : ils ont été anticipés en écrivant `06g` et le code les contourne, donc la panne
+n'a jamais été observée. Ils sont notés ici parce qu'ils gouvernent du code livré et qu'un
+scope ultérieur les rencontrerait autrement.
+
+**Une app lancée depuis le Finder n'hérite pas du `PATH` du shell.** macOS lui en donne un
+minimal, sans `/opt/homebrew/bin` ni `/usr/local/bin`. Chercher un binaire externe dans le
+seul `PATH` le rendrait donc introuvable dans l'app packagée alors que `which` y répond depuis
+un terminal — panne d'autant plus déroutante que l'outil *est* installé. `06g` fouille les
+emplacements usuels en plus du `PATH` ; tout scope qui lance un programme tiers devra faire de
+même. **Non vérifié dans l'app packagée**, faute de diffusion : à confirmer avec le point 2
+du § 0 de `REPRISE.md`, qui liste déjà les observations à l'œil.
+
+**Un sous-processus dont personne ne lit la sortie se bloque en écriture.** Le tampon du
+système se remplit et l'enfant s'arrête au milieu d'un `write`. C'est pourquoi `06g` draine la
+sortie d'erreur du proxy Cloud SQL pour toute sa durée de vie : une tâche de drain n'est pas un
+raffinement mais une condition de fonctionnement. Le mode de défaillance est **déduit**, pas
+constaté — il demanderait de laisser un proxy bavarder longtemps sans le lire.
+
 ## À trancher avant certaines specs
 
 Points établis par les relectures d'implémentation, qui ne peuvent pas être décidés au
@@ -131,6 +150,20 @@ cinq endroits où le mockup ne répond pas, et où la vraie réponse appartient 
    puis `save_database` — personne ne crée un projet vide.
 5. **Le panneau proxy replié, et sans tunnel, n'est pas maquetté.** `08c` rend l'en-tête
    seul et fait disparaître le badge « SSH activé » — la seule lecture cohérente.
+
+**Cloud SQL n'est pas dans le handoff — à maquetter** (19 août 2026). Le support du Cloud
+SQL Auth Proxy (`05d`, `06g`, `08k`) vient d'une demande fonctionnelle, pas du bundle de
+design : `A2` ne montrait qu'un sélecteur « Type » à une seule valeur, `SSH`. `08k` invente
+donc deux champs — « Instance » et « Compte de service » —, un libellé d'aide et un libellé
+de badge, en restant dans le vocabulaire visuel de `08c` pour qu'une maquette ultérieure ait
+peu à corriger. Deux points méritent une décision de design : le nom de connexion d'instance
+est long et prend trois colonnes de la grille, ce qui n'a pas été composé ; et un champ dont
+le **vide** est une valeur valable (« identifiants par défaut de l'application ») n'a aucun
+précédent dans le handoff.
+
+Quatre options avancées sont laissées de côté, chacune ajoutant un champ à `A2` : IP privée,
+authentification IAM automatique, usurpation de compte de service, Private Service Connect.
+Le modèle de `05d` les accueille sans refonte, mais aucune n'est maquettée.
 
 **Six trous du handoff sur `A4`, relevés en écrivant `09a`–`09f`** (7 août 2026). Comme pour
 `A2`, chaque spec prend le minimum défendable et le dit.
@@ -243,12 +276,14 @@ se pose : ajouter `blob:` à la directive concernée, ou gérer l'écriture côt
 | [`05a`](05a-modele-configuration.md) | Modèle de configuration : Projet / Base / Environnement, types et invariants | **fait** |
 | [`05b`](05b-persistance-disque.md) | Persistance sur disque : emplacement, écriture atomique, version et migration | **fait** |
 | [`05c`](05c-stockage-identifiants.md) | Stockage des identifiants : interface, Trousseau, fichier chiffré | **fait** (Trousseau : API vérifiée, persistance entre builds non) |
+| [`05d`](05d-proxy-en-enumeration.md) | Le proxy en énumération à données : SSH ou Cloud SQL, et la migration v2 → v3 | **fait** |
 | [`06a`](06a-contrat-couche-moteur.md) | Contrat de la couche moteur : trait, modèle d'introspection, fenêtre de lignes | **fait** |
 | [`06b`](06b-connexion-postgresql.md) | Connexion PostgreSQL, modes SSL, test de connexion, infra de test | **fait** (TLS à brancher) |
 | [`06c`](06c-introspection-postgresql.md) | Introspection PostgreSQL : catalogue → modèle, DDL | **fait** |
 | [`06d`](06d-lecture-paginee.md) | Lecture paginée des lignes : filtres, tri, contrainte IPC | **fait** |
 | [`06e`](06e-tunnel-ssh.md) | Tunnel SSH vers un bastion | **fait** (écran de confiance à trancher) |
 | [`06f`](06f-tls-verifie.md) | Le TLS branché, et **vérifié** — `rustls`, cinq modes distincts | **fait** |
+| [`06g`](06g-proxy-cloud-sql.md) | Proxy Cloud SQL : lancer et surveiller `cloud-sql-proxy` | **fait** (chemin heureux contre une vraie instance non observé) |
 
 **Pourquoi `05` a été découpé en trois** (5 août 2026) : le périmètre indexé —
 « modèle de domaine, persistance, Trousseau » — mêlait trois préoccupations
@@ -357,6 +392,15 @@ dernier n'a jamais été exercé depuis `01` et mérite ses propres critères : 
 point du projet qu'aucun test automatisé ne peut couvrir, Playwright ne pilotant pas
 WKWebView.
 
+**Pourquoi le support Cloud SQL fait trois specs** (19 août 2026) : il traverse trois
+couches aux risques distincts, et chacune est livrable seule. `05d` change la **forme d'un
+type persisté** — donc une migration du fichier de configuration, v2 → v3. `06g`
+pilote un **sous-processus** — le trouver, attendre qu'il soit prêt, distinguer sa mort d'une
+erreur de base, le tuer sans laisser d'orphelin : c'est là que porte le risque. `08k` ne
+touche que l'écran, et n'a **aucune maquette** contre laquelle se mesurer. Fondre les trois
+donnerait une spec bien au-delà des ~150 lignes d'`AGENTS.md`, portant trois décisions qui
+n'ont rien à voir.
+
 **Pourquoi `06` a été découpé en cinq** (6 août 2026) : son périmètre indexé mêlait
 le contrat, la connexion, l'introspection, la lecture de lignes et le tunnel SSH —
 cinq préoccupations aux risques distincts. La lecture paginée en particulier porte
@@ -378,6 +422,7 @@ propres critères de vérification.
 | [`08h`](08h-menu-de-ligne-dans-l-arbre.md) | A4 | Le menu « … » des lignes projet et base de l'arbre | **fait** |
 | [`08i`](08i-renommer-un-projet.md) | A4 | Renommer un projet — `rename_project`, migration des secrets | **fait** |
 | [`08j`](08j-supprimer-une-connexion-ou-un-projet.md) | A4 | Retirer une déclaration de connexion, ou un projet | **fait** |
+| [`08k`](08k-a2-panneau-cloud-sql.md) | A2 | Le panneau proxy à deux visages : SSH ou Cloud SQL | **fait** (sélecteur de fichier non observé ; les 28 px le sont) |
 | [`09a`](09a-primitives-de-tableau.md) | — | Primitives : `SegmentedControl`, `StatTile`, `DataTable` | **fait** |
 | [`09b`](09b-cablage-des-donnees.md) | — | Câblage : `load_config` au démarrage, registre de connexions, introspection | **fait** (redémarrage non observé) |
 | [`09c`](09c-a4-barre-de-titre.md) | A4 | Barre de titre : pastille projet, fil d'Ariane, sélecteur d'environnement | **fait** (clic vs glissement non observé) |
@@ -515,6 +560,11 @@ vraiment une entité de configuration.
 
 `06e` (tunnel SSH) peut se glisser après `06b` sans attendre `06c`/`06d` : il ne dépend
 que de la connexion.
+
+Le support Cloud SQL s'est pris dans l'ordre `05d` → `06g` → `08k`, et cet ordre était
+contraignant : `06g` ouvre ce que `05d` décrit, `08k` saisit ce que `06g` sait ouvrir.
+Chaque étape laissait l'application compilable et testée — après `05d` seul, le modèle sait
+décrire un proxy Cloud SQL que l'écran ne propose pas encore, et c'était un état cohérent.
 
 **Aucune décision humaine ne bloque cette suite.** Le point de signature de code plus
 haut est *tranché*, et l'achat d'un Developer ID ne concerne que la diffusion.

@@ -27,7 +27,7 @@ use mysql_async::prelude::Queryable;
 use mysql_async::{Conn, Pool, Row, TxOpts};
 
 use crate::config::ConnectionSettings;
-use crate::engine::tunnel::{EtatTunnel, SshTunnel};
+use crate::engine::proxy::{EtatProxy, ProxyOuvert};
 use crate::engine::{
     ApplyOutcome, ConnectionProbe, EngineAdapter, EngineError, QueryPlan, QueryResult, RowCount,
     RowLimit, RowQuery, RowWindow, SchemaInfo, TableDetail, TableSummary, TypeCategory, UpdatePlan,
@@ -44,7 +44,7 @@ pub struct MysqlAdapter {
     /// (`09b`), et la version d'un serveur ne change pas pendant une connexion.
     version: String,
     /// Même raison qu'en `06b` et `18b` : le tunnel vit aussi longtemps que la connexion.
-    tunnel: Option<SshTunnel>,
+    proxy: Option<ProxyOuvert>,
 }
 
 /// `Debug` à la main, pour la raison de `05c` : un dérivé exposerait la configuration du pool, qui
@@ -61,37 +61,36 @@ impl MysqlAdapter {
         mot_de_passe: Option<&Secret>,
         known_hosts: &std::path::Path,
     ) -> Result<Self, EngineError> {
-        let tunnel = match &variante.tunnel {
-            Some(configuration) => Some(
-                SshTunnel::ouvrir(configuration, &variante.host, variante.port, known_hosts)
-                    .await?,
-            ),
+        let proxy = match &variante.tunnel {
+            Some(tunnel) => {
+                Some(ProxyOuvert::ouvrir(tunnel, &variante.host, variante.port, known_hosts).await?)
+            }
             None => None,
         };
-        let redirection = tunnel.as_ref().map(|t| ("127.0.0.1", t.port_local()));
+        let redirection = proxy.as_ref().map(|p| ("127.0.0.1", p.port_local()));
         let options = connect::preparer(variante, mot_de_passe, redirection)?;
 
         match connect::ouvrir(options).await {
             Ok((pool, version)) => Ok(Self {
                 pool,
                 version,
-                tunnel,
+                proxy,
             }),
             // La qualification de `06e` : sans elle, un bastion tombé produit un « connection
             // refused » sur `127.0.0.1`, qui envoie chercher un problème de MySQL.
-            Err(erreur) => Err(match &tunnel {
-                Some(t) => t.qualifier(erreur),
+            Err(erreur) => Err(match &proxy {
+                Some(p) => p.qualifier(erreur),
                 None => erreur,
             }),
         }
     }
 
-    pub fn etat_tunnel(&self) -> Option<EtatTunnel> {
-        self.tunnel.as_ref().map(SshTunnel::etat)
+    pub fn etat_tunnel(&self) -> Option<EtatProxy> {
+        self.proxy.as_ref().map(ProxyOuvert::etat)
     }
 
     pub fn port_local_tunnel(&self) -> Option<u16> {
-        self.tunnel.as_ref().map(SshTunnel::port_local)
+        self.proxy.as_ref().map(ProxyOuvert::port_local)
     }
 
     pub async fn close(self) {
@@ -99,8 +98,8 @@ impl MysqlAdapter {
         // connexions l'utilisent encore, et le pilote signalerait des erreurs de réseau à la
         // fermeture — bruit inutile dans le journal.
         let _ = self.pool.disconnect().await;
-        if let Some(tunnel) = self.tunnel {
-            tunnel.fermer().await;
+        if let Some(proxy) = self.proxy {
+            proxy.fermer().await;
         }
     }
 

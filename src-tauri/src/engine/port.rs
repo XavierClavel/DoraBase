@@ -45,9 +45,51 @@ pub async fn ouvrir_ecouteur(port_demande: Option<u16>) -> Result<(TcpListener, 
     Ok((ecouteur, port))
 }
 
+/// Choisit un port local libre et le **relâche** aussitôt.
+///
+/// **Pourquoi cette fonction existe à côté d'`ouvrir_ecouteur`, qui est meilleure.**
+/// `ouvrir_ecouteur` n'a aucune fenêtre de course : elle se lie au port 0 et lit le port
+/// attribué sur l'écouteur qu'elle garde. Ce chemin est fermé pour `06g` — c'est le
+/// sous-processus `cloud-sql-proxy` qui se lie, et il ne peut pas hériter de notre
+/// `TcpListener`. Il faut donc choisir, relâcher, puis passer le numéro en `--port`.
+///
+/// La fenêtre de course est réelle et **assumée**, parce que sa conséquence est bornée : le
+/// port rendu à l'appelant est celui que le proxy **annonce** dans sa sortie, pas celui
+/// qu'on lui a demandé. Si un autre programme a pris le port entre-temps, le proxy échoue et
+/// le dit ; il ne peut pas se lier ailleurs à notre insu. Au pire un échec explicite,
+/// jamais une connexion vers le mauvais port.
+pub async fn choisir_port_libre(port_demande: Option<u16>) -> Result<u16, EngineError> {
+    let (ecouteur, port) = ouvrir_ecouteur(port_demande).await?;
+    // Explicite, et non laissé à la fin de portée : c'est le relâchement qui est le
+    // comportement de cette fonction, pas un effet de bord.
+    drop(ecouteur);
+    Ok(port)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn un_port_libre_peut_etre_choisi_sans_etre_garde() {
+        // Le proxy Cloud SQL est un **sous-processus** : il se lie lui-même, et ne peut pas
+        // hériter de notre écouteur. Il faut donc un port qu'on relâche.
+        let port = choisir_port_libre(None).await.expect("choix");
+        assert_ne!(port, 0);
+        // Relâché, donc immédiatement liable — c'est précisément ce que la fonction promet,
+        // et ce qui la distingue d'`ouvrir_ecouteur`.
+        let (_ecouteur, obtenu) = ouvrir_ecouteur(Some(port)).await.expect("liaison");
+        assert_eq!(obtenu, port);
+    }
+
+    #[tokio::test]
+    async fn un_port_explicite_deja_pris_est_refuse_avec_son_numero_aussi_pour_le_proxy() {
+        let (_occupant, port) = ouvrir_ecouteur(None).await.expect("occupation");
+        let erreur = choisir_port_libre(Some(port))
+            .await
+            .expect_err("un port occupé doit être refusé");
+        assert!(erreur.message.contains(&port.to_string()), "{erreur}");
+    }
 
     #[tokio::test]
     async fn en_mode_auto_le_port_attribue_est_rendu() {

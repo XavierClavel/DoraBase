@@ -17,17 +17,17 @@ mod store;
 pub use commands::{
     create_environment, create_project, delete_environment, load_config, recolor_environment,
     rename_environment, reorder_environments, save_config, save_database, save_preferences,
-    update_variant, ConfigLoad, ConfigState, CreateEnvironmentRequest, CreateProjectRequest,
-    DeleteDatabaseRequest, DeleteEnvironmentRequest, DeleteEnvironmentResult, DeleteProjectRequest,
-    DeleteResult, RecolorEnvironmentRequest, RenameEnvironmentRequest, RenameProjectRequest,
-    RenameProjectResult, ReorderEnvironmentsRequest, ConsoleRequest, SaveDatabaseRequest,
+    update_variant, ConfigLoad, ConfigState, ConsoleRequest, CreateEnvironmentRequest,
+    CreateProjectRequest, DeleteDatabaseRequest, DeleteEnvironmentRequest, DeleteEnvironmentResult,
+    DeleteProjectRequest, DeleteResult, RecolorEnvironmentRequest, RenameEnvironmentRequest,
+    RenameProjectRequest, RenameProjectResult, ReorderEnvironmentsRequest, SaveDatabaseRequest,
     SetActiveEnvironmentRequest, UpdateVariantRequest,
 };
 pub use enregistrer::{enregistrer, reference_de, NouvelleBase, SaveError};
 pub use model::{
-    Accent, ConnectionSettings, Database, Engine, EnvironmentColor, EnvironmentDeclaration,
-    EnvironmentId, Guards, ModelError, Console, Preferences, Project, SavedQuery, SecretRef, SslMode, Theme,
-    Tunnel, TunnelKind,
+    Accent, ConnectionSettings, Console, Database, Engine, EnvironmentColor,
+    EnvironmentDeclaration, EnvironmentId, Guards, ModelError, Preferences, Project, Proxy,
+    ProxyCloudSql, ProxySsh, SavedQuery, SecretRef, SslMode, Theme, Tunnel,
 };
 pub use query::{active_variant, databases_available, validate};
 pub use store::{load, save, ConfigStore, LoadOutcome, StoreError, VERSION_COURANTE};

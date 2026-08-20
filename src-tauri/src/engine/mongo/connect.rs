@@ -199,7 +199,7 @@ pub async fn version_du_serveur(client: &Client) -> Result<String, EngineError> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{SslMode, Tunnel, TunnelKind};
+    use crate::config::{Proxy, ProxySsh, SslMode, Tunnel};
 
     fn variante() -> ConnectionSettings {
         ConnectionSettings {
@@ -233,12 +233,13 @@ mod tests {
     fn un_tunnel_declare_sans_redirection_est_refuse() {
         let mut avec_tunnel = variante();
         avec_tunnel.tunnel = Some(Tunnel {
-            kind: TunnelKind::Ssh,
-            bastion_host: "bastion.exemple.test".into(),
-            bastion_port: 22,
-            username: "clement".into(),
-            private_key_path: "~/.ssh/id_ed25519".into(),
             local_port: None,
+            proxy: Proxy::Ssh(ProxySsh {
+                bastion_host: "bastion.exemple.test".into(),
+                bastion_port: 22,
+                username: "clement".into(),
+                private_key_path: "~/.ssh/id_ed25519".into(),
+            }),
         });
         // **Le même refus qu'en `06b`**, pour la même raison : un `None` oublié à l'appel ne doit
         // pas se traduire par une connexion directe silencieuse.
@@ -251,12 +252,13 @@ mod tests {
         let mut avec_tunnel = variante();
         avec_tunnel.host = "db.interne.test".into();
         avec_tunnel.tunnel = Some(Tunnel {
-            kind: TunnelKind::Ssh,
-            bastion_host: "bastion.exemple.test".into(),
-            bastion_port: 22,
-            username: "clement".into(),
-            private_key_path: "~/.ssh/id_ed25519".into(),
             local_port: None,
+            proxy: Proxy::Ssh(ProxySsh {
+                bastion_host: "bastion.exemple.test".into(),
+                bastion_port: 22,
+                username: "clement".into(),
+                private_key_path: "~/.ssh/id_ed25519".into(),
+            }),
         });
         let options = preparer(&avec_tunnel, None, Some(("127.0.0.1", 63342))).expect("préparable");
         assert_eq!(

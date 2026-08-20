@@ -25,6 +25,10 @@ local affiché. C'est le formulaire qui alimente le tunnel de `06e`.
 - **Les types de proxy autres que SSH.** `05a` modélise `TunnelKind` en énumération d'un
   seul membre, et le mockup ne montre que « SSH ». Le `Select` a donc une seule option —
   rendu quand même, parce que le mockup le montre et parce qu'un second type viendra.
+  *(`05d` a depuis retiré `TunnelKind` — devenu du code mort une fois `Proxy` introduite,
+  étiquetée en interne sur `kind` — et lui a donné un second membre, `cloud-sql`. Le
+  sélecteur de ce panneau n'en montre toujours qu'un : Cloud SQL n'est pas dans le
+  handoff, et c'est `08k` qui lui donnera sa seconde option.)*
 - **La phrase de passe d'une clé chiffrée.** Absente du handoff, hors périmètre de `06e`
   qui rend une erreur explicite. L'écran de saisie viendra avec la spec qui le maquette.
 - **La validation du chemin de clé.** Le champ accepte ce qu'on y met ; `06e` refuse à

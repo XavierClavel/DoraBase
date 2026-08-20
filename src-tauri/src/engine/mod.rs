@@ -15,12 +15,20 @@
 //! Le trait reste utile — chaque adaptateur est écrit contre lui et testable isolément —
 //! mais il n'est jamais employé en objet.
 
+pub mod cloudsql;
 pub mod commands;
 mod error;
 mod introspection;
 pub mod mongo;
 pub mod mysql;
+/// Le choix du port local, commun au tunnel SSH (`06e`) et au proxy Cloud SQL (`06g`).
+///
+/// **Remonté d'un cran depuis `tunnel/`** en `06g` : les deux sortes de proxy en ont besoin,
+/// et laisser le module sous `tunnel/` aurait fait dépendre `cloudsql` de `tunnel` — une
+/// dépendance qui ne dit rien de vrai sur le domaine.
+pub mod port;
 pub mod postgres;
+pub mod proxy;
 pub mod registry;
 mod rows;
 pub mod sqlite;
@@ -178,7 +186,7 @@ impl AnyEngine {
     }
 
     /// L'état du tunnel, quand il y en a un.
-    pub fn etat_tunnel(&self) -> Option<tunnel::EtatTunnel> {
+    pub fn etat_tunnel(&self) -> Option<proxy::EtatProxy> {
         match self {
             Self::Postgres(adaptateur) => adaptateur.etat_tunnel(),
             Self::MongoDb(adaptateur) => adaptateur.etat_tunnel(),

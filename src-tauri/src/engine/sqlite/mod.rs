@@ -32,7 +32,7 @@ use std::time::Instant;
 use rusqlite::Connection;
 
 use crate::config::ConnectionSettings;
-use crate::engine::tunnel::EtatTunnel;
+use crate::engine::proxy::EtatProxy;
 use crate::engine::{
     ApplyOutcome, ConnectionProbe, EngineAdapter, EngineError, QueryPlan, QueryResult, RowCount,
     RowLimit, RowQuery, RowWindow, SchemaInfo, TableDetail, TableSummary, UpdatePlan, Value,
@@ -78,7 +78,7 @@ impl SqliteAdapter {
     }
 
     /// Un fichier local n'a pas de tunnel. Les deux méthodes existent pour `AnyEngine`.
-    pub fn etat_tunnel(&self) -> Option<EtatTunnel> {
+    pub fn etat_tunnel(&self) -> Option<EtatProxy> {
         None
     }
 
