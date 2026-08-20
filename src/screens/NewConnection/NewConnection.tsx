@@ -338,38 +338,54 @@ export function NewConnection({
             {libelleDuBouton(test.phase)}
           </Button>
 
-          {test.phase === 'reussi' && (
-            <span className={styles.testOk}>
-              <Icon name="check" size={14} strokeWidth={2.4} />
-              Connecté en {test.resultat.latencyMs} ms · {test.resultat.serverVersion}
-              {test.resultat.tunnelLocalPort !== null &&
-                ` · tunnel :${test.resultat.tunnelLocalPort}`}
-            </span>
-          )}
-          {test.phase === 'reussi' && test.resultat.tlsUnverified && (
-            // **Laid et honnête.** `06b` emploie `NoTls` : un test en `verify-ca` ou
-            // `verify-full` réussit sans que l'identité du serveur ait été contrôlée. Afficher
-            // « Connecté » sans plus serait exact et trompeur. À retirer quand le TLS sera
-            // branché — pas avant.
-            <span className={styles.testWarn}>· TLS non vérifié</span>
-          )}
-          {test.phase === 'echoue' && (
-            <button type="button" className={styles.testFail} onClick={() => setEchecOuvert(true)}>
-              {test.message}
-            </button>
-          )}
-          {enregistrement.phase === 'refuse' && (
-            <span className={styles.testFail}>{enregistrement.message}</span>
-          )}
-          {!engineImplemented && (
-            // Un moteur sans adaptateur est **sélectionnable et le dit**. Le masquer ferait
-            // croire que le produit ne le prévoit pas ; le laisser muet ferait croire que
-            // « Tester » est cassé. Voir `specs/08b` § Hors périmètre.
-            <span className={styles.unsupported}>
-              {ENGINES[draft.engine].label} n’a pas encore d’adaptateur
-            </span>
-          )}
-          <span className={styles.footerSpacer} />
+          {/* **Une seule fente souple entre les deux groupes de boutons**, et c'est elle qui les
+              écarte : le pied n'a plus de cale séparée. La cale et un message étaient deux items
+              flex, et le repli d'une ligne flex précède sa compression — un verdict long faisait
+              donc passer « Enregistrer & ouvrir » à la ligne *avant* que quiconque ait eu
+              l'occasion de se réduire. En `flex: 1 1 0`, la fente ne demande rien, prend ce qui
+              reste, et ses messages s'y élident. */}
+          <span className={styles.footerMessage}>
+            {test.phase === 'reussi' && (
+              <span className={styles.testOk}>
+                <Icon name="check" size={14} strokeWidth={2.4} className={styles.testOkIcon} />
+                <span className={styles.testOkTexte}>
+                  Connecté en {test.resultat.latencyMs} ms · {test.resultat.serverVersion}
+                  {test.resultat.tunnelLocalPort !== null &&
+                    ` · tunnel :${test.resultat.tunnelLocalPort}`}
+                  {test.resultat.tlsUnverified && (
+                    // **Laid et honnête.** `06b` emploie `NoTls` : un test en `verify-ca` ou
+                    // `verify-full` réussit sans que l'identité du serveur ait été contrôlée.
+                    // Afficher « Connecté » sans plus serait exact et trompeur. À retirer quand
+                    // le TLS sera branché — pas avant. Dans la même ligne que le verdict : à
+                    // côté, le pied en faisait un second item flex, coupé pour son compte.
+                    // L'espace avant le point médian est dans la chaîne : la mention était un
+                    // item flex, et c'est l'écart du conteneur qui l'espaçait.
+                    <span className={styles.testWarn}> · TLS non vérifié</span>
+                  )}
+                </span>
+              </span>
+            )}
+            {test.phase === 'echoue' && (
+              <button
+                type="button"
+                className={styles.testFail}
+                onClick={() => setEchecOuvert(true)}
+              >
+                {test.message}
+              </button>
+            )}
+            {enregistrement.phase === 'refuse' && (
+              <span className={styles.testFail}>{enregistrement.message}</span>
+            )}
+            {!engineImplemented && (
+              // Un moteur sans adaptateur est **sélectionnable et le dit**. Le masquer ferait
+              // croire que le produit ne le prévoit pas ; le laisser muet ferait croire que
+              // « Tester » est cassé. Voir `specs/08b` § Hors périmètre.
+              <span className={styles.unsupported}>
+                {ENGINES[draft.engine].label} n’a pas encore d’adaptateur
+              </span>
+            )}
+          </span>
           {/* **« Plus tard », et non « Annuler », quand le projet vient d'être créé** (`24c`). À ce
               moment, « Annuler » mentirait : le projet reste, et un bouton ne doit pas nommer un
               défaissement qui n'a pas lieu. C'est la règle de `08j` prise par l'autre bout. */}

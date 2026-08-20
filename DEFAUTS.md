@@ -1087,3 +1087,39 @@ mise en page sans écrire la mesure qui le tient revient à changer du CSS en es
    `--strictPort`, pour qu'un port déjà pris fasse **échouer** l'exécution au lieu de la dérouter.
    C'est la règle 6 de `REPRISE.md` sous une forme nouvelle : se brancher au mauvais serveur est une
    façon de ne pas échouer.
+
+108. **Le pied de `A2` faisait tenir trois choses sur une ligne qui n'en portait qu'une.** Signalé
+   par une capture d'écran, sur un test de connexion réussi dans l'app réelle : le verdict
+   « Connecté en 5 ms · PostgreSQL 17.6 » descendait en colonne sur quatre lignes, la mention
+   « TLS non vérifié » sur trois de plus à côté, et la phrase « le projet est créé » de `24c`
+   s'empilait à droite des boutons au lieu de passer sous eux. Trois causes emboîtées, et **aucune
+   visible d'un test unitaire** — jsdom ne calcule pas de mise en page, et le DOM était juste.
+
+   **La première** est un `flex-basis: 100%` posé sur la phrase pour la faire passer à la ligne,
+   dans un pied qui n'avait pas de `flex-wrap`. Sans `wrap`, une base de 100 % ne va à la ligne
+   nulle part : elle réclame toute la largeur, se fait comprimer, et écrase ses voisins. Le
+   commentaire du CSS affirmait le contraire depuis `24c` — il décrivait une intention, pas le
+   rendu.
+
+   **La deuxième** est la mention de TLS, rendue en frère du verdict : deux items flex se coupent
+   chacun pour son compte, et le point médian qui les liait tenait à l'écart du conteneur.
+
+   **La troisième est la plus instructive**, et la première correction est tombée dedans : ajouter
+   `flex-wrap` a fait passer la phrase sous les boutons, mais un verdict long — `version()` d'un
+   Postgres empaqueté rend « PostgreSQL 17.6 (Debian 17.6-1.pgdg120+1) », auquel s'ajoutent le port
+   du tunnel et la mention de TLS — envoyait alors « Enregistrer & ouvrir » à la ligne suivante.
+   Car **le repli d'une ligne flex se décide sur les tailles naturelles, avant toute compression** :
+   un `min-width: 0` et une ellipse, qui suffisent à empêcher un texte de se replier lui-même,
+   n'empêchent pas la ligne de se replier autour de lui. Un plafond en `ch` — la parade que
+   `.testFail` employait déjà — ne tenait qu'à trois pixels près, et tombait de toute façon en
+   édition, où le bouton d'enregistrement est plus large. La forme juste supprime la cale : **une
+   seule fente `flex: 1 1 0` entre les deux groupes de boutons**, qui écarte les boutons *et*
+   héberge les messages. Elle ne réclame aucune largeur, donc elle ne provoque aucun repli.
+
+   **Ce qui l'a attrapé** : la capture d'écran pour le défaut, puis deux mesures Playwright — la
+   phrase est-elle sous les boutons, et les trois boutons ont-ils le même centre vertical quand le
+   verdict est au plus long. La seconde a été écrite trois fois avant de mordre : mesurer la hauteur
+   du verdict le déclarait vert (il ne se replie pas, il tient sur une ligne — ce sont les *boutons*
+   qui partent), et le décor court « PostgreSQL 17.6 » laissait assez de marge pour que rien ne se
+   produise. C'est le n° 102 sous une forme nouvelle : **mettre le décor dans l'état où seule la
+   règle peut sauver la mesure**, et vérifier que la mesure rougit quand on retire la règle.

@@ -261,8 +261,21 @@
   color: var(--success);
 }
 
-.footerSpacer {
-  flex: 1;
+/*
+ * La fente entre les deux groupes de boutons du pied — et la place des messages du test.
+ *
+ * **Elle remplace la cale.** Une cale `flex: 1` et un message côte à côte formaient deux items, et
+ * le repli d'une ligne flex se décide sur les tailles *naturelles*, avant toute compression : un
+ * verdict long faisait passer « Enregistrer & ouvrir » à la ligne sans que rien ne se soit réduit.
+ * En `flex: 1 1 0`, la fente ne réclame aucune largeur — elle prend ce qui reste, et ses messages
+ * s'élident dedans.
+ */
+.footerMessage {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
 }
 
 /* --- Résultat du test de connexion, dans le pied (08d) --- */
@@ -276,6 +289,25 @@
   font-size: var(--text-dense);
   font-weight: var(--weight-semibold);
   color: var(--success-ink);
+  /* **Un verdict tient sur une ligne, ou il s'élide par la fin.** Sans cela, le pied le réduit
+   * à sa colonne la plus étroite et « Connecté en 5 ms · PostgreSQL 17.6 » descend sur quatre
+   * lignes. `min-width: 0` lève la taille minimale automatique de l'item flex : c'est elle qui
+   * empêchait la réduction. */
+  min-width: 0;
+}
+
+/* La coche ne se réduit pas avec le texte : elle reste entière devant l'ellipse. */
+.testOkIcon {
+  flex-shrink: 0;
+}
+
+/* Le texte du verdict, dans son propre bloc — `text-overflow` ne s'applique pas aux fragments
+ * anonymes d'un conteneur flex, il lui faut ce bloc pour porter l'ellipse. */
+.testOkTexte {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Échec : le pied porte un message rouge, **et la modale n'est pas surlignée** — le handoff
@@ -313,6 +345,9 @@
   font-size: var(--text-dense);
   font-weight: var(--weight-semibold);
   color: var(--warn-ink);
+  /* Portée **dans** le verdict, elle en suit la ligne : séparée, elle formait un second item
+   * flex qui se coupait pour son propre compte. */
+  white-space: nowrap;
 }
 
 /* --- Sous-modale d'échec, A3 --- */
@@ -362,13 +397,17 @@
 /*
  * La ligne « le projet est créé » de l'étape 2 (`24c`).
  *
- * Pleine largeur **sous** la rangée de boutons : le pied est en `flex`, et un `flex-basis: 100%` la
- * fait passer à la ligne sans qu'il faille l'envelopper. En encre secondaire — elle informe, elle
- * n'instruit pas.
+ * Pleine largeur **sous** la rangée de boutons : le pied est en `flex-wrap: wrap`, et un
+ * `flex-basis: 100%` la fait passer à la ligne sans qu'il faille l'envelopper. Le `wrap` du pied
+ * n'est pas un détail : sans lui, ce `flex-basis` n'allait à la ligne nulle part — il se contentait
+ * d'écraser ses voisins, et la phrase s'empilait en colonne à droite des boutons. En encre
+ * secondaire — elle informe, elle n'instruit pas.
  */
 .projetCree {
   flex-basis: 100%;
-  margin: var(--space-3) 0 0;
+  /* Une marge basse, parce que le pied n'a pas de remplissage vertical : sans elle, la phrase
+   * s'appuierait sur le bord de la modale. */
+  margin: var(--space-3) 0 var(--space-6);
   font-family: var(--font-ui);
   font-size: var(--text-label);
   font-weight: var(--weight-medium);
