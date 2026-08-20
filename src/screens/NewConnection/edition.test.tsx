@@ -178,12 +178,14 @@ describe('modifier une connexion (08g)', () => {
       connection: {
         ...BASE.connection,
         tunnel: {
-          kind: 'ssh',
-          bastionHost: 'bastion.interne',
-          bastionPort: 22,
-          username: 'dora',
-          privateKeyPath: '/Users/dora/.ssh/id_ed25519',
           localPort: null,
+          proxy: {
+            kind: 'ssh',
+            bastionHost: 'bastion.interne',
+            bastionPort: 22,
+            username: 'dora',
+            privateKeyPath: '/Users/dora/.ssh/id_ed25519',
+          },
         },
       },
     }

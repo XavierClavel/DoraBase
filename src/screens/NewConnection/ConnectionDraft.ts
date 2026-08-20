@@ -4,6 +4,7 @@ import type {
   Engine,
   EnvironmentId,
   SslMode,
+  Tunnel,
 } from '../../domain/config'
 
 /**
@@ -60,32 +61,83 @@ export type ConnectionDraft = {
 }
 
 /**
- * Le panneau « Proxy / tunnel » de `A2`, tel qu'il est saisi.
+ * Le bastion SSH, tel qu'il est saisi.
  *
- * `kind` est absent : `05a` modélise `TunnelKind` en énumération d'un seul membre (`ssh`), et
- * le mockup ne montre que « SSH » dans son sélecteur. Le champ existe à l'écran — le mockup le
- * montre — mais sa valeur est constante, donc la garder ici serait un état qui ne varie pas.
- * `08e` la posera à la conversion. Le jour où un second type apparaît, il entrera ici.
+ * `bastionPort` est une **chaîne**, même raison que `port` : un champ de saisie passe par des
+ * états qu'un `u16` interdit.
  */
-export type TunnelDraft = {
+export type ProxySshDraft = {
+  kind: 'ssh'
   bastionHost: string
-  /** Chaîne, même raison que `port` : un champ de saisie passe par des états invalides. */
   bastionPort: string
   username: string
   privateKeyPath: string
-  /**
-   * Le port local **choisi par l'app**, pas saisi. `null` tant qu'aucun tunnel n'est ouvert.
-   *
-   * `A2` affiche « auto (63342) » : le nombre est le port réellement retenu, que
-   * `SshTunnel::port_local` rend déjà (`06e`). Inventer un numéro avant l'ouverture serait un
-   * mensonge, et « auto (0) » serait pire — d'où `null`, qui n'affiche que « auto ».
-   */
-  localPort: number | null
 }
 
-/** Un tunnel neuf : le port 22 est celui de SSH, le reste est à saisir. */
-export function emptyTunnel(): TunnelDraft {
-  return { bastionHost: '', bastionPort: '22', username: '', privateKeyPath: '', localPort: null }
+/**
+ * Le proxy Cloud SQL, tel qu'il est saisi.
+ *
+ * `credentialsFilePath` est une **chaîne vide** quand rien n'est choisi, là où le modèle porte
+ * `None` : un champ de saisie ne peut pas contenir `null`. La traduction se fait à la
+ * conversion, une seule fois. Le vide signifie « identifiants par défaut de l'application » —
+ * le cas courant, et une valeur valable, pas un champ oublié.
+ */
+export type ProxyCloudSqlDraft = {
+  kind: 'cloud-sql'
+  /** `projet:région:instance`. Non validé ici : `06g` refuse à l'ouverture, avec le message du
+   * proxy lui-même — un nom peut devenir valable entre la saisie et la connexion. */
+  instanceConnectionName: string
+  credentialsFilePath: string
+}
+
+/**
+ * Ce qui **diffère** entre les deux sortes, en saisie.
+ *
+ * **Une union discriminée, comme `Proxy` de `05d`**, et pas seulement par symétrie : Cloud SQL
+ * n'est pas dans le handoff, donc aucune maquette ne rattrapera un panneau qui lirait
+ * `bastionHost` sur un proxy Cloud SQL. Le compilateur le rattrape ; c'est ce qui remplace la
+ * maquette comme garde-fou.
+ */
+export type ProxyDraft = ProxySshDraft | ProxyCloudSqlDraft
+
+/** La sorte de proxy, telle que le sélecteur « Type » la nomme. */
+export type ProxyKind = ProxyDraft['kind']
+
+/**
+ * Le panneau « Proxy / tunnel » de `A2`, tel qu'il est saisi.
+ *
+ * `localPort` est **hors de `proxy`** parce qu'il est vrai des deux sortes — c'est ce que `05d`
+ * exprime en le sortant de l'énumération, et le panneau le rend visible : la seule partie qui
+ * ne bouge pas d'un visage à l'autre est la seule qui est commune.
+ */
+export type TunnelDraft = {
+  /**
+   * Le port local **choisi par l'app**, pas saisi. `null` tant qu'aucun proxy n'est ouvert.
+   *
+   * `A2` affiche « auto (63342) » : le nombre est le port réellement retenu, que
+   * `SshTunnel::port_local` (`06e`) et `CloudSqlProxy::port_local` (`06g`) rendent déjà.
+   * Inventer un numéro avant l'ouverture serait un mensonge, et « auto (0) » serait pire —
+   * d'où `null`, qui n'affiche que « auto ».
+   */
+  localPort: number | null
+  proxy: ProxyDraft
+}
+
+/** Un proxy neuf de la sorte demandée. */
+export function emptyProxy(kind: ProxyKind): ProxyDraft {
+  switch (kind) {
+    case 'ssh':
+      // 22 est le port de SSH : le seul champ préremplissable de cette sorte, parce qu'il est
+      // vrai pour la quasi-totalité des bastions.
+      return { kind: 'ssh', bastionHost: '', bastionPort: '22', username: '', privateKeyPath: '' }
+    case 'cloud-sql':
+      return { kind: 'cloud-sql', instanceConnectionName: '', credentialsFilePath: '' }
+  }
+}
+
+/** Un tunnel neuf de la sorte demandée. */
+export function emptyTunnel(kind: ProxyKind): TunnelDraft {
+  return { localPort: null, proxy: emptyProxy(kind) }
 }
 
 /**
@@ -129,6 +181,46 @@ export function emptyDraft(): ConnectionDraft {
  * jamais la valeur — le front ne l'a donc pas, et ne doit pas l'avoir. Un champ vide veut dire
  * « inchangé », ce que `update_variant` applique.
  */
+/**
+ * Le tunnel enregistré, retraduit en brouillon (`08g`).
+ *
+ * **Un `switch` sur la sorte, et non une lecture de champs** : depuis `05d`, `Proxy` est une union
+ * discriminée, donc lire `bastionHost` sans discriminer ne compile pas. C'est exactement le
+ * garde-fou que `08k` cherchait — Cloud SQL n'ayant pas de maquette, aucune relecture visuelle
+ * n'aurait rattrapé un panneau qui lit les champs de l'autre sorte.
+ */
+function brouillonDeProxy(tunnel: Tunnel): TunnelDraft {
+  // Le port local est **attribué à l'ouverture**, jamais saisi : `06e` et `06g` le choisissent
+  // libre sur la machine. Le reprendre de la configuration afficherait un port d'une session
+  // précédente, qui n'a plus cours.
+  const localPort = null
+
+  switch (tunnel.proxy.kind) {
+    case 'ssh':
+      return {
+        localPort,
+        proxy: {
+          kind: 'ssh',
+          bastionHost: tunnel.proxy.bastionHost,
+          bastionPort: String(tunnel.proxy.bastionPort),
+          username: tunnel.proxy.username,
+          privateKeyPath: tunnel.proxy.privateKeyPath,
+        },
+      }
+    case 'cloud-sql':
+      return {
+        localPort,
+        proxy: {
+          kind: 'cloud-sql',
+          instanceConnectionName: tunnel.proxy.instanceConnectionName,
+          // Le modèle porte `null` quand rien n'est choisi, le champ de saisie une chaîne vide :
+          // la traduction se fait ici, comme `tunnelDraftToTunnel` la fait dans l'autre sens.
+          credentialsFilePath: tunnel.proxy.credentialsFilePath ?? '',
+        },
+      }
+  }
+}
+
 export function draftDepuisLaVariante(
   project: string,
   database: Database,
@@ -152,18 +244,6 @@ export function draftDepuisLaVariante(
     caCertificate: variant.caCertificate ?? '',
     readOnly: variant.readOnly,
     reconnectOnStartup: variant.reconnectOnStartup,
-    tunnel:
-      variant.tunnel === null
-        ? null
-        : {
-            bastionHost: variant.tunnel.bastionHost,
-            bastionPort: String(variant.tunnel.bastionPort),
-            username: variant.tunnel.username,
-            privateKeyPath: variant.tunnel.privateKeyPath,
-            // Le port local est **attribué à l'ouverture**, jamais saisi : `06e` le choisit libre
-            // sur la machine. Le reprendre de la configuration afficherait un port d'une session
-            // précédente, qui n'a plus cours.
-            localPort: null,
-          },
+    tunnel: variant.tunnel === null ? null : brouillonDeProxy(variant.tunnel),
   }
 }

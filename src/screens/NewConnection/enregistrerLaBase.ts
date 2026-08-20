@@ -12,6 +12,7 @@ import type {
   UpdateVariantRequest,
 } from '../../domain/config'
 import type { ConnectionDraft } from './ConnectionDraft'
+import { tunnelDraftToTunnel } from './tunnelDraftToTunnel'
 
 /**
  * Appelle la commande `save_database`, et rend les projets **à jour**.
@@ -113,7 +114,6 @@ export function draftToUpdateRequest(
  */
 export function draftToSaveRequest(draft: ConnectionDraft): SaveDatabaseRequest {
   const port = Number.parseInt(draft.port, 10)
-  const bastionPort = draft.tunnel ? Number.parseInt(draft.tunnel.bastionPort, 10) : 0
 
   return {
     project: draft.project,
@@ -133,16 +133,7 @@ export function draftToSaveRequest(draft: ConnectionDraft): SaveDatabaseRequest 
       caCertificate: draft.caCertificate.trim() === '' ? null : draft.caCertificate.trim(),
       readOnly: draft.readOnly,
       reconnectOnStartup: draft.reconnectOnStartup,
-      tunnel: draft.tunnel
-        ? {
-            kind: 'ssh',
-            bastionHost: draft.tunnel.bastionHost,
-            bastionPort: Number.isFinite(bastionPort) ? bastionPort : 0,
-            username: draft.tunnel.username,
-            privateKeyPath: draft.tunnel.privateKeyPath,
-            localPort: null,
-          }
-        : null,
+      tunnel: tunnelDraftToTunnel(draft.tunnel),
     },
     password: draft.password === '' ? null : draft.password,
   }
