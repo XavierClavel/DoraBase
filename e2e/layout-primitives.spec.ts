@@ -102,6 +102,12 @@ test("l'onglet actif de TabStrip est conforme au mockup", async ({ page }) => {
   // 34 px déclarés plus 1 px de filet bas : le mockup rend 35, en `content-box`.
   expect(mesures.bandeHauteur).toBe(35)
   // Largeur relevée sur l'onglet `orders` du mockup, à police et libellé identiques.
+  //
+  // **Le libellé n'a volontairement pas d'ellipse.** Une a été posée un moment — les consoles se
+  // renomment depuis le 20 août 2026, donc un nom peut être long — puis retirée : `overflow: hidden`
+  // établit un contexte de formatage dont la largeur s'arrondit au pixel, ce qui déplaçait cette cote
+  // à 99 et l'écart libellé/croix à 7,8. Un onglet long est déjà géré, la bande défilant ; changer
+  // deux mesures de fidélité pour un cas que rien ne signale ne valait pas la peine.
   expect(mesures.ongletLargeur).toBe(98.3)
   // `--paper` (#FBF7EF), pas `--paper-bright` (#FFFDF8).
   expect(mesures.fond).toBe('rgb(251, 247, 239)')

@@ -7,7 +7,7 @@ import type { ColumnInfo, ConnectionState, SchemaInfo, TableSummary } from '../.
 import { REGLAGES, TRIO_DE_TEST } from '../NewConnection/pourLesTests'
 import { type Charge, idBase, idProjet, idSchema, type Noeud } from './arbre'
 import type { CibleDeSuppression } from './DeleteConnectionDialog'
-import { ExplorerSidebar, filtrer } from './ExplorerSidebar'
+import { ExplorerSidebar, type ExplorerSidebarProps, filtrer } from './ExplorerSidebar'
 
 const PROJETS: Project[] = [
   {
@@ -19,8 +19,14 @@ const PROJETS: Project[] = [
       // **Les connexions sont dans l'environnement actif du projet** (`23g`) : l'arbre ne montre que
       // celles-là, et un décor qui les déclare ailleurs afficherait un arbre vide — ce qui ferait
       // échouer trente tests pour une raison qui n'a rien à voir avec eux.
-      { name: 'analytics', engine: 'postgresql', environment: 'prod', connection: REGLAGES },
-      { name: 'shop', engine: 'mysql', environment: 'prod', connection: REGLAGES },
+      {
+        name: 'analytics',
+        engine: 'postgresql',
+        environment: 'prod',
+        connection: REGLAGES,
+        consoles: [],
+      },
+      { name: 'shop', engine: 'mysql', environment: 'prod', connection: REGLAGES, consoles: [] },
     ],
   },
 ]
@@ -51,6 +57,9 @@ function Piloté({
   onEditProject,
   onDelete,
   modificationsEnAttenteDe,
+  onRefresh,
+  consoles,
+  projets = PROJETS,
 }: {
   charge?: Charge
   initial?: string[]
@@ -60,6 +69,9 @@ function Piloté({
   onEditProject?: (project: string) => void
   onDelete?: (cible: CibleDeSuppression) => Promise<{ leftoverSecrets: string[] }>
   modificationsEnAttenteDe?: (cible: CibleDeSuppression) => number
+  onRefresh?: () => void
+  consoles?: ExplorerSidebarProps['consoles']
+  projets?: Project[]
 }) {
   const [deplies, setDeplies] = useState(new Set(initial))
   const [choisi, setChoisi] = useState<string | null>(null)
@@ -67,7 +79,7 @@ function Piloté({
     <>
       <Sprite />
       <ExplorerSidebar
-        projects={PROJETS}
+        projects={projets}
         deplies={deplies}
         charge={charge}
         etatDe={() => etat}
@@ -76,6 +88,8 @@ function Piloté({
         onEditProject={onEditProject}
         onDelete={onDelete}
         modificationsEnAttenteDe={modificationsEnAttenteDe}
+        onRefresh={onRefresh}
+        consoles={consoles}
         onSelect={(n) => setChoisi(n.id)}
         onToggle={(n) => {
           onToggleSpy?.(n)
@@ -246,12 +260,27 @@ test('le filtre affiche son compteur, et seulement quand il est actif', async ()
 
 // --- Le pied ---
 
-test('le pied porte les deux actions du handoff, la seconde renommée', () => {
+test('le pied porte les actions de création, et plus le rafraîchissement', () => {
   render(<Piloté />)
   // **« Ajouter une connexion », et non « une base »** (`24d`) : depuis `23b`, une base présente en dev
   // et en prod fait deux connexions. Écart au handoff assumé, qui dit « base ».
   expect(screen.getByRole('button', { name: /Ajouter une connexion/ })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'Rafraîchir' })).toBeInTheDocument()
+  // **Le pied ne porte plus que des gestes de création** (20 août 2026). « Rafraîchir » y était la
+  // seule action qui ne créait rien, et la seule sans libellé ; elle vit maintenant dans le menu
+  // « … » d'une ligne projet, sous son nom long — voir le test qui suit, qui vérifie qu'elle n'a pas
+  // disparu du produit au passage.
+  expect(screen.queryByRole('button', { name: 'Rafraîchir' })).toBeNull()
+})
+
+// **Le geste n'est pas supprimé, il est déplacé** — et ce test est ce qui l'atteste. `rafraichir`
+// vide tout le cache de l'arbre, et `useArbre` justifie l'absence de rechargement au second dépliage
+// par son existence : sans lui, un arbre périmé ne se récupérerait qu'en redémarrant l'application.
+test('« Rafraîchir l’arborescence » vit dans le menu d’une ligne projet', async () => {
+  const rafraichir = vi.fn()
+  render(<Piloté onRefresh={rafraichir} />)
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de Atelier Nord' }))
+  await userEvent.click(screen.getByRole('button', { name: /Rafraîchir l’arborescence/ }))
+  expect(rafraichir).toHaveBeenCalledOnce()
 })
 
 test('« Nouveau projet » n’est rendu que si le geste existe', () => {
@@ -511,4 +540,93 @@ describe('la section contextuelle : colonnes déclarées ou schéma déduit (`13
     monterAvec([champ('presque', 0.996)])
     expect(screen.queryByText(/%/)).toBeNull()
   })
+})
+
+// --- Les consoles dans l'arbre, et leur renommage sur place ---
+
+/** Le décor de `PROJETS`, avec une console sur la connexion `analytics`. */
+function avecConsole(nom: string): Project[] {
+  return PROJETS.map((projet) => ({
+    ...projet,
+    databases: projet.databases.map((base) =>
+      base.name === 'analytics' ? { ...base, consoles: [{ name: nom, sql: '' }] } : base,
+    ),
+  }))
+}
+
+const GESTES_DE_CONSOLE = {
+  onCreer: () => {},
+  onRenommer: () => {},
+  onRetirer: () => {},
+}
+
+test('un double-clic sur une console ouvre le champ de renommage', async () => {
+  render(
+    <Piloté
+      projets={avecConsole('console 1')}
+      initial={[idProjet('Atelier Nord'), idBase('Atelier Nord', 'analytics')]}
+      consoles={GESTES_DE_CONSOLE}
+    />,
+  )
+  await userEvent.dblClick(screen.getByRole('treeitem', { name: /console 1/ }))
+  // Le champ prend la place du libellé, et son contenu est **présélectionné** : un renommage
+  // commence presque toujours par tout remplacer.
+  const champ = screen.getByLabelText('Nouveau nom de console 1')
+  expect(champ).toHaveValue('console 1')
+})
+
+test('« Entrée » valide le renommage, « Échap » l’abandonne', async () => {
+  const renommer = vi.fn()
+  const gestes = { ...GESTES_DE_CONSOLE, onRenommer: renommer }
+  render(
+    <Piloté
+      projets={avecConsole('console 1')}
+      initial={[idProjet('Atelier Nord'), idBase('Atelier Nord', 'analytics')]}
+      consoles={gestes}
+    />,
+  )
+
+  await userEvent.dblClick(screen.getByRole('treeitem', { name: /console 1/ }))
+  await userEvent.clear(screen.getByLabelText('Nouveau nom de console 1'))
+  await userEvent.type(screen.getByLabelText('Nouveau nom de console 1'), 'Audit{Enter}')
+  expect(renommer).toHaveBeenCalledWith('Atelier Nord', 'analytics', 'prod', 'console 1', 'Audit')
+
+  renommer.mockClear()
+  await userEvent.dblClick(screen.getByRole('treeitem', { name: /console 1/ }))
+  await userEvent.type(screen.getByLabelText('Nouveau nom de console 1'), 'Perdu{Escape}')
+  // **Un double-clic de trop doit pouvoir être abandonné sans réfléchir.**
+  expect(renommer).not.toHaveBeenCalled()
+  expect(screen.queryByLabelText('Nouveau nom de console 1')).toBeNull()
+})
+
+test('un nom vide ou inchangé n’envoie rien', async () => {
+  const renommer = vi.fn()
+  render(
+    <Piloté
+      projets={avecConsole('console 1')}
+      initial={[idProjet('Atelier Nord'), idBase('Atelier Nord', 'analytics')]}
+      consoles={{ ...GESTES_DE_CONSOLE, onRenommer: renommer }}
+    />,
+  )
+
+  await userEvent.dblClick(screen.getByRole('treeitem', { name: /console 1/ }))
+  await userEvent.clear(screen.getByLabelText('Nouveau nom de console 1'))
+  await userEvent.keyboard('{Enter}')
+  // Les deux sont des non-gestes : les envoyer ferait refuser le premier par le cœur et écrire le
+  // second pour rien.
+  expect(renommer).not.toHaveBeenCalled()
+})
+
+test('les autres lignes de l’arbre ne se renomment pas au double-clic', async () => {
+  render(
+    <Piloté
+      projets={avecConsole('console 1')}
+      initial={[idProjet('Atelier Nord'), idBase('Atelier Nord', 'analytics')]}
+      consoles={GESTES_DE_CONSOLE}
+    />,
+  )
+  // Le nom d'une connexion se change dans sa modale de configuration, qui porte bien d'autres
+  // champs ; celui d'une table ou d'un schéma vient du serveur.
+  await userEvent.dblClick(screen.getByRole('treeitem', { name: /analytics/ }))
+  expect(screen.queryByLabelText(/Nouveau nom de/)).toBeNull()
 })

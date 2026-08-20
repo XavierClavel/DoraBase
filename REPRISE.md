@@ -71,6 +71,89 @@ consignés dans la spec de l'écran concerné.
 « à trancher » est pire que pas de résumé — c'est arrivé une fois, et cela a coûté une décision
 d'ordonnancement prise sur la foi d'un blocage inexistant.
 
+## 2 bis. Le chantier du 20 août 2026 — le pied de la sidebar, puis les consoles
+
+Deux lots, dans cet ordre, tous deux terminés et verts (821 Vitest, 218 Playwright, 425 Rust).
+
+**Le pied de la sidebar de l'explorateur.** Trois gestes de création portent désormais la même
+facture — bordés, 28 px, `--radius-field` —, la hiérarchie passant par la largeur : « Nouvelle
+console » sur toute la ligne, « Connexion » et « Projet » se partageant la suivante. Le pied passe de
+28 px à 78 px, pris sur la hauteur de l'arbre, et c'est un arbitrage assumé. `ConsoleFooterButton` est
+remplacé par `src/ui/SidebarFooter/` — et la dette « promouvoir 26 px dans `Button` » se solde **par
+la négative**, `Button` étant en `content-box` (voir `DEFAUTS.md` n° 103). L'icône « Rafraîchir » a
+quitté le pied pour le menu « … » d'une ligne projet, sous le nom long « Rafraîchir l'arborescence » ;
+elle n'est pas supprimée, `useArbre` s'appuyant sur son existence.
+
+**Les consoles sont devenues des objets persistés, sous la connexion.** Elles apparaissent dans
+l'arbre sous leur connexion, avant ses schémas ; on en crée depuis le menu « … » d'une connexion, on
+les renomme et on les retire depuis le leur ; leur texte s'écrit tout seul, amorti à 400 ms.
+
+**Le pied ne porte plus « Nouvelle console ».** Quatrième passage : une console appartient à une
+connexion, et le pied ne sait pas laquelle — il fallait deviner le contexte, et se tromper dès que
+deux connexions étaient dépliées. Le menu « … » de la connexion est désormais le seul chemin, et
+**créer ouvre** l'onglet, sans quoi il faudrait retrouver la console dans l'arbre pour la cliquer.
+Le pied ne garde que les deux gestes de structure, sur une ligne.
+
+Conséquence : huit specs e2e ouvraient une console par ce bouton. Elles passent par
+`e2e/pourLesTests.ts` → `ouvrirUneConsole(page, connexion)`, qui **survole** la ligne avant de cliquer
+son « … » — le menu est en `visibility: hidden` hors survol, et Playwright refuse de cliquer un
+élément invisible : sans le survol, l'attente expire au bout de trente secondes sans rien dire
+d'utile.
+
+**Les brouillons existent toujours**, et c'est voulu : « Ouvrir dans la console » depuis le DDL
+(`DdlPanel`) ouvre un onglet volatile, que « Enregistrer » fait exister sous « console N ».
+`baptiserLeBrouillon` garde donc son objet.
+
+**Et aucune modale ne nomme plus rien.** Un troisième passage a retiré les deux fenêtres de nommage :
+
+- **La création prend « console N »**, le plus petit numéro libre sur la connexion — la même règle que
+  les brouillons d'onglets. Nommer avant d'avoir écrit revient à demander un titre pour une page
+  blanche : on tape n'importe quoi et on le regrette. Le bouton « Enregistrer » d'un brouillon suit la
+  même règle, et `baptiserLeBrouillon` fait passer l'onglet de volatile à persisté.
+- **Le renommage se fait sur la ligne**, au double-clic — et **aussi sur l'onglet**, même geste.
+  `Entrée` valide, `Échap` abandonne, la perte de focus valide — cliquer ailleurs après avoir tapé
+  veut dire « c'est bon ». Un nom vide ou inchangé n'envoie rien. Le champ est la primitive
+  `src/ui/ChampDeRenommage/`, partagée par `TreeRow.edition` et `TabStrip` : le comportement d'un
+  renommage sur place n'a pas de raison de différer selon le libellé qu'il remplace.
+- **Le champ est discret** : un voile blanc translucide, sans bordure. Deux passes pour y arriver — un
+  liseré d'accent d'abord, puis un fond `--field` blanc. Translucide et non un ton de la palette,
+  parce qu'un fond opaque doit choisir son support : sur l'aplat d'accent d'une ligne sélectionnée —
+  l'état exact d'une ligne qu'on vient de double-cliquer — le même ton redevenait une tache blanche.
+- **L'onglet ne change pas de taille en édition**, et c'est ce qui a demandé le plus d'essais. Un
+  `<input>` sans largeur déclarée porte celle de son attribut `size` implicite, ~177 px, et cette
+  largeur *pousse* : l'onglet s'élargissait sous le curseur au double-clic. `flex: 1 1 0` avec
+  `width: 0` neutralise cette largeur intrinsèque. Une tentative intermédiaire *fixait* au contraire
+  une largeur d'édition, donc aggravait le défaut.
+- **L'entrée « Renommer… » du menu « … » subsiste**, mais elle ouvre le même champ : un geste qui
+  n'existe qu'au double-clic est invisible pour qui ne l'essaie pas, et inatteignable au clavier.
+- `SaveQueryDialog` et `RenameQueryDialog` sont **supprimés** — plus aucun appelant.
+- Seules les consoles se renomment ainsi : le nom d'une table ou d'un schéma vient du serveur, celui
+  d'une connexion se change dans sa modale de configuration, qui porte bien d'autres champs.
+
+**« Mes requêtes » (`12f`) n'existe plus** : le concept est absorbé. C'était une décision du
+commanditaire, prise en connaissance du coût. Les requêtes déjà écrites sur le disque sont **reprises
+sans perte** vers la première connexion déclarée du projet — le champ `queries` est conservé et vidé
+après transfert, jamais supprimé du modèle, faute de quoi `serde` les effacerait en silence. La
+reprise se rejoue à chaque chargement, un projet sans connexion n'ayant nulle part où verser. Tout
+cela est détaillé dans `DEFAUTS.md` n° 104.
+
+**Ce qui reste ouvert sur ce chantier** — aucune de ces trois choses ne bloque :
+
+- `e2e/12f-requetes-enregistrees.spec.ts` est devenu `12f-consoles-persistees.spec.ts`. Le **nom de
+  fichier garde le numéro `12f`**, alors que la spec `specs/12f-*.md` décrit encore les requêtes du
+  projet : le texte de la spec n'a pas été réécrit, le commanditaire ayant demandé de coder sans
+  passer par les specs. À trancher : réécrire `12f`, ou lui donner un successeur.
+- **Renommer depuis l'onglet est à l'étroit sur un nom très court.** La largeur minimale d'un onglet
+  vaut 98,3 px — la cote de l'onglet `orders` du handoff, la plus petite que le mockup connaisse — et
+  un minimum plus généreux (120 px avait été essayé) poussait cet onglet-là au-delà de sa cote et
+  cassait `e2e/layout-primitives.spec.ts`. Sur un nom d'un caractère, le champ n'offre donc qu'une
+  trentaine de pixels utiles. Renommer depuis la ligne d'arbre reste le geste confortable. **Si un
+  écart au handoff est acceptable ici, c'est l'arbitrage à rendre.**
+- Un brouillon (« Ouvrir dans la console » depuis le DDL) et une console persistée s'appellent tous
+  deux « console N » dans la bande d'onglets, sans qu'aucun libellé ne les distingue.
+- Le renommage sur place n'est **pas branché sur les autres nœuds de l'arbre**, faute d'objet : à
+  revoir si un jour une connexion doit pouvoir se renommer sans passer par sa modale.
+
 ## 3. Où en est le travail
 
 **83 specs écrites, toutes implémentées sauf `19a`, `20` et `21`** — voir le tableau ci-dessous et le

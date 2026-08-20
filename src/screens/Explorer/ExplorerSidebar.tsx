@@ -1,12 +1,15 @@
 import { type ReactNode, useMemo, useState } from 'react'
-import { Icon } from '../../design/icons/Icon'
-import type { EnvironmentId, Project, SavedQuery } from '../../domain/config'
+import type { EnvironmentId, Project } from '../../domain/config'
 import type { ColumnInfo, ConnectionState } from '../../domain/engine'
 import { Badge } from '../../ui/Badge/Badge'
 import { ColumnRow } from '../../ui/ColumnRow/ColumnRow'
-import { ConsoleFooterButton } from '../../ui/ConsoleFooterButton/ConsoleFooterButton'
 import { Sidebar } from '../../ui/Sidebar/Sidebar'
 import { SidebarFilterBar } from '../../ui/SidebarFilterBar/SidebarFilterBar'
+import {
+  SidebarFooter,
+  SidebarFooterButton,
+  SidebarFooterRow,
+} from '../../ui/SidebarFooter/SidebarFooter'
 import { SidebarSectionTitle } from '../../ui/SidebarSectionTitle/SidebarSectionTitle'
 import { TreeRow } from '../../ui/TreeRow/TreeRow'
 import { aplatir, type Charge, type Deplies, type Noeud } from './arbre'
@@ -14,7 +17,7 @@ import { type CibleDeSuppression, DeleteConnectionDialog } from './DeleteConnect
 import styles from './ExplorerSidebar.module.css'
 import { RowMenu } from './RowMenu'
 
-type ExplorerSidebarProps = {
+export type ExplorerSidebarProps = {
   projects: readonly Project[]
   deplies: Deplies
   charge: Charge
@@ -35,19 +38,24 @@ type ExplorerSidebarProps = {
    */
   onNewProject?: () => void
   onRefresh?: () => void
-  /** Ouvre une console SQL sur la base courante (`12a`). */
-  onNewConsole?: () => void
   /**
-   * Les requêtes enregistrées du projet courant (`12f`), et ce qu'on peut en faire.
+   * Ce qu'on peut faire d'une console depuis l'arbre — créer, renommer, retirer.
    *
-   * Absentes ou vides, la section « Mes requêtes » n'existe pas : une section vide serait du bruit sur
-   * un écran déjà dense.
+   * **La création part du menu d'une connexion**, et de là seulement : une console appartient à une
+   * connexion, et l'endroit où on la crée doit dire laquelle. Créer l'ouvre — personne ne crée une
+   * console pour ne pas l'ouvrir.
    */
-  requetes?: {
-    liste: readonly SavedQuery[]
-    onOuvrir: (requete: SavedQuery) => void
-    onRenommer?: (nom: string) => void
-    onRetirer?: (nom: string) => void
+  consoles?: {
+    onCreer: (project: string, database: string, environment: EnvironmentId) => void
+    /** Le nouveau nom est **fourni** : le renommage se fait sur place, il n'ouvre pas de modale. */
+    onRenommer: (
+      project: string,
+      database: string,
+      environment: EnvironmentId,
+      nom: string,
+      nouveau: string,
+    ) => void
+    onRetirer: (project: string, database: string, environment: EnvironmentId, nom: string) => void
   }
   /**
    * Modifier la configuration d'une base depuis son « … » (`08h`) — ouvre la modale de `08g`.
@@ -129,8 +137,7 @@ export function ExplorerSidebar({
   onAddDatabase,
   onNewProject,
   onRefresh,
-  onNewConsole,
-  requetes,
+  consoles,
   onEditDatabase,
   onEditProject,
   onDelete,
@@ -140,6 +147,14 @@ export function ExplorerSidebar({
   modifications,
 }: ExplorerSidebarProps) {
   const [filtre, setFiltre] = useState('')
+  /**
+   * La console en cours de renommage, par identité de nœud.
+   *
+   * **Ici et non chez l'appelant** : c'est un état d'interface, qui meurt avec la ligne et n'intéresse
+   * ni l'écran de travail ni le disque. Le remonter aurait fait voyager un identifiant de nœud à
+   * travers deux composants pour revenir se poser sur la même ligne.
+   */
+  const [enRenommage, setEnRenommage] = useState<string | null>(null)
   const [aRetirer, setARetirer] = useState<CibleDeSuppression | null>(null)
   const demanderLeRetrait = onDelete === undefined ? undefined : setARetirer
 
@@ -173,65 +188,51 @@ export function ExplorerSidebar({
           />
         }
         footer={
-          // `ConsoleFooterButton` de `04` n'était pas réemployé pour le pied de `A4` : son libellé
-          // est figé (« Nouvelle console ») et sa hauteur est de 26 px, là où ce pied en fait 28 et
-          // porte deux actions. **`12a` lui donne enfin son usage**, juste au-dessus — c'est là que
-          // le mockup d'`A7` le place, et son libellé figé cesse d'être une limite.
-          <>
-            {onNewConsole && <ConsoleFooterButton onClick={onNewConsole} />}
-            <div className={styles.footer}>
-              {/* **Deux pastilles de même facture, aux libellés courts** — refonte du 19 août 2026.
-                  Le pied portait deux libellés entiers (« Ajouter une connexion », « Nouveau projet »)
-                  côte à côte : ils ne tenaient pas dans la colonne, revenaient à la ligne, et le
-                  retour à la ligne **séparait chaque icône de son texte** — deux actions illisibles là
-                  où le handoff n'en dessinait qu'une.
+          /* **Deux actions de création, une seule facture** — refondu le 20 août 2026, en trois
+             passes le même jour. Le pied empilait d'abord deux registres : « Nouvelle console » en
+             bouton bordé pleine largeur, puis deux pastilles nues partageant une barre de 28 px avec
+             l'icône « Rafraîchir ». Trois gestes de même nature s'annonçaient de trois façons.
 
-                  Trois décisions :
+             Il ne reste que les deux gestes de **structure**, côte à côte et de même facture.
+             « Nouvelle console » est parti à son tour : une console appartient à une connexion, et le
+             pied ne sait pas laquelle — il fallait deviner le contexte, et se tromper dès que deux
+             connexions étaient dépliées. Le menu « … » de la connexion, lui, ne devine rien.
 
-                  1. **le libellé visible est court** (« Connexion », « Projet ») et le nom accessible
-                     reste entier, par `aria-label` : ce que la voix annonce ne rétrécit pas avec la
-                     colonne, et les tests continuent de désigner l'action par son vrai nom ;
-                  2. **`nowrap` et ellipse plutôt que retour à la ligne** : une barre de 28 px ne peut
-                     pas grandir, donc le texte doit céder — proprement, et son `title` le rend en
-                     entier ;
-                  3. **le raccourci est dans l'infobulle**, comme partout ailleurs dans ce produit
-                     (`⌘E`, `⌘↩`) : un raccourci qui n'est écrit nulle part n'existe pas. */}
-              <button
-                type="button"
-                className={styles.add}
+             Les libellés visibles restent **courts** (« Connexion », « Projet ») : c'est le défaut
+             n° 102, et à 180 px — largeur minimale de la sidebar — « Ajouter une connexion » ne
+             tient pas. Le nom accessible reste entier par `aria-label`, et le raccourci vit dans
+             l'infobulle, comme `⌘E` et `⌘↩` ailleurs dans ce produit.
+
+             **« Rafraîchir » a quitté le pied** et vit dans le menu « … » de la ligne projet, sous
+             son nom long. Il n'est pas supprimé : il vide tout le cache de l'arbre, et
+             `useArbre.ts` justifie l'absence de rechargement au second dépliage par son existence
+             même — sans lui, un arbre périmé ne se récupérerait qu'en redémarrant. */
+          <SidebarFooter>
+            <SidebarFooterRow>
+              <SidebarFooterButton
+                icon="plus"
                 onClick={onAddDatabase}
                 aria-label="Ajouter une connexion"
                 title="Ajouter une connexion (⇧⌘N)"
               >
-                <Icon name="plus" size={12} strokeWidth={2.2} />
-                <span className={styles.addTexte}>Connexion</span>
-              </button>
+                Connexion
+              </SidebarFooterButton>
               {/* **Le second geste de création, ici même** (`24d`). La sidebar est l'endroit où l'on
                   regarde ses projets, donc l'endroit où l'on en ajoute un. Le sac est le glyphe du
                   projet dans tout le produit — pastille de la barre de titre, arbre, modales — donc il
                   se lit sans son libellé. */}
               {onNewProject && (
-                <button
-                  type="button"
-                  className={styles.add}
+                <SidebarFooterButton
+                  icon="bag"
                   onClick={onNewProject}
                   aria-label="Nouveau projet"
                   title="Nouveau projet (⌘N)"
                 >
-                  <Icon name="bag" size={12} strokeWidth={2.2} />
-                  <span className={styles.addTexte}>Projet</span>
-                </button>
+                  Projet
+                </SidebarFooterButton>
               )}
-              <button
-                type="button"
-                className={styles.refresh}
-                onClick={onRefresh}
-                aria-label="Rafraîchir"
-              >
-                <Icon name="refresh" size={13} strokeWidth={2} />
-              </button>
-            </div>
-          </>
+            </SidebarFooterRow>
+          </SidebarFooter>
         }
       >
         {/* `role="tree"` et `treeitem` : l'arbre est aplati dans le DOM, donc `aria-level` porte la
@@ -262,6 +263,40 @@ export function ExplorerSidebar({
                 aria-label={noeud.announce}
                 depth={noeud.depth}
                 label={noeud.label}
+                /* **Le double-clic renomme**, comme dans un explorateur de fichiers — et seulement
+                   une console : c'est le seul nœud de l'arbre dont le nom nous appartienne. Celui
+                   d'une table ou d'un schéma vient du serveur, celui d'une connexion se change dans
+                   sa modale de configuration, qui porte bien d'autres champs. */
+                onDoubleClick={
+                  noeud.kind === 'console' && consoles !== undefined
+                    ? () => setEnRenommage(noeud.id)
+                    : undefined
+                }
+                edition={
+                  enRenommage === noeud.id && consoles !== undefined
+                    ? {
+                        onValider: (nouveau) => {
+                          setEnRenommage(null)
+                          if (
+                            noeud.project === undefined ||
+                            noeud.database === undefined ||
+                            noeud.environment === undefined ||
+                            noeud.console === undefined
+                          ) {
+                            return
+                          }
+                          consoles.onRenommer(
+                            noeud.project,
+                            noeud.database,
+                            noeud.environment,
+                            noeud.console,
+                            nouveau,
+                          )
+                        },
+                        onAnnuler: () => setEnRenommage(null),
+                      }
+                    : undefined
+                }
                 icon={noeud.icon as never}
                 iconColor={noeud.iconColor}
                 chevron={noeud.chevron}
@@ -277,7 +312,15 @@ export function ExplorerSidebar({
                     </Badge>
                   ) : undefined
                 }
-                actions={menuDe(noeud, onEditDatabase, onEditProject, demanderLeRetrait)}
+                actions={menuDe(
+                  noeud,
+                  onEditDatabase,
+                  onEditProject,
+                  demanderLeRetrait,
+                  onRefresh,
+                  consoles,
+                  setEnRenommage,
+                )}
                 onClick={() => {
                   // Un clic sur une ligne dépliable fait les deux : il sélectionne *et* déplie. Le
                   // mockup ne montre pas de zone de clic distincte pour le chevron, et en inventer
@@ -289,49 +332,6 @@ export function ExplorerSidebar({
             ),
           )}
         </div>
-        {requetes && requetes.liste.length > 0 && (
-          <section className={styles.colonnes}>
-            <SidebarSectionTitle>Mes requêtes</SidebarSectionTitle>
-            {requetes.liste.map((requete) => (
-              // **Le même `TreeRow` que l'arbre**, avec son menu « … » de `08h` : une seconde ligne
-              // cliquable aux mêmes dimensions mais au code différent divergerait au premier réglage
-              // de densité.
-              <TreeRow
-                key={requete.name}
-                depth={0}
-                label={requete.name}
-                icon="star"
-                iconColor="var(--gold)"
-                onClick={() => requetes.onOuvrir(requete)}
-                actions={
-                  requetes.onRenommer || requetes.onRetirer ? (
-                    <RowMenu
-                      cible={requete.name}
-                      entrees={[
-                        {
-                          libelle: 'Renommer…',
-                          icone: 'pencil',
-                          onClick: requetes.onRenommer
-                            ? () => requetes.onRenommer?.(requete.name)
-                            : undefined,
-                          raison: RAISONS.renommerIndisponible,
-                        },
-                        {
-                          libelle: 'Retirer…',
-                          icone: 'trash',
-                          onClick: requetes.onRetirer
-                            ? () => requetes.onRetirer?.(requete.name)
-                            : undefined,
-                          raison: RAISONS.retirerIndisponible,
-                        },
-                      ]}
-                    />
-                  ) : undefined
-                }
-              />
-            ))}
-          </section>
-        )}
         {columns && (
           <section className={styles.colonnes}>
             {/* **« Schéma déduit » quand il l'est** (`13c`). Le mot est le plus important de cette
@@ -464,12 +464,33 @@ function menuDe(
   onEditDatabase: ExplorerSidebarProps['onEditDatabase'],
   onEditProject: ExplorerSidebarProps['onEditProject'],
   demanderLeRetrait: ((cible: CibleDeSuppression) => void) | undefined,
+  onRefresh: ExplorerSidebarProps['onRefresh'],
+  consoles: ExplorerSidebarProps['consoles'],
+  demanderLeRenommage: (id: string) => void,
 ): ReactNode | undefined {
   if (noeud.kind === 'project') {
     return (
       <RowMenu
         cible={noeud.label}
         entrees={[
+          {
+            /* **« Rafraîchir l'arborescence », et non « Rafraîchir »** — l'action a quitté le pied
+               de la sidebar le 20 août 2026, où son icône seule faisait nombre avec trois boutons
+               de création qu'elle ne rejoignait pas.
+
+               Le nom long lève une ambiguïté qui existait déjà : la toolbar d'une table porte un
+               « Rafraîchir » qui relit **les lignes**, quand celui-ci vide le cache de **l'arbre**.
+               Deux boutons de même nom pour deux portées différentes — `e2e/10e-toolbar.spec.ts` le
+               contournait par un commentaire.
+
+               Sa portée est celle de l'arbre entier, pas du seul projet cliqué ; le menu d'une ligne
+               projet est néanmoins le seul déjà monté, et la racine est l'endroit le moins mensonger
+               pour l'accrocher. */
+            libelle: 'Rafraîchir l’arborescence',
+            icone: 'refresh',
+            onClick: onRefresh,
+            raison: onRefresh ? undefined : RAISONS.rafraichirIndisponible,
+          },
           {
             // **« Modifier le projet… » et non « Renommer… »** (`23e`) : l'écran fait les deux, et
             // un libellé qui n'annonce que le renommage cacherait les environnements.
@@ -498,6 +519,42 @@ function menuDe(
     )
   }
 
+  /* **Le menu d'une console** : renommer, retirer. Pas de « Modifier… » — une console se modifie en
+     l'ouvrant et en y écrivant, ce que le clic sur la ligne fait déjà. */
+  if (noeud.kind === 'console') {
+    const { project, database, environment, console: nom } = noeud
+    if (
+      consoles === undefined ||
+      project === undefined ||
+      database === undefined ||
+      environment === undefined ||
+      nom === undefined
+    ) {
+      return undefined
+    }
+    return (
+      <RowMenu
+        cible={nom}
+        entrees={[
+          {
+            /* **Le même mécanisme que le double-clic**, pas une modale. L'entrée reste malgré tout :
+               un geste qui n'existe qu'au double-clic est invisible pour qui ne l'essaie pas, et
+               inatteignable au clavier. Elle passe la ligne en édition, le champ prend le focus. */
+            libelle: 'Renommer…',
+            icone: 'pencil',
+            onClick: () => demanderLeRenommage(noeud.id),
+          },
+          {
+            // **« Retirer… » et non « Supprimer… »**, comme partout : le mot est celui de `08j`.
+            libelle: 'Retirer…',
+            icone: 'trash',
+            onClick: () => consoles.onRetirer(project, database, environment, nom),
+          },
+        ]}
+      />
+    )
+  }
+
   if (noeud.kind !== 'database') return undefined
 
   // Les coordonnées viennent du **nœud**, jamais d'une déduction sur son libellé : deux bases
@@ -510,6 +567,18 @@ function menuDe(
     <RowMenu
       cible={label}
       entrees={[
+        {
+          /* **La création d'une console part d'ici**, et non du pied de la sidebar. Une console
+             appartient à une connexion : l'endroit d'où on la crée doit dire laquelle, sans quoi il
+             faudrait deviner le contexte — et se tromper dès que deux connexions sont dépliées. */
+          libelle: 'Nouvelle console…',
+          icone: 'term',
+          onClick:
+            consoles && project !== undefined && environment !== undefined
+              ? () => consoles.onCreer(project, label, environment)
+              : undefined,
+          raison: consoles ? undefined : RAISONS.consoleIndisponible,
+        },
         {
           libelle: 'Modifier…',
           icone: 'pencil',
@@ -550,6 +619,8 @@ const RAISONS = {
   retirerIndisponible: 'Cet écran n’est pas relié à la commande de retrait.',
   modifierIndisponible: 'Cet écran n’est pas relié à la modale de modification.',
   editionIndisponible: 'Cet écran n’est pas relié à la modale d’édition de projet.',
+  rafraichirIndisponible: 'Cet écran ne charge pas l’arborescence.',
+  consoleIndisponible: 'Cet écran n’est pas relié à la création de consoles.',
 }
 
 /**

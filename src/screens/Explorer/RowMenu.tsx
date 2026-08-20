@@ -12,7 +12,7 @@ type RowMenuProps = {
    */
   entrees: readonly {
     libelle: string
-    icone: 'pencil' | 'trash'
+    icone: 'pencil' | 'trash' | 'refresh' | 'term'
     onClick?: () => void
     /** La raison de l'absence, en infobulle. Requise quand `onClick` manque. */
     raison?: string

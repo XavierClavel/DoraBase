@@ -343,6 +343,22 @@ pub struct Database {
     pub engine: Engine,
     pub environment: EnvironmentId,
     pub connection: ConnectionSettings,
+    /// Les consoles SQL de cette connexion, telles que l'arbre les montre sous elle.
+    ///
+    /// **Sous la connexion, et non sous le projet** — c'est le changement du 20 août 2026, et il
+    /// renverse l'arbitrage de `12f`. Celui-ci rattachait les requêtes au projet, en faisant valoir
+    /// qu'un SQL écrit pour `analytics` en prod vaut le plus souvent pour la même base en dev. Mais
+    /// une console n'est pas un texte réutilisable : c'est un **espace de travail ouvert sur une
+    /// connexion**, avec son dialecte et son autocomplétion, et le dialecte vient du moteur de cette
+    /// connexion-là. Une console flottant au-dessus du projet n'aurait pas su lequel employer.
+    ///
+    /// Le prix est assumé : le même SQL sur deux environnements demande deux consoles. En échange,
+    /// chacune sait sur quoi elle s'exécute — ce que « Mes requêtes » ne savait jamais.
+    ///
+    /// **`default` plutôt qu'une migration de version**, comme en `12f` et `15a` : une configuration
+    /// écrite avant ce jour n'a pas ce champ, et le vecteur vide est l'état correct.
+    #[serde(default)]
+    pub consoles: Vec<Console>,
 }
 
 /// Un projet : ce que la sidebar liste. Pas des connexions — le handoff insiste.
@@ -360,17 +376,21 @@ pub struct Project {
     /// `valider`. Un projet neuf reçoit `EnvironmentDeclaration::trio_par_defaut`.
     pub environments: Vec<EnvironmentDeclaration>,
     pub databases: Vec<Database>,
-    /// Les requêtes enregistrées du projet (`12f`).
+    /// Les requêtes enregistrées de `12f`, **en transit** : elles deviennent des consoles.
     ///
-    /// **Au projet, pas à la base.** Une requête écrite pour `analytics` en `prod` vaut le plus
-    /// souvent pour la même base en `dev` : la rattacher à une variante la rendrait inutilisable dès
-    /// qu'on change d'environnement — et changer d'environnement est le geste que `A4` rend courant.
+    /// Ce champ n'est plus alimenté depuis le 20 août 2026 ; il n'existe que pour ne rien perdre des
+    /// configurations déjà écrites. `migrer_requetes_en_consoles` le vide au chargement en versant
+    /// chaque requête dans la première connexion déclarée du projet.
     ///
-    /// **`default` plutôt qu'une migration.** Une configuration écrite avant `12f` n'a pas ce champ :
-    /// `serde` le remplit par un vecteur vide, ce qui est l'état correct. Monter la version du format
-    /// aurait forcé une migration qui ne migre rien — la spec l'annonçait, et c'était une complication
-    /// inutile.
-    #[serde(default)]
+    /// **Pourquoi ne pas simplement retirer le champ** : `serde` ignore silencieusement ce qu'il ne
+    /// connaît pas. Supprimer `queries` du modèle ferait donc disparaître les requêtes de
+    /// l'utilisateur à la première réécriture du fichier, sans un mot. Un champ conservé et vidé
+    /// après transfert est ce qui rend la reprise observable.
+    ///
+    /// **`skip_serializing_if`** : une fois la migration faite, le champ cesse d'être écrit, et le
+    /// fichier ne porte plus la trace d'un concept qui n'existe plus. Tant qu'un projet n'a aucune
+    /// connexion où les verser, en revanche, elles restent dans le fichier et attendent la première.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub queries: Vec<SavedQuery>,
 }
 
@@ -457,7 +477,24 @@ impl Project {
     }
 }
 
-/// Une requête enregistrée (`12f`).
+/// Une console SQL persistée, rattachée à une connexion.
+///
+/// Son nom est unique **dans sa connexion**, non dans le projet : deux connexions peuvent chacune
+/// porter une console « Exploration », et c'est le cas courant d'une même base déclarée en dev et en
+/// prod.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct Console {
+    pub name: String,
+    /// Le texte de la console, persisté à chaque frappe utile.
+    ///
+    /// Une console vide est **normale** — c'est l'état d'une console qu'on vient de créer — là où une
+    /// requête enregistrée vide n'aurait rien voulu dire.
+    pub sql: String,
+}
+
+/// Une requête enregistrée (`12f`), **en transit** — voir `Project::queries`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "config.ts")]
@@ -645,6 +682,7 @@ mod tests {
             engine: Engine::PostgreSql,
             environment: EnvironmentId::brut(env),
             connection: reglages(),
+            consoles: Vec::new(),
         }
     }
 

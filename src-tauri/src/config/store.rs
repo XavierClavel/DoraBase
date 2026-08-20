@@ -224,11 +224,18 @@ pub fn load(cible: &Path) -> LoadOutcome {
     }
 
     match serde_json::from_str::<ConfigFile>(&brut) {
-        Ok(fichier) => LoadOutcome::Loaded {
-            projects: fichier.projects,
-            // Bornées à la lecture aussi : le fichier est éditable à la main.
-            preferences: fichier.preferences.borner(),
-        },
+        Ok(fichier) => {
+            let mut projects = fichier.projects;
+            // **À chaque lecture, et non une seule fois** : un projet sans connexion n'a nulle part
+            // où verser ses requêtes de `12f`, et elles attendent alors la première. Sans version de
+            // format à monter — le champ `queries` se vide de lui-même une fois transféré.
+            super::enregistrer::migrer_requetes_en_consoles(&mut projects);
+            LoadOutcome::Loaded {
+                projects,
+                // Bornées à la lecture aussi : le fichier est éditable à la main.
+                preferences: fichier.preferences.borner(),
+            }
+        }
         Err(erreur) => mettre_en_quarantaine(cible, format!("forme inattendue : {erreur}")),
     }
 }
@@ -396,6 +403,7 @@ fn migration_v1_vers_v2(brut: &str) -> Result<(Vec<Project>, Preferences), serde
                             engine: base.engine,
                             environment: EnvironmentId::brut(variante.environment),
                             connection: variante.reglages,
+                            consoles: Vec::new(),
                         })
                         .collect::<Vec<_>>()
                 })
@@ -709,12 +717,14 @@ mod tests {
                     engine: Engine::PostgreSql,
                     environment: EnvironmentId::brut("dev"),
                     connection: variante(),
+                    consoles: Vec::new(),
                 },
                 Database {
                     name: "analytics".to_owned(),
                     engine: Engine::PostgreSql,
                     environment: EnvironmentId::brut("prod"),
                     connection: variante(),
+                    consoles: Vec::new(),
                 },
             ],
         }
@@ -1012,6 +1022,7 @@ mod tests {
                 engine: Engine::PostgreSql,
                 environment: EnvironmentId::brut("dev"),
                 connection: variante_avec_reference,
+                consoles: Vec::new(),
             }],
         };
 
@@ -1055,8 +1066,12 @@ mod tests {
         }
     }
 
+    /// **Une requête de `12f` écrite sur le disque revient en console** — la reprise du 20 août
+    /// 2026, observée là où elle compte : à la lecture d'un fichier réel, et non sur un vecteur en
+    /// mémoire. C'est ce qui garantit qu'aucun texte déjà enregistré par un utilisateur ne disparaît
+    /// au premier lancement de la nouvelle version.
     #[test]
-    fn les_requetes_enregistrees_survivent_a_un_aller_retour() {
+    fn les_requetes_enregistrees_reviennent_en_consoles() {
         let dossier = tempfile::tempdir().expect("répertoire temporaire");
         let cible = dossier.path().join("config.json");
         let mut projets = vec![projet_nomme("Halle")];
@@ -1068,11 +1083,39 @@ mod tests {
         save(&cible, &projets, &Preferences::default()).expect("écriture");
         match load(&cible) {
             LoadOutcome::Loaded { projects, .. } => {
-                assert_eq!(projects[0].queries.len(), 1);
-                assert_eq!(projects[0].queries[0].name, "CA par jour");
+                // Le concept a disparu du modèle rendu à l'écran…
+                assert!(projects[0].queries.is_empty());
+                // …et le texte est sous la première connexion déclarée, avec son nom.
+                let consoles = &projects[0].databases[0].consoles;
+                assert_eq!(consoles.len(), 1);
+                assert_eq!(consoles[0].name, "CA par jour");
+                assert_eq!(consoles[0].sql, "select 1");
             }
             autre => panic!("la lecture doit réussir : {autre:?}"),
         }
+    }
+
+    /// Le champ cesse d'être écrit une fois la reprise faite : le fichier ne porte plus la trace
+    /// d'un concept qui n'existe plus.
+    #[test]
+    fn le_champ_des_requetes_disparait_du_fichier_apres_reprise() {
+        let dossier = tempfile::tempdir().expect("répertoire temporaire");
+        let cible = dossier.path().join("config.json");
+        let mut projets = vec![projet_nomme("Halle")];
+        projets[0].queries = vec![crate::config::model::SavedQuery {
+            name: "CA par jour".into(),
+            sql: "select 1".into(),
+        }];
+        save(&cible, &projets, &Preferences::default()).expect("écriture");
+
+        let projets = match load(&cible) {
+            LoadOutcome::Loaded { projects, .. } => projects,
+            autre => panic!("la lecture doit réussir : {autre:?}"),
+        };
+        save(&cible, &projets, &Preferences::default()).expect("réécriture");
+        let brut = std::fs::read_to_string(&cible).expect("lecture");
+        assert!(!brut.contains("queries"));
+        assert!(brut.contains("CA par jour"));
     }
 }
 

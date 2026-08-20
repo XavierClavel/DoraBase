@@ -20,13 +20,13 @@ pub use commands::{
     update_variant, ConfigLoad, ConfigState, CreateEnvironmentRequest, CreateProjectRequest,
     DeleteDatabaseRequest, DeleteEnvironmentRequest, DeleteEnvironmentResult, DeleteProjectRequest,
     DeleteResult, RecolorEnvironmentRequest, RenameEnvironmentRequest, RenameProjectRequest,
-    RenameProjectResult, ReorderEnvironmentsRequest, SaveDatabaseRequest, SavedQueryRequest,
+    RenameProjectResult, ReorderEnvironmentsRequest, ConsoleRequest, SaveDatabaseRequest,
     SetActiveEnvironmentRequest, UpdateVariantRequest,
 };
 pub use enregistrer::{enregistrer, reference_de, NouvelleBase, SaveError};
 pub use model::{
     Accent, ConnectionSettings, Database, Engine, EnvironmentColor, EnvironmentDeclaration,
-    EnvironmentId, Guards, ModelError, Preferences, Project, SavedQuery, SecretRef, SslMode, Theme,
+    EnvironmentId, Guards, ModelError, Console, Preferences, Project, SavedQuery, SecretRef, SslMode, Theme,
     Tunnel, TunnelKind,
 };
 pub use query::{active_variant, databases_available, validate};

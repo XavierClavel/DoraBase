@@ -2,10 +2,10 @@ import { invoke } from '@tauri-apps/api/core'
 import type {
   ConfigLoad,
   ConnectionSettings,
+  ConsoleRequest,
   Engine,
   Preferences,
   Project,
-  SavedQueryRequest,
 } from '../domain/config'
 import type {
   ApplyOutcome,
@@ -155,24 +155,29 @@ export async function applyChanges(key: DatabaseKey, plan: UpdatePlan): Promise<
  * **rendue** dans `appliedLimit` : une limite silencieuse ferait croire à une table de mille lignes.
  */
 /**
- * Enregistre une requête, ou **remplace** celle qui porte ce nom (`12f`).
+ * Crée une console vide sur une connexion.
  *
  * Rend les projets à jour, comme les autres écritures de configuration : sans cela l'écran devrait
- * relire pour afficher la liste, ce qui ferait deux allers-retours et laisserait une fenêtre où
+ * relire pour afficher l'arbre, ce qui ferait deux allers-retours et laisserait une fenêtre où
  * l'écran et le disque divergent.
  */
-export async function saveQuery(request: SavedQueryRequest): Promise<Project[]> {
-  return invoke<Project[]>('save_query', { request })
+export async function createConsole(request: ConsoleRequest): Promise<Project[]> {
+  return invoke<Project[]>('create_console', { request })
 }
 
-/** Retire une requête enregistrée (`12f`). */
-export async function deleteQuery(request: SavedQueryRequest): Promise<Project[]> {
-  return invoke<Project[]>('delete_query', { request })
+/** Écrit le texte d'une console. */
+export async function saveConsole(request: ConsoleRequest): Promise<Project[]> {
+  return invoke<Project[]>('save_console', { request })
 }
 
-/** Renomme une requête enregistrée (`12f`). */
-export async function renameQuery(request: SavedQueryRequest): Promise<Project[]> {
-  return invoke<Project[]>('rename_query', { request })
+/** Retire une console. */
+export async function deleteConsole(request: ConsoleRequest): Promise<Project[]> {
+  return invoke<Project[]>('delete_console', { request })
+}
+
+/** Renomme une console. */
+export async function renameConsole(request: ConsoleRequest): Promise<Project[]> {
+  return invoke<Project[]>('rename_console', { request })
 }
 
 /**

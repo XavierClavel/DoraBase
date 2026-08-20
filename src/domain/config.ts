@@ -63,6 +63,40 @@ caCertificate: string | null,
 readOnly: boolean, reconnectOnStartup: boolean, tunnel: Tunnel | null, };
 
 /**
+ * Une console SQL persistée, rattachée à une connexion.
+ *
+ * Son nom est unique **dans sa connexion**, non dans le projet : deux connexions peuvent chacune
+ * porter une console « Exploration », et c'est le cas courant d'une même base déclarée en dev et en
+ * prod.
+ */
+export type Console = { name: string, 
+/**
+ * Le texte de la console, persisté à chaque frappe utile.
+ *
+ * Une console vide est **normale** — c'est l'état d'une console qu'on vient de créer — là où une
+ * requête enregistrée vide n'aurait rien voulu dire.
+ */
+sql: string, };
+
+/**
+ * Ce que l'écran envoie pour créer, écrire, renommer ou retirer une console.
+ *
+ * **Elle porte l'identité complète de la connexion** — projet, base, environnement — là où
+ * `SavedQueryRequest` de `12f` ne portait que le projet. C'est la conséquence directe du
+ * déplacement des consoles sous la connexion : sans l'environnement, `analytics` en dev et
+ * `analytics` en prod seraient confondues.
+ */
+export type ConsoleRequest = { project: string, database: string, environment: EnvironmentId, name: string, 
+/**
+ * Le texte, pour l'écriture. Ignoré par la création, le renommage et le retrait.
+ */
+sql: string | null, 
+/**
+ * Le nouveau nom, pour le renommage.
+ */
+renameTo: string | null, };
+
+/**
  * Ce que `23e` envoie pour déclarer un environnement de plus.
  */
 export type CreateEnvironmentRequest = { project: string, label: string, color: EnvironmentColor, production: boolean, };
@@ -98,7 +132,24 @@ environments: Array<EnvironmentDeclaration>, };
  * Le nom reste celui de la base distante : il n'y a pas d'étiquette libre. Deux connexions homonymes
  * se distinguent par leur environnement, qui est affiché.
  */
-export type Database = { name: string, engine: Engine, environment: EnvironmentId, connection: ConnectionSettings, };
+export type Database = { name: string, engine: Engine, environment: EnvironmentId, connection: ConnectionSettings, 
+/**
+ * Les consoles SQL de cette connexion, telles que l'arbre les montre sous elle.
+ *
+ * **Sous la connexion, et non sous le projet** — c'est le changement du 20 août 2026, et il
+ * renverse l'arbitrage de `12f`. Celui-ci rattachait les requêtes au projet, en faisant valoir
+ * qu'un SQL écrit pour `analytics` en prod vaut le plus souvent pour la même base en dev. Mais
+ * une console n'est pas un texte réutilisable : c'est un **espace de travail ouvert sur une
+ * connexion**, avec son dialecte et son autocomplétion, et le dialecte vient du moteur de cette
+ * connexion-là. Une console flottant au-dessus du projet n'aurait pas su lequel employer.
+ *
+ * Le prix est assumé : le même SQL sur deux environnements demande deux consoles. En échange,
+ * chacune sait sur quoi elle s'exécute — ce que « Mes requêtes » ne savait jamais.
+ *
+ * **`default` plutôt qu'une migration de version**, comme en `12f` et `15a` : une configuration
+ * écrite avant ce jour n'a pas ce champ, et le vecteur vide est l'état correct.
+ */
+consoles: Array<Console>, };
 
 /**
  * Ce que `08j` envoie pour retirer une déclaration de connexion.
@@ -269,18 +320,22 @@ activeEnvironment: EnvironmentId,
  */
 environments: Array<EnvironmentDeclaration>, databases: Array<Database>, 
 /**
- * Les requêtes enregistrées du projet (`12f`).
+ * Les requêtes enregistrées de `12f`, **en transit** : elles deviennent des consoles.
  *
- * **Au projet, pas à la base.** Une requête écrite pour `analytics` en `prod` vaut le plus
- * souvent pour la même base en `dev` : la rattacher à une variante la rendrait inutilisable dès
- * qu'on change d'environnement — et changer d'environnement est le geste que `A4` rend courant.
+ * Ce champ n'est plus alimenté depuis le 20 août 2026 ; il n'existe que pour ne rien perdre des
+ * configurations déjà écrites. `migrer_requetes_en_consoles` le vide au chargement en versant
+ * chaque requête dans la première connexion déclarée du projet.
  *
- * **`default` plutôt qu'une migration.** Une configuration écrite avant `12f` n'a pas ce champ :
- * `serde` le remplit par un vecteur vide, ce qui est l'état correct. Monter la version du format
- * aurait forcé une migration qui ne migre rien — la spec l'annonçait, et c'était une complication
- * inutile.
+ * **Pourquoi ne pas simplement retirer le champ** : `serde` ignore silencieusement ce qu'il ne
+ * connaît pas. Supprimer `queries` du modèle ferait donc disparaître les requêtes de
+ * l'utilisateur à la première réécriture du fichier, sans un mot. Un champ conservé et vidé
+ * après transfert est ce qui rend la reprise observable.
+ *
+ * **`skip_serializing_if`** : une fois la migration faite, le champ cesse d'être écrit, et le
+ * fichier ne porte plus la trace d'un concept qui n'existe plus. Tant qu'un projet n'a aucune
+ * connexion où les verser, en revanche, elles restent dans le fichier et attendent la première.
  */
-queries: Array<SavedQuery>, };
+queries?: Array<SavedQuery>, };
 
 /**
  * Ce que `23e` envoie pour changer la couleur et le drapeau de production.
@@ -335,22 +390,9 @@ export type SaveDatabaseRequest = { project: string, database: string, engine: E
 environment: EnvironmentId, variant: ConnectionSettings, password: string | null, };
 
 /**
- * Une requête enregistrée (`12f`).
+ * Une requête enregistrée (`12f`), **en transit** — voir `Project::queries`.
  */
 export type SavedQuery = { name: string, sql: string, };
-
-/**
- * Ce que `12f` envoie pour enregistrer, renommer ou retirer une requête.
- */
-export type SavedQueryRequest = { project: string, name: string, 
-/**
- * Le SQL, pour l'enregistrement. Ignoré par le retrait.
- */
-sql: string | null, 
-/**
- * Le nouveau nom, pour le renommage.
- */
-renameTo: string | null, };
 
 /**
  * Le mécanisme réellement employé, tel que le front l'apprend.

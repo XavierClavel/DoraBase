@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { ouvrirUneConsole } from './pourLesTests'
 
 // L'assemblage : le résultat dans la grille, la barre, la confirmation. Le moteur est couvert par
 // les tests Rust sur PostgreSQL réel.
@@ -7,7 +8,7 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
-  await page.getByRole('button', { name: /Nouvelle console/ }).click()
+  await ouvrirUneConsole(page, 'analytics')
   await page.waitForSelector('.cm-content')
   await page.locator('.cm-content').click()
   await page.evaluate(() => document.fonts.ready)

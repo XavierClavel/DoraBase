@@ -26,7 +26,7 @@ export type Charge = {
   echecs: Readonly<Record<string, string>>
 }
 
-export type NoeudKind = 'project' | 'database' | 'schema' | 'object' | 'message'
+export type NoeudKind = 'project' | 'database' | 'console' | 'schema' | 'object' | 'message'
 
 export type Noeud = {
   /** Identité stable, employée pour le dépliage, la sélection et la clé de rendu. */
@@ -56,6 +56,8 @@ export type Noeud = {
   database?: string
   environment?: EnvironmentId
   schema?: string
+  /** Le nom de la console, pour un nœud `console` — distinct de `label`, qui peut être décoré. */
+  console?: string
 }
 
 /** L'identité d'un nœud. Stable, et **dérivée du chemin** : deux nœuds homonymes de branches
@@ -71,6 +73,17 @@ export function idSchema(project: string, database: string, schema: string): str
 }
 export function idObjet(project: string, database: string, schema: string, objet: string): string {
   return `o:${project}/${database}/${schema}/${objet}`
+}
+/**
+ * L'identité d'une console.
+ *
+ * **L'environnement n'y figure pas**, alors qu'il fait partie de l'identité d'une console dans le
+ * modèle : `idBase` ne le porte pas davantage, parce que l'arbre ne montre jamais que les connexions
+ * de l'environnement actif (`23g`). Deux connexions homonymes de deux environnements ne sont donc
+ * jamais listées ensemble, et leurs identités de nœud ne peuvent pas se heurter.
+ */
+export function idConsole(project: string, database: string, console: string): string {
+  return `c:${project}/${database}/${console}`
 }
 
 /**
@@ -156,6 +169,32 @@ export function aplatir(
       })
 
       if (!baseDepliee) continue
+
+      /*
+       * **Les consoles viennent avant les schémas, et sans chargement.**
+       *
+       * Elles sont déjà dans la configuration — aucun aller-retour vers le serveur ne les produit —
+       * donc elles s'affichent dès le dépliage, y compris pendant que l'introspection travaille ou
+       * après son échec. C'est voulu : une console est un texte qu'on a écrit, et le rendre
+       * dépendant d'une connexion qui répond en ferait perdre l'accès au pire moment.
+       *
+       * En tête plutôt qu'en pied : ce sont les nœuds dont le nombre est connu et petit, là où les
+       * schémas peuvent en aligner des dizaines. Les mettre après les aurait noyées.
+       */
+      for (const console of base.consoles) {
+        noeuds.push({
+          id: idConsole(projet.name, base.name, console.name),
+          kind: 'console',
+          depth: 2,
+          label: console.name,
+          icon: 'term',
+          iconColor: 'var(--ink-3)',
+          project: projet.name,
+          database: base.name,
+          environment: base.environment,
+          console: console.name,
+        })
+      }
 
       const enfants = enfantsDe(idB, charge, () =>
         (charge.schemas[idB] ?? []).flatMap((schema) =>

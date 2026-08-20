@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { rowAsInsert as rowAsInsertTauri } from '../../data/commandes'
 import type { Database, EnvironmentId, Project } from '../../domain/config'
 import type {
@@ -14,9 +14,7 @@ import { ProjectPill } from '../../shell/ProjectPill/ProjectPill'
 import { TitleBar } from '../../shell/TitleBar/TitleBar'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
 import { ConsoleView } from '../Console/ConsoleView'
-import { RenameQueryDialog } from '../Console/RenameQueryDialog'
 import { RunConfirm } from '../Console/RunConfirm'
-import { SaveQueryDialog } from '../Console/SaveQueryDialog'
 import {
   PASSERELLE_EXECUTION,
   type PasserelleExecution,
@@ -44,13 +42,16 @@ import { PASSERELLE_PREVIEW, type PasserellePreview, useSqlPrevu } from '../Tabl
 import { ColonneDroite } from './ColonneDroite'
 import {
   AUCUN_ONGLET,
+  baptiserLeBrouillon,
   type Dialecte,
   type EtatOnglets,
   fermer,
+  idDeConsolePersistee,
   idOnglet,
   ongletActif,
   ouvrir,
   ouvrirConsole,
+  renommerLaConsole,
   reordonner,
   viseeParLId,
 } from './onglets'
@@ -120,12 +121,42 @@ type WorkbenchProps = {
   passerelleExecution?: PasserelleExecution
   /** Retirer une déclaration de connexion, ou un projet (`08j`). */
   onDelete?: (cible: CibleDeSuppression) => Promise<{ leftoverSecrets: string[] }>
-  /** Enregistre une requête (`12f`). Absent, l'action est désactivée avec sa raison. */
-  onSaveQuery?: (project: string, nom: string, sql: string) => Promise<void>
-  /** Retire une requête enregistrée (`12f`). */
-  onDeleteQuery?: (project: string, nom: string) => Promise<void>
-  /** Renomme une requête enregistrée (`12f`). */
-  onRenameQuery?: (project: string, ancien: string, nouveau: string) => Promise<void>
+  /**
+   * Crée une console sur une connexion. Absent, l'entrée de menu est désactivée avec sa raison.
+   *
+   * Les quatre gestes portent l'identité complète de la connexion — projet, base, environnement —
+   * parce qu'une console appartient à une connexion et qu'`analytics` en dev et `analytics` en prod
+   * sont deux connexions (`23b`).
+   */
+  onCreateConsole?: (
+    project: string,
+    database: string,
+    environment: EnvironmentId,
+    nom: string,
+  ) => Promise<void>
+  /** Écrit le texte d'une console. */
+  onSaveConsole?: (
+    project: string,
+    database: string,
+    environment: EnvironmentId,
+    nom: string,
+    sql: string,
+  ) => Promise<void>
+  /** Retire une console. */
+  onDeleteConsole?: (
+    project: string,
+    database: string,
+    environment: EnvironmentId,
+    nom: string,
+  ) => Promise<void>
+  /** Renomme une console. */
+  onRenameConsole?: (
+    project: string,
+    database: string,
+    environment: EnvironmentId,
+    ancien: string,
+    nouveau: string,
+  ) => Promise<void>
   /** Ouvre l'écran en mode édition au montage — la démo s'en sert (`11a`). */
   edition?: boolean
 }
@@ -155,9 +186,10 @@ export function Workbench({
   onProjets,
   gestesEnvironnement,
   onDelete,
-  onSaveQuery,
-  onDeleteQuery,
-  onRenameQuery,
+  onCreateConsole,
+  onSaveConsole,
+  onDeleteConsole,
+  onRenameConsole,
   passerellePreview,
   passerelleApply,
   passerelleExecution,
@@ -307,21 +339,137 @@ export function Workbench({
   // Le SQL de `11c` vient du **moteur**, jamais de l'écran : composer un équivalent ici produirait
   // un texte *ressemblant* à celui qui partira, sous un titre qui promet l'exactitude.
   const [rafraichissement, setRafraichissement] = useState(0)
-  /** La requête dont on demande l'enregistrement (`12f`). */
-  const [aEnregistrer, setAEnregistrer] = useState<{ sql: string; nom: string } | null>(null)
-  /** La requête dont on demande le renommage (`12f`). */
-  const [aRenommerLaRequete, setARenommerLaRequete] = useState<string | null>(null)
   /**
-   * Le nom de la requête ouverte dans chaque console, quand elle vient de « Mes requêtes ».
+   * Les écritures de console en attente, par identité d'onglet.
    *
-   * **Sans lui, « Enregistrer » proposerait un nom vide** sur une requête qu'on vient d'ouvrir et de
-   * modifier : il faudrait retaper le nom exact pour mettre à jour l'entrée, ou créer un doublon sans
-   * le vouloir.
+   * **Sans amortissement, chaque touche réécrit le fichier de configuration entier** — projets,
+   * connexions, préférences — et une frappe soutenue en produirait des dizaines par seconde. Le
+   * fichier est réécrit de façon atomique, donc rien ne se corrompt, mais c'est du travail disque pur
+   * pour un état intermédiaire que personne ne lira.
+   *
+   * Le texte à l'écran, lui, n'attend jamais : il vit dans `textes`, et seul le voyage vers le disque
+   * est retardé.
    */
-  const [nomsDeRequetes, setNomsDeRequetes] = useState<Readonly<Record<string, string>>>({})
+  const ecrituresEnAttente = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+
+  // Les minuteurs ne survivent pas à l'écran : un onglet fermé pendant qu'une écriture attend n'a
+  // plus de raison de l'envoyer, et le minuteur garderait la fermeture en mémoire pour rien.
+  useEffect(() => {
+    const enAttente = ecrituresEnAttente.current
+    return () => {
+      for (const minuteur of Object.values(enAttente)) clearTimeout(minuteur)
+    }
+  }, [])
+
+  /**
+   * Renomme une console, et fait suivre tout ce qui la désigne.
+   *
+   * **Trois choses bougent avec le nom**, et en oublier une casse quelque chose de visible :
+   * l'onglet ouvert (son libellé *et* son identité, qui dérive du nom), le texte indexé par cette
+   * identité — sans quoi l'éditeur se rouvrirait vide — et l'association qui dit où écrire, faute de
+   * quoi la frappe suivante viserait un nom que le disque ne connaît plus.
+   */
+  const renommerUneConsole = useCallback(
+    async (
+      project: string,
+      database: string,
+      environment: EnvironmentId,
+      nom: string,
+      nouveau: string,
+    ) => {
+      if (onRenameConsole === undefined) return
+      await onRenameConsole(project, database, environment, nom, nouveau)
+      setEtatOnglets((etat) =>
+        renommerLaConsole(etat, { project, database, environment }, nom, nouveau),
+      )
+      const ancienId = idDeConsolePersistee({ project, database, environment }, nom)
+      const nouvelId = idDeConsolePersistee({ project, database, environment }, nouveau)
+      setTextes((precedent) => {
+        const texte = precedent[ancienId]
+        if (texte === undefined) return precedent
+        const { [ancienId]: _oublie, ...reste } = precedent
+        return { ...reste, [nouvelId]: texte }
+      })
+      setConsolesOuvertes((precedent) => {
+        if (!(ancienId in precedent)) return precedent
+        const { [ancienId]: _oubliee, ...reste } = precedent
+        return { ...reste, [nouvelId]: { project, database, environment, nom: nouveau } }
+      })
+    },
+    [onRenameConsole],
+  )
+
+  /**
+   * Crée une console sous un nom par défaut, et rend ce nom.
+   *
+   * **Aucune modale ne le demande** (20 août 2026). Nommer avant d'avoir écrit revient à demander un
+   * titre pour une page blanche : on ne sait pas encore ce que la console contiendra, donc on tape
+   * n'importe quoi et on le regrette. « console 1 » suffit, et le double-clic sur la ligne renomme
+   * quand le contenu a fini par dire de quoi il s'agit.
+   *
+   * Le numéro est le plus petit disponible **sur cette connexion**, comme pour les brouillons
+   * d'onglets : après avoir retiré « console 2 », la suivante reprend ce numéro plutôt que d'afficher
+   * « console 3 » à côté d'une « console 1 » solitaire.
+   */
+  const creerUneConsole = useCallback(
+    async (project: string, database: string, environment: EnvironmentId, sql = '') => {
+      if (onCreateConsole === undefined) return undefined
+      const pris = new Set(
+        consolesDe(projects, { project, database, environment }).map((console) => console.name),
+      )
+      let numero = 1
+      while (pris.has(`console ${numero}`)) numero += 1
+      const nom = `console ${numero}`
+
+      await onCreateConsole(project, database, environment, nom)
+      if (sql !== '' && onSaveConsole) {
+        await onSaveConsole(project, database, environment, nom, sql)
+      }
+
+      /* **Créer ouvre.** Le pied de la sidebar ne porte plus de bouton « Nouvelle console » depuis le
+         20 août 2026 : le menu « … » d'une connexion est le seul chemin, et s'il fallait ensuite
+         retrouver la console dans l'arbre pour la cliquer, créer coûterait deux gestes au lieu d'un.
+         Personne ne crée une console pour ne pas l'ouvrir. */
+      setEtatOnglets((etat) =>
+        ouvrirConsole(etat, { project, database, environment }, dialecteDe(project, database), nom),
+      )
+      const id = idDeConsolePersistee({ project, database, environment }, nom)
+      setConsolesOuvertes((precedent) => ({
+        ...precedent,
+        [id]: { project, database, environment, nom },
+      }))
+      setTextes((precedent) => ({ ...precedent, [id]: sql }))
+      return nom
+    },
+    [onCreateConsole, onSaveConsole, projects, dialecteDe],
+  )
+  /**
+   * Quelle console **persistée** chaque onglet ouvre, par identité d'onglet.
+   *
+   * **C'est ce qui distingue un onglet volatile d'un onglet relié au disque.** Le bouton « Nouvelle
+   * console » du pied ouvre un brouillon qui ne survit pas à sa fermeture ; un clic sur une console
+   * de l'arbre ouvre un onglet dont chaque frappe est écrite. Sans cette table, la frappe ne saurait
+   * pas où écrire — et écrire dans « la console du contexte » viserait la mauvaise dès que deux
+   * onglets sont ouverts sur deux connexions.
+   */
+  const [consolesOuvertes, setConsolesOuvertes] = useState<
+    Readonly<
+      Record<string, { project: string; database: string; environment: EnvironmentId; nom: string }>
+    >
+  >({})
   // L'exécution des requêtes de console (`12c`). Elle vit ici parce que la confirmation est une
   // sous-modale de l'écran, comme celle de `11d`.
-  const execution = useExecution(cle, passerelleExecution ?? PASSERELLE_EXECUTION)
+  /**
+   * **La clé d'exécution est celle de la console ouverte**, non celle du contexte de l'arbre.
+   *
+   * `contexte` exige un schéma — il sert la liste d'objets du centre — et une console n'en a pas :
+   * une console sélectionnée dans l'arbre laissait donc `cle` à `null`, et l'éditeur ne montait
+   * plus. Or une console *sait* sur quoi elle porte, depuis `12a` : sa propre `key`. La lui demander
+   * est à la fois ce qui répare le montage et ce qui est juste — deux onglets ouverts sur deux
+   * connexions ne doivent pas exécuter sur celle que l'arbre montre.
+   */
+  const cleConsole: DatabaseKey | null = consoleActive?.key ?? cle
+  const execution = useExecution(cleConsole, passerelleExecution ?? PASSERELLE_EXECUTION)
 
   /**
    * Les colonnes des tables **déjà lues**, accumulées.
@@ -445,8 +593,27 @@ export function Workbench({
         onSelect={(id) => setEtatOnglets((etat) => ({ ...etat, actif: id }))}
         onClose={(id) => setEtatOnglets((etat) => fermer(etat, id))}
         onReorder={(ids) => setEtatOnglets((etat) => reordonner(etat, ids))}
+        /* **Le même geste qu'au double-clic sur la ligne d'arbre.** Une console se rencontre aux
+           deux endroits, et n'être renommable qu'à l'un des deux obligerait à se souvenir lequel.
+           L'identité de l'onglet dit quelle console renommer : c'est `consolesOuvertes` qui la
+           porte, la bande d'onglets ne connaissant pas les connexions. */
+        onRename={
+          onRenameConsole === undefined
+            ? undefined
+            : (id, nouveau) => {
+                const ouverte = consolesOuvertes[id]
+                if (ouverte === undefined) return
+                void renommerUneConsole(
+                  ouverte.project,
+                  ouverte.database,
+                  ouverte.environment,
+                  ouverte.nom,
+                  nouveau,
+                )
+              }
+        }
       />
-      {consoleActive && cle ? (
+      {consoleActive && cleConsole ? (
         // La console SQL (`12a`). Elle occupe la largeur du centre ; le panneau droit
         // reste celui de l'écran, et `12c` lui donnera un contenu utile.
         <ConsoleView
@@ -458,34 +625,61 @@ export function Workbench({
           dialecte={consoleActive.dialecte}
           rowHeight={rowHeight}
           texte={textes[idOnglet(consoleActive)] ?? ''}
-          onTexteChange={(texte) =>
-            setTextes((precedent) => ({
-              ...precedent,
-              [idOnglet(consoleActive)]: texte,
-            }))
-          }
+          onTexteChange={(texte) => {
+            const id = idOnglet(consoleActive)
+            setTextes((precedent) => ({ ...precedent, [id]: texte }))
+            // **La frappe écrit, quand l'onglet est relié à une console persistée.** Un onglet
+            // volatile — celui du bouton « Nouvelle console » — ne l'est pas, et son texte reste en
+            // mémoire jusqu'à ce qu'on lui donne un nom.
+            const console = consolesOuvertes[id]
+            if (console && onSaveConsole) {
+              clearTimeout(ecrituresEnAttente.current[id])
+              ecrituresEnAttente.current[id] = setTimeout(() => {
+                delete ecrituresEnAttente.current[id]
+                void onSaveConsole(
+                  console.project,
+                  console.database,
+                  console.environment,
+                  console.nom,
+                  texte,
+                )
+              }, DELAI_ECRITURE)
+            }
+          }}
           contexte={contexte ? `${contexte.database} · ${contexte.schema}` : undefined}
-          onExecuter={cle === null ? undefined : execution.demander}
-          onExecuterLaSelection={cle === null ? undefined : execution.demander}
+          onExecuter={execution.demander}
+          onExecuterLaSelection={execution.demander}
           enCours={execution.enCours}
           resultat={execution.resultat}
           erreur={execution.erreur}
           // **Une fonction, pas une valeur** : elle est lue au moment de la frappe, donc une
           // table ouverte après le montage de la console voit ses colonnes proposées.
           catalogue={catalogue}
-          onExpliquer={cle === null ? undefined : execution.expliquer}
+          onExpliquer={execution.expliquer}
           plan={execution.plan}
           planEnCours={execution.planEnCours}
           vue={execution.vue}
           onVueChange={execution.setVue}
+          /* **« Enregistrer » donne un nom à un brouillon**, et le fait exister dans l'arbre. Sur un
+             onglet déjà relié à une console, il n'a plus d'objet : chaque frappe est déjà écrite. */
+          /* **« Enregistrer » fait exister le brouillon**, sans rien demander : il reçoit le nom par
+             défaut, et l'onglet cesse d'être volatile — les frappes suivantes s'écrivent toutes
+             seules. Sur un onglet déjà relié à une console, le bouton n'a plus d'objet. */
           onEnregistrer={
-            onSaveQuery === undefined || projetActif === null
+            onCreateConsole === undefined || consolesOuvertes[idOnglet(consoleActive)] !== undefined
               ? undefined
-              : (sql) =>
-                  setAEnregistrer({
-                    sql,
-                    nom: nomsDeRequetes[idOnglet(consoleActive)] ?? '',
-                  })
+              : async (sql) => {
+                  const { project, database, environment } = cleConsole
+                  const nom = await creerUneConsole(project, database, environment, sql)
+                  if (nom === undefined) return
+                  const id = idDeConsolePersistee({ project, database, environment }, nom)
+                  setEtatOnglets((etat) => baptiserLeBrouillon(etat, idOnglet(consoleActive), nom))
+                  setConsolesOuvertes((precedent) => ({
+                    ...precedent,
+                    [id]: { project, database, environment, nom },
+                  }))
+                  setTextes((precedent) => ({ ...precedent, [id]: sql }))
+                }
           }
         />
       ) : structureActive && table ? (
@@ -600,32 +794,8 @@ export function Workbench({
       />
       {/* Le bandeau du mode édition, **sous la barre de titre** et au-dessus du corps : c'est là que
           le mockup le place, et il court sur toute la largeur. */}
-      {aEnregistrer && projetActif && onSaveQuery && (
-        <SaveQueryDialog
-          nomInitial={aEnregistrer.nom}
-          existeDeja={(nom) => projetActif.queries.some((requete) => requete.name === nom)}
-          onClose={() => setAEnregistrer(null)}
-          onEnregistrer={async (nom) => {
-            await onSaveQuery(projetActif.name, nom, aEnregistrer.sql)
-            // La console retient le nom : « Enregistrer » à nouveau mettra à jour cette entrée plutôt
-            // que d'en proposer une seconde.
-            if (consoleActive) {
-              setNomsDeRequetes((precedent) => ({ ...precedent, [idOnglet(consoleActive)]: nom }))
-            }
-          }}
-        />
-      )}
-      {aRenommerLaRequete !== null && projetActif && onRenameQuery && (
-        <RenameQueryDialog
-          nomInitial={aRenommerLaRequete}
-          existeDeja={(nom) =>
-            nom !== aRenommerLaRequete &&
-            projetActif.queries.some((requete) => requete.name === nom)
-          }
-          onClose={() => setARenommerLaRequete(null)}
-          onRenommer={(nouveau) => onRenameQuery(projetActif.name, aRenommerLaRequete, nouveau)}
-        />
-      )}
+      {/* Les deux modales de nommage ont disparu le 20 août 2026 : la création prend un nom par
+          défaut, et le renommage se fait sur la ligne de l'arbre. */}
       {execution.aConfirmer && (
         <RunConfirm
           nature={execution.aConfirmer.nature}
@@ -697,40 +867,36 @@ export function Workbench({
                 if (base) onEditDatabase?.(nomProjet, base)
               }}
               onEditProject={onRenameProject === undefined ? undefined : ouvrirLEditionDe}
-              requetes={
-                projetActif === null
+              consoles={
+                onCreateConsole === undefined
                   ? undefined
                   : {
-                      liste: projetActif.queries,
-                      // Ouvrir une requête ouvre une **console** sur son texte : c'est le seul endroit
-                      // où l'on peut l'exécuter.
-                      onOuvrir: (requete) => {
-                        if (cle === null) return
-                        setEtatOnglets((etat) => {
-                          const suivant = ouvrirConsole(etat, cle)
-                          const id = suivant.actif as string
-                          setTextes((precedent) => ({ ...precedent, [id]: requete.sql }))
-                          setNomsDeRequetes((precedent) => ({ ...precedent, [id]: requete.name }))
-                          return suivant
-                        })
+                      onCreer: (project, database, environment) => {
+                        void creerUneConsole(project, database, environment)
                       },
-                      onRetirer:
-                        onDeleteQuery === undefined
-                          ? undefined
-                          : (nom) => void onDeleteQuery(projetActif.name, nom),
-                      onRenommer: onRenameQuery === undefined ? undefined : setARenommerLaRequete,
+                      onRenommer: (project, database, environment, nom, nouveau) => {
+                        void renommerUneConsole(project, database, environment, nom, nouveau)
+                      },
+                      onRetirer: (project, database, environment, nom) => {
+                        if (onDeleteConsole === undefined) return
+                        void onDeleteConsole(project, database, environment, nom)
+                        // L'onglet ouvert sur cette console se ferme avec elle : le laisser
+                        // écrirait dans une console retirée à la frappe suivante.
+                        setConsolesOuvertes((precedent) =>
+                          Object.fromEntries(
+                            Object.entries(precedent).filter(
+                              ([, ouverte]) =>
+                                !(
+                                  ouverte.project === project &&
+                                  ouverte.database === database &&
+                                  ouverte.environment === environment &&
+                                  ouverte.nom === nom
+                                ),
+                            ),
+                          ),
+                        )
+                      },
                     }
-              }
-              // **Une console s'ouvre sur la base du contexte.** Sans base, pas de console : elle
-              // n'aurait rien à interroger, et le bouton disparaît plutôt que d'ouvrir un onglet
-              // inerte.
-              onNewConsole={
-                cle === null
-                  ? undefined
-                  : () =>
-                      setEtatOnglets((etat) =>
-                        ouvrirConsole(etat, cle, dialecteDe(cle.project, cle.database)),
-                      )
               }
               // **Retirer une base ferme ses onglets**, et l'écran de travail est le seul à pouvoir
               // le faire : un onglet survivant lirait une base dont la déclaration est partie.
@@ -775,6 +941,49 @@ export function Workbench({
                       kind: noeud.icon === 'view' ? 'view' : 'table',
                     }),
                   )
+                }
+                /* **Un clic sur une console l'ouvre**, comme un clic sur une table ouvre la table.
+                   L'onglet est relié à la console : il porte son texte et lui renvoie chaque
+                   frappe. Rouvrir une console déjà ouverte réactive son onglet plutôt que d'en
+                   créer un second — c'est `ouvrirConsole` qui le garantit, par l'identité qu'on
+                   lui donne. */
+                if (
+                  noeud.kind === 'console' &&
+                  noeud.project &&
+                  noeud.database &&
+                  noeud.console !== undefined
+                ) {
+                  const identite = {
+                    project: noeud.project,
+                    database: noeud.database,
+                    environment: noeud.environment ?? environnement,
+                    nom: noeud.console,
+                  }
+                  const texte =
+                    projects
+                      .find((projet) => projet.name === identite.project)
+                      ?.databases.find(
+                        (base) =>
+                          base.name === identite.database &&
+                          base.environment === identite.environment,
+                      )
+                      ?.consoles.find((console) => console.name === identite.nom)?.sql ?? ''
+                  setEtatOnglets((etat) => {
+                    const suivant = ouvrirConsole(
+                      etat,
+                      {
+                        project: identite.project,
+                        database: identite.database,
+                        environment: identite.environment,
+                      },
+                      dialecteDe(identite.project, identite.database),
+                      identite.nom,
+                    )
+                    const id = suivant.actif as string
+                    setTextes((precedent) => ({ ...precedent, [id]: texte }))
+                    setConsolesOuvertes((precedent) => ({ ...precedent, [id]: identite }))
+                    return suivant
+                  })
                 }
               }}
               onToggle={basculer}
@@ -1033,3 +1242,30 @@ function sansLesOngletsDe(etat: EtatOnglets, cible: CibleDeSuppression): EtatOng
     .filter((id) => viseeParLId(cible, id))
     .reduce(fermer, etat)
 }
+
+/**
+ * Les consoles d'une connexion, pour les tests d'homonymie des deux modales.
+ *
+ * **Lue depuis `projects` à chaque appel**, et non mémorisée : la liste change sous nos pieds à
+ * chaque création, et une copie figée validerait un nom déjà pris.
+ */
+function consolesDe(
+  projects: readonly Project[],
+  cible: { project: string; database: string; environment: EnvironmentId },
+): readonly { name: string }[] {
+  return (
+    projects
+      .find((projet) => projet.name === cible.project)
+      ?.databases.find(
+        (base) => base.name === cible.database && base.environment === cible.environment,
+      )?.consoles ?? []
+  )
+}
+
+/**
+ * Le délai avant qu'une frappe de console parte vers le disque.
+ *
+ * 400 ms : au-delà du rythme d'une frappe continue, en dessous du temps qu'il faut pour changer de
+ * fenêtre. Voir `ecrituresEnAttente`.
+ */
+const DELAI_ECRITURE = 400
