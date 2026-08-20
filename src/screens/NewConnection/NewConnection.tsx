@@ -15,7 +15,8 @@ import {
   draftDepuisLaVariante,
   emptyDraft,
   emptyTunnel,
-  type TunnelDraft,
+  type ProxyDraft,
+  type ProxyKind,
 } from './ConnectionDraft'
 import { ConnectionFailure } from './ConnectionFailure'
 import { ConnectionForm } from './ConnectionForm'
@@ -29,7 +30,7 @@ import {
   mettreAJourLaVariante,
 } from './enregistrerLaBase'
 import styles from './NewConnection.module.css'
-import { ouvrirSelecteurDeCle } from './ouvrirSelecteurDeCle'
+import { ouvrirSelecteurDeCle, ouvrirSelecteurDeCompteDeService } from './ouvrirSelecteurDeCle'
 import { TunnelPanel } from './TunnelPanel'
 import { codeDe, messageDe, testerLaConnexion } from './testerLaConnexion'
 
@@ -50,6 +51,8 @@ type NewConnectionProps = {
    * c'est l'appel réel.
    */
   onBrowseKey?: () => Promise<string | null>
+  /** Le sélecteur du fichier de compte de service Google, injecté pour la même raison. */
+  onBrowseCredentials?: () => Promise<string | null>
   /**
    * Appelle la commande `test_connection`.
    *
@@ -128,6 +131,7 @@ export function NewConnection({
   onClose,
   projects = [],
   onBrowseKey = ouvrirSelecteurDeCle,
+  onBrowseCredentials = ouvrirSelecteurDeCompteDeService,
   onTest = testerLaConnexion,
   onSave = enregistrerLaBase,
   edition,
@@ -146,6 +150,15 @@ export function NewConnection({
   // aussi un tunnel configuré. Pour une connexion neuve, déplier un bloc vide de cinq champs
   // pousserait vers le bas ce que l'utilisateur doit remplir d'abord.
   const [tunnelOuvert, setTunnelOuvert] = useState(false)
+  /**
+   * La sorte de proxy **affichée** par le panneau.
+   *
+   * En état local et non dans le brouillon, parce qu'elle existe avant tout proxy : changer le
+   * « Type » sans rien saisir ne déclare rien, donc `draft.tunnel` reste `null` et n'a nulle
+   * part où ranger ce choix. Une fois un proxy déclaré, c'est `draft.tunnel.proxy.kind` qui fait
+   * foi — les deux sont tenus égaux par `changerSorte`.
+   */
+  const [sorteProxy, setSorteProxy] = useState<ProxyKind>('ssh')
   const [test, setTest] = useState<EtatDuTest>({ phase: 'jamais' })
   // La sous-modale de `A3` se ferme sans effacer l'échec : le pied garde son message et
   // « Retester », ce que le handoff montre explicitement.
@@ -186,18 +199,37 @@ export function NewConnection({
   }, [projects, draft.project, edition, projetImpose])
 
   /**
-   * Toucher un champ du panneau **crée** le tunnel s'il n'existe pas.
+   * Toucher un champ du panneau **crée** le proxy s'il n'existe pas.
    *
-   * L'utilisateur qui saisit un bastion déclare par là qu'il en veut un ; lui demander de
-   * cocher une case en plus serait une étape que le handoff ne maquette pas. `05a` garde
-   * l'absence représentable (`Option<Tunnel>`), et c'est ce qui compte : `06b` refuse une
-   * variante déclarant un tunnel qu'on n'a pas ouvert.
+   * L'utilisateur qui saisit un bastion déclare par là qu'il en veut un ; lui demander de cocher
+   * une case en plus serait une étape que le handoff ne maquette pas. `05a` garde l'absence
+   * représentable (`Option<Tunnel>`), et c'est ce qui compte : `06b` refuse une variante
+   * déclarant un proxy qu'on n'a pas ouvert.
    */
-  function patchTunnel(changes: Partial<TunnelDraft>) {
+  function changerProxy(proxy: ProxyDraft) {
     setDraft((previous) => ({
       ...previous,
-      tunnel: { ...(previous.tunnel ?? emptyTunnel()), ...changes },
+      // `localPort` est conservé s'il existait : il vient de l'ouverture, pas de la saisie.
+      tunnel: { localPort: previous.tunnel?.localPort ?? null, proxy },
     }))
+  }
+
+  /**
+   * Changer le « Type » remet à zéro les champs de l'autre sorte.
+   *
+   * **Par nécessité, pas par hygiène** : `05d` a fait de `Proxy` une union, donc `08e` ne peut
+   * pas convertir un brouillon portant un bastion **et** une instance. Garder les champs « au
+   * cas où l'utilisateur revienne » obligerait la conversion à choisir, c'est-à-dire à deviner.
+   *
+   * Sans proxy déclaré, **seule la sorte affichée change** : choisir un type n'est pas déclarer
+   * un proxy, et faire apparaître « Cloud SQL activé » sur une instance vide serait une fausse
+   * déclaration.
+   */
+  function changerSorte(kind: ProxyKind) {
+    setSorteProxy(kind)
+    setDraft((previous) =>
+      previous.tunnel ? { ...previous, tunnel: emptyTunnel(kind) } : previous,
+    )
   }
 
   const engineImplemented = IMPLEMENTED_ENGINES.includes(draft.engine)
@@ -383,10 +415,13 @@ export function NewConnection({
       />
       <TunnelPanel
         tunnel={draft.tunnel}
-        onChange={patchTunnel}
+        kind={draft.tunnel?.proxy.kind ?? sorteProxy}
+        onKindChange={changerSorte}
+        onProxyChange={changerProxy}
         open={tunnelOuvert}
         onOpenChange={setTunnelOuvert}
-        onBrowse={onBrowseKey}
+        onBrowseKey={onBrowseKey}
+        onBrowseCredentials={onBrowseCredentials}
       />
 
       {echecOuvert && test.phase === 'echoue' && (

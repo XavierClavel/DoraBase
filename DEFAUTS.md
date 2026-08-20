@@ -32,6 +32,7 @@ des tests verts au moment où il a été introduit.
 | Onglet actif 5 px trop large, et fond `--paper-bright` au lieu de `--paper` | mesure du mockup **et** de notre rendu, comparés chiffre par chiffre |
 | `width: 100%` en `content-box` s'ajoute au padding : les lignes de sidebar sortaient à 234 px dans un corps de 212, leur métadonnée rognée (« int8 » rendu « in ») | mesure de la ligne contre son conteneur |
 | Les données de démonstration de la galerie mélangeaient `A4` dans une disposition `A5` | captures du mockup et de notre rendu **côte à côte** |
+| Playwright capturait ses références contre **l'application d'une autre branche** : `reuseExistingServer` réutilisait le `pnpm dev` d'un worktree voisin, déjà installé sur 5173 | la référence montrait un écran que la branche mesurée ne savait pas rendre — un `grep` de son libellé dans `src/` ne rendait rien |
 
 **Les méthodes qui ont payé**, à réutiliser :
 
@@ -1071,3 +1072,18 @@ défile, ce qui a été rendu discret l'est resté.
 règles, l'autre déplaçait le débordement à l'intérieur d'un panneau où la mesure existante ne
 regardait pas. Ce sont deux mesures écrites *après coup* qui les ont trouvées. Corriger un défaut de
 mise en page sans écrire la mesure qui le tient revient à changer du CSS en espérant.
+
+107. **Le serveur de développement réutilisé appartenait à une autre branche.** Le n° 66 avait
+   attribué le même symptôme à des serveurs *résiduels* de la même branche, et posé la règle « une
+   panne qui touche tous les tests à la fois est dans le décor ». La cause exacte est plus sévère :
+   `reuseExistingServer: !process.env.CI` fait réutiliser **le premier `pnpm dev` trouvé sur 5173**,
+   or plusieurs worktrees de ce dépôt travaillent en parallèle sur cette machine. Playwright mesurait
+   donc l'application du voisin. Deux références visuelles ont été capturées ainsi, deux autres
+   déclarées « non régénérables », et les vingt-quatre tests de `a2-nouvelle-connexion.spec.ts`
+   déclarés « rouges depuis toujours » — avec une explication qui décrivait, sans le savoir,
+   *l'écran de la branche voisine*. Le diagnostic tient en un `grep` : le libellé lu sur la
+   référence était introuvable dans `src/`. La parade a **deux moitiés**, une seule ne suffisant
+   pas : un port par worktree (`DORABASE_E2E_PORT`), et `reuseExistingServer: false` avec
+   `--strictPort`, pour qu'un port déjà pris fasse **échouer** l'exécution au lieu de la dérouter.
+   C'est la règle 6 de `REPRISE.md` sous une forme nouvelle : se brancher au mauvais serveur est une
+   façon de ne pas échouer.

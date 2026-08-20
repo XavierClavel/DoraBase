@@ -4,18 +4,19 @@ Ce document existe pour qu'une session neuve reprenne le travail sans avoir la c
 précédente. Il complète les specs et les plans, qui disent *quoi* construire ; lui dit **où on
 en est, ce qui a été décidé, et pourquoi**.
 
-Dernière mise à jour : 18 août 2026 (TLS). Le travail vit sur `quiver-leader` : les six specs de `A5`
-(`10a`–`10f`), la création de projet (`08f`), la modification et le retrait de connexions
-(`08g`–`08j`), l'édition inline de `A6` (`11a`–`11d`), la console SQL de `A7` (`12a`–`12f`), la
-console MongoDB de `A8` (`13a`–`13c`), la vue Structure de `A9` (`14a`–`14c`), les préférences de
-`A10` (`15a`–`15d`), **le second moteur du projet** (`18a`–`18g`, MongoDB), et une trentaine de
-correctifs venus du **premier usage réel** de l'application.
+Dernière mise à jour : 20 août 2026 (support Cloud SQL). Le travail vit sur `quiver-leader` :
+les six specs de `A5` (`10a`–`10f`), la création de projet (`08f`), la modification et le retrait de
+connexions (`08g`–`08j`), l'édition inline de `A6` (`11a`–`11d`), la console SQL de `A7`
+(`12a`–`12f`), la console MongoDB de `A8` (`13a`–`13c`), la vue Structure de `A9` (`14a`–`14c`), les
+préférences de `A10` (`15a`–`15d`), **le second moteur du projet** (`18a`–`18g`, MongoDB), une
+trentaine de correctifs venus du **premier usage réel** de l'application, et le **support Cloud
+SQL** (`05d`, `06g`, `08k`).
 
 **Les dix écrans du handoff sont assemblés et atteignables.**
 
 ---
 
-## 0. À faire en premier — huit vérifications à l'œil, dont trois en attente
+## 0. À faire en premier — neuf vérifications à l'œil, dont quatre en attente
 
 **Elles s'accumulent depuis `08c` et rien ne peut les automatiser** : Playwright ne pilote pas
 WKWebView, et piloter le bureau par frappes synthétiques a été tenté puis abandonné — la fenêtre
@@ -31,6 +32,7 @@ pnpm tauri dev
 | --- | --- | --- | --- |
 | 1 | ~~Tester la connexion~~ | **Fait le 10 août** : le pont répond, la connexion aboutit | `08d` |
 | 2 | ~~« Parcourir… » du panneau tunnel~~ | **Fait le 10 août** : le sélecteur natif s'ouvre et le chemin arrive dans le champ | `08c` |
+| 2b | Basculer « Type » sur « Cloud SQL », cliquer « Parcourir… », puis annuler | Le sélecteur s'ouvre sur un filtre `.json` ; le chemin choisi arrive dans « Compte de service », et une annulation ne l'efface pas. Le visage SSH est vérifié depuis le 10 août (ligne 2), celui-ci ne l'est pas — c'est un **second** appel, avec son propre filtre | `08k` |
 | 3 | ~~Enregistrer une base, quitter, relancer~~ | **Fait le 10 août** : le projet et sa base survivent au redémarrage | `09b` |
 | 4 | Cliquer la pastille projet de la barre de titre | **Défaut trouvé le 10 août** : la fenêtre ne bougeait pas, mais le menu ne paraissait pas — un `overflow: hidden` de la barre le découpait (`DEFAUTS.md` n° 35). Corrigé ; **à reprendre** pour confirmer que le menu s'ouvre dans l'application | `09c` |
 | 5 | ~~« Copier la ligne en INSERT », puis coller~~ | **Fait le 10 août** : le SQL arrive dans le presse-papiers | `10f` |
@@ -39,7 +41,7 @@ pnpm tauri dev
 | 7 | Régler « Afficher les barres de défilement : toujours » (Réglages ▸ Apparence), puis regarder la sidebar et la bande d'onglets | La barre de la sidebar doit être **fine, sans piste**, et son curseur ne se voir qu'au survol ; la bande d'onglets ne doit en montrer aucune. **Non vérifiable ici** : Chromium sans tête rend des barres en survol, qui n'occupent aucune place — la mesure vaut 0 avec comme sans la correction (`DEFAUTS.md` n° 73) | — |
 | 8 | Cliquer une autre application pour défocaliser DoraBase | Les trois feux tricolores doivent rester visibles (grisés). Signalé le 18 août : ils **disparaissent**. Boutons dessinés par le système sous `titleBarStyle: "Overlay"` — donc **ni reproductible ni corrigeable depuis le web** ; l'expérience à tenter est de passer `hiddenTitle` à `false` le temps d'un lancement pour savoir si la disparition vient de la superposition ou du thème | `tauri.conf.json` |
 
-**Trois vérifications restent — et l'usage réel en a appris bien plus qu'elles** : dix-neuf défauts,
+**Quatre vérifications restent — et l'usage réel en a appris bien plus qu'elles** : dix-neuf défauts,
 dont seize signalés par l'utilisateur (voir `DEFAUTS.md` § « Ce qu'a trouvé le premier
 usage réel »). La leçon est au § 5, règle 9.
 
@@ -156,12 +158,14 @@ cela est détaillé dans `DEFAUTS.md` n° 104.
 
 ## 3. Où en est le travail
 
-**83 specs écrites, toutes implémentées sauf `19a`, `20` et `21`** — voir le tableau ci-dessous et le
+**86 specs écrites, toutes implémentées sauf `19a`, `20` et `21`** — voir le tableau ci-dessous et le
 § 11 pour ce qui bloque ces trois. Les dix écrans du handoff sont assemblés **et
 atteignables depuis l'application** : `A1` (accueil), `A2`/`A3` (nouvelle connexion et son échec),
 `A4` (explorateur), `A5` (visualiseur), `A6` (édition inline), `A7` (console SQL), `A8` (console
-MongoDB), `A9` (structure et DDL), `A10` (préférences). **Deux moteurs** répondent : PostgreSQL
-(`06`, du contrat au tunnel SSH) et MongoDB (`18`).
+MongoDB), `A9` (structure et DDL), `A10` (préférences).
+
+**Le support Cloud SQL est livré** (`05d`, `06g`, `08k`) : une connexion PostgreSQL peut passer par
+le Cloud SQL Auth Proxy, et `A2` sait le saisir. Deux réserves, plus bas.
 
 **Quatre moteurs répondent** : PostgreSQL (`06`), MongoDB (`18`), SQLite (`17`) et MySQL (`16`).
 Les trois specs de moteur restantes sont **écrites**, et aucune n'attend du code :
@@ -199,6 +203,7 @@ couvre, et les deux manquants n'attendent qu'un compte.
 | `23a`, `23b`, `23d`, `23g` | **les environnements par projet** — déclaration, une connexion = un environnement, formulaire, arbre groupé | **fait** |
 | `23c`, `23e`, `23f` | les cinq commandes d'environnement, l'édition d'un projet, le retrait d'un environnement | **fait** |
 | `24a`–`24d` | **le parcours de création en deux étapes** — projet, bande de progression, enchaînement, deux gestes | **fait** |
+| `05d`, `06g`, `08k` | **le support Cloud SQL** — le proxy en énumération à données et sa migration v2 → v3, le pilotage de `cloud-sql-proxy`, le panneau de `A2` à deux visages | **fait** (deux réserves plus bas) |
 | `19a` | Redis — **n'entre pas dans le contrat**, et pourquoi | écrite, conclusion négative |
 | `20`, `21` | Snowflake, BigQuery — **aucun décor de test** | écrites, bloquées |
 
@@ -220,6 +225,25 @@ dit d'où chaque capture est prise et pourquoi.
 **Les tests SQLite tournent sans décor à monter** : le fichier est temporaire et créé par le test
 lui-même, donc ils passent sur une machine sans Docker — le seul moteur du projet dans ce cas.
 
+**Le support Cloud SQL a été posé sur cette base le 20 août 2026**, en trois specs déjà écrites et
+implémentées ailleurs (`05d`, `06g`, `08k`), rebasées ici. Trois collisions ont dû être tranchées au
+passage, et elles valent d'être connues :
+
+- **Les numéros étaient pris.** `06f` désigne le TLS et `08f` la création de projet : les specs Cloud
+  SQL sont devenues `06g` et `08k`.
+- **La version du fichier de configuration était prise.** `23a`/`23b` avaient déjà porté
+  `VERSION_COURANTE` à 2. La migration du proxy est donc un **cran v2 → v3**, appliqué *avant* les
+  autres et sur le JSON brut : il réécrit un objet `tunnel` sans rien savoir de ce qui l'entoure, ce
+  qui lui évite d'être écrit deux fois — une fois pour la forme v1, à variantes, une fois pour la v2,
+  à connexions.
+- **`TunnelKind` avait survécu ici** et disparaît, comme `05d` le prévoyait.
+
+**Le `reuseExistingServer` de Playwright est retiré** : plusieurs worktrees de ce dépôt travaillent
+en parallèle, et le premier `pnpm dev` démarré prend 5173. Les références de fidélité pouvaient donc
+être capturées contre l'application d'une **autre branche** — c'est arrivé, défaut n° 107, plus
+sévère que le n° 66 qui n'y voyait qu'un serveur résiduel. Un port par worktree
+(`DORABASE_E2E_PORT`) et `--strictPort` remplacent la réutilisation.
+
 **La boucle du produit est complète depuis `09b`** : saisir (`08e`), persister, relire, afficher.
 `load_config` existait depuis `05b` et n'était appelée par personne.
 
@@ -231,6 +255,15 @@ dernier laisse l'écran debout, sur la liste des objets.
 nomme sa spec), le bloc « Valeurs fréquentes » du popover d'opérateur, l'aperçu formaté
 « 280,00 € », et la pastille colorée de `status`. Les quatre sont consignés au § 6 avec leur
 raison — aucun n'est un oubli.
+
+**`05d` (le proxy en énumération à données) est fait** : `Tunnel` porte `{ localPort, proxy:
+Proxy }`, `Proxy` distingue SSH et Cloud SQL, et le cran de migration **v2 → v3** est en place. Le
+garde-fou de projection (`pnpm domain:check`) a été **réexercé** sur un changement de forme réel —
+l'union discriminée que `ts-rs` produit pour `Proxy` — et non plus seulement sur un champ ajouté, son
+seul exercice depuis `05a`. **`06g` a suivi** : le moteur ouvre désormais le proxy Cloud SQL,
+et `PostgresAdapter` ne porte qu'un champ et qu'un aiguillage pour les deux sortes de proxy —
+vérifié en ajoutant un troisième membre à `Proxy`, qui ne fait échouer la compilation qu'à un
+seul endroit. **La réserve du chemin heureux est au § 11.**
 
 **Deux réserves à ne pas oublier :**
 
@@ -334,6 +367,19 @@ barre au survol suffirait ». Le trait fait donc 1 px de `--divider` en permanen
 peut attraper sont deux mesures différentes. La propriété `handleShadow` a été **retirée de l'API**
 plutôt que gardée sans effet — un trait n'a pas de côté, et un réglage qui ne fait rien est pire
 qu'un réglage absent.
+
+**Le déclencheur du découpage de `config/store.rs` a sonné, et n'a pas été suivi.** `05d` avait
+écrit : « quand `VERSION_COURANTE` passera à 3, sortir `migrer` et les migrations dans un
+`config/migrations.rs` ». La v3 est arrivée le 20 août 2026, le fichier fait 1673 lignes, et le
+découpage **n'a pas été fait** — délibérément, et voici pourquoi : la règle avait été écrite en
+prévoyant *une deuxième migration du même genre*, c'est-à-dire un second `mod vN` avec ses types et
+sa conversion. Le cran v2 → v3 n'est pas de ce genre : c'est une réécriture de quarante lignes sur du
+`serde_json::Value`, sans type d'ancienne forme à maintenir. Sortir avec lui `mod v1` et
+`migration_v1_vers_v2`, qui ne bougent pas, déplacerait du code sans rien séparer.
+
+**Le nouveau déclencheur** : à la **prochaine** migration qui demande un `mod vN` de types dédiés.
+Ce jour-là, deux d'entre eux cohabiteront dans `store.rs`, et c'est cette cohabitation — pas le
+compte de lignes — qui justifie le fichier séparé.
 
 ## 5. Huit règles tirées des défauts rencontrés
 
@@ -455,17 +501,28 @@ emploie de vraies radios natives. La dette reste ouverte pour l'écran qui voudr
 **`cargo` n'est pas dans le `PATH`** des commandes shell de cet outillage — `~/.zshenv` source
 `~/.cargo/env`, mais ce shell ne le relit pas. Préfixer *chaque* commande.
 
-**Un serveur de développement résiduel fait échouer les 175 tests Playwright.**
-`playwright.config.ts` pose `reuseExistingServer: !process.env.CI` : en local, Playwright **réutilise**
-ce qui écoute sur 5173. Plusieurs exécutions de la barrière lancées en arrière-plan laissent chacune un
-serveur derrière elles, et le suivant réutilise le mauvais — ou un état cassé.
+**Le serveur de développement que Playwright réutilisait pouvait appartenir à une autre branche
+— et ne se réutilise plus.** Plusieurs worktrees de ce dépôt travaillent en parallèle sur cette
+machine, chacun avec son `pnpm dev` ; le premier démarré prend 5173. `reuseExistingServer` faisait
+donc mesurer, en silence, l'application du voisin : deux références de fidélité ont été capturées
+ainsi, et vingt-quatre tests déclarés « rouges depuis toujours » pour cette seule raison
+(`DEFAUTS.md` n° 107, plus sévère que le n° 66 qui n'y voyait qu'un serveur résiduel).
 
-Le symptôme est trompeur : **tous** les tests expirent à 30 s, ou les captures de référence diffèrent
-de 10 % des pixels. Cela ressemble exactement à une régression de rendu, et j'ai cherché deux fois du
-côté du code avant de regarder le port.
+Le symptôme est trompeur, et c'est ce qui rend le piège cher : **tous** les tests expirent à 30 s,
+ou les captures diffèrent de 10 % des pixels. Cela ressemble trait pour trait à une régression de
+rendu. Le réflexe est de regarder qui écoute avant de chercher dans le code :
 
 ```bash
-lsof -ti:5173 | xargs -r kill -9   # avant toute exécution de la barrière
+lsof -nP -iTCP:5173 -sTCP:LISTEN   # à qui appartient ce serveur ?
+```
+
+Depuis le 20 août 2026, `playwright.config.ts` ne réutilise **plus jamais** de serveur et démarre le
+sien en `--strictPort`, sur le port que `DORABASE_E2E_PORT` désigne (5173 par défaut). Un port déjà
+pris fait donc **échouer** l'exécution au lieu de la dérouter. En local, quand un worktree voisin
+tient 5173 :
+
+```bash
+export DORABASE_E2E_PORT=5399   # un port à soi, par worktree
 ```
 
 **`pnpm tsc --noEmit` ne vérifie rien.** Le projet compile par références (`tsc -b`) : la forme
@@ -502,6 +559,8 @@ dev` compile et s'exécute, mais **la fenêtre native elle-même ne peut pas êt
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"
 export DORABASE_TEST_PG="postgres://dorabase:dorabase-test@localhost:55432/dorabase_test"
+export DORABASE_E2E_PORT=5399   # un port à soi ; voir § 9
+. /tmp/bastion/bastion.env
 ./scripts/verifier-tout.sh
 ```
 
@@ -574,10 +633,25 @@ Chromium. L'expérience à tenter est au § 0, ligne 8.
 
 ## 11. La suite
 
-**Les 83 specs de l'index sont écrites, et toutes celles qui demandaient du code sont livrées** — les
+**Les 86 specs de l'index sont écrites, et toutes celles qui demandaient du code sont livrées** — les
 trois exceptions étant `19a` (conclusion négative) et `20`/`21` (aucun décor de test).
 `23` et `24` sont closes : les environnements se déclarent par projet, une connexion appartient à
 l'un d'eux, et les deux gestes de création comme les cinq gestes d'environnement répondent.
+
+**Le support Cloud SQL est livré** (demandé le 19 août 2026, terminé le 20) : `05d` le modèle et la
+migration v2 → v3, `06g` le pilotage de `cloud-sql-proxy`, `08k` le panneau de `A2` à deux visages.
+Deux réserves restent, toutes deux hors d'atteinte depuis ici :
+
+- **Le chemin heureux contre une vraie instance n'a jamais été exercé.** Tout le pilotage du
+  sous-processus est couvert par un faux binaire en shell, mais aucun test n'a parlé à Google.
+  `une_instance_cloud_sql_est_joignable_par_le_proxy` s'ignore en le disant, et se déverrouille avec
+  `DORABASE_TEST_CLOUDSQL_INSTANCE`, `_DATABASE`, `_USER`, plus `_PASSWORD` ou `_CREDENTIALS`. Ce
+  qui reste inconnu est ce que seul le vrai binaire peut apprendre : la forme exacte de ses lignes
+  de journal, et le comportement de ses codes de sortie.
+- **Le sélecteur de fichier natif du champ « Compte de service »** — vérification 2b du § 0.
+
+`08k` n'a **aucune maquette**, Cloud SQL étant absent du handoff : ses deux champs et ses deux
+libellés sont inventés, et attendent un passage de design (`specs/README.md` § À trancher).
 
 **Ce que `23e` a tranché, et qu'il faut savoir en y revenant** : l'identifiant d'un environnement est
 figé à la **création** (`23a`), parce que la référence du Trousseau est
