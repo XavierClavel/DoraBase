@@ -427,6 +427,105 @@ test('les boutons d’environnement gardent leur remplissage propre, quel que so
   expect(styles.moteur).toEqual({ padding: '12px', police: '12px', rayon: '9px' })
 })
 
+// --- Le pied, quand le test a répondu (08d + 24c) ---------------------------------------
+
+// **Le pied porte trois choses à la fois** : la rangée de boutons, le verdict du test, et la phrase
+// « le projet est créé » de `24c`. Elles se sont longtemps disputé une seule ligne de 56 px : le pied
+// n'avait pas de `flex-wrap`, donc le `flex-basis: 100%` de la phrase n'allait à la ligne nulle part —
+// il écrasait ses voisins. Le verdict tombait alors en colonne sur quatre lignes (« Connecté en / 5 ms ·
+// / PostgreSQL / 17.6 ») et la phrase s'empilait à droite des boutons. Aucun test unitaire ne pouvait
+// le voir : jsdom ne calcule pas de layout, et le DOM était juste.
+
+/** Les rectangles des enfants du pied, relatifs au pied. */
+async function pied(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const boite = document.querySelector('[data-testid=modal-footer]') as HTMLElement | null
+    if (!boite) return null
+    const r = boite.getBoundingClientRect()
+    const lire = (selecteur: string) => {
+      const el = boite.querySelector(selecteur)
+      if (!el) return null
+      const b = el.getBoundingClientRect()
+      return {
+        y: Math.round(b.y - r.y),
+        bas: Math.round(b.bottom - r.y),
+        hauteur: Math.round(b.height),
+        droite: Math.round(b.right - r.x),
+      }
+    }
+    return {
+      hauteur: Math.round(r.height),
+      largeur: Math.round(r.width),
+      constat: lire('p[role=status]'),
+      boutonTester: lire('button'),
+      // Le centre vertical de chaque bouton du pied : les hauteurs diffèrent d'un pixel selon
+      // l'habillage, les centres non.
+      centresDesBoutons: [...boite.querySelectorAll(':scope > button')].map((b) => {
+        const c = b.getBoundingClientRect()
+        return Math.round(c.y + c.height / 2 - r.y)
+      }),
+      verdict: lire('[class*=testOkTexte]'),
+    }
+  })
+}
+
+test('la phrase du projet créé passe sous la rangée de boutons', async ({ page }) => {
+  const mesures = await pied(page)
+  // Sous les boutons, et non à leur droite : c'est la seule façon dont elle ne les rétrécit pas.
+  expect(mesures?.constat?.y).toBeGreaterThanOrEqual(mesures?.boutonTester?.bas ?? 0)
+  // Sur une seule ligne à cette largeur — sinon c'est qu'elle n'a pas la largeur du pied.
+  expect(mesures?.constat?.hauteur).toBeLessThan(20)
+})
+
+test('le verdict d’un test réussi tient sur une ligne, sans écraser les boutons', async ({
+  page,
+}) => {
+  // Le succès ne se produit pas hors de la webview : le pont est simulé, et **seulement pour cette
+  // commande** — le reste doit continuer de rejeter, sinon la démo ne se charge plus.
+  await page.addInitScript(() => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      value: {
+        invoke: (commande: string) =>
+          commande !== 'test_connection'
+            ? Promise.reject(new Error('hors webview'))
+            : Promise.resolve({
+                latencyMs: 5,
+                // **Le pire cas réaliste, pas le plus court.** `version()` d'un Postgres empaqueté
+                // rend une chaîne de cette longueur, et le verdict y ajoute le port du tunnel et la
+                // mention de TLS. C'est là que la place manque — avec « PostgreSQL 17.6 » tout seul,
+                // le pied a de la marge et le test ne prouve rien.
+                serverVersion: 'PostgreSQL 17.6 (Debian 17.6-1.pgdg120+1)',
+                tunnelLocalPort: 63342,
+                tlsUnverified: true,
+              }),
+        transformCallback: (f: unknown) => f,
+      },
+      configurable: true,
+    })
+  })
+  await page.goto('/?demo')
+  await page.getByRole('button', { name: /Nouveau projet/ }).click()
+  await page.getByLabel('Nom du projet').fill('Comptoir Sud')
+  await page.getByRole('button', { name: /Continuer/ }).click()
+  await page.waitForSelector('[data-testid=projet-impose]')
+  await page.getByRole('button', { name: /Tester la connexion/ }).click()
+  await page.waitForSelector('[class*=testOk]')
+  await page.evaluate(() => document.fonts.ready)
+
+  const mesures = await pied(page)
+  // Une ligne de texte dense, pas quatre. Le verdict s'élide par la fin s'il ne tient pas.
+  expect(mesures?.verdict?.hauteur).toBeLessThan(24)
+  // **Le verdict ne chasse pas les boutons sur une seconde ligne.** C'est la vraie mesure : un
+  // verdict trop long qui refuse de céder ne se replie pas lui-même, il fait revenir « Enregistrer
+  // & ouvrir » à la ligne — et le pied passe de 76 à 118 px.
+  const centres = mesures?.centresDesBoutons ?? []
+  expect(centres).toHaveLength(3)
+  expect(Math.max(...centres) - Math.min(...centres)).toBeLessThan(4)
+  // Une rangée de boutons plus la phrase de `24c`, pas davantage.
+  expect(mesures?.hauteur).toBeLessThan(90)
+  expect(mesures?.verdict?.droite ?? 0).toBeLessThan(mesures?.largeur ?? 0)
+})
+
 // --- A3, la sous-modale d'échec (08d) ---------------------------------------------------
 
 // Le pont IPC ne répond pas hors de la webview : dans le navigateur de Playwright, `invoke`
