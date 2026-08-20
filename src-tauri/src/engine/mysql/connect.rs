@@ -149,7 +149,7 @@ pub async fn version_du_serveur(pool: &Pool) -> Result<String, EngineError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{SslMode, Tunnel, TunnelKind};
+    use crate::config::{Proxy, ProxySsh, SslMode, Tunnel};
 
     fn variante() -> ConnectionSettings {
         ConnectionSettings {
@@ -170,12 +170,13 @@ mod tests {
         let mut variante = variante();
         variante.host = "db.interne.test".into();
         variante.tunnel = Some(Tunnel {
-            kind: TunnelKind::Ssh,
-            bastion_host: "bastion.exemple.test".into(),
-            bastion_port: 22,
-            username: "clement".into(),
-            private_key_path: "~/.ssh/id_ed25519".into(),
             local_port: None,
+            proxy: Proxy::Ssh(ProxySsh {
+                bastion_host: "bastion.exemple.test".into(),
+                bastion_port: 22,
+                username: "clement".into(),
+                private_key_path: "~/.ssh/id_ed25519".into(),
+            }),
         });
         variante
     }

@@ -13,16 +13,17 @@ use super::model::{
     Database, EnvironmentColor, EnvironmentDeclaration, EnvironmentId, Preferences, Project,
 };
 
-/// Version du format sur disque. À incrémenter pour tout changement de forme, en
-/// ajoutant la migration correspondante dans `migrer`.
-/// La version du format sur disque.
+/// La version du format sur disque. À incrémenter pour tout changement de forme, en ajoutant la
+/// migration correspondante dans `migrer`.
 ///
-/// **Passée à 2 par `23a`/`23b`**, et c'est la première montée réelle. Les onze specs précédentes ont
-/// employé `serde(default)`, justement parce qu'aucune n'invalidait ce qui était écrit. Ici deux
-/// choses changent de forme : `activeEnvironment` cesse d'être une énumération de trois valeurs, et
-/// une base cesse de porter des variantes. Un `default` produirait une configuration vide de sens
-/// plutôt qu'une erreur.
-pub const VERSION_COURANTE: u32 = 2;
+/// **v2, par `23a`/`23b`** : `activeEnvironment` cesse d'être une énumération de trois valeurs, et
+/// une base cesse de porter des variantes. Les onze specs précédentes avaient employé
+/// `serde(default)`, justement parce qu'aucune n'invalidait ce qui était écrit ; ici un `default`
+/// produirait une configuration vide de sens plutôt qu'une erreur.
+///
+/// **v3, par `05d`** : `tunnel` porte `{ localPort, proxy: { kind, … } }` au lieu de quatre champs
+/// SSH à plat.
+pub const VERSION_COURANTE: u32 = 3;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ConfigFile {
@@ -220,9 +221,14 @@ pub fn load(cible: &Path) -> LoadOutcome {
     }
 
     if version < VERSION_COURANTE {
-        return migrer(cible, &brut, version);
+        return migrer(cible, &brut, valeur, version);
     }
 
+    // `from_str` et non `from_value(valeur)`, **délibérément** : ce chemin n'a rien à
+    // migrer, donc rien n'oblige à repasser par le `Value` déjà analysé plus haut, et
+    // `from_str` garde la position dans le message d'erreur (« at line 19 column 125 »)
+    // qu'un `Value` reconstruit ne peut plus fournir. Ne pas « aligner » ce bras sur
+    // `migrer` : ce serait dégrader ce message pour une cohérence de façade.
     match serde_json::from_str::<ConfigFile>(&brut) {
         Ok(fichier) => {
             let mut projects = fichier.projects;
@@ -243,9 +249,10 @@ pub fn load(cible: &Path) -> LoadOutcome {
 /// Migre en chaîne depuis `depuis` jusqu'à `VERSION_COURANTE`, après avoir mis l'original
 /// de côté.
 ///
-/// Une seule version existe aujourd'hui : ce qui est livré ici est le **mécanisme**, posé
-/// tant qu'il est gratuit, avec la sauvegarde qui rend une migration fautive réparable.
-fn migrer(cible: &Path, brut: &str, depuis: u32) -> LoadOutcome {
+/// `valeur` est **déjà** le JSON de `brut` analysé par `load` : reparser ici testerait un
+/// JSON qu'on sait déjà valide, et ne pourrait produire qu'une branche d'erreur inatteignable.
+/// `brut` reste nécessaire à part — c'est ce qui part, octet pour octet, dans la sauvegarde.
+fn migrer(cible: &Path, brut: &str, mut valeur: serde_json::Value, depuis: u32) -> LoadOutcome {
     let sauvegarde = sauvegarde_de_migration(cible, depuis);
     if let Err(erreur) = fs::write(&sauvegarde, brut) {
         return LoadOutcome::Unreadable {
@@ -254,11 +261,25 @@ fn migrer(cible: &Path, brut: &str, depuis: u32) -> LoadOutcome {
         };
     }
 
+    // **Le cran du proxy passe en premier, et il est le seul à travailler sur le JSON.** `05d`
+    // remplace un tunnel plat par `{ localPort, proxy }` partout où un tunnel apparaît ; il ne
+    // connaît ni les projets, ni les bases, ni les environnements. L'appliquer d'abord, sur la
+    // valeur déjà analysée par `load`, évite de l'écrire deux fois — une pour la forme v1, qui
+    // porte des variantes, une pour la v2, qui porte des connexions. Les crans suivants ne le
+    // voient donc pas, et `migration_v1_vers_v2` n'a rien à en savoir.
+    if depuis < 3 {
+        hisser_les_tunnels_vers_le_proxy(&mut valeur);
+    }
+    let brut_migre = valeur.to_string();
+
     // v0 → v1 : la v0 n'a jamais été diffusée, sa forme est celle de la v1.
     // v1 → v2 : `23a`/`23b`. La chaîne est écrite pour se composer — une v1 lue depuis une v0 passe
     // ensuite par le même bras que si elle venait du disque.
+    // v2 → v3 : `05d`, déjà appliqué ci-dessus ; il ne reste qu'à lire la forme courante.
     let migre = match depuis {
-        0 | 1 => migration_v1_vers_v2(brut),
+        0 | 1 => migration_v1_vers_v2(&brut_migre),
+        2 => serde_json::from_str::<ConfigFile>(&brut_migre)
+            .map(|fichier| (fichier.projects, fichier.preferences)),
         _ => {
             return LoadOutcome::Unreadable {
                 reason: format!("aucune migration connue depuis la version {depuis}"),
@@ -276,6 +297,57 @@ fn migrer(cible: &Path, brut: &str, depuis: u32) -> LoadOutcome {
             reason: format!("migration depuis la version {depuis} impossible : {erreur}"),
             quarantined_to: sauvegarde,
         },
+    }
+}
+
+/// v2 → v3 (`05d`) : le tunnel plat devient `{ localPort, proxy: { kind: "ssh", … } }`.
+///
+/// **Purement structurelle, sans perte possible** : jusqu'à la v2, un tunnel ne pouvait décrire
+/// qu'un bastion SSH — aucune autre sorte n'existait. L'étiquette est donc connue sans avoir à la
+/// deviner.
+///
+/// **Écrite sur du `serde_json::Value`, et c'est ce qui la rend indépendante des autres crans.**
+/// Un `mod v2` de types dédiés, comme `mod v1` en fait pour `23a`/`23b`, obligerait à décrire deux
+/// fois la structure qui *entoure* le tunnel : une fois telle qu'elle est en v1, avec ses variantes,
+/// une fois telle qu'elle est en v2, avec ses connexions. La forme du tunnel, elle, est la même dans
+/// les deux. Descendre l'arbre en cherchant les `tunnel` plutôt qu'en connaissant le chemin qui y
+/// mène est donc la seule écriture qui ne se répète pas.
+///
+/// **Cette fonction ne valide rien** : elle transforme ce qu'elle reconnaît, et laisse passer tel
+/// quel ce qu'elle ne reconnaît pas (`tunnel` absent, `null`, ou déjà sous la forme v3 — reconnue à
+/// sa clé `proxy`). C'est sûr uniquement parce que `migrer` désérialise le résultat juste après :
+/// tout ce qu'elle n'a pas su remettre en forme y échouera et partira en quarantaine, jamais
+/// silencieusement accepté.
+fn hisser_les_tunnels_vers_le_proxy(valeur: &mut serde_json::Value) {
+    match valeur {
+        serde_json::Value::Object(objet) => {
+            if let Some(tunnel) = objet.get_mut("tunnel") {
+                // `null` est le cas courant — aucun tunnel déclaré : rien à faire, et c'est un
+                // chemin couvert. Un objet portant déjà `proxy` est une v3 : laissée intacte, ce
+                // qui rend la fonction idempotente.
+                if let Some(plat) = tunnel.as_object_mut() {
+                    if !plat.contains_key("proxy") {
+                        let port_local =
+                            plat.remove("localPort").unwrap_or(serde_json::Value::Null);
+                        // `kind` valait déjà « ssh » avant la v3. Le réécrire explicitement rend la
+                        // migration lisible sans connaître l'ancienne forme, et fait de lui
+                        // l'étiquette du proxy — ce que `#[serde(tag = "kind")]` attend.
+                        plat.insert("kind".to_owned(), serde_json::Value::from("ssh"));
+                        let proxy = serde_json::Value::Object(std::mem::take(plat));
+                        *tunnel = serde_json::json!({ "localPort": port_local, "proxy": proxy });
+                    }
+                }
+            }
+            for (_, enfant) in objet.iter_mut() {
+                hisser_les_tunnels_vers_le_proxy(enfant);
+            }
+        }
+        serde_json::Value::Array(elements) => {
+            for element in elements {
+                hisser_les_tunnels_vers_le_proxy(element);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -687,7 +759,9 @@ mod tests_preferences {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::model::{ConnectionSettings, Database, Engine, EnvironmentId, SslMode};
+    use crate::config::model::{
+        ConnectionSettings, Database, Engine, EnvironmentId, Proxy, ProxyCloudSql, SslMode,
+    };
 
     fn variante() -> ConnectionSettings {
         ConnectionSettings {
@@ -998,6 +1072,298 @@ mod tests {
             fs::read_to_string(sauvegardes[0].path()).unwrap(),
             original,
             "la sauvegarde doit contenir l'original, octet pour octet"
+        );
+    }
+
+    // --- `05d` : migration v2 → v3, le tunnel plat devient un proxy ---
+
+    /// Un fichier de version 2 tel que l'application **écrivait** réellement, en octets : les
+    /// environnements sont déclarés (`23a`), une base porte une connexion (`23b`), et le tunnel est
+    /// encore plat.
+    ///
+    /// **Littéral et non sérialisé depuis une structure Rust** : la forme v2 n'existe plus dans le
+    /// code, donc la reconstruire avec le `serde` d'aujourd'hui testerait la sérialisation actuelle
+    /// contre elle-même et ne prouverait rien de la migration.
+    const V2_AVEC_TUNNEL_PLAT: &str = r#"{
+      "version": 2,
+      "projects": [{
+        "name": "acme",
+        "activeEnvironment": "dev",
+        "environments": [
+          { "id": "dev", "label": "dev", "color": "green", "production": false }
+        ],
+        "databases": [{
+          "name": "analytics",
+          "engine": "postgresql",
+          "environment": "dev",
+          "connection": {
+            "host": "db.internal",
+            "port": 5432,
+            "defaultDatabase": "analytics",
+            "username": "dora_ro",
+            "password": null,
+            "sslMode": "require",
+            "readOnly": true,
+            "reconnectOnStartup": false,
+            "tunnel": {
+              "kind": "ssh",
+              "bastionHost": "bastion.internal",
+              "bastionPort": 2222,
+              "username": "dora",
+              "privateKeyPath": "/home/dora/.ssh/id_ed25519",
+              "localPort": null
+            }
+          },
+          "consoles": []
+        }]
+      }]
+    }"#;
+
+    #[test]
+    fn un_fichier_v2_a_tunnel_plat_migre_vers_le_proxy() {
+        let dir = tempfile::tempdir().unwrap();
+        let chemin = dir.path().join("config.json");
+        fs::write(&chemin, V2_AVEC_TUNNEL_PLAT).unwrap();
+
+        let issue = load(&chemin);
+
+        let LoadOutcome::Loaded { projects, .. } = issue else {
+            panic!("un fichier v2 doit se lire après migration, obtenu {issue:?}");
+        };
+        let tunnel = projects[0].databases[0]
+            .connection
+            .tunnel
+            .as_ref()
+            .expect("le tunnel doit survivre");
+        assert_eq!(tunnel.local_port, None);
+        let Proxy::Ssh(ssh) = &tunnel.proxy else {
+            panic!("un tunnel v2 est nécessairement SSH");
+        };
+        assert_eq!(ssh.bastion_host, "bastion.internal");
+        assert_eq!(ssh.bastion_port, 2222);
+        assert_eq!(ssh.username, "dora");
+        assert_eq!(ssh.private_key_path, "/home/dora/.ssh/id_ed25519");
+    }
+
+    #[test]
+    fn la_migration_du_proxy_laisse_une_sauvegarde_de_l_original() {
+        let dir = tempfile::tempdir().unwrap();
+        let chemin = dir.path().join("config.json");
+        fs::write(&chemin, V2_AVEC_TUNNEL_PLAT).unwrap();
+
+        let _ = load(&chemin);
+
+        // `05b` § « Version et migration » : la sauvegarde est ce qui rend une migration fautive
+        // réparable. Elle doit contenir les **octets d'origine**, non réécrits.
+        //
+        // Cherchée en listant le répertoire : la convention de nommage est
+        // `config.json.avant-v2`, pas `config.v2.json` — constaté en lisant
+        // `sauvegarde_de_migration`, qui délègue à `chemin_libre`.
+        let sauvegardes: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entree| {
+                entree
+                    .file_name()
+                    .to_string_lossy()
+                    .contains("config.json.avant-v2")
+            })
+            .collect();
+
+        assert_eq!(sauvegardes.len(), 1, "une seule sauvegarde attendue");
+        assert_eq!(
+            fs::read_to_string(sauvegardes[0].path()).unwrap(),
+            V2_AVEC_TUNNEL_PLAT
+        );
+    }
+
+    #[test]
+    fn un_fichier_v2_sans_tunnel_migre_aussi() {
+        // Ne rien avoir à faire est un chemin, pas un cas oublié : la très grande majorité des
+        // configurations existantes n'a aucun tunnel.
+        let dir = tempfile::tempdir().unwrap();
+        let chemin = dir.path().join("config.json");
+        let sans_tunnel = V2_AVEC_TUNNEL_PLAT
+            .replacen("\"tunnel\": {", "\"tunnelRetire\": {", 1)
+            .replacen("\"consoles\": []", "\"tunnel\": null, \"consoles\": []", 1);
+        fs::write(&chemin, &sans_tunnel).unwrap();
+
+        let issue = load(&chemin);
+        let LoadOutcome::Loaded { projects, .. } = issue else {
+            panic!("obtenu {issue:?}");
+        };
+        assert!(projects[0].databases[0].connection.tunnel.is_none());
+    }
+
+    #[test]
+    fn un_fichier_v1_a_tunnel_traverse_les_deux_crans() {
+        // Le cran du proxy et celui des environnements sont **orthogonaux**, et c'est ce test qui
+        // le prouve : un fichier v1 porte à la fois des variantes et un tunnel plat, donc il doit
+        // ressortir avec des connexions **et** un proxy. Le sabotage qui le fait tomber est de
+        // borner le cran du proxy à `depuis == 2`.
+        let v1 = V2_AVEC_TUNNEL_PLAT
+            .replacen("\"version\": 2", "\"version\": 1", 1)
+            .replacen(
+                r#""environments": [
+          { "id": "dev", "label": "dev", "color": "green", "production": false }
+        ],
+        "databases": [{
+          "name": "analytics",
+          "engine": "postgresql",
+          "environment": "dev",
+          "connection": {"#,
+                r#""databases": [{
+          "name": "analytics",
+          "engine": "postgresql",
+          "variants": [{
+            "environment": "dev","#,
+                1,
+            )
+            .replacen(
+                r#"          },
+          "consoles": []
+        }]"#,
+                r#"          }]
+        }]"#,
+                1,
+            );
+        let dir = tempfile::tempdir().unwrap();
+        let chemin = dir.path().join("config.json");
+        fs::write(&chemin, &v1).unwrap();
+
+        let issue = load(&chemin);
+        let LoadOutcome::Loaded { projects, .. } = issue else {
+            panic!("un fichier v1 doit se lire après double migration, obtenu {issue:?}");
+        };
+        assert_eq!(
+            projects[0].databases.len(),
+            1,
+            "la variante devient une connexion"
+        );
+        let tunnel = projects[0].databases[0]
+            .connection
+            .tunnel
+            .as_ref()
+            .expect("le tunnel doit survivre aux deux crans");
+        let Proxy::Ssh(ssh) = &tunnel.proxy else {
+            panic!("un tunnel v1 est nécessairement SSH");
+        };
+        assert_eq!(ssh.bastion_host, "bastion.internal");
+    }
+
+    #[test]
+    fn hisser_les_tunnels_est_idempotent() {
+        // Un fichier estampillé v2 dont le tunnel est **déjà** sous la forme v3 : le cas se produit
+        // si un fichier est édité à la main, ou si une version future rejoue un cran. La fonction
+        // reconnaît la forme d'arrivée à sa clé `proxy` et ne la retravaille pas — sans quoi elle
+        // produirait un `proxy` imbriqué dans un `proxy`, et la lecture partirait en quarantaine.
+        let deja_v3 = V2_AVEC_TUNNEL_PLAT.replacen(
+            r#""tunnel": {
+              "kind": "ssh",
+              "bastionHost": "bastion.internal",
+              "bastionPort": 2222,
+              "username": "dora",
+              "privateKeyPath": "/home/dora/.ssh/id_ed25519",
+              "localPort": null
+            }"#,
+            r#""tunnel": { "localPort": 5433, "proxy": {
+              "kind": "ssh",
+              "bastionHost": "bastion.internal",
+              "bastionPort": 2222,
+              "username": "dora",
+              "privateKeyPath": "/home/dora/.ssh/id_ed25519"
+            } }"#,
+            1,
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let chemin = dir.path().join("config.json");
+        fs::write(&chemin, &deja_v3).unwrap();
+
+        let issue = load(&chemin);
+        let LoadOutcome::Loaded { projects, .. } = issue else {
+            panic!("une forme déjà v3 doit traverser le cran sans dommage, obtenu {issue:?}");
+        };
+        let tunnel = projects[0].databases[0]
+            .connection
+            .tunnel
+            .as_ref()
+            .expect("le tunnel doit survivre");
+        assert_eq!(tunnel.local_port, Some(5433));
+        assert!(matches!(&tunnel.proxy, Proxy::Ssh(_)));
+    }
+
+    #[test]
+    fn un_echec_de_migration_du_proxy_nomme_la_sauvegarde() {
+        // Un tunnel dont un champ porte le mauvais type : le cran du proxy le remet en forme sans
+        // rien valider — c'est son contrat — et c'est la désérialisation finale qui refuse. Le
+        // fichier n'est donc pas « perdu » : la sauvegarde pré-migration porte les octets d'origine.
+        let brut = V2_AVEC_TUNNEL_PLAT.replacen(
+            "\"bastionPort\": 2222",
+            "\"bastionPort\": \"deux-mille-deux-cent-vingt-deux\"",
+            1,
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let chemin = dir.path().join("config.json");
+        fs::write(&chemin, &brut).unwrap();
+
+        let issue = load(&chemin);
+        let LoadOutcome::Unreadable {
+            reason,
+            quarantined_to,
+        } = issue
+        else {
+            panic!("une migration mal formée doit être refusée, obtenu {issue:?}");
+        };
+
+        assert!(
+            reason.contains("migration depuis la version 2"),
+            "le message doit dire d'où venait le fichier : {reason}"
+        );
+        assert!(quarantined_to.exists(), "la sauvegarde doit exister");
+        assert_eq!(fs::read_to_string(&quarantined_to).unwrap(), brut);
+    }
+
+    #[test]
+    fn un_fichier_v3_se_lit_sans_migration() {
+        let dir = tempfile::tempdir().unwrap();
+        let chemin = dir.path().join("config.json");
+
+        // Écrit par le code d'aujourd'hui, avec un proxy Cloud SQL : c'est le chemin direct, sans
+        // sauvegarde.
+        let mut connexion = variante();
+        connexion.tunnel = Some(crate::config::model::Tunnel {
+            local_port: Some(5433),
+            proxy: Proxy::CloudSql(ProxyCloudSql {
+                instance_connection_name: "acme-prod:europe-west1:analytics".into(),
+                credentials_file_path: None,
+            }),
+        });
+        let projet = Project {
+            name: "acme".into(),
+            active_environment: EnvironmentId::brut("dev"),
+            environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
+            queries: Vec::new(),
+            databases: vec![Database {
+                name: "analytics".to_owned(),
+                engine: Engine::PostgreSql,
+                environment: EnvironmentId::brut("dev"),
+                connection: connexion,
+                consoles: Vec::new(),
+            }],
+        };
+        save(&chemin, &[projet], &Preferences::default()).unwrap();
+
+        let issue = load(&chemin);
+        assert!(matches!(issue, LoadOutcome::Loaded { .. }), "{issue:?}");
+
+        let sauvegardes: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entree| entree.file_name().to_string_lossy().contains("avant-v"))
+            .collect();
+        assert!(
+            sauvegardes.is_empty(),
+            "aucune sauvegarde ne doit être créée sans migration"
         );
     }
 

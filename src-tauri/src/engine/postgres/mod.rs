@@ -17,7 +17,7 @@ use std::time::Instant;
 use tokio_postgres::Client;
 
 use crate::config::ConnectionSettings;
-use crate::engine::tunnel::{EtatTunnel, SshTunnel};
+use crate::engine::proxy::{EtatProxy, ProxyOuvert};
 use crate::engine::{
     ConnectionProbe, EngineAdapter, EngineError, RowQuery, RowWindow, SchemaInfo, TableDetail,
     TableSummary,
@@ -40,13 +40,17 @@ fn known_hosts_utilisateur() -> std::path::PathBuf {
 
 pub struct PostgresAdapter {
     client: Client,
-    /// Le tunnel SSH quand la variante en déclare un.
+    /// Le proxy quand la variante en déclare un — SSH ou Cloud SQL.
+    ///
+    /// **Une seule sorte de champ pour les deux sortes de proxy**, voir `ProxyOuvert` : deux
+    /// champs donneraient deux chemins à tenir cohérents ici, dans `etat_tunnel`, dans
+    /// `port_local_tunnel` et dans `close`.
     ///
     /// **Détenu par l'adaptateur** pour que sa durée de vie soit celle de la connexion : un
     /// tunnel lâché aussitôt après l'ouverture fermerait son écouteur local, et la connexion
     /// PostgreSQL mourrait à la première requête — panne d'autant plus déroutante que
     /// l'ouverture, elle, aurait réussi.
-    tunnel: Option<SshTunnel>,
+    proxy: Option<ProxyOuvert>,
 }
 
 /// `Debug` **à la main**, et non dérivé.
@@ -79,15 +83,14 @@ impl PostgresAdapter {
         mot_de_passe: Option<&Secret>,
         known_hosts: &std::path::Path,
     ) -> Result<Self, EngineError> {
-        let tunnel = match &variante.tunnel {
-            Some(configuration) => Some(
-                SshTunnel::ouvrir(configuration, &variante.host, variante.port, known_hosts)
-                    .await?,
-            ),
+        let proxy = match &variante.tunnel {
+            Some(tunnel) => {
+                Some(ProxyOuvert::ouvrir(tunnel, &variante.host, variante.port, known_hosts).await?)
+            }
             None => None,
         };
 
-        let redirection = tunnel.as_ref().map(|t| ("127.0.0.1", t.port_local()));
+        let redirection = proxy.as_ref().map(|p| ("127.0.0.1", p.port_local()));
         let config = connect::preparer(variante, mot_de_passe, redirection)?;
 
         match connect::ouvrir(
@@ -97,25 +100,30 @@ impl PostgresAdapter {
         )
         .await
         {
-            Ok(client) => Ok(Self { client, tunnel }),
-            // **Le point de `06e`** : sans cette qualification, un bastion tombé produit un
-            // « connection refused » sur `127.0.0.1`, qui envoie chercher un problème de
-            // PostgreSQL. `A3` distingue les deux lignes ; l'erreur doit les distinguer aussi.
-            Err(erreur) => Err(match &tunnel {
-                Some(t) => t.qualifier(erreur),
+            Ok(client) => Ok(Self { client, proxy }),
+            // **Le point de `06e`, étendu à Cloud SQL par `06g`** : sans cette qualification,
+            // un proxy tombé produit un « connection refused » sur `127.0.0.1`, qui envoie
+            // chercher un problème de PostgreSQL. `A3` distingue les deux lignes ; l'erreur
+            // doit les distinguer aussi.
+            Err(erreur) => Err(match &proxy {
+                Some(p) => p.qualifier(erreur),
                 None => erreur,
             }),
         }
     }
 
-    /// L'état du tunnel, quand il y en a un. `None` pour une connexion directe.
-    pub fn etat_tunnel(&self) -> Option<EtatTunnel> {
-        self.tunnel.as_ref().map(SshTunnel::etat)
+    /// L'état du proxy, quand il y en a un. `None` pour une connexion directe.
+    ///
+    /// **Garde son nom** malgré `06g` : le renommer toucherait `engine/commands.rs`,
+    /// `registry.rs`, la projection TypeScript et les tests front, pour un gain nul — le
+    /// panneau de `A2` s'appelle littéralement « Proxy / tunnel ».
+    pub fn etat_tunnel(&self) -> Option<EtatProxy> {
+        self.proxy.as_ref().map(ProxyOuvert::etat)
     }
 
     /// Le port local du tunnel, que `A2` affiche sous « auto (63342) ».
     pub fn port_local_tunnel(&self) -> Option<u16> {
-        self.tunnel.as_ref().map(SshTunnel::port_local)
+        self.proxy.as_ref().map(ProxyOuvert::port_local)
     }
 
     /// Ferme la connexion et **attend** que le port local du tunnel soit rendu.
@@ -128,8 +136,8 @@ impl PostgresAdapter {
     /// n'est qu'un filet. Un test de connexion qui rendrait sans attendre laisserait le port
     /// lié quelques instants — invisible une fois, gênant après vingt essais.
     pub async fn close(self) {
-        if let Some(tunnel) = self.tunnel {
-            tunnel.fermer().await;
+        if let Some(proxy) = self.proxy {
+            proxy.fermer().await;
         }
         // Le client est lâché ici : sa tâche d'entrées-sorties s'arrête d'elle-même quand plus
         // personne ne le détient (voir `connect::ouvrir`).
@@ -444,6 +452,8 @@ fn instruction_colonne(sql: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{ConnectionSettings, Proxy, ProxyCloudSql, ProxySsh, SslMode, Tunnel};
+    use crate::secrets::Secret;
 
     #[test]
     fn la_version_est_abregee_au_moteur_et_au_numero() {
@@ -493,6 +503,158 @@ mod tests {
         assert!(
             requete.contains("pg_total_relation_size"),
             "la taille doit être calculée côté serveur"
+        );
+    }
+
+    /// Une variante minimale, sans tunnel — l'appelant lui en assigne un au besoin. Ne
+    /// requiert ni bastion ni base réelle : les tests qui l'emploient n'atteignent jamais
+    /// le réseau, la connexion étant refusée avant.
+    fn variante_sans_tunnel() -> ConnectionSettings {
+        ConnectionSettings {
+            host: "db.internal".into(),
+            port: 5432,
+            default_database: "analytics".into(),
+            username: "dora_ro".into(),
+            password: None,
+            ssl_mode: SslMode::Require,
+            ca_certificate: None,
+            read_only: true,
+            reconnect_on_startup: false,
+            tunnel: None,
+        }
+    }
+
+    /// La variante d'une vraie instance Cloud SQL, si l'environnement en décrit une.
+    ///
+    /// **Conditionné par variables d'environnement, comme les tests SSH de `06e`** le sont au
+    /// serveur Docker : une instance Cloud SQL ne peut pas être une condition de la CI, et un
+    /// test qui échouerait faute de compte GCP apprendrait seulement qu'on n'en a pas.
+    ///
+    /// **Hors de `mod tests_db`, délibérément.** Ce module exige `DORABASE_TEST_PG`, donc une
+    /// base PostgreSQL locale, dont ce chemin n'a aucun besoin — la cible est l'instance
+    /// Cloud SQL elle-même. L'y mettre l'aurait rendu inatteignable sans un service qui n'a
+    /// rien à voir.
+    fn variante_cloud_sql() -> Option<(ConnectionSettings, Option<Secret>)> {
+        let instance = std::env::var("DORABASE_TEST_CLOUDSQL_INSTANCE").ok()?;
+        let base = std::env::var("DORABASE_TEST_CLOUDSQL_DATABASE").ok()?;
+        let utilisateur = std::env::var("DORABASE_TEST_CLOUDSQL_USER").ok()?;
+        let mot_de_passe = std::env::var("DORABASE_TEST_CLOUDSQL_PASSWORD").ok();
+
+        let mut variante = variante_sans_tunnel();
+        variante.default_database = base;
+        variante.username = utilisateur;
+        // L'hôte et le port de la variante ne servent pas : le proxy tient la cible de
+        // l'instance. Les laisser à leur valeur de fixture rend visible qu'ils sont ignorés —
+        // les vider suggérerait qu'ils comptent et qu'on a oublié de les remplir.
+        variante.tunnel = Some(Tunnel {
+            local_port: None,
+            proxy: Proxy::CloudSql(ProxyCloudSql {
+                instance_connection_name: instance,
+                // `None` signifie « identifiants par défaut de l'application ». Le fichier de
+                // compte de service s'exerce en posant `DORABASE_TEST_CLOUDSQL_CREDENTIALS`.
+                credentials_file_path: std::env::var("DORABASE_TEST_CLOUDSQL_CREDENTIALS").ok(),
+            }),
+        });
+
+        Some((variante, mot_de_passe.map(Secret::new)))
+    }
+
+    /// Le chemin heureux de `06g`, de bout en bout, contre une vraie instance.
+    ///
+    /// S'ignore de lui-même sans les variables d'environnement — et le **dit**, plutôt que de
+    /// passer en silence : un critère de spec non observé doit se voir.
+    #[tokio::test]
+    async fn une_instance_cloud_sql_est_joignable_par_le_proxy() {
+        let Some((variante, secret)) = variante_cloud_sql() else {
+            eprintln!(
+                "ignoré : poser DORABASE_TEST_CLOUDSQL_INSTANCE, _DATABASE, _USER \
+                 (et _PASSWORD / _CREDENTIALS) pour exercer ce chemin"
+            );
+            return;
+        };
+
+        let adaptateur = PostgresAdapter::connect_via(
+            &variante,
+            secret.as_ref(),
+            std::path::Path::new("/dev/null"),
+        )
+        .await
+        .expect("la connexion doit passer par le proxy Cloud SQL");
+
+        assert!(adaptateur.port_local_tunnel().is_some());
+        assert_eq!(adaptateur.etat_tunnel(), Some(EtatProxy::Vivant));
+        // **Une requête réelle, et non seulement l'ouverture** : un proxy peut accepter la
+        // connexion TCP et ne rien relayer, ce qui ne se voit qu'en interrogeant la base.
+        let sonde = adaptateur.probe().await.expect("sonde");
+        assert!(!sonde.server_version.is_empty());
+
+        adaptateur.close().await;
+    }
+
+    /// Le moteur **n'oppose plus un refus de principe** à un proxy Cloud SQL.
+    ///
+    /// **Ce que ce test peut prouver sans compte GCP, et ce qu'il ne peut pas.** Sans binaire
+    /// `cloud-sql-proxy` ni identifiants, l'ouverture échoue de toute façon — mais elle échoue
+    /// *sur le proxy*, pas sur un refus de principe. C'est précisément la différence que `06g`
+    /// apporte, et elle est vérifiable ici. Le chemin heureux, lui, exige une vraie instance
+    /// et vit dans `une_instance_cloud_sql_est_joignable_par_le_proxy`.
+    ///
+    /// L'assertion porte sur l'**absence** du message de refus de `05d` plutôt que sur la
+    /// présence d'un message précis : ce qui remonte dépend de la machine — binaire absent ici,
+    /// identifiants refusés ailleurs — et exiger l'un des deux rendrait le test dépendant de
+    /// l'environnement au lieu du comportement.
+    #[tokio::test]
+    async fn un_proxy_cloud_sql_n_est_plus_refuse_par_le_moteur() {
+        let mut variante = variante_sans_tunnel();
+        variante.tunnel = Some(Tunnel {
+            local_port: None,
+            proxy: Proxy::CloudSql(ProxyCloudSql {
+                instance_connection_name: "p:r:i".into(),
+                credentials_file_path: None,
+            }),
+        });
+
+        let erreur =
+            PostgresAdapter::connect_via(&variante, None, std::path::Path::new("/dev/null"))
+                .await
+                .expect_err("sans binaire ni identifiants, l'ouverture échoue");
+        assert!(
+            !erreur.message.contains("ne sait pas encore"),
+            "le refus de principe de 05d doit avoir disparu : {erreur}"
+        );
+    }
+
+    /// Une variante à tunnel SSH **n'est pas** refusée par l'aiguillage, et échoue plus loin.
+    ///
+    /// **Le contrôle symétrique du test précédent.** Sans lui, un aiguillage qui refuserait
+    /// désormais SSH — l'inverse exact de l'erreur de `05d` — passerait inaperçu : aucun test
+    /// non gaté ne prend ce chemin, ceux de `06e` exigeant un vrai bastion.
+    #[tokio::test]
+    async fn une_variante_a_tunnel_ssh_passe_l_aiguillage() {
+        let mut variante = variante_sans_tunnel();
+        variante.tunnel = Some(Tunnel {
+            local_port: None,
+            proxy: Proxy::Ssh(ProxySsh {
+                bastion_host: "bastion.invalide".into(),
+                bastion_port: 22,
+                username: "dora".into(),
+                private_key_path: "/nulle-part/id_ed25519".into(),
+            }),
+        });
+
+        let erreur =
+            PostgresAdapter::connect_via(&variante, None, std::path::Path::new("/dev/null"))
+                .await
+                .expect_err("une clé absente doit faire échouer l'ouverture");
+        // L'échec vient du **tunnel** — la clé privée est introuvable —, donc l'aiguillage a
+        // bien tenté de l'ouvrir au lieu de le refuser.
+        assert!(
+            !erreur.message.contains("ne sait pas encore"),
+            "SSH ne doit pas être refusé par l'aiguillage : {erreur}"
+        );
+        assert!(
+            erreur.message.contains("id_ed25519"),
+            "l'échec doit nommer la clé, donc venir du tunnel : {erreur}"
         );
     }
 }
@@ -715,12 +877,13 @@ mod tests_db {
             .parse()
             .ok()?;
         variante.tunnel = Some(crate::config::Tunnel {
-            kind: crate::config::TunnelKind::Ssh,
-            bastion_host: hote,
-            bastion_port: std::env::var("DORABASE_TEST_SSH_PORT").ok()?.parse().ok()?,
-            username: std::env::var("DORABASE_TEST_SSH_USER").ok()?,
-            private_key_path: std::env::var("DORABASE_TEST_SSH_KEY").ok()?,
             local_port: None,
+            proxy: crate::config::Proxy::Ssh(crate::config::ProxySsh {
+                bastion_host: hote,
+                bastion_port: std::env::var("DORABASE_TEST_SSH_PORT").ok()?.parse().ok()?,
+                username: std::env::var("DORABASE_TEST_SSH_USER").ok()?,
+                private_key_path: std::env::var("DORABASE_TEST_SSH_KEY").ok()?,
+            }),
         });
 
         let known_hosts =
@@ -772,7 +935,7 @@ mod tests_db {
         assert!(adaptateur.port_local_tunnel().is_some());
         assert_eq!(
             adaptateur.etat_tunnel(),
-            Some(crate::engine::tunnel::EtatTunnel::Vivant)
+            Some(crate::engine::proxy::EtatProxy::Vivant)
         );
     }
 

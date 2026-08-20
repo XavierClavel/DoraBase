@@ -77,7 +77,9 @@ mysql_async = { version = "0.36", default-features = false, features = [
   "tls12",
   "ring",
 ] }
-tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "rt-multi-thread"] }
+# `process` pour le sous-processus du proxy Cloud SQL (`06g`), `time` pour borner l'attente de son
+# démarrage — sans délai, un proxy muet pendrait indéfiniment.
+tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt", "rt-multi-thread", "time"] }
 russh = "0.62.5"
 tauri-plugin-dialog = "2"
 

@@ -185,26 +185,63 @@ impl SecretRef {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export_to = "config.ts")]
-#[serde(rename_all = "kebab-case")]
-pub enum TunnelKind {
-    Ssh,
-}
-
-/// Proxy / tunnel du panneau de `A2`. Le **chemin** de la clé privée est de la
-/// configuration, pas un secret — voir `specs/05c` § Hors périmètre.
+/// Un bastion SSH. Le **chemin** de la clé privée est de la configuration, pas un
+/// secret — voir `specs/05c` § Hors périmètre.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "config.ts")]
-pub struct Tunnel {
-    pub kind: TunnelKind,
+pub struct ProxySsh {
     pub bastion_host: String,
     pub bastion_port: u16,
     pub username: String,
     pub private_key_path: String,
+}
+
+/// Le Cloud SQL Auth Proxy de Google. Ouvert par `06g`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct ProxyCloudSql {
+    /// `projet:région:instance`, la forme exigée par le proxy. **Non validée ici** :
+    /// `06g` refuse à l'ouverture, avec le message du proxy lui-même.
+    pub instance_connection_name: String,
+    /// `None` signifie **« identifiants par défaut de l'application »** — le cas courant,
+    /// quand l'utilisateur a fait `gcloud auth application-default login`. Ce n'est pas un
+    /// champ oublié, et le nommer ainsi évite qu'un lecteur le prenne pour tel.
+    ///
+    /// Un **chemin**, donc pas un secret : même raison que la clé privée SSH.
+    pub credentials_file_path: Option<String>,
+}
+
+/// Ce qui **diffère** entre les deux sortes de proxy.
+///
+/// **Une énumération et non des champs optionnels.** Un `Tunnel` plat portant les champs
+/// des deux autoriserait `kind: "cloud-sql"` avec un bastion renseigné et aucune instance.
+/// `05a` pose que les invariants sont portés par le typage plutôt qu'en commentaire ; c'en
+/// est un. Le coût — un `match` là où il y avait un accès de champ — est le bénéfice :
+/// l'ajout d'une troisième sorte fera échouer la compilation aux endroits à traiter.
+///
+/// Vérifié : un `match` omettant `CloudSql` échoue en `E0004` (relevé le 19 août 2026).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+#[ts(export_to = "config.ts")]
+pub enum Proxy {
+    Ssh(ProxySsh),
+    CloudSql(ProxyCloudSql),
+}
+
+/// Le panneau « Proxy / tunnel » de `A2`, tel qu'il est configuré.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct Tunnel {
     /// `None` signifie « auto » — le port local est choisi à l'ouverture par `06`.
+    ///
+    /// **Hors de `Proxy`, et c'est le point** : il est vrai des deux sortes. Le dupliquer
+    /// dans chaque variante obligerait chaque lecteur à faire un `match` pour lire une
+    /// donnée qui ne varie pas.
     pub local_port: Option<u16>,
+    pub proxy: Proxy,
 }
 
 /// Les réglages de connexion d'une connexion déclarée. Tout le formulaire de `A2` vit ici, à
@@ -846,5 +883,81 @@ mod tests {
         assert!(candidat
             .environnement(&EnvironmentId::brut("preprod"))
             .is_none());
+    }
+
+    #[test]
+    fn un_proxy_ssh_se_serialise_avec_son_etiquette() {
+        let tunnel = Tunnel {
+            local_port: None,
+            proxy: Proxy::Ssh(ProxySsh {
+                bastion_host: "bastion.internal".into(),
+                bastion_port: 22,
+                username: "dora".into(),
+                private_key_path: "/home/dora/.ssh/id_ed25519".into(),
+            }),
+        };
+
+        let json = serde_json::to_value(&tunnel).expect("sérialisation");
+        // L'étiquette est **dans** l'objet du proxy, et vaut la forme kebab attendue par
+        // le front. La vérifier ici plutôt qu'en `08f` : c'est le contrat de l'IPC.
+        assert_eq!(json["proxy"]["kind"], "ssh");
+        assert_eq!(json["proxy"]["bastionHost"], "bastion.internal");
+        assert!(json["localPort"].is_null());
+    }
+
+    #[test]
+    fn un_proxy_cloud_sql_se_serialise_avec_son_etiquette() {
+        let tunnel = Tunnel {
+            local_port: Some(5433),
+            proxy: Proxy::CloudSql(ProxyCloudSql {
+                instance_connection_name: "acme-prod:europe-west1:analytics".into(),
+                credentials_file_path: None,
+            }),
+        };
+
+        let json = serde_json::to_value(&tunnel).expect("sérialisation");
+        assert_eq!(json["proxy"]["kind"], "cloud-sql");
+        assert_eq!(
+            json["proxy"]["instanceConnectionName"],
+            "acme-prod:europe-west1:analytics"
+        );
+        // `None` signifie « identifiants par défaut de l'application » : une valeur, pas un
+        // trou. Elle doit donc traverser explicitement, et non disparaître.
+        assert!(json["proxy"]["credentialsFilePath"].is_null());
+        assert_eq!(json["localPort"], 5433);
+    }
+
+    #[test]
+    fn un_proxy_relu_est_celui_ecrit() {
+        // Aller-retour, parce que la sérialisation seule ne prouve pas que `serde` sait
+        // retrouver la variante depuis son étiquette.
+        for proxy in [
+            Proxy::Ssh(ProxySsh {
+                bastion_host: "b".into(),
+                bastion_port: 2222,
+                username: "u".into(),
+                private_key_path: "/k".into(),
+            }),
+            Proxy::CloudSql(ProxyCloudSql {
+                instance_connection_name: "p:r:i".into(),
+                credentials_file_path: Some("/sa.json".into()),
+            }),
+        ] {
+            let tunnel = Tunnel {
+                local_port: None,
+                proxy,
+            };
+            let brut = serde_json::to_string(&tunnel).expect("écriture");
+            let relu: Tunnel = serde_json::from_str(&brut).expect("relecture");
+            assert_eq!(relu, tunnel);
+        }
+    }
+
+    #[test]
+    fn une_etiquette_inconnue_est_refusee() {
+        // Un fichier écrit par une version future, ou trafiqué à la main, ne doit pas
+        // produire un proxy par défaut : `05b` met en quarantaine ce qu'il ne sait pas lire.
+        let brut = r#"{"localPort":null,"proxy":{"kind":"socks5","host":"h"}}"#;
+        assert!(serde_json::from_str::<Tunnel>(brut).is_err());
     }
 }

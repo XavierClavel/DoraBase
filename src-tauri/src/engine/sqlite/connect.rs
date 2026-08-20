@@ -131,7 +131,7 @@ pub fn version_et_taille(chemin: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{SslMode, Tunnel, TunnelKind};
+    use crate::config::{Proxy, ProxySsh, SslMode, Tunnel};
 
     fn variante(chemin: &str) -> ConnectionSettings {
         ConnectionSettings {
@@ -169,12 +169,13 @@ mod tests {
     fn un_tunnel_declare_devant_un_fichier_est_refuse() {
         let mut avec_tunnel = variante("/tmp/atelier.db");
         avec_tunnel.tunnel = Some(Tunnel {
-            kind: TunnelKind::Ssh,
-            bastion_host: "bastion.exemple.test".into(),
-            bastion_port: 22,
-            username: "clement".into(),
-            private_key_path: "~/.ssh/id_ed25519".into(),
             local_port: None,
+            proxy: Proxy::Ssh(ProxySsh {
+                bastion_host: "bastion.exemple.test".into(),
+                bastion_port: 22,
+                username: "clement".into(),
+                private_key_path: "~/.ssh/id_ed25519".into(),
+            }),
         });
         // L'accepter laisserait croire que le tunnel protège l'accès à un fichier local.
         let erreur = chemin_de(&avec_tunnel).expect_err("doit refuser");

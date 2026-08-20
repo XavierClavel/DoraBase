@@ -16,11 +16,11 @@
 //! Lancé par `pnpm domain:build`, vérifié par `pnpm domain:check`.
 
 use dorabase_lib::config::{
-    ConfigLoad, Console, CreateEnvironmentRequest, CreateProjectRequest, DeleteDatabaseRequest,
-    DeleteEnvironmentRequest, DeleteEnvironmentResult, DeleteProjectRequest, DeleteResult, Project,
-    RecolorEnvironmentRequest, RenameEnvironmentRequest, RenameProjectRequest, RenameProjectResult,
-    ReorderEnvironmentsRequest, ConsoleRequest, SaveDatabaseRequest, SavedQuery,
-    SetActiveEnvironmentRequest, UpdateVariantRequest,
+    ConfigLoad, Console, ConsoleRequest, CreateEnvironmentRequest, CreateProjectRequest,
+    DeleteDatabaseRequest, DeleteEnvironmentRequest, DeleteEnvironmentResult, DeleteProjectRequest,
+    DeleteResult, Project, RecolorEnvironmentRequest, RenameEnvironmentRequest,
+    RenameProjectRequest, RenameProjectResult, ReorderEnvironmentsRequest, SaveDatabaseRequest,
+    SavedQuery, SetActiveEnvironmentRequest, UpdateVariantRequest,
 };
 use dorabase_lib::engine::commands::{
     ConnectionRequest, ConnectionStateEntry, ConnectionTest, DatabaseKey,
