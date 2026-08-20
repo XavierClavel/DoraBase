@@ -885,10 +885,19 @@ pub fn migrer_requetes_en_consoles(projects: &mut [Project]) {
 #[derive(Debug, PartialEq, Eq)]
 pub enum ConsoleError {
     NomVide,
-    NomDeja { nom: String },
-    Inconnue { nom: String },
-    ProjetInconnu { project: String },
-    ConnexionInconnue { database: String, environment: String },
+    NomDeja {
+        nom: String,
+    },
+    Inconnue {
+        nom: String,
+    },
+    ProjetInconnu {
+        project: String,
+    },
+    ConnexionInconnue {
+        database: String,
+        environment: String,
+    },
 }
 
 impl std::fmt::Display for ConsoleError {
@@ -901,10 +910,7 @@ impl std::fmt::Display for ConsoleError {
             Self::ConnexionInconnue {
                 database,
                 environment,
-            } => write!(
-                f,
-                "aucune connexion « {database} » en « {environment} »"
-            ),
+            } => write!(f, "aucune connexion « {database} » en « {environment} »"),
         }
     }
 }
@@ -2711,7 +2717,10 @@ mod tests_consoles {
             name: "Halle".into(),
             active_environment: EnvironmentId::brut("prod"),
             environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
-            databases: vec![connexion("analytics", "dev"), connexion("analytics", "prod")],
+            databases: vec![
+                connexion("analytics", "dev"),
+                connexion("analytics", "prod"),
+            ],
             queries: Vec::new(),
         }]
     }
@@ -2778,8 +2787,8 @@ mod tests_consoles {
 
     #[test]
     fn le_texte_dune_console_se_persiste_et_se_remplace() {
-        let p =
-            ajouter_console(&projets(), "Halle", "analytics", &prod(), "Exploration").expect("créée");
+        let p = ajouter_console(&projets(), "Halle", "analytics", &prod(), "Exploration")
+            .expect("créée");
         let p = enregistrer_sql_de_console(
             &p,
             "Halle",
@@ -2805,8 +2814,8 @@ mod tests_consoles {
 
     #[test]
     fn renommer_garde_le_texte() {
-        let p =
-            ajouter_console(&projets(), "Halle", "analytics", &prod(), "Exploration").expect("créée");
+        let p = ajouter_console(&projets(), "Halle", "analytics", &prod(), "Exploration")
+            .expect("créée");
         let p = enregistrer_sql_de_console(
             &p,
             "Halle",

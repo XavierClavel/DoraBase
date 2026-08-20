@@ -338,6 +338,43 @@ environments: Array<EnvironmentDeclaration>, databases: Array<Database>,
 queries?: Array<SavedQuery>, };
 
 /**
+ * Ce qui **diffère** entre les deux sortes de proxy.
+ *
+ * **Une énumération et non des champs optionnels.** Un `Tunnel` plat portant les champs
+ * des deux autoriserait `kind: "cloud-sql"` avec un bastion renseigné et aucune instance.
+ * `05a` pose que les invariants sont portés par le typage plutôt qu'en commentaire ; c'en
+ * est un. Le coût — un `match` là où il y avait un accès de champ — est le bénéfice :
+ * l'ajout d'une troisième sorte fera échouer la compilation aux endroits à traiter.
+ *
+ * Vérifié : un `match` omettant `CloudSql` échoue en `E0004` (relevé le 19 août 2026).
+ */
+export type Proxy = { "kind": "ssh" } & ProxySsh | { "kind": "cloud-sql" } & ProxyCloudSql;
+
+/**
+ * Le Cloud SQL Auth Proxy de Google. Ouvert par `06g`.
+ */
+export type ProxyCloudSql = { 
+/**
+ * `projet:région:instance`, la forme exigée par le proxy. **Non validée ici** :
+ * `06g` refuse à l'ouverture, avec le message du proxy lui-même.
+ */
+instanceConnectionName: string, 
+/**
+ * `None` signifie **« identifiants par défaut de l'application »** — le cas courant,
+ * quand l'utilisateur a fait `gcloud auth application-default login`. Ce n'est pas un
+ * champ oublié, et le nommer ainsi évite qu'un lecteur le prenne pour tel.
+ *
+ * Un **chemin**, donc pas un secret : même raison que la clé privée SSH.
+ */
+credentialsFilePath: string | null, };
+
+/**
+ * Un bastion SSH. Le **chemin** de la clé privée est de la configuration, pas un
+ * secret — voir `specs/05c` § Hors périmètre.
+ */
+export type ProxySsh = { bastionHost: string, bastionPort: number, username: string, privateKeyPath: string, };
+
+/**
  * Ce que `23e` envoie pour changer la couleur et le drapeau de production.
  */
 export type RecolorEnvironmentRequest = { project: string, environment: EnvironmentId, color: EnvironmentColor, production: boolean, };
@@ -424,16 +461,17 @@ export type SslMode = "disable" | "allow" | "prefer" | "require" | "verify-ca" |
 export type Theme = "cahier" | "nuit" | "systeme";
 
 /**
- * Proxy / tunnel du panneau de `A2`. Le **chemin** de la clé privée est de la
- * configuration, pas un secret — voir `specs/05c` § Hors périmètre.
+ * Le panneau « Proxy / tunnel » de `A2`, tel qu'il est configuré.
  */
-export type Tunnel = { kind: TunnelKind, bastionHost: string, bastionPort: number, username: string, privateKeyPath: string, 
+export type Tunnel = { 
 /**
  * `None` signifie « auto » — le port local est choisi à l'ouverture par `06`.
+ *
+ * **Hors de `Proxy`, et c'est le point** : il est vrai des deux sortes. Le dupliquer
+ * dans chaque variante obligerait chaque lecteur à faire un `match` pour lire une
+ * donnée qui ne varie pas.
  */
-localPort: number | null, };
-
-export type TunnelKind = "ssh";
+localPort: number | null, proxy: Proxy, };
 
 /**
  * Ce que `A2` envoie en mode édition (`08g`).

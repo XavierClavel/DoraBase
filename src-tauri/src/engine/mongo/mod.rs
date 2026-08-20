@@ -33,7 +33,7 @@ use mongodb::bson::{Bson, Document};
 use mongodb::Client;
 
 use crate::config::ConnectionSettings;
-use crate::engine::tunnel::{EtatTunnel, SshTunnel};
+use crate::engine::proxy::{EtatProxy, ProxyOuvert};
 use crate::engine::{
     ApplyOutcome, ColumnInfo, ConnectionProbe, EngineAdapter, EngineError, PendingUpdate,
     QueryPlan, QueryResult, RowCount, RowLimit, RowQuery, RowWindow, SchemaInfo, TableDetail,
@@ -52,7 +52,7 @@ pub struct MongoAdapter {
     base_declaree: String,
     /// Même raison qu'en `06b` : le tunnel vit aussi longtemps que la connexion, sans quoi son
     /// écouteur local se ferme et la connexion meurt à la première commande.
-    tunnel: Option<SshTunnel>,
+    proxy: Option<ProxyOuvert>,
 }
 
 /// `Debug` à la main, pour la raison de `05c` : un dérivé exposerait la configuration du client,
@@ -69,14 +69,13 @@ impl MongoAdapter {
         mot_de_passe: Option<&Secret>,
         known_hosts: &std::path::Path,
     ) -> Result<Self, EngineError> {
-        let tunnel = match &variante.tunnel {
-            Some(configuration) => Some(
-                SshTunnel::ouvrir(configuration, &variante.host, variante.port, known_hosts)
-                    .await?,
-            ),
+        let proxy = match &variante.tunnel {
+            Some(tunnel) => {
+                Some(ProxyOuvert::ouvrir(tunnel, &variante.host, variante.port, known_hosts).await?)
+            }
             None => None,
         };
-        let redirection = tunnel.as_ref().map(|t| ("127.0.0.1", t.port_local()));
+        let redirection = proxy.as_ref().map(|p| ("127.0.0.1", p.port_local()));
         let options = connect::preparer(variante, mot_de_passe, redirection)?;
 
         match connect::ouvrir(options).await {
@@ -84,28 +83,28 @@ impl MongoAdapter {
                 client,
                 deploiement,
                 base_declaree: variante.default_database.clone(),
-                tunnel,
+                proxy,
             }),
             // La qualification de `06e` : sans elle, un bastion tombé produit un « connection
             // refused » sur `127.0.0.1`, qui envoie chercher un problème de MongoDB.
-            Err(erreur) => Err(match &tunnel {
-                Some(t) => t.qualifier(erreur),
+            Err(erreur) => Err(match &proxy {
+                Some(p) => p.qualifier(erreur),
                 None => erreur,
             }),
         }
     }
 
-    pub fn etat_tunnel(&self) -> Option<EtatTunnel> {
-        self.tunnel.as_ref().map(SshTunnel::etat)
+    pub fn etat_tunnel(&self) -> Option<EtatProxy> {
+        self.proxy.as_ref().map(ProxyOuvert::etat)
     }
 
     pub fn port_local_tunnel(&self) -> Option<u16> {
-        self.tunnel.as_ref().map(SshTunnel::port_local)
+        self.proxy.as_ref().map(ProxyOuvert::port_local)
     }
 
     pub async fn close(self) {
-        if let Some(tunnel) = self.tunnel {
-            tunnel.fermer().await;
+        if let Some(proxy) = self.proxy {
+            proxy.fermer().await;
         }
         drop(self.client);
     }

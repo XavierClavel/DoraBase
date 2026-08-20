@@ -8,15 +8,16 @@
 //! Découpage :
 //! - `hostkey` — la politique de clé d'hôte, isolée parce que c'est une décision de sécurité
 //!   que le handoff n'a pas tranchée et qu'un écran de confiance viendra modifier ;
-//! - `key` — le chargement de la clé privée et la traduction de ses échecs ;
-//! - `port` — le choix du port local.
+//! - `key` — le chargement de la clé privée et la traduction de ses échecs.
+//!
+//! Le choix du port local a rejoint `engine::port` en `06g` : le proxy Cloud SQL en a
+//! besoin aussi, et le laisser sous `tunnel/` aurait fait dépendre `cloudsql` de `tunnel` —
+//! une dépendance qui ne dit rien de vrai sur le domaine.
 
 mod hostkey;
 mod key;
-mod port;
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -25,64 +26,20 @@ use russh::keys::PrivateKeyWithHashAlg;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 
-use crate::config::{Tunnel, TunnelKind};
+use crate::config::ProxySsh;
+use crate::engine::proxy::{qualifier_avec, EtatProxy, Surveillance};
 use crate::engine::EngineError;
 
 use hostkey::Verdict;
 
-/// L'état d'un tunnel ouvert.
-///
-/// **Pourquoi ce type existe** : `06e` insiste, et le handoff avec lui (`A3` affiche
-/// « tunnel aborted · pg connect skipped » sur deux lignes distinctes). Si le bastion tombe,
-/// la connexion PostgreSQL échoue avec une erreur réseau qui ne dit rien du tunnel, et
-/// l'utilisateur cherche un problème de base là où le bastion est en cause.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EtatTunnel {
-    Vivant,
-    /// Le tunnel est tombé. La raison est destinée à l'affichage.
-    Tombe {
-        raison: String,
-    },
-}
+/// Le sujet passé à `qualifier_avec`. En constante pour que le test de `proxy.rs` vérifie
+/// **la valeur que la production emploie**, et non un littéral retapé dans le test — sans
+/// quoi vider ce sujet ne casserait rien, et un bastion tombé dirait « est tombé » sans
+/// dire quoi.
+pub(crate) const SUJET: &str = "le tunnel SSH";
 
-/// La santé du tunnel, partagée entre le tunnel et sa tâche de transfert.
-///
-/// **Extrait en type nommé pour être testable.** La première version gardait le drapeau et la
-/// raison en champs de `SshTunnel`, et le test reconstituait la lecture d'`etat()` dans une
-/// fonction d'appoint — il testait donc une copie de la logique, pas la logique. Le même
-/// défaut avait été relevé sur l'atomicité de `05b` (voir `REPRISE.md` § 6). Ici, le tunnel et
-/// le test appellent tous deux `Surveillance::etat`.
-#[derive(Debug, Default)]
-struct Surveillance {
-    tombe: AtomicBool,
-    raison: Mutex<Option<String>>,
-}
-
-impl Surveillance {
-    fn noter_chute(&self, cause: String) {
-        if let Ok(mut g) = self.raison.lock() {
-            *g = Some(cause);
-        }
-        // Posé **après** la raison : `etat` lit le drapeau d'abord, donc l'inverse laisserait
-        // une fenêtre où le tunnel est signalé tombé sans raison disponible.
-        self.tombe.store(true, Ordering::Relaxed);
-    }
-
-    fn etat(&self) -> EtatTunnel {
-        if self.tombe.load(Ordering::Relaxed) {
-            EtatTunnel::Tombe {
-                raison: self
-                    .raison
-                    .lock()
-                    .ok()
-                    .and_then(|g| g.clone())
-                    .unwrap_or_else(|| "la session SSH est perdue".to_owned()),
-            }
-        } else {
-            EtatTunnel::Vivant
-        }
-    }
-}
+/// La raison par défaut quand le tunnel est tombé sans qu'une cause ait été notée.
+pub(crate) const RAISON_PAR_DEFAUT: &str = "la session SSH est perdue";
 
 /// Un tunnel SSH ouvert, et le port local sur lequel il écoute.
 pub struct SshTunnel {
@@ -112,27 +69,30 @@ impl std::fmt::Debug for SshTunnel {
 impl SshTunnel {
     /// Ouvre un tunnel et met en place la redirection vers `hote_cible:port_cible`.
     ///
+    /// **Prend un `&ProxySsh` et non un `&Tunnel`** depuis `05d` : le `match tunnel.kind`
+    /// qui ouvrait cette fonction était un garde-fou décoratif — il vérifiait à l'exécution
+    /// ce que le type peut affirmer. L'aiguillage vit dans `PostgresAdapter::connect_via`,
+    /// et cette fonction ne peut plus être appelée pour un proxy Cloud SQL — `06g`
+    /// remplacera cet aiguillage provisoire, mais sans changer cette signature.
+    ///
+    /// `port_local_demande` est l'ancien `tunnel.local_port` : il vient de `Tunnel`, qui
+    /// n'est plus passé entier.
+    ///
     /// `known_hosts` est un paramètre et non `~/.ssh/known_hosts` en dur : sans ça, aucun
     /// test ne pourrait s'exécuter sans toucher le fichier de la machine.
     pub async fn ouvrir(
-        tunnel: &Tunnel,
+        proxy: &ProxySsh,
         hote_cible: &str,
         port_cible: u16,
+        port_local_demande: Option<u16>,
         known_hosts: &Path,
     ) -> Result<Self, EngineError> {
-        // L'énumération n'a qu'un membre (`05a`), mais le filtrer explicitement fait que
-        // l'ajout d'un second type de proxy produira une erreur de compilation ici plutôt
-        // qu'un tunnel SSH ouvert par erreur vers un proxy HTTP.
-        match tunnel.kind {
-            TunnelKind::Ssh => {}
-        }
-
-        let clef = key::charger(Path::new(&tunnel.private_key_path))?;
+        let clef = key::charger(Path::new(&proxy.private_key_path))?;
 
         let verdict = Arc::new(Mutex::new(None));
         let verificateur = Verificateur {
-            hote: tunnel.bastion_host.clone(),
-            port: tunnel.bastion_port,
+            hote: proxy.bastion_host.clone(),
+            port: proxy.bastion_port,
             known_hosts: known_hosts.to_path_buf(),
             verdict: Arc::clone(&verdict),
         };
@@ -144,7 +104,7 @@ impl SshTunnel {
             ..client::Config::default()
         });
 
-        let adresse = format!("{}:{}", tunnel.bastion_host, tunnel.bastion_port);
+        let adresse = format!("{}:{}", proxy.bastion_host, proxy.bastion_port);
         let mut session = client::connect(config, adresse.as_str(), verificateur)
             .await
             .map_err(|erreur| {
@@ -153,12 +113,12 @@ impl SshTunnel {
                 // avant que `russh` ne transforme le refus en erreur générique.
                 if let Some(v) = verdict.lock().ok().and_then(|mut g| g.take()) {
                     if let Err(precise) =
-                        hostkey::appliquer(v, &tunnel.bastion_host, tunnel.bastion_port)
+                        hostkey::appliquer(v, &proxy.bastion_host, proxy.bastion_port)
                     {
                         return precise;
                     }
                 }
-                traduire_ouverture(&erreur, &tunnel.bastion_host, tunnel.bastion_port)
+                traduire_ouverture(&erreur, &proxy.bastion_host, proxy.bastion_port)
             })?;
 
         // Le hachage RSA négocié se demande **avant** l'appel, et non dans l'expression :
@@ -174,14 +134,14 @@ impl SshTunnel {
 
         let authentifie = session
             .authenticate_publickey(
-                &tunnel.username,
+                &proxy.username,
                 PrivateKeyWithHashAlg::new(clef, hachage_rsa),
             )
             .await
             .map_err(|erreur| {
                 EngineError::local(format!(
                     "l'authentification sur le bastion {} a échoué ({erreur})",
-                    tunnel.bastion_host
+                    proxy.bastion_host
                 ))
             })?;
 
@@ -191,11 +151,12 @@ impl SshTunnel {
             return Err(EngineError::local(format!(
                 "le bastion {} a refusé la clé {} pour l'utilisateur « {} » — vérifiez que sa \
                  clé publique est dans le authorized_keys du bastion",
-                tunnel.bastion_host, tunnel.private_key_path, tunnel.username
+                proxy.bastion_host, proxy.private_key_path, proxy.username
             )));
         }
 
-        let (ecouteur, port_local) = port::ouvrir_ecouteur(tunnel.local_port).await?;
+        let (ecouteur, port_local) =
+            crate::engine::port::ouvrir_ecouteur(port_local_demande).await?;
 
         let session = Arc::new(session);
         let sante = Arc::new(Surveillance::default());
@@ -221,8 +182,8 @@ impl SshTunnel {
         self.port_local
     }
 
-    pub fn etat(&self) -> EtatTunnel {
-        self.sante.etat()
+    pub fn etat(&self) -> EtatProxy {
+        self.sante.etat(RAISON_PAR_DEFAUT)
     }
 
     /// Qualifie une erreur de connexion à la base selon l'état du tunnel.
@@ -231,7 +192,7 @@ impl SshTunnel {
     /// sans ça, le bastion tombé produit un « connection refused » sur `127.0.0.1`, qui
     /// envoie chercher un problème de PostgreSQL.
     pub fn qualifier(&self, erreur: EngineError) -> EngineError {
-        qualifier_avec(&self.sante, erreur)
+        qualifier_avec(self.etat(), SUJET, erreur)
     }
 }
 
@@ -262,21 +223,6 @@ impl Drop for SshTunnel {
     /// pas attendre, et bloquer l'exécuteur ici serait pire que la fuite temporaire.
     fn drop(&mut self) {
         self.transfert.abort();
-    }
-}
-
-/// La qualification, en fonction libre pour être testable sans session SSH réelle.
-///
-/// Construire un `SshTunnel` exige un bastion ; garder cette logique en méthode obligerait
-/// donc à la recopier dans le test — le défaut que l'extraction de `Surveillance` corrige.
-fn qualifier_avec(sante: &Surveillance, erreur: EngineError) -> EngineError {
-    match sante.etat() {
-        EtatTunnel::Vivant => erreur,
-        EtatTunnel::Tombe { raison } => EngineError::local(format!(
-            "le tunnel SSH est tombé ({raison}) — la connexion à la base n'a pas pu être \
-             tentée. L'erreur observée était : {}",
-            erreur.message
-        )),
     }
 }
 
@@ -382,14 +328,12 @@ impl client::Handler for Verificateur {
 mod tests {
     use super::*;
 
-    fn tunnel(chemin_clef: &str) -> Tunnel {
-        Tunnel {
-            kind: TunnelKind::Ssh,
+    fn proxy(chemin_clef: &str) -> ProxySsh {
+        ProxySsh {
             bastion_host: "127.0.0.1".to_owned(),
             bastion_port: 1,
             username: "utilisateur".to_owned(),
             private_key_path: chemin_clef.to_owned(),
-            local_port: None,
         }
     }
 
@@ -398,9 +342,10 @@ mod tests {
     #[tokio::test]
     async fn une_clef_absente_echoue_avant_de_joindre_le_bastion() {
         let erreur = SshTunnel::ouvrir(
-            &tunnel("/aucune/clef/ici"),
+            &proxy("/aucune/clef/ici"),
             "base.interne",
             5432,
+            None,
             Path::new("/aucun/known_hosts"),
         )
         .await
@@ -411,63 +356,6 @@ mod tests {
             !erreur.message.contains("injoignable"),
             "l'échec doit précéder le réseau : {erreur}"
         );
-    }
-
-    #[test]
-    fn une_surveillance_neuve_dit_le_tunnel_vivant() {
-        assert_eq!(Surveillance::default().etat(), EtatTunnel::Vivant);
-    }
-
-    #[test]
-    fn une_chute_notee_porte_sa_raison() {
-        let sante = Surveillance::default();
-        sante.noter_chute("le bastion a coupé".to_owned());
-
-        assert_eq!(
-            sante.etat(),
-            EtatTunnel::Tombe {
-                raison: "le bastion a coupé".to_owned()
-            }
-        );
-    }
-
-    /// Le cœur de `06e` § « Une chute de tunnel n'est pas une erreur de base ».
-    #[test]
-    fn une_erreur_de_base_apres_chute_du_tunnel_nomme_le_tunnel() {
-        let sante = Surveillance::default();
-        sante.noter_chute("connexion réinitialisée par le bastion".to_owned());
-
-        let qualifiee = qualifier_avec(
-            &sante,
-            EngineError::local("connection refused (127.0.0.1:63342)"),
-        );
-
-        assert!(qualifiee.message.contains("tunnel"), "{qualifiee}");
-        assert!(
-            qualifiee.message.contains("bastion"),
-            "la raison de la chute doit survivre : {qualifiee}"
-        );
-        // L'erreur d'origine reste visible : elle est ce qu'un administrateur demandera.
-        assert!(
-            qualifiee.message.contains("connection refused"),
-            "{qualifiee}"
-        );
-    }
-
-    /// Le défaut symétrique : maquiller en « tunnel tombé » une erreur de base survenue
-    /// alors que le tunnel tient enverrait chercher un problème de bastion inexistant.
-    #[test]
-    fn un_tunnel_vivant_laisse_l_erreur_de_base_intacte() {
-        let sante = Surveillance::default();
-        let origine = EngineError::from_engine("28P01", "authentification refusée");
-
-        let apres = qualifier_avec(&sante, origine.clone());
-
-        assert_eq!(
-            apres, origine,
-            "une erreur de base ne doit pas être réécrite"
-        );
-        assert!(!apres.message.contains("tunnel"), "{apres}");
     }
 
     #[test]
@@ -511,7 +399,7 @@ mod tests_ssh {
     /// entre le conteneur local et le service de la CI, et la clé est engendrée à chaque
     /// démarrage.
     struct Decor {
-        tunnel: Tunnel,
+        proxy: ProxySsh,
         known_hosts: PathBuf,
         hote_cible: String,
         port_cible: u16,
@@ -524,13 +412,11 @@ mod tests_ssh {
 
     fn decor() -> Decor {
         Decor {
-            tunnel: Tunnel {
-                kind: TunnelKind::Ssh,
+            proxy: ProxySsh {
                 bastion_host: variable("DORABASE_TEST_SSH_HOST"),
                 bastion_port: variable("DORABASE_TEST_SSH_PORT").parse().expect("port"),
                 username: variable("DORABASE_TEST_SSH_USER"),
                 private_key_path: variable("DORABASE_TEST_SSH_KEY"),
-                local_port: None,
             },
             known_hosts: PathBuf::from(variable("DORABASE_TEST_SSH_KNOWN_HOSTS")),
             hote_cible: variable("DORABASE_TEST_SSH_TARGET_HOST"),
@@ -541,7 +427,7 @@ mod tests_ssh {
     }
 
     async fn ouvrir(d: &Decor) -> Result<SshTunnel, EngineError> {
-        SshTunnel::ouvrir(&d.tunnel, &d.hote_cible, d.port_cible, &d.known_hosts).await
+        SshTunnel::ouvrir(&d.proxy, &d.hote_cible, d.port_cible, None, &d.known_hosts).await
     }
 
     #[tokio::test]
@@ -550,7 +436,7 @@ mod tests_ssh {
         let t = ouvrir(&d).await.expect("le tunnel doit s'ouvrir");
 
         assert_ne!(t.port_local(), 0);
-        assert_eq!(t.etat(), EtatTunnel::Vivant);
+        assert_eq!(t.etat(), EtatProxy::Vivant);
     }
 
     /// Que le port local **transporte réellement** jusqu'à PostgreSQL.
@@ -615,7 +501,7 @@ mod tests_ssh {
 
         t.fermer().await;
 
-        let (_reprise, obtenu) = port::ouvrir_ecouteur(Some(port))
+        let (_reprise, obtenu) = crate::engine::port::ouvrir_ecouteur(Some(port))
             .await
             .expect("le port doit être libre après fermeture");
         assert_eq!(obtenu, port);
@@ -637,7 +523,10 @@ mod tests_ssh {
         // Laisser l'exécuteur traiter l'annulation planifiée par `Drop`.
         for _ in 0..50 {
             tokio::task::yield_now().await;
-            if port::ouvrir_ecouteur(Some(port)).await.is_ok() {
+            if crate::engine::port::ouvrir_ecouteur(Some(port))
+                .await
+                .is_ok()
+            {
                 return;
             }
         }
@@ -670,7 +559,7 @@ mod tests_ssh {
         writeln!(
             faux,
             "[{}]:{} ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH0ROb50+rnv9FXBncroDhGr519b+kvvP5kSlmXP+mMH",
-            d.tunnel.bastion_host, d.tunnel.bastion_port
+            d.proxy.bastion_host, d.proxy.bastion_port
         )
         .expect("écriture");
         faux.flush().expect("vidage");
@@ -699,7 +588,7 @@ mod tests_ssh {
             .arg(&chemin)
             .status()
             .expect("ssh-keygen");
-        d.tunnel.private_key_path = chemin.display().to_string();
+        d.proxy.private_key_path = chemin.display().to_string();
 
         let erreur = ouvrir(&d).await.expect_err("la clé doit être refusée");
         assert!(erreur.message.contains("refusé"), "{erreur}");
@@ -717,9 +606,11 @@ mod tests_ssh {
     async fn un_bastion_injoignable_est_distingue() {
         let mut d = decor();
         // Un port sur lequel rien n'écoute, obtenu puis relâché.
-        let (ecouteur, libre) = port::ouvrir_ecouteur(None).await.expect("port libre");
+        let (ecouteur, libre) = crate::engine::port::ouvrir_ecouteur(None)
+            .await
+            .expect("port libre");
         drop(ecouteur);
-        d.tunnel.bastion_port = libre;
+        d.proxy.bastion_port = libre;
 
         let erreur = ouvrir(&d)
             .await
@@ -735,28 +626,33 @@ mod tests_ssh {
 
         let inconnu = hostkey::appliquer(
             Verdict::Inconnu,
-            &d.tunnel.bastion_host,
-            d.tunnel.bastion_port,
+            &d.proxy.bastion_host,
+            d.proxy.bastion_port,
         )
         .unwrap_err();
         let changee = hostkey::appliquer(
             Verdict::CleChangee { ligne: 1 },
-            &d.tunnel.bastion_host,
-            d.tunnel.bastion_port,
+            &d.proxy.bastion_host,
+            d.proxy.bastion_port,
         )
         .unwrap_err();
 
-        let mut sans_clef = d.tunnel.clone();
+        let mut sans_clef = d.proxy.clone();
         sans_clef.private_key_path = "/aucune/clef".to_owned();
-        let clef_absente =
-            SshTunnel::ouvrir(&sans_clef, &d.hote_cible, d.port_cible, &d.known_hosts)
-                .await
-                .unwrap_err();
+        let clef_absente = SshTunnel::ouvrir(
+            &sans_clef,
+            &d.hote_cible,
+            d.port_cible,
+            None,
+            &d.known_hosts,
+        )
+        .await
+        .unwrap_err();
 
         let injoignable = traduire_ouverture(
             &russh::Error::IO(std::io::Error::from(std::io::ErrorKind::ConnectionRefused)),
-            &d.tunnel.bastion_host,
-            d.tunnel.bastion_port,
+            &d.proxy.bastion_host,
+            d.proxy.bastion_port,
         );
 
         let messages = [

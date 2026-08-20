@@ -124,7 +124,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{Tunnel, TunnelKind};
+    use crate::config::{Proxy, ProxySsh, Tunnel};
 
     fn variante() -> ConnectionSettings {
         ConnectionSettings {
@@ -144,12 +144,13 @@ mod tests {
     fn avec_tunnel() -> ConnectionSettings {
         let mut variante = variante();
         variante.tunnel = Some(Tunnel {
-            kind: TunnelKind::Ssh,
-            bastion_host: "bastion.exemple.net".into(),
-            bastion_port: 22,
-            username: "clement".into(),
-            private_key_path: "~/.ssh/id_ed25519".into(),
             local_port: None,
+            proxy: Proxy::Ssh(ProxySsh {
+                bastion_host: "bastion.exemple.net".into(),
+                bastion_port: 22,
+                username: "clement".into(),
+                private_key_path: "~/.ssh/id_ed25519".into(),
+            }),
         });
         variante
     }
