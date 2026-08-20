@@ -49,6 +49,15 @@ export type OngletConsole = {
    * PostgreSQL n'aurait rien à interroger.
    */
   dialecte: Dialecte
+  /**
+   * Le nom de la console **persistée** que cet onglet ouvre, quand il en ouvre une.
+   *
+   * Absent, l'onglet est un brouillon : il porte « console 1 » et son texte meurt avec lui. Présent,
+   * l'identité de l'onglet dérive du nom et non du numéro — rouvrir la même console depuis l'arbre
+   * réactive l'onglet au lieu d'en empiler un second, et le renommer côté disque ne casse rien tant
+   * que l'écran met la table des onglets à jour.
+   */
+  nom?: string
 }
 
 /** Les langues de console que le projet connaît. `19` (Redis) en ajoutera une troisième. */
@@ -67,9 +76,12 @@ export type Onglet = OngletTable | OngletConsole
 export function idOnglet(onglet: Onglet): string {
   const { project, database, environment } = onglet.key
   const coordonnees = `${project}/${database}/${environment}`
-  return onglet.sorte === 'console'
+  if (onglet.sorte !== 'console') return `${coordonnees}::${onglet.schema}.${onglet.table}`
+  // Une console persistée est identifiée par son nom ; un brouillon, par son numéro. Les deux
+  // espaces ne se croisent pas : le préfixe les sépare.
+  return onglet.nom === undefined
     ? `${coordonnees}::console/${onglet.numero}`
-    : `${coordonnees}::${onglet.schema}.${onglet.table}`
+    : `${coordonnees}::console:${onglet.nom}`
 }
 
 export type EtatOnglets = {
@@ -129,12 +141,25 @@ export function ouvrirConsole(
   etat: EtatOnglets,
   key: DatabaseKey,
   dialecte: Dialecte = 'sql',
+  nom?: string,
 ): EtatOnglets {
+  // **Une console persistée déjà ouverte est réactivée**, jamais dupliquée : contrairement à un
+  // brouillon, elle désigne un objet unique, et deux onglets sur le même texte divergeraient à la
+  // première frappe.
+  if (nom !== undefined) {
+    const existant = etat.onglets.find(
+      (onglet) => onglet.sorte === 'console' && onglet.nom === nom && memeBase(onglet.key, key),
+    )
+    if (existant) return { onglets: etat.onglets, actif: idOnglet(existant) }
+    const console: OngletConsole = { sorte: 'console', key, numero: 0, dialecte, nom }
+    return { onglets: [...etat.onglets, console], actif: idOnglet(console) }
+  }
+
   const pris = new Set(
     etat.onglets
       .filter(
         (onglet): onglet is OngletConsole =>
-          onglet.sorte === 'console' && memeBase(onglet.key, key),
+          onglet.sorte === 'console' && onglet.nom === undefined && memeBase(onglet.key, key),
       )
       .map((onglet) => onglet.numero),
   )
@@ -178,4 +203,62 @@ export function viseeParLId(
   const [projet, base] = coordonnees.split('/')
   if (projet !== cible.project) return false
   return cible.kind === 'project' || base === cible.database
+}
+
+/**
+ * L'identité d'un onglet ouvert sur une console persistée, sans avoir l'onglet sous la main.
+ *
+ * Les tables indexées par identité d'onglet — le texte, l'association à la console — doivent suivre
+ * un renommage, et elles n'ont pas accès à l'objet onglet. Reconstruire la chaîne à la main chez
+ * l'appelant ferait vivre le format à deux endroits.
+ */
+export function idDeConsolePersistee(key: DatabaseKey, nom: string): string {
+  return idOnglet({ sorte: 'console', key, numero: 0, dialecte: 'sql', nom })
+}
+
+/**
+ * Fait suivre un renommage de console aux onglets ouverts.
+ *
+ * **L'identité d'un onglet de console persistée dérive de son nom** (voir `idOnglet`) : renommer
+ * change donc son `id`, et `actif` doit être réécrit dans le même mouvement, sans quoi la bande
+ * désignerait un onglet qui n'existe plus et le centre reviendrait à `A4`.
+ */
+export function renommerLaConsole(
+  etat: EtatOnglets,
+  key: DatabaseKey,
+  ancien: string,
+  nouveau: string,
+): EtatOnglets {
+  const cible = etat.onglets.find(
+    (onglet) => onglet.sorte === 'console' && onglet.nom === ancien && memeBase(onglet.key, key),
+  )
+  if (cible === undefined) return etat
+
+  const ancienId = idOnglet(cible)
+  const onglets = etat.onglets.map((onglet) =>
+    onglet === cible ? { ...cible, nom: nouveau } : onglet,
+  )
+  const renomme = onglets.find((onglet) => onglet.sorte === 'console' && onglet.nom === nouveau)
+  return {
+    onglets,
+    actif: etat.actif === ancienId && renomme ? idOnglet(renomme) : etat.actif,
+  }
+}
+
+/**
+ * Donne son nom à un brouillon : l'onglet volatile devient l'onglet d'une console persistée.
+ *
+ * **Son identité change en même temps** — elle dérive du numéro tant qu'il n'y a pas de nom, du nom
+ * ensuite (voir `idOnglet`) — donc `actif` doit suivre, sans quoi la bande désignerait un onglet
+ * disparu et le centre reviendrait à `A4` juste après un enregistrement réussi.
+ */
+export function baptiserLeBrouillon(etat: EtatOnglets, id: string, nom: string): EtatOnglets {
+  const cible = etat.onglets.find((onglet) => idOnglet(onglet) === id)
+  if (cible === undefined || cible.sorte !== 'console') return etat
+
+  const baptise: OngletConsole = { ...cible, nom }
+  return {
+    onglets: etat.onglets.map((onglet) => (onglet === cible ? baptise : onglet)),
+    actif: etat.actif === id ? idOnglet(baptise) : etat.actif,
+  }
 }

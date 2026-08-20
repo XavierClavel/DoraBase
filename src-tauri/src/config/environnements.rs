@@ -424,6 +424,7 @@ mod tests {
                 reconnect_on_startup: false,
                 tunnel: None,
             },
+            consoles: Vec::new(),
         }
     }
 

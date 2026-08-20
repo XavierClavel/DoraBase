@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { ouvrirUneConsole } from './pourLesTests'
 
 // Le partage vertical et sa mémorisation : de la mise en page, donc hors de portée de Vitest.
 test.beforeEach(async ({ page }) => {
@@ -6,7 +7,7 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
-  await page.getByRole('button', { name: /Nouvelle console/ }).click()
+  await ouvrirUneConsole(page, 'analytics')
   await page.waitForSelector('[aria-label="Requête SQL"]')
   await page.evaluate(() => document.fonts.ready)
 })
@@ -74,7 +75,7 @@ test('glisser la poignée du bas redimensionne en hauteur, et la taille survit',
   await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
-  await page.getByRole('button', { name: /Nouvelle console/ }).click()
+  await ouvrirUneConsole(page, 'analytics')
   await page.waitForSelector('[aria-label="Requête SQL"]')
   const hauteurRelue = await page.evaluate(
     () => document.querySelector('.cm-editor')?.clientHeight ?? 0,

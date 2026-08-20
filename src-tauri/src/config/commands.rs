@@ -318,14 +318,21 @@ pub struct DeleteResult {
     pub leftover_secrets: Vec<String>,
 }
 
-/// Ce que `12f` envoie pour enregistrer, renommer ou retirer une requête.
+/// Ce que l'écran envoie pour créer, écrire, renommer ou retirer une console.
+///
+/// **Elle porte l'identité complète de la connexion** — projet, base, environnement — là où
+/// `SavedQueryRequest` de `12f` ne portait que le projet. C'est la conséquence directe du
+/// déplacement des consoles sous la connexion : sans l'environnement, `analytics` en dev et
+/// `analytics` en prod seraient confondues.
 #[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "config.ts")]
-pub struct SavedQueryRequest {
+pub struct ConsoleRequest {
     pub project: String,
+    pub database: String,
+    pub environment: super::model::EnvironmentId,
     pub name: String,
-    /// Le SQL, pour l'enregistrement. Ignoré par le retrait.
+    /// Le texte, pour l'écriture. Ignoré par la création, le renommage et le retrait.
     pub sql: Option<String>,
     /// Le nouveau nom, pour le renommage.
     pub rename_to: Option<String>,
@@ -589,16 +596,36 @@ pub async fn delete_project(
     })
 }
 
-/// Enregistre une requête, ou remplace celle qui porte ce nom (`12f`).
+/// Crée une console vide sur une connexion.
 #[tauri::command]
-pub fn save_query(
-    request: SavedQueryRequest,
+pub fn create_console(
+    request: ConsoleRequest,
     state: State<'_, ConfigState>,
 ) -> Result<Vec<Project>, String> {
-    ecrire_les_requetes(&state, |projects| {
-        super::enregistrer::enregistrer_requete(
+    ecrire_les_consoles(&state, |projects| {
+        super::enregistrer::ajouter_console(
             projects,
             &request.project,
+            &request.database,
+            &request.environment,
+            &request.name,
+        )
+        .map_err(|erreur| erreur.to_string())
+    })
+}
+
+/// Écrit le texte d'une console.
+#[tauri::command]
+pub fn save_console(
+    request: ConsoleRequest,
+    state: State<'_, ConfigState>,
+) -> Result<Vec<Project>, String> {
+    ecrire_les_consoles(&state, |projects| {
+        super::enregistrer::enregistrer_sql_de_console(
+            projects,
+            &request.project,
+            &request.database,
+            &request.environment,
             &request.name,
             request.sql.as_deref().unwrap_or_default(),
         )
@@ -606,39 +633,52 @@ pub fn save_query(
     })
 }
 
-/// Retire une requête enregistrée (`12f`).
+/// Retire une console.
 #[tauri::command]
-pub fn delete_query(
-    request: SavedQueryRequest,
+pub fn delete_console(
+    request: ConsoleRequest,
     state: State<'_, ConfigState>,
 ) -> Result<Vec<Project>, String> {
-    ecrire_les_requetes(&state, |projects| {
-        super::enregistrer::retirer_requete(projects, &request.project, &request.name)
-            .map_err(|erreur| erreur.to_string())
+    ecrire_les_consoles(&state, |projects| {
+        super::enregistrer::retirer_console(
+            projects,
+            &request.project,
+            &request.database,
+            &request.environment,
+            &request.name,
+        )
+        .map_err(|erreur| erreur.to_string())
     })
 }
 
-/// Renomme une requête enregistrée (`12f`).
+/// Renomme une console.
 #[tauri::command]
-pub fn rename_query(
-    request: SavedQueryRequest,
+pub fn rename_console(
+    request: ConsoleRequest,
     state: State<'_, ConfigState>,
 ) -> Result<Vec<Project>, String> {
     let nouveau = request
         .rename_to
         .clone()
         .ok_or_else(|| "un renommage exige un nouveau nom".to_owned())?;
-    ecrire_les_requetes(&state, |projects| {
-        super::enregistrer::renommer_requete(projects, &request.project, &request.name, &nouveau)
-            .map_err(|erreur| erreur.to_string())
+    ecrire_les_consoles(&state, |projects| {
+        super::enregistrer::renommer_console(
+            projects,
+            &request.project,
+            &request.database,
+            &request.environment,
+            &request.name,
+            &nouveau,
+        )
+        .map_err(|erreur| erreur.to_string())
     })
 }
 
-/// Le tronc commun des trois opérations sur les requêtes (`12f`).
+/// Le tronc commun des quatre opérations sur les consoles.
 ///
 /// **Les projets viennent du disque**, comme partout ailleurs : une liste envoyée par l'écran pourrait
 /// être périmée et écraser une écriture. Même arbitrage qu'en `08e`, `08f` et `08i`.
-fn ecrire_les_requetes(
+fn ecrire_les_consoles(
     state: &State<'_, ConfigState>,
     operation: impl FnOnce(&[Project]) -> Result<Vec<Project>, String>,
 ) -> Result<Vec<Project>, String> {

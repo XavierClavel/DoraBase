@@ -938,6 +938,109 @@ autre chose que ce qu'elle prétendait.
    test qui passe du premier coup n'est pas « est-il juste ? » mais « **qu'est-ce qui le ferait
    tomber ?** ».
 
+103. **Trois gestes de même nature, trois habillages différents.** Le pied de la sidebar empilait
+   « Nouvelle console » — bouton bordé pleine largeur, 28 px — au-dessus de deux pastilles nues de
+   20 px, « Connexion » et « Projet », qui partageaient une barre avec une icône « Rafraîchir » sans
+   libellé. Trois actions qui créent quelque chose s'annonçaient de trois façons, et la plus rare des
+   trois — créer un projet, le conteneur racine — était la moins visible. Corrigé le 20 août 2026 :
+   une seule facture pour les trois, et la hiérarchie portée par la **largeur** plutôt que par la
+   présence ou l'absence de bordure.
+
+   **Ce que le passage par `Button` aurait coûté.** `Button` a exactement la taille voulue
+   (`md` = 28 px) et exactement la variante voulue (`secondary`, bordée) : la tentation de le
+   réemployer était forte, et la dette écrite dans `ConsoleFooterButton` demandait même cette
+   promotion. Mais `Button.root` impose `box-sizing: content-box` — décision documentée de `02`, le
+   mockup cotant le contenu — donc `md secondary` rend **30 px**, et lui poser `width: 100%` aurait
+   reproduit la cause exacte du n° 67 à un endroit où `Button` ne peut pas la corriger sans
+   raccourcir ses cinq tailles partout ailleurs. **Une dette de duplication peut se solder par la
+   négative** : `src/ui/SidebarFooter/` assume la séparation, et sa raison d'être est écrite dans son
+   en-tête — « pleine largeur, donc `border-box` ».
+
+   **Et une action déplacée n'est pas une action supprimée.** « Rafraîchir » quittait le pied ; le
+   retirer sans plus aurait coûté une capacité, car `useArbre` justifie l'absence de rechargement au
+   second dépliage **par l'existence de ce bouton** — sans lui, un arbre périmé ne se récupère qu'en
+   redémarrant. La question « où va ce geste ? » se pose avant la question « à quoi ressemble la
+   barre ? ».
+
+104. **Un concept qui vivait au mauvais niveau.** Les requêtes enregistrées de `12f` étaient
+   rattachées au **projet**, avec un argument juste : un SQL écrit pour `analytics` en prod vaut le
+   plus souvent pour la même base en dev. Mais une console porte un **dialecte**, et le dialecte vient
+   du moteur d'une connexion : une requête flottant au-dessus du projet ne savait jamais sur quoi elle
+   s'exécutait. Le 20 août 2026, les consoles descendent sous la connexion et absorbent le concept.
+
+   **La migration est le vrai risque, pas le modèle.** `serde` ignore silencieusement les champs qu'il
+   ne connaît pas : retirer `queries` du modèle aurait fait disparaître les textes de l'utilisateur à
+   la première réécriture du fichier, **sans un mot**. Le champ est donc conservé, vidé après
+   transfert, et marqué `skip_serializing_if` pour cesser d'être écrit ensuite. Il est relu **à chaque
+   chargement**, parce qu'un projet sans aucune connexion n'a nulle part où verser ses requêtes : elles
+   attendent la première plutôt que d'être perdues. Et un homonyme est **suffixé**, jamais refusé — une
+   migration qui échoue bloque le chargement de toute la configuration.
+
+   **Un renversement de modèle déplace des identités.** L'identité d'un onglet de console persistée
+   dérive de son nom : renommer change son `id`, donc les deux tables indexées par onglet — le texte,
+   l'association à la console — devaient suivre, et `actif` avec elles. Oublier l'une des trois
+   rouvrait l'éditeur **vide** ou faisait écrire sous un nom que le disque ne connaissait plus. Trouvé
+   par le test e2e du renommage, pas par relecture.
+
+   **Et une écriture par touche est une écriture de trop.** Persister « à chaque frappe » réécrivait le
+   fichier de configuration entier — projets, connexions, préférences — des dizaines de fois par
+   seconde. Amorti à 400 ms, le texte à l'écran n'attendant lui jamais. Le test qui le vérifie mesure
+   *que l'écriture finit par partir*, non le délai : l'affirmer figerait une constante de réglage dans
+   une assertion.
+
+105. **Deux modales pour deux gestes qui n'en demandaient pas.** Les consoles, livrées le matin du
+   20 août 2026, se créaient par une fenêtre qui demandait un nom et se renommaient par une autre.
+   Les deux ont été retirées le même jour. **Demander un nom à la création est une question posée
+   trop tôt** : on ne sait pas encore ce que la console contiendra, donc on tape n'importe quoi, et le
+   nom qu'on regrette est celui qui reste. « console N » — le plus petit numéro libre, la règle que
+   les brouillons d'onglets appliquaient déjà — ne demande rien et ne trompe personne.
+
+   **Et un renommage est un geste léger.** Une modale l'interrompt, coûte deux clics de plus, et
+   cache la ligne qu'on est en train de nommer. Le champ prend désormais la place exacte du libellé,
+   à la même police : ce qui change pendant l'édition est la possibilité de taper, pas la mise en page
+   — une hauteur ou une graisse différentes feraient sauter la ligne au double-clic.
+
+   **La leçon n'est pas « moins de modales »**, c'est que la modale de nommage avait été reprise de
+   `12f` sans que le geste soit réexaminé. Enregistrer une requête *choisie et finie* méritait une
+   question ; créer un espace de travail vide, non. **Une brique héritée apporte avec elle les
+   hypothèses de son ancien contexte**, et celles-ci ne se voient pas : le code marchait, les tests
+   passaient, et c'est l'usage qui a dit que la question était de trop.
+
+   Trois détails que le retrait a imposés, et qu'aucun n'était évident : la perte de focus **valide**
+   au lieu d'annuler (cliquer ailleurs après avoir tapé veut dire « c'est bon », et perdre la saisie
+   là est le plus sûr moyen d'agacer) ; `Échap` annule, pour qu'un double-clic de trop s'abandonne
+   sans réfléchir ; et l'entrée « Renommer… » du menu **reste**, parce qu'un geste qui n'existe qu'au
+   double-clic est invisible pour qui ne l'essaie pas, et inatteignable au clavier.
+
+106. **Une largeur minimale qui contredisait le handoff, et un modèle de boîte oublié.** Le pied de
+   la sidebar ayant perdu son bouton « Nouvelle console », les consoles se créent depuis le menu d'une
+   connexion et se renomment sur place — d'où le besoin qu'un onglet ne tombe pas à une soixantaine de
+   pixels sous un nom d'un caractère. Le premier minimum, 120 px, poussait l'onglet `orders` **au-delà
+   de sa cote** et faisait tomber `e2e/layout-primitives.spec.ts`. Le mockup ne connaît pas d'onglet
+   plus étroit que celui-là : sa largeur, 98,3 px, est le seul minimum qui ne l'invente pas.
+
+   **Puis deux essais pour que la valeur rende ce qu'elle dit.** Écrite `98px`, elle faisait rendre
+   99 ; écrite `98.3px`, 99,3. La cause n'était ni l'arrondi ni la décimale mais un `box-sizing`
+   manquant sur `.tab` : en `content-box`, le minimum s'ajoutait au filet de droite. La cote du
+   handoff désigne l'onglet **entier**, filet compris. C'est le défaut n° 67 pris à l'envers — là-bas
+   une hauteur de contenu avait été lue comme une hauteur de boîte.
+
+   **Et deux mesures écrites après coup ont attrapé deux tests qui ne mesuraient rien.** Le premier
+   vérifiait la largeur de l'onglet sans vérifier que son contenu la remplissait : le bouton intérieur
+   se dimensionnait sur son texte, si bien que le filet supérieur courait sur 120 px au-dessus d'un
+   fond qui s'arrêtait à 46 px, croix flottant au milieu — signalé à l'écran, pas par la suite. Le
+   second affirmait qu'un onglet en édition s'élargissait, sur un libellé (« CA par jour ») large à lui
+   seul : sabotage fait, la règle retirée le laissait vert. **Réduire le nom à un caractère avant de
+   mesurer** est ce qui rend les deux mesures réelles. Troisième fois que ce piège se présente
+   (n° 97, n° 98, n° 102), et toujours la même parade : mettre le décor dans l'état où seule la règle
+   peut sauver la mesure.
+
+   **Enfin, la correction demandée ensuite a inversé la précédente** : l'onglet ne doit *pas* changer
+   de taille en édition. Le coupable était la largeur intrinsèque d'un `<input>` — son attribut `size`
+   implicite, ~177 px, qui pousse. `flex: 1 1 0` avec `width: 0` la neutralise. La tentative
+   intermédiaire, qui *fixait* une largeur d'édition, aggravait exactement le défaut qu'on cherchait à
+   corriger : **une largeur imposée à un champ est une largeur imposée à son hôte.**
+
 **Ce que ces défauts disent du décor de test.** Presque aucun n'était un défaut de logique : ils
 tenaient à une **régularité du décor** — colonnes exotiques nulles, tables analysées, numéros
 d'attribut qui coïncident, grille plus étroite que son cadre, `bigserial` partout. Une suite verte

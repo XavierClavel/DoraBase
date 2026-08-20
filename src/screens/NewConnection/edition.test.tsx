@@ -29,6 +29,7 @@ const BASE: Database = {
     reconnectOnStartup: false,
     tunnel: null,
   },
+  consoles: [],
 }
 
 const APRES: Project[] = [

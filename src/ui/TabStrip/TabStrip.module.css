@@ -13,6 +13,7 @@
 }
 
 .tab {
+  box-sizing: border-box;
   display: flex;
   /* `stretch`, pas `center` : le fond de l'onglet actif doit couvrir toute la hauteur de
      la bande, d'un filet à l'autre, et non la seule hauteur de son texte. */
@@ -22,11 +23,46 @@
      sans lui, activer un onglet le décalerait de 2 px vers le bas. La couleur est posée en
      ligne par le composant, elle dépend de la famille d'onglet. */
   border-top: 2px solid transparent;
+  /*
+   * **Largeur minimale**, posée le 20 août 2026 avec le renommage des consoles.
+   *
+   * Un onglet se dimensionnait sur son seul contenu, ce qui allait tant que les noms venaient du
+   * serveur — « console 1 » mesure 104 px, une table guère moins. Une console qu'on renomme peut
+   * s'appeler « Q1 » : l'onglet tombait alors à une soixantaine de pixels (24 de remplissage, 13
+   * d'icône, 7 de gouttière, le reste au texte), une pastille dans laquelle on ne visait plus, et
+   * dont la croix de fermeture occupait presque toute la place une fois active.
+   *
+   * **98,3 px, et cette valeur vient du handoff** : c'est la largeur qu'y fait l'onglet `orders`,
+   * mesurée par `e2e/layout-primitives.spec.ts`. Un minimum de 120 px, essayé d'abord, poussait cet
+   * onglet-là au-delà de sa cote et cassait la fidélité — le mockup ne connaît pas d'onglet plus
+   * étroit, donc sa plus petite largeur réelle est le seul minimum qui ne l'invente pas.
+   *
+   * **`box-sizing` va avec, et c'est ce qui a coûté deux essais.** Le projet n'a pas de `box-sizing`
+   * global — chaque primitive déclare le sien — et celle-ci l'avait omis : en `content-box`, le
+   * minimum s'ajoutait au filet de droite, si bien que `98px` rendait 99 et `98.3px` rendait 99,3.
+   * La cote du handoff désigne l'onglet **entier**, filet compris ; c'est donc `border-box` qu'il
+   * faut, et la valeur s'écrit telle qu'elle est mesurée. Même leçon que le défaut n° 67, à l'envers :
+   * là-bas une hauteur de contenu était lue comme une hauteur de boîte.
+   *
+   * Conséquence assumée : sur un nom d'un caractère, le champ de renommage n'offre qu'une trentaine
+   * de pixels utiles. Renommer depuis la ligne d'arbre, plus large, reste le geste confortable ;
+   * élargir l'onglet en édition a été essayé et retiré, parce que la cible bougeait sous le curseur.
+   */
+  min-width: 98.3px;
 }
 
 .select {
   display: flex;
   align-items: center;
+  /*
+   * **Le bouton remplit l'onglet**, il ne se contente pas de son contenu.
+   *
+   * Sans cela, la largeur minimale posée sur l'enveloppe laissait un vide à droite : le filet
+   * supérieur courait sur 120 px au-dessus d'un fond qui s'arrêtait à 46 px, et la croix de
+   * fermeture flottait au milieu de l'onglet. Signalé à l'écran le 20 août 2026, sur une console
+   * renommée « 1 » — le cas que la largeur minimale existe justement pour tenir.
+   */
+  flex: 1;
   gap: 7px;
   padding: 0 12px;
   border: none;

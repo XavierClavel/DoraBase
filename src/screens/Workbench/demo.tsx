@@ -52,24 +52,25 @@ const PROJETS: Project[] = [
     // trois laisserait passer un écran qui relit le trio en dur. `preprod` est
     // justement celui qu'aucune table de constantes ne connaît.
     environments: ENVIRONNEMENTS_DE_DEMO,
-    // Trois requêtes enregistrées : la section « Mes requêtes » de `12f` n'existe pas quand la liste
-    // est vide, et une démo sans elles ne montrerait pas cette moitié de la spec.
-    queries: [
-      {
-        name: 'CA par jour',
-        sql: "select date_trunc('day', created_at), sum(total_cents)\nfrom orders\ngroup by 1",
-      },
-      {
-        name: 'Top coupons',
-        sql: 'select coupon_code, count(*)\nfrom orders\ngroup by 1 order by 2 desc',
-      },
-      { name: 'Paniers abandonnés', sql: "select * from orders where status = 'pending'" },
-    ],
+    queries: [],
     databases: [
       {
         name: 'analytics',
         engine: 'postgresql',
         environment: 'prod',
+        // Trois consoles persistées : elles vivent sous la connexion depuis le 20 août 2026, et une
+        // démo sans elles ne montrerait pas ce niveau de l'arbre.
+        consoles: [
+          {
+            name: 'CA par jour',
+            sql: "select date_trunc('day', created_at), sum(total_cents)\nfrom orders\ngroup by 1",
+          },
+          {
+            name: 'Top coupons',
+            sql: 'select coupon_code, count(*)\nfrom orders\ngroup by 1 order by 2 desc',
+          },
+          { name: 'Paniers abandonnés', sql: "select * from orders where status = 'pending'" },
+        ],
         connection: {
           host: 'localhost',
           port: 5432,
@@ -102,6 +103,7 @@ const PROJETS: Project[] = [
           reconnectOnStartup: false,
           tunnel: null,
         },
+        consoles: [],
       },
     ],
   },
@@ -622,13 +624,30 @@ export function WorkbenchDemo() {
     }
   }, [preferences])
 
-  const surRequetes = (
-    nom: string,
-    transforme: (requetes: Project['queries']) => Project['queries'],
+  /**
+   * Applique une transformation aux consoles d'**une** connexion, désignée par son identité complète.
+   *
+   * La démo tient son état en mémoire : ce qui se vérifie ici est le chemin — le menu s'ouvre, le
+   * geste part, l'arbre suit — et non les règles, qui appartiennent au cœur.
+   */
+  const surConsoles = (
+    project: string,
+    database: string,
+    environment: string,
+    transforme: (consoles: Database['consoles']) => Database['consoles'],
   ) =>
     setProjets((precedents) =>
       precedents.map((projet) =>
-        projet.name === nom ? { ...projet, queries: transforme(projet.queries) } : projet,
+        projet.name === project
+          ? {
+              ...projet,
+              databases: projet.databases.map((base) =>
+                base.name === database && base.environment === environment
+                  ? { ...base, consoles: transforme(base.consoles) }
+                  : base,
+              ),
+            }
+          : projet,
       ),
     )
 
@@ -889,19 +908,27 @@ export function WorkbenchDemo() {
             projets[0] ? { etape: 'connexion', projet: projets[0].name } : { etape: 'projet' },
           )
         }
-        onSaveQuery={async (projet, nom, sql) =>
-          surRequetes(projet, (requetes) =>
-            requetes.some((r) => r.name === nom)
-              ? requetes.map((r) => (r.name === nom ? { ...r, sql } : r))
-              : [...requetes, { name: nom, sql }],
+        onCreateConsole={async (projet, base, environnement, nom) =>
+          surConsoles(projet, base, environnement, (consoles) => [
+            ...consoles,
+            { name: nom, sql: '' },
+          ])
+        }
+        onSaveConsole={async (projet, base, environnement, nom, sql) =>
+          surConsoles(projet, base, environnement, (consoles) =>
+            consoles.map((console) => (console.name === nom ? { ...console, sql } : console)),
           )
         }
-        onDeleteQuery={async (projet, nom) =>
-          surRequetes(projet, (requetes) => requetes.filter((r) => r.name !== nom))
+        onDeleteConsole={async (projet, base, environnement, nom) =>
+          surConsoles(projet, base, environnement, (consoles) =>
+            consoles.filter((console) => console.name !== nom),
+          )
         }
-        onRenameQuery={async (projet, ancien, nouveau) =>
-          surRequetes(projet, (requetes) =>
-            requetes.map((r) => (r.name === ancien ? { ...r, name: nouveau } : r)),
+        onRenameConsole={async (projet, base, environnement, ancien, nouveau) =>
+          surConsoles(projet, base, environnement, (consoles) =>
+            consoles.map((console) =>
+              console.name === ancien ? { ...console, name: nouveau } : console,
+            ),
           )
         }
         // La démo renomme **pour de faux** : le pont ne répond pas en Chromium. Ce qui se vérifie ici

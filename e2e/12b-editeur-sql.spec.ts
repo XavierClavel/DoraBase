@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { ouvrirUneConsole } from './pourLesTests'
 
 // La coloration, la gouttière et le fond : des couleurs calculées, donc hors de portée de Vitest.
 test.beforeEach(async ({ page }) => {
@@ -6,7 +7,7 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
-  await page.getByRole('button', { name: /Nouvelle console/ }).click()
+  await ouvrirUneConsole(page, 'analytics')
   await page.waitForSelector('.cm-content')
   await page.locator('.cm-content').click()
   await page.keyboard.type("select count(*) from orders where status = 'paid' -- note")
@@ -110,7 +111,7 @@ test('la ligne courante est marquée par un fond, pas par une bordure', async ({
 test('le texte saisi remonte à l’écran : changer d’onglet et revenir le retrouve', async ({
   page,
 }) => {
-  await page.getByRole('button', { name: /Nouvelle console/ }).click()
+  await ouvrirUneConsole(page, 'analytics')
   await expect(page.locator('.cm-content')).toHaveText('')
   await page.getByRole('tab', { name: /console 1/ }).click()
   // Le va-et-vient remonte l'éditeur : c'est ce qui prouve que l'écran détient le texte, et non

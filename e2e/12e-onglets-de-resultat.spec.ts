@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { ouvrirUneConsole } from './pourLesTests'
 
 // Les quatre vues et leurs chiffres : de l'assemblage d'écran. Le plan lui-même est couvert par les
 // tests Rust, dont celui qui vérifie qu'`EXPLAIN` n'exécute rien.
@@ -7,7 +8,7 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
-  await page.getByRole('button', { name: /Nouvelle console/ }).click()
+  await ouvrirUneConsole(page, 'analytics')
   await page.locator('.cm-content').click()
   await page.keyboard.insertText("select date_trunc('day', created_at) from orders")
   await page.getByRole('button', { name: /Exécuter/ }).click()

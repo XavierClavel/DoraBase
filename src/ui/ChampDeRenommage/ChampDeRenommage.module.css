@@ -1,0 +1,52 @@
+/*
+ * **Discret** — réglé en deux passes le 20 août 2026.
+ *
+ * La première version portait un liseré d'accent : elle faisait d'un renommage un événement, alors
+ * que l'accent sert ailleurs à désigner ce qui est actif ou ce qui demande une décision. La seconde
+ * gardait un filet et un fond blanc (`--field`), et le blanc pur restait une tache sur le papier
+ * chaud de l'application — un champ de formulaire posé dans un arbre.
+ *
+ * Ce qui reste : **un voile blanc translucide**, aucune bordure. C'est assez pour dire « ceci se
+ * tape » — le curseur et la sélection du texte disent le reste — et rien de plus.
+ *
+ * **Translucide, et non un ton pris dans la palette.** Un fond opaque doit choisir un support : posé
+ * sur le papier de la sidebar, `--paper-bright` convenait ; sur l'aplat d'accent d'une ligne
+ * sélectionnée — l'état exact d'une ligne qu'on vient de double-cliquer — le même ton redevenait une
+ * tache blanche. Un voile éclaircit **ce qu'il recouvre**, donc il reste d'un ton plus pâle que son
+ * support partout, sur le rose comme sur le papier.
+ *
+ * **La police est héritée**, et c'est structurel : ce qui change pendant l'édition est la possibilité
+ * de taper, pas la mise en page. Une taille ou une graisse propres feraient sauter la ligne au
+ * double-clic.
+ */
+.champ {
+  /*
+   * **`width: 0` avec `flex: 1 1 0`, et c'est ce qui empêche l'onglet de bouger.**
+   *
+   * Un `<input>` sans largeur déclarée porte celle de son attribut `size` implicite — environ 177 px
+   * — et cette largeur *pousse* : posé dans un onglet dimensionné sur son texte, il l'élargissait
+   * d'un coup au double-clic, sous les yeux de la personne en train de viser. Signalé à l'écran le
+   * 20 août 2026, après une première tentative qui **fixait** au contraire une largeur d'édition,
+   * donc aggravait exactement le défaut.
+   *
+   * Base zéro plus `flex: 1` : le champ ne réclame rien et prend la place que le libellé occupait.
+   * La ligne, ou l'onglet, garde la largeur qu'il avait.
+   */
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
+  box-sizing: border-box;
+  /* Le remplissage compense l'absence de bordure : sans lui, le texte du champ serait décalé d'un
+     pixel par rapport au libellé qu'il remplace, et la ligne tremblerait au double-clic. */
+  padding: 0 4px;
+  margin: 0;
+  border: none;
+  border-radius: var(--radius-badge-2);
+  /* Littéral commenté plutôt qu'un token : les tokens sont générés depuis le handoff
+     (`pnpm tokens:build`), et celui-ci n'y a pas d'équivalent — aucune surface du mockup n'est
+     translucide. 50 % : l'éclaircissement se voit sans que le support disparaisse. */
+  background: rgba(255, 255, 255, 0.5);
+  font: inherit;
+  color: var(--ink);
+  outline: none;
+}

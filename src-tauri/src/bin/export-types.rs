@@ -16,10 +16,10 @@
 //! Lancé par `pnpm domain:build`, vérifié par `pnpm domain:check`.
 
 use dorabase_lib::config::{
-    ConfigLoad, CreateEnvironmentRequest, CreateProjectRequest, DeleteDatabaseRequest,
+    ConfigLoad, Console, CreateEnvironmentRequest, CreateProjectRequest, DeleteDatabaseRequest,
     DeleteEnvironmentRequest, DeleteEnvironmentResult, DeleteProjectRequest, DeleteResult, Project,
     RecolorEnvironmentRequest, RenameEnvironmentRequest, RenameProjectRequest, RenameProjectResult,
-    ReorderEnvironmentsRequest, SaveDatabaseRequest, SavedQuery, SavedQueryRequest,
+    ReorderEnvironmentsRequest, ConsoleRequest, SaveDatabaseRequest, SavedQuery,
     SetActiveEnvironmentRequest, UpdateVariantRequest,
 };
 use dorabase_lib::engine::commands::{
@@ -59,7 +59,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     SetActiveEnvironmentRequest::export_all(&config)?;
     RenameProjectRequest::export_all(&config)?;
     SavedQuery::export_all(&config)?;
-    SavedQueryRequest::export_all(&config)?;
+    Console::export_all(&config)?;
+    ConsoleRequest::export_all(&config)?;
     DeleteDatabaseRequest::export_all(&config)?;
     DeleteProjectRequest::export_all(&config)?;
     DeleteResult::export_all(&config)?;

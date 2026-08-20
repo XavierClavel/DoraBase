@@ -51,6 +51,7 @@ function base(nom: string, environnement: EnvironmentId): Project['databases'][n
       reconnectOnStartup: false,
       tunnel: null,
     },
+    consoles: [],
   }
 }
 

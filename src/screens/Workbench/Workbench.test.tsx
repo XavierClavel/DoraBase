@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { Project } from '../../domain/config'
@@ -32,8 +33,20 @@ const PROJETS: Project[] = [
     queries: [],
     databases: [
       // **Dans l'environnement actif** (`23g`) : l'arbre ne liste que les connexions de celui-ci.
-      { name: 'analytics', engine: 'postgresql', environment: 'prod', connection: REGLAGES },
-      { name: 'shop', engine: 'postgresql', environment: 'prod', connection: REGLAGES },
+      {
+        name: 'analytics',
+        engine: 'postgresql',
+        environment: 'prod',
+        connection: REGLAGES,
+        consoles: [],
+      },
+      {
+        name: 'shop',
+        engine: 'postgresql',
+        environment: 'prod',
+        connection: REGLAGES,
+        consoles: [],
+      },
     ],
   },
 ]
@@ -175,6 +188,21 @@ const RESULTAT = {
   appliedLimit: null,
 }
 
+/**
+ * Le décor de `PROJETS`, avec une console persistée sur la connexion `analytics` de `prod`.
+ *
+ * Elle est posée sur **la connexion**, non sur le projet : c'est là qu'elle vit depuis le 20 août
+ * 2026, et un décor qui la placerait ailleurs ne dirait rien de ce que l'écran doit trouver.
+ */
+function avecConsole(nom: string, sql: string): Project[] {
+  return PROJETS.map((projet) => ({
+    ...projet,
+    databases: projet.databases.map((base) =>
+      base.name === 'analytics' ? { ...base, consoles: [{ name: nom, sql }] } : base,
+    ),
+  }))
+}
+
 const PROJETS_DEV: Project[] = PROJETS.map((projet) => ({
   ...projet,
   activeEnvironment: 'dev' as const,
@@ -188,18 +216,82 @@ const PROJETS_DEV: Project[] = PROJETS.map((projet) => ({
   })),
 }))
 
+/**
+ * Applique un geste de console au décor, comme le cœur le ferait.
+ *
+ * **Le décor doit suivre**, sans quoi deux créations de suite porteraient le même nom : le nom par
+ * défaut est le premier numéro libre *dans la liste des consoles*, et une liste figée reste
+ * éternellement vide. Le harnais tient donc les projets en état — la démo fait de même.
+ */
+function surConsoles(
+  projets: readonly Project[],
+  project: string,
+  database: string,
+  environment: string,
+  transforme: (
+    consoles: Project['databases'][number]['consoles'],
+  ) => Project['databases'][number]['consoles'],
+): Project[] {
+  return projets.map((projet) =>
+    projet.name === project
+      ? {
+          ...projet,
+          databases: projet.databases.map((base) =>
+            base.name === database && base.environment === environment
+              ? { ...base, consoles: transforme(base.consoles) }
+              : base,
+          ),
+        }
+      : projet,
+  )
+}
+
 function monter(over: Partial<Parameters<typeof Workbench>[0]> = {}) {
   const { passerelle, detail, lignes } = passerelles()
-  render(
-    <>
-      <Sprite />
+
+  function Pilote() {
+    const [projets, setProjets] = useState<readonly Project[]>(over.projects ?? PROJETS)
+    return (
       <Workbench
-        projects={PROJETS}
+        projects={projets}
         passerelle={passerelle}
         passerelleDetail={detail}
         passerelleLignes={lignes}
+        // Les quatre gestes de console appliqués à l'état, sauf si le test fournit les siens —
+        // un espion qui veut seulement constater l'appel n'a pas besoin que le décor bouge.
+        onCreateConsole={async (project, database, environment, nom) => {
+          setProjets((precedents) =>
+            surConsoles(precedents, project, database, environment, (consoles) => [
+              ...consoles,
+              { name: nom, sql: '' },
+            ]),
+          )
+        }}
+        onSaveConsole={async (project, database, environment, nom, sql) => {
+          setProjets((precedents) =>
+            surConsoles(precedents, project, database, environment, (consoles) =>
+              consoles.map((console) => (console.name === nom ? { ...console, sql } : console)),
+            ),
+          )
+        }}
+        onRenameConsole={async (project, database, environment, nom, nouveau) => {
+          setProjets((precedents) =>
+            surConsoles(precedents, project, database, environment, (consoles) =>
+              consoles.map((console) =>
+                console.name === nom ? { ...console, name: nouveau } : console,
+              ),
+            ),
+          )
+        }}
         {...over}
       />
+    )
+  }
+
+  render(
+    <>
+      <Sprite />
+      <Pilote />
     </>,
   )
   return { passerelle, detail, lignes }
@@ -404,15 +496,25 @@ describe('Workbench', () => {
 // --- Le mode édition (11b) ---
 
 describe('la console SQL (`12a`)', () => {
-  /** Ouvre l'arbre jusqu'à une base, puis une console. */
+  /**
+   * Ouvre l'arbre jusqu'à une base, puis une console **depuis le menu de la connexion**.
+   *
+   * Le pied de la sidebar ne porte plus de bouton « Nouvelle console » depuis le 20 août 2026 : ce
+   * chemin est le seul, et c'est celui que les tests doivent emprunter.
+   */
   async function ouvrirUneConsole(utilisateur: ReturnType<typeof userEvent.setup>) {
-    await ouvrirLArbreJusquAuSchema(utilisateur)
+    // **Idempotent sur le dépliage** : appelé deux fois de suite — ce que font les tests à deux
+    // consoles — un second dépliage replierait l'arbre et emporterait le menu avec lui.
+    if (screen.queryByRole('button', { name: 'Actions de analytics' }) === null) {
+      await ouvrirLArbreJusquAuSchema(utilisateur)
+    }
+    await utilisateur.click(screen.getByRole('button', { name: 'Actions de analytics' }))
     await utilisateur.click(screen.getByRole('button', { name: /Nouvelle console/ }))
   }
 
-  it('« Nouvelle console » ouvre un onglet de console', async () => {
+  it('« Nouvelle console… » ouvre un onglet de console', async () => {
     const utilisateur = userEvent.setup()
-    monter()
+    monter({ onCreateConsole: async () => {} })
     await ouvrirUneConsole(utilisateur)
 
     expect(screen.getByRole('tab', { name: /console 1/ })).toHaveAttribute('aria-selected', 'true')
@@ -447,7 +549,7 @@ describe('la console SQL (`12a`)', () => {
     await ouvrirUneConsole(utilisateur)
     await saisir(utilisateur, 'select 1')
 
-    await utilisateur.click(screen.getByRole('button', { name: /Nouvelle console/ }))
+    await ouvrirUneConsole(utilisateur)
     // **Le nerf de ce test depuis `12b`** : CodeMirror tient son propre document, donc sans instance
     // par onglet la seconde console afficherait le texte de la première. `12a` avait retiré la `key`
     // faute de garantie mesurable ; elle en a une maintenant.
@@ -467,7 +569,7 @@ describe('la console SQL (`12a`)', () => {
     monter()
     await ouvrirLArbreJusquAuSchema(utilisateur)
     await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
-    await utilisateur.click(screen.getByRole('button', { name: /Nouvelle console/ }))
+    await ouvrirUneConsole(utilisateur)
 
     // Un second système d'onglets à côté du premier doublerait la navigation pour un seul écran.
     expect(screen.getAllByRole('tab')).toHaveLength(2)
@@ -482,7 +584,7 @@ describe('la console SQL (`12a`)', () => {
     monter()
     await ouvrirLArbreJusquAuSchema(utilisateur)
     await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
-    await utilisateur.click(screen.getByRole('button', { name: /Nouvelle console/ }))
+    await ouvrirUneConsole(utilisateur)
 
     const icone = (nom: RegExp) =>
       screen.getByRole('tab', { name: nom }).querySelector('use')?.getAttribute('href')
@@ -716,38 +818,33 @@ describe('la console SQL (`12a`)', () => {
     expect(screen.getByText(/ne sont pas encore captés/)).toBeInTheDocument()
   })
 
-  it('« Enregistrer » nomme la requête, et « Remplacer » quand le nom est pris (`12f`)', async () => {
+  it('« Enregistrer » fait exister le brouillon sous un nom par défaut, sans rien demander', async () => {
     const utilisateur = userEvent.setup()
-    const enregistrer = vi.fn(async () => {})
-    monter({ passerelleExecution: PASSERELLE_SQL, onSaveQuery: enregistrer })
+    const creer = vi.fn(async () => {})
+    monter({ passerelleExecution: PASSERELLE_SQL, onCreateConsole: creer })
     await ouvrirUneConsole(utilisateur)
     await saisir(utilisateur, 'select 1')
 
-    // **Le bouton de la toolbar**, pas celui de la modale : deux boutons portent ce nom dès qu'elle
-    // est ouverte, et `getByRole` refuse l'ambiguïté — ce qui est ici un service.
     const toolbar = screen.getByRole('toolbar', { name: 'Actions de la console' })
     await utilisateur.click(within(toolbar).getByRole('button', { name: /Enregistrer/ }))
-    const modale = screen.getByRole('dialog', { name: /Enregistrer la requête/ })
-    // La requête appartient au **projet** : une requête écrite pour `prod` vaut le plus souvent pour
-    // la même base en `dev`, et changer d'environnement est le geste que `A4` rend courant.
-    expect(modale).toHaveTextContent('enregistrée dans le projet')
 
-    await utilisateur.type(screen.getByLabelText('Nom de la requête'), 'CA par jour')
-    // Le bouton de la modale, distingué de celui de la toolbar par son conteneur.
-    await utilisateur.click(within(modale).getByRole('button', { name: 'Enregistrer' }))
-    expect(enregistrer).toHaveBeenCalledWith('Atelier Nord', 'CA par jour', 'select 1')
+    // **Aucune modale** : nommer avant d'avoir écrit revient à demander un titre pour une page
+    // blanche. Le nom par défaut suffit, et le double-clic sur la ligne renomme plus tard.
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await waitFor(() =>
+      expect(creer).toHaveBeenCalledWith('Atelier Nord', 'analytics', 'prod', 'console 1'),
+    )
+    // L'onglet cesse d'être un brouillon : il porte le nom de la console.
+    expect(await screen.findByRole('tab', { name: /console 1/ })).toBeInTheDocument()
   })
 
-  it('un nom déjà pris annonce le remplacement avant de cliquer', async () => {
+  it('le nom par défaut prend le premier numéro libre de la connexion', async () => {
     const utilisateur = userEvent.setup()
-    const avecRequete: Project[] = PROJETS.map((projet) => ({
-      ...projet,
-      queries: [{ name: 'CA par jour', sql: 'select 0' }],
-    }))
+    const creer = vi.fn(async () => {})
     monter({
-      projects: avecRequete,
+      projects: avecConsole('console 1', ''),
       passerelleExecution: PASSERELLE_SQL,
-      onSaveQuery: async () => {},
+      onCreateConsole: creer,
     })
     await ouvrirUneConsole(utilisateur)
     await saisir(utilisateur, 'select 1')
@@ -756,35 +853,98 @@ describe('la console SQL (`12a`)', () => {
         name: /Enregistrer/,
       }),
     )
-    await utilisateur.type(screen.getByLabelText('Nom de la requête'), 'CA par jour')
 
-    // **Le bouton dit ce qui va se passer** : enregistrer sous un nom pris écrase, et l'apprendre
-    // après coup serait perdre du travail.
-    expect(screen.getByRole('button', { name: 'Remplacer' })).toBeInTheDocument()
-    expect(screen.getByText(/son SQL sera remplacé/)).toBeInTheDocument()
+    // « console 1 » est pris : la suivante est « console 2 », et non un homonyme que le cœur
+    // refuserait.
+    await waitFor(() =>
+      expect(creer).toHaveBeenCalledWith('Atelier Nord', 'analytics', 'prod', 'console 2'),
+    )
   })
 
-  it('« Mes requêtes » ouvre une console sur le texte enregistré', async () => {
+  it('une console de l’arbre s’ouvre sur son texte persisté', async () => {
     const utilisateur = userEvent.setup()
-    const avecRequete: Project[] = PROJETS.map((projet) => ({
-      ...projet,
-      queries: [{ name: 'CA par jour', sql: 'select 42' }],
-    }))
-    monter({ projects: avecRequete, passerelleExecution: PASSERELLE_SQL })
+    monter({
+      projects: avecConsole('CA par jour', 'select 42'),
+      passerelleExecution: PASSERELLE_SQL,
+    })
     await ouvrirLArbreJusquAuSchema(utilisateur)
 
-    await utilisateur.click(screen.getByRole('button', { name: /CA par jour/ }))
-    // Une console est le seul endroit où l'on peut exécuter : ouvrir la requête ailleurs demanderait
-    // un second éditeur.
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /CA par jour/ }))
+    // L'onglet porte le texte écrit sur le disque, et non un éditeur vide.
     expect(texteDeLEditeur()).toBe('select 42')
   })
 
-  it('la section « Mes requêtes » n’existe pas quand il n’y en a aucune', async () => {
+  it('chaque frappe d’une console de l’arbre est écrite', async () => {
     const utilisateur = userEvent.setup()
-    monter({ passerelleExecution: PASSERELLE_SQL })
+    const ecrire = vi.fn(async () => {})
+    monter({
+      projects: avecConsole('CA par jour', ''),
+      passerelleExecution: PASSERELLE_SQL,
+      onSaveConsole: ecrire,
+    })
     await ouvrirLArbreJusquAuSchema(utilisateur)
-    // Une section vide serait du bruit sur un écran déjà dense.
-    expect(screen.queryByText('Mes requêtes')).not.toBeInTheDocument()
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /CA par jour/ }))
+    await saisir(utilisateur, 'select 1')
+
+    // **C'est ce qui distingue une console persistée d'un brouillon** : personne n'a cliqué
+    // « Enregistrer », et le texte est pourtant parti vers le disque.
+    //
+    // `waitFor` parce que l'écriture est **amortie** : une réécriture du fichier de configuration
+    // par touche serait du travail disque pur pour un état que personne ne lira. Ce que ce test
+    // mesure est qu'elle finit par partir, non le délai — l'affirmer figerait une constante de
+    // réglage dans une assertion.
+    await waitFor(() =>
+      expect(ecrire).toHaveBeenCalledWith(
+        'Atelier Nord',
+        'analytics',
+        'prod',
+        'CA par jour',
+        'select 1',
+      ),
+    )
+  })
+
+  it('un double-clic sur l’onglet renomme la console, comme dans l’arbre', async () => {
+    const utilisateur = userEvent.setup()
+    const renommer = vi.fn(async () => {})
+    monter({
+      projects: avecConsole('CA par jour', 'select 42'),
+      passerelleExecution: PASSERELLE_SQL,
+      onRenameConsole: renommer,
+    })
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /CA par jour/ }))
+
+    await utilisateur.dblClick(await screen.findByRole('tab', { name: /CA par jour/ }))
+    const champ = screen.getByLabelText('Nouveau nom de CA par jour')
+    await utilisateur.clear(champ)
+    await utilisateur.type(champ, 'Audit{Enter}')
+
+    // **Une console se rencontre aux deux endroits** — la ligne d'arbre et l'onglet — et n'être
+    // renommable qu'à l'un des deux obligerait à se souvenir lequel.
+    expect(renommer).toHaveBeenCalledWith(
+      'Atelier Nord',
+      'analytics',
+      'prod',
+      'CA par jour',
+      'Audit',
+    )
+  })
+
+  it('rouvrir une console déjà ouverte réactive son onglet au lieu d’en empiler un second', async () => {
+    const utilisateur = userEvent.setup()
+    monter({
+      projects: avecConsole('CA par jour', 'select 42'),
+      passerelleExecution: PASSERELLE_SQL,
+    })
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /CA par jour/ }))
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /CA par jour/ }))
+    // Une console désigne un objet unique : deux onglets sur le même texte divergeraient à la
+    // première frappe. Un brouillon, lui, s'empile — c'est tout l'intérêt d'en ouvrir un second.
+    const onglets = screen.getAllByRole('tab', { name: /CA par jour/ })
+    expect(onglets).toHaveLength(1)
   })
 
   it('fermer une console la retire, et le voisin reprend la main', async () => {
@@ -792,7 +952,7 @@ describe('la console SQL (`12a`)', () => {
     monter()
     await ouvrirLArbreJusquAuSchema(utilisateur)
     await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
-    await utilisateur.click(screen.getByRole('button', { name: /Nouvelle console/ }))
+    await ouvrirUneConsole(utilisateur)
     await utilisateur.click(screen.getByRole('button', { name: 'Fermer console 1' }))
 
     expect(screen.queryByLabelText('Requête SQL')).not.toBeInTheDocument()
