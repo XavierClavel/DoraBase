@@ -141,15 +141,22 @@
 
 .footer {
   display: flex;
+  /* **Le pied peut porter une seconde ligne.** `A2` en état « projet imposé » ajoute une phrase
+   * sous la rangée de boutons (`24c`) : sans `wrap`, un `flex-basis: 100%` ne passe pas à la
+   * ligne, il se contente d'écraser ses voisins — les boutons se resserrent et la phrase se
+   * découpe en colonne à droite. D'où `wrap` et une hauteur **minimale** : une rangée seule
+   * mesure toujours 56px, une rangée plus une phrase grandit. */
+  flex-wrap: wrap;
   align-items: center;
+  align-content: center;
   gap: 9px;
-  height: 56px;
+  min-height: 56px;
   padding: 0 var(--space-7);
   border-top: 1px solid var(--divider);
   background: var(--field);
 }
 
 .shellNested .footer {
-  height: 46px;
+  min-height: 46px;
   justify-content: flex-end;
 }
