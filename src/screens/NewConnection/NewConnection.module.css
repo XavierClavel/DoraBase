@@ -410,3 +410,28 @@
   flex: none;
   color: var(--accent-deep);
 }
+
+/* --- Visage Cloud SQL du panneau (08k) ---
+ *
+ * Cloud SQL n'est pas dans le handoff : ces deux règles sont inventées, et restent dans le
+ * vocabulaire du panneau — mêmes jetons que `.label`, même grille — pour qu'une maquette
+ * ultérieure ait peu à corriger.
+ */
+
+/* L'instance prend les trois colonnes restantes après « Type ». Un nom de connexion
+ * `projet:région:instance` fait facilement quarante caractères ; le couper sur la colonne
+ * `1fr` de l'hôte du bastion le rendrait illisible. */
+.tunnelInstance {
+  grid-column: 2 / -1;
+}
+
+/* Le libellé qui dit que le vide est une valeur. Poids `normal` là où `.label` est
+ * `semibold` : c'est une aide, pas l'étiquette d'un champ, et les confondre à l'œil ferait
+ * lire deux étiquettes empilées. */
+.tunnelHint {
+  margin: var(--space-1) 0 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-normal);
+  color: var(--ink-8);
+}

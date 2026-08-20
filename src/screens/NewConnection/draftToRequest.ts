@@ -1,5 +1,6 @@
 import type { ConnectionRequest } from '../../domain/engine'
 import type { ConnectionDraft } from './ConnectionDraft'
+import { tunnelDraftToTunnel } from './tunnelDraftToTunnel'
 
 /**
  * Convertit le brouillon de `A2` en requête de test.
@@ -17,7 +18,6 @@ import type { ConnectionDraft } from './ConnectionDraft'
  */
 export function draftToRequest(draft: ConnectionDraft): ConnectionRequest {
   const port = Number.parseInt(draft.port, 10)
-  const bastionPort = draft.tunnel ? Number.parseInt(draft.tunnel.bastionPort, 10) : 0
 
   return {
     // **Pas d'environnement ici.** `ConnectionRequest` sert au *test* de connexion (`08d`) : il ne
@@ -37,18 +37,7 @@ export function draftToRequest(draft: ConnectionDraft): ConnectionRequest {
       caCertificate: draft.caCertificate.trim() === '' ? null : draft.caCertificate.trim(),
       readOnly: draft.readOnly,
       reconnectOnStartup: draft.reconnectOnStartup,
-      tunnel: draft.tunnel
-        ? {
-            kind: 'ssh',
-            bastionHost: draft.tunnel.bastionHost,
-            bastionPort: Number.isFinite(bastionPort) ? bastionPort : 0,
-            username: draft.tunnel.username,
-            privateKeyPath: draft.tunnel.privateKeyPath,
-            // Toujours `null` : le port local est **choisi par l'app** à l'ouverture, jamais
-            // saisi. `06e` se lie au port 0 et rend celui que le système attribue.
-            localPort: null,
-          }
-        : null,
+      tunnel: tunnelDraftToTunnel(draft.tunnel),
     },
     password: draft.password === '' ? null : draft.password,
   }

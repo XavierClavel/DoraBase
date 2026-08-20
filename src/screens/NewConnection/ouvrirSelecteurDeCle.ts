@@ -32,3 +32,32 @@ export async function ouvrirSelecteurDeCle(): Promise<string | null> {
   // est impossible ici, mais TypeScript ne le sait pas depuis la signature.
   return typeof choisi === 'string' ? choisi : null
 }
+
+/**
+ * Ouvre le sélecteur du fichier de compte de service Google, et rend son chemin.
+ *
+ * **Dans ce fichier et non dans un module de plus** : les deux ne font qu'appeler le plugin
+ * `dialog`, et c'est précisément ce fichier qui existe pour être le seul point de contact avec
+ * lui. Les séparer multiplierait les endroits à simuler sous Vitest.
+ *
+ * **Aucune permission à ajouter.** `dialog:allow-open` est déjà accordée par `08c`, et elle
+ * suffit : ouvrir un second sélecteur n'est pas une seconde capacité. Gardé par
+ * `src-tauri/tests/permissions.rs`, qui compte les permissions et échouerait si l'on avait
+ * pris `dialog:default`.
+ *
+ * **Aucune lecture du fichier ici**, comme pour la clé privée : il porte la clé privée d'un
+ * compte de service, et la lire pour « valider » la saisie ferait entrer de la matière privée
+ * dans l'écran sans nécessité. `06g` le passe au proxy, qui le lit.
+ */
+export async function ouvrirSelecteurDeCompteDeService(): Promise<string | null> {
+  const choisi = await open({
+    multiple: false,
+    directory: false,
+    title: 'Choisir un fichier de compte de service Google',
+    // Google distribue ces clés en JSON. Le filtre guide sans empêcher de saisir un chemin
+    // quelconque — même principe que pour la clé SSH.
+    filters: [{ name: 'Compte de service', extensions: ['json'] }],
+  })
+
+  return typeof choisi === 'string' ? choisi : null
+}

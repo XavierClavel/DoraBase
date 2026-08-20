@@ -250,6 +250,53 @@ async function deplierTunnel(page: import('@playwright/test').Page) {
   await page.waitForSelector('input[inputmode=numeric] >> nth=1')
 }
 
+// Ce test a longtemps été déclaré inobservable, « le formulaire vivant derrière un assistant en
+// deux étapes ». La cause réelle était ailleurs : Playwright réutilisait le serveur de
+// développement **d'un autre worktree** — celui-là même dont le parcours en deux étapes est
+// devenu `24c`. Voir la note en tête de `playwright.config.ts`. Le test est observé, et un
+// `size="md"` sur le champ « Instance » le fait tomber.
+test('les champs du visage Cloud SQL font 28 px aussi (08k)', async ({ page }) => {
+  await deplierTunnel(page)
+  // **Deux gestes et non `selectOption`** : le `<select>` natif est parti du produit, remplacé par
+  // `ListeDeroulante`. Le passage par les rôles ARIA est ce qui garde le test honnête — il
+  // échouerait si le composant cessait de les porter.
+  await page.getByRole('combobox', { name: 'Type' }).click()
+  await page.getByRole('option', { name: 'Cloud SQL' }).click()
+  await page.waitForSelector('input[placeholder="projet:région:instance"]')
+
+  const mesures = await page.evaluate(() => {
+    const panneau = [...document.querySelectorAll('section')].find((s) =>
+      s.textContent?.includes('Proxy / tunnel'),
+    )
+    if (!panneau) return null
+    const hauteur = (el: Element | null) =>
+      el ? Math.round(el.getBoundingClientRect().height) : null
+    const instance = panneau.querySelector<HTMLInputElement>(
+      'input[placeholder="projet:région:instance"]',
+    )
+    return {
+      champs: [...panneau.querySelectorAll('input')].map((i) =>
+        hauteur(i.parentElement?.className.includes('wrap') ? i.parentElement : i),
+      ),
+      // L'instance doit occuper les trois colonnes restantes : un nom de connexion long serait
+      // illisible sur une colonne `1fr`.
+      largeurInstance: Math.round(instance?.getBoundingClientRect().width ?? 0),
+      // `[role=combobox]` et non `select` : plus de composant natif dans ce produit.
+      largeurType: Math.round(
+        panneau.querySelector('[role=combobox]')?.getBoundingClientRect().width ?? 0,
+      ),
+    }
+  })
+
+  // 28 px de contenu plus les 2 px de bordure, comme le visage SSH. Le mockup ne montre pas ce
+  // visage : l'aligner sur l'autre est la seule cohérence disponible.
+  expect(new Set(mesures?.champs)).toHaveProperty('size', 1)
+  expect(mesures?.champs[0]).toBe(30)
+  // Comparée à « Type » plutôt que fixée en pixels : une valeur exacte dépendrait de la largeur
+  // de la modale, donc casserait au premier ajustement de mise en page.
+  expect(mesures?.largeurInstance).toBeGreaterThan((mesures?.largeurType ?? 0) * 2)
+})
+
 test('les champs du panneau font 28 px, contre 30 pour le formulaire', async ({ page }) => {
   await deplierTunnel(page)
 
