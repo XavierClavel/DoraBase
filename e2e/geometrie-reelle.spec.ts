@@ -586,3 +586,92 @@ test('un libellé long cède par l’ellipse, sans revenir à la ligne', async (
   // Rien n'est perdu : l'infobulle porte le libellé entier, et `aria-label` le nom de l'action.
   expect(m.infobulle).toContain('Ajouter une connexion')
 })
+
+/**
+ * La largeur minimale d'un onglet, et le fond qui la remplit.
+ *
+ * **Deux mesures, parce que la première seule laissait passer le défaut.** L'enveloppe respectait
+ * bien son minimum, mais le bouton qu'elle contient se dimensionnait sur son texte : le filet
+ * supérieur courait sur 120 px au-dessus d'un fond qui s'arrêtait à 46 px, et la croix de fermeture
+ * flottait au milieu. Signalé à l'écran le 20 août 2026. Vérifier la largeur de l'onglet sans
+ * vérifier que son contenu la remplit revient à mesurer la boîte en ignorant ce qu'on y voit.
+ */
+test('un onglet au nom très court garde sa largeur, et son fond la remplit', async ({ page }) => {
+  await page.goto('/?demo')
+  await page.waitForSelector('[role=tree]')
+  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await page.getByRole('treeitem', { name: /analytics/ }).click()
+  await page.getByRole('treeitem', { name: /Top coupons/ }).click()
+  await page.waitForSelector('.cm-content')
+
+  // Renommé en un seul caractère : le cas que la largeur minimale existe pour tenir.
+  await page.getByRole('tab', { name: /Top coupons/ }).dblclick()
+  const champ = page.getByLabel('Nouveau nom de Top coupons')
+  await champ.fill('1')
+  await champ.press('Enter')
+  await expect(page.getByRole('tab', { name: '1' })).toBeVisible()
+
+  const mesures = await page.evaluate(() => {
+    const bouton = [...document.querySelectorAll('[role=tab]')].find(
+      (tab) => (tab.textContent ?? '').trim() === '1',
+    )
+    const enveloppe = bouton?.parentElement
+    if (!bouton || !enveloppe) return null
+    const croix = enveloppe.querySelector('button[aria-label^=Fermer]')
+    return {
+      enveloppe: enveloppe.getBoundingClientRect().width,
+      bouton: bouton.getBoundingClientRect().width,
+      croix: croix?.getBoundingClientRect().width ?? 0,
+    }
+  })
+
+  expect(mesures).not.toBeNull()
+  if (mesures === null) return
+  // L'onglet ne rétrécit pas jusqu'à devenir une pastille dans laquelle on ne vise plus. 98 px est
+  // la largeur de l'onglet `orders` du mockup — la plus petite que le handoff connaisse.
+  expect(mesures.enveloppe).toBeGreaterThanOrEqual(98)
+  // Et son contenu occupe toute la place : le bouton plus la croix couvrent l'enveloppe, à un
+  // pixel de sous-pixel près. C'est ce qui manquait.
+  expect(mesures.bouton + mesures.croix).toBeGreaterThan(mesures.enveloppe - 2)
+})
+
+/**
+ * **Un onglet ne change pas de taille quand il passe en édition.**
+ *
+ * Le double-clic est un geste de visée : si la cible s'élargit au moment où on l'atteint, les onglets
+ * voisins se déplacent sous le curseur. Le coupable est la largeur intrinsèque d'un `<input>` — son
+ * attribut `size` implicite vaut une vingtaine de caractères, et cette largeur pousse. Signalé à
+ * l'écran le 20 août 2026, après une première tentative qui *fixait* une largeur d'édition et
+ * aggravait donc le défaut.
+ *
+ * Le nom est réduit à un caractère avant de mesurer : c'est l'écart maximal entre ce que le libellé
+ * demande et ce que le champ demanderait. Sur « CA par jour », le défaut serait presque invisible.
+ */
+test('un onglet garde sa largeur quand il passe en édition', async ({ page }) => {
+  await page.goto('/?demo')
+  await page.waitForSelector('[role=tree]')
+  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await page.getByRole('treeitem', { name: /analytics/ }).click()
+  await page.getByRole('treeitem', { name: /CA par jour/ }).click()
+  await page.waitForSelector('.cm-content')
+
+  await page.getByRole('tab', { name: /CA par jour/ }).dblclick()
+  const premier = page.getByLabel('Nouveau nom de CA par jour')
+  await premier.fill('1')
+  await premier.press('Enter')
+  await expect(page.getByRole('tab', { name: '1' })).toBeVisible()
+
+  const largeurOnglet = () =>
+    page.evaluate(
+      () => document.querySelector('[role=tablist] > div')?.getBoundingClientRect().width ?? 0,
+    )
+  const avant = await largeurOnglet()
+  await page.getByRole('tab', { name: '1' }).dblclick()
+  await expect(page.getByLabel('Nouveau nom de 1')).toBeFocused()
+  const pendant = await largeurOnglet()
+
+  // Rien ne bouge — au sous-pixel près.
+  expect(Math.abs(pendant - avant)).toBeLessThan(1)
+  // Et la largeur minimale de l'onglet tient, elle aussi.
+  expect(avant).toBeGreaterThanOrEqual(98)
+})

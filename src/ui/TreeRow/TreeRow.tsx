@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type { IconName } from '../../design/icons/names'
+import { ChampDeRenommage } from '../ChampDeRenommage/ChampDeRenommage'
 import { cx } from '../cx'
 import styles from './TreeRow.module.css'
 
@@ -46,6 +47,20 @@ type TreeRowProps = {
   strong?: boolean
   /** Projet voisin replié : icônes ramenées à la teinte de métadonnée. */
   muted?: boolean
+  /**
+   * Rend le libellé **éditable sur place**, et non dans une modale (20 août 2026).
+   *
+   * Renommer une ligne d'arbre est un geste léger et fréquent ; une modale l'interrompt, demande deux
+   * clics de plus, et cache la ligne qu'on est en train de nommer. Le champ prend la place exacte du
+   * libellé, à la même taille, pour que le nom se lise pendant qu'on le change.
+   *
+   * **La ligne cesse d'être un bouton pendant l'édition.** Un `<input>` dans un `<button>` est
+   * invalide, et le clic y déclencherait les deux — même raison que pour le menu « … ».
+   */
+  edition?: {
+    onValider: (nom: string) => void
+    onAnnuler: () => void
+  }
   onClick?: () => void
 } & Omit<
   ButtonHTMLAttributes<HTMLButtonElement>,
@@ -76,6 +91,7 @@ export function TreeRow({
   selected,
   strong,
   muted,
+  edition,
   onClick,
   ...rest
 }: TreeRowProps) {
@@ -100,7 +116,11 @@ export function TreeRow({
           style={{ color: muted === true ? 'var(--ink-meta)' : iconColor }}
         />
       )}
-      <span className={styles.label}>{label}</span>
+      {edition === undefined ? (
+        <span className={styles.label}>{label}</span>
+      ) : (
+        <ChampDeRenommage valeurInitiale={label} {...edition} />
+      )}
       {/* **Les espaces sont explicites, et c'est structurel.** JSX supprime l'espace entre deux
           éléments, et le calcul du nom accessible concatène les nœuds de texte sans rien ajouter :
           sans eux, une ligne d'arbre s'annonce « orders1.9 M » ou « Atelier NordPROD ».
@@ -134,7 +154,8 @@ export function TreeRow({
   // Une ligne cliquable est un vrai `<button>` : focus et activation clavier natifs, sans
   // `role` ni gestion de touches écrite à la main. Une ligne sans `onClick` reste un
   // `<div>` — c'est du contenu, elle n'a pas à entrer dans le parcours clavier.
-  if (onClick === undefined) {
+  // Pendant l'édition, la branche non interactive : voir la note sur `edition`.
+  if (onClick === undefined || edition !== undefined) {
     return (
       // Les attributs restants sont typés pour un `<button>` ; sur cette branche ils sont
       // rétrécis à ce qu'un `<div>` accepte. Les seuls employés par `A4` — `role` et les

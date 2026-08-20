@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { ouvrirUneConsole } from './pourLesTests'
 
 // **Ce test part de `/`, pas de `?gallery`.** C'est le point de `10b` : `A4` était vérifié pièce
 // par pièce en galerie et n'avait jamais été vu entier dans l'application. Un écran qu'on ne
@@ -153,7 +154,7 @@ test('avec beaucoup d’onglets, la bande défile et le couple de vues reste att
   // bande occupe toute la largeur du centre et sept onglets y tiennent. Le cas à exercer étant le
   // débordement, il faut donc de quoi déborder — sans quoi ce test se vérifierait lui-même.
   for (let i = 0; i < 3; i++) {
-    await page.getByRole('button', { name: 'Nouvelle console' }).click()
+    await ouvrirUneConsole(page, 'analytics')
   }
   await expect(page.getByRole('tab')).toHaveCount(10)
   // Une console masque le couple (décision de `12a`) : on revient sur une table pour le mesurer.

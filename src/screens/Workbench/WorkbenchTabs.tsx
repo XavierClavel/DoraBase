@@ -10,6 +10,12 @@ type WorkbenchTabsProps = {
   onSelect: (id: string) => void
   onClose: (id: string) => void
   onReorder: (ids: string[]) => void
+  /**
+   * Renomme la console ouverte dans cet onglet — reçoit l'identité de l'onglet et le nouveau nom.
+   *
+   * Absent, le double-clic sur un onglet ne fait rien : l'écran n'est pas relié à l'écriture.
+   */
+  onRename?: (id: string, nouveau: string) => void
 }
 
 /**
@@ -23,7 +29,13 @@ type WorkbenchTabsProps = {
  * centre affiche. Les propriétés `vue` et `onVueChange` sont parties avec lui : un composant ne
  * garde pas une entrée devenue sans objet.
  */
-export function WorkbenchTabs({ etat, onSelect, onClose, onReorder }: WorkbenchTabsProps) {
+export function WorkbenchTabs({
+  etat,
+  onSelect,
+  onClose,
+  onReorder,
+  onRename,
+}: WorkbenchTabsProps) {
   const tabs: Tab[] = etat.onglets.map((onglet) => {
     // **Une console n'est pas une table**, et le mockup lui donne son icône et son libellé
     // « console 1 ». C'est le seul endroit où l'union de `12a` se traduit en interface.
@@ -33,7 +45,11 @@ export function WorkbenchTabs({ etat, onSelect, onClose, onReorder }: WorkbenchT
         icon: 'term' as const,
         iconColor: 'var(--info)',
         accentColor: 'var(--accent)',
-        label: `console ${onglet.numero}`,
+        // Une console persistée porte **son nom** ; un brouillon garde « console 1 ».
+        label: onglet.nom ?? `console ${onglet.numero}`,
+        // **Seule une console persistée se renomme depuis son onglet.** Un brouillon n'a pas de
+        // nom sur le disque : le renommer ne voudrait rien dire tant qu'il n'existe pas.
+        renommable: onglet.nom !== undefined,
       }
     }
     return {
@@ -56,6 +72,7 @@ export function WorkbenchTabs({ etat, onSelect, onClose, onReorder }: WorkbenchT
           onSelect={onSelect}
           onClose={onClose}
           onReorder={(suivants) => onReorder(suivants.map((tab) => tab.id))}
+          onRename={onRename}
         />
       </div>
     </div>

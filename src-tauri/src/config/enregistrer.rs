@@ -5,7 +5,7 @@
 //! `commands.rs` : la logique d'ordonnancement et de rattrapage se teste sans Tauri.
 
 use crate::config::model::{
-    ConnectionSettings, Database, Engine, EnvironmentId, ModelError, Project, SavedQuery, SecretRef,
+    ConnectionSettings, Console, Database, Engine, EnvironmentId, ModelError, Project, SecretRef,
 };
 use crate::config::query::validate;
 use crate::secrets::{Secret, SecretError, SecretStore};
@@ -710,116 +710,201 @@ fn oublier(
     (cles, residus)
 }
 
-/// Enregistre une requête, ou **remplace** celle qui porte ce nom (`12f`).
+/// Localise une connexion par son identité complète — projet, nom, environnement.
 ///
-/// **Le même nom remplace, il ne duplique pas.** Modifier une requête puis « Enregistrer » doit mettre
-/// à jour l'entrée, sinon la liste se remplirait de variantes homonymes qu'on ne saurait plus
-/// distinguer. C'est aussi ce que fait tout éditeur : enregistrer n'est pas « enregistrer sous ».
-pub fn enregistrer_requete(
+/// **Les trois composantes, jamais deux.** Depuis `23b`, `analytics` en dev et `analytics` en prod
+/// sont deux connexions : chercher par le seul nom en désignerait une au hasard, et une console
+/// créée sur l'une apparaîtrait sous l'autre.
+fn connexion_mut<'a>(
+    projects: &'a mut [Project],
+    project: &str,
+    database: &str,
+    environment: &EnvironmentId,
+) -> Result<&'a mut Database, ConsoleError> {
+    let projet = projects
+        .iter_mut()
+        .find(|projet| projet.name == project)
+        .ok_or_else(|| ConsoleError::ProjetInconnu {
+            project: project.to_owned(),
+        })?;
+    projet
+        .databases
+        .iter_mut()
+        .find(|base| base.name == database && &base.environment == environment)
+        .ok_or_else(|| ConsoleError::ConnexionInconnue {
+            database: database.to_owned(),
+            environment: environment.as_str().to_owned(),
+        })
+}
+
+/// Crée une console vide sur une connexion.
+///
+/// **Le nom est unique dans la connexion**, et un homonyme est refusé : deux consoles de même nom
+/// sous la même connexion seraient indiscernables dans l'arbre, et le renommage ne saurait plus
+/// laquelle viser. Sous deux connexions différentes, en revanche, le même nom est légitime.
+pub fn ajouter_console(
     projects: &[Project],
     project: &str,
+    database: &str,
+    environment: &EnvironmentId,
     nom: &str,
-    sql: &str,
-) -> Result<Vec<Project>, QueryError> {
+) -> Result<Vec<Project>, ConsoleError> {
     let nom = nom.trim();
     if nom.is_empty() {
-        return Err(QueryError::NomVide);
+        return Err(ConsoleError::NomVide);
     }
 
     let mut suivants = projects.to_vec();
-    let projet = suivants
-        .iter_mut()
-        .find(|projet| projet.name == project)
-        .ok_or_else(|| QueryError::ProjetInconnu {
-            project: project.to_owned(),
-        })?;
-
-    match projet.queries.iter_mut().find(|q| q.name == nom) {
-        Some(existante) => existante.sql = sql.to_owned(),
-        None => projet.queries.push(SavedQuery {
-            name: nom.to_owned(),
-            sql: sql.to_owned(),
-        }),
+    let base = connexion_mut(&mut suivants, project, database, environment)?;
+    if base.consoles.iter().any(|console| console.name == nom) {
+        return Err(ConsoleError::NomDeja {
+            nom: nom.to_owned(),
+        });
     }
+    base.consoles.push(Console {
+        name: nom.to_owned(),
+        sql: String::new(),
+    });
     Ok(suivants)
 }
 
-/// Retire une requête enregistrée (`12f`).
+/// Écrit le texte d'une console.
 ///
-/// **Une requête absente n'est pas un échec** : le geste a déjà eu son effet, et refuser rendrait la
-/// suppression dépendante d'un état qu'on ne voit plus — le même arbitrage qu'en `08j` pour un secret
-/// déjà effacé.
-pub fn retirer_requete(
+/// **La console doit exister** — contrairement à `enregistrer_requete` de `12f`, qui créait l'entrée
+/// au besoin. Le geste a changé de nature : on n'enregistre plus un texte sous un nom choisi à cet
+/// instant, on écrit dans une console déjà créée et déjà visible dans l'arbre. Une écriture dans une
+/// console absente est donc une incohérence, pas un raccourci.
+pub fn enregistrer_sql_de_console(
     projects: &[Project],
     project: &str,
+    database: &str,
+    environment: &EnvironmentId,
     nom: &str,
-) -> Result<Vec<Project>, QueryError> {
+    sql: &str,
+) -> Result<Vec<Project>, ConsoleError> {
     let mut suivants = projects.to_vec();
-    let projet = suivants
+    let base = connexion_mut(&mut suivants, project, database, environment)?;
+    let console = base
+        .consoles
         .iter_mut()
-        .find(|projet| projet.name == project)
-        .ok_or_else(|| QueryError::ProjetInconnu {
-            project: project.to_owned(),
+        .find(|console| console.name == nom)
+        .ok_or_else(|| ConsoleError::Inconnue {
+            nom: nom.to_owned(),
         })?;
-    projet.queries.retain(|q| q.name != nom);
+    console.sql = sql.to_owned();
     Ok(suivants)
 }
 
-/// Renomme une requête enregistrée (`12f`).
+/// Renomme une console.
 ///
-/// **Un nom déjà pris est refusé.** Deux requêtes homonymes dans un projet seraient indiscernables
-/// dans la liste, et « Enregistrer » ne saurait plus laquelle mettre à jour.
-pub fn renommer_requete(
+/// Renommer vers son propre nom est accepté sans rien faire : l'utilisateur qui valide une modale
+/// sans avoir touché au champ a obtenu ce qu'il demandait.
+pub fn renommer_console(
     projects: &[Project],
     project: &str,
+    database: &str,
+    environment: &EnvironmentId,
     ancien: &str,
     nouveau: &str,
-) -> Result<Vec<Project>, QueryError> {
+) -> Result<Vec<Project>, ConsoleError> {
     let nouveau = nouveau.trim();
     if nouveau.is_empty() {
-        return Err(QueryError::NomVide);
+        return Err(ConsoleError::NomVide);
     }
 
     let mut suivants = projects.to_vec();
-    let projet = suivants
-        .iter_mut()
-        .find(|projet| projet.name == project)
-        .ok_or_else(|| QueryError::ProjetInconnu {
-            project: project.to_owned(),
-        })?;
-
-    if nouveau != ancien && projet.queries.iter().any(|q| q.name == nouveau) {
-        return Err(QueryError::NomDeja {
+    let base = connexion_mut(&mut suivants, project, database, environment)?;
+    if nouveau != ancien && base.consoles.iter().any(|console| console.name == nouveau) {
+        return Err(ConsoleError::NomDeja {
             nom: nouveau.to_owned(),
         });
     }
-    let cible = projet
-        .queries
+    let cible = base
+        .consoles
         .iter_mut()
-        .find(|q| q.name == ancien)
-        .ok_or_else(|| QueryError::Inconnue {
+        .find(|console| console.name == ancien)
+        .ok_or_else(|| ConsoleError::Inconnue {
             nom: ancien.to_owned(),
         })?;
     cible.name = nouveau.to_owned();
     Ok(suivants)
 }
 
-/// Les refus des opérations sur les requêtes enregistrées (`12f`).
+/// Retire une console.
+///
+/// **Une console absente n'est pas un échec** : le geste a déjà eu son effet — même arbitrage qu'en
+/// `08j` pour un secret déjà effacé, et qu'en `12f` pour une requête déjà retirée.
+pub fn retirer_console(
+    projects: &[Project],
+    project: &str,
+    database: &str,
+    environment: &EnvironmentId,
+    nom: &str,
+) -> Result<Vec<Project>, ConsoleError> {
+    let mut suivants = projects.to_vec();
+    let base = connexion_mut(&mut suivants, project, database, environment)?;
+    base.consoles.retain(|console| console.name != nom);
+    Ok(suivants)
+}
+
+/// Verse les requêtes enregistrées de `12f` dans les consoles de la première connexion du projet.
+///
+/// **Appelée à chaque chargement**, et non une fois pour toutes : un projet sans aucune connexion n'a
+/// nulle part où verser ses requêtes, et les abandonner serait une perte silencieuse. Elles restent
+/// alors dans le fichier et attendent qu'une connexion soit déclarée — la migration se rejoue au
+/// chargement suivant. C'est ce qui rend l'opération sûre sans monter la version du format.
+///
+/// **La première connexion déclarée**, faute de mieux : une requête de `12f` ne dit pas sur quelle
+/// base elle s'exécutait, l'information n'a jamais été enregistrée. Deviner d'après son SQL serait
+/// deviner. L'utilisateur retrouve ses textes, nommés, sous une connexion du bon projet, et les
+/// déplace s'il le souhaite — ce qu'aucune perte ne permettrait.
+///
+/// **Un nom déjà pris est suffixé** plutôt que refusé : la migration ne doit jamais échouer, sans
+/// quoi un homonyme bloquerait le chargement de toute la configuration.
+pub fn migrer_requetes_en_consoles(projects: &mut [Project]) {
+    for projet in projects.iter_mut() {
+        if projet.queries.is_empty() || projet.databases.is_empty() {
+            continue;
+        }
+        let requetes = std::mem::take(&mut projet.queries);
+        let base = &mut projet.databases[0];
+        for requete in requetes {
+            let mut nom = requete.name;
+            while base.consoles.iter().any(|console| console.name == nom) {
+                nom.push_str(" (reprise)");
+            }
+            base.consoles.push(Console {
+                name: nom,
+                sql: requete.sql,
+            });
+        }
+    }
+}
+
+/// Les refus des opérations sur les consoles.
 #[derive(Debug, PartialEq, Eq)]
-pub enum QueryError {
+pub enum ConsoleError {
     NomVide,
     NomDeja { nom: String },
     Inconnue { nom: String },
     ProjetInconnu { project: String },
+    ConnexionInconnue { database: String, environment: String },
 }
 
-impl std::fmt::Display for QueryError {
+impl std::fmt::Display for ConsoleError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NomVide => write!(f, "une requête enregistrée doit avoir un nom"),
-            Self::NomDeja { nom } => write!(f, "une requête nommée « {nom} » existe déjà"),
-            Self::Inconnue { nom } => write!(f, "aucune requête nommée « {nom} »"),
+            Self::NomVide => write!(f, "une console doit avoir un nom"),
+            Self::NomDeja { nom } => write!(f, "une console nommée « {nom} » existe déjà"),
+            Self::Inconnue { nom } => write!(f, "aucune console nommée « {nom} »"),
             Self::ProjetInconnu { project } => write!(f, "le projet « {project} » n'existe pas"),
+            Self::ConnexionInconnue {
+                database,
+                environment,
+            } => write!(
+                f,
+                "aucune connexion « {database} » en « {environment} »"
+            ),
         }
     }
 }
@@ -906,6 +991,8 @@ pub fn enregistrer(
         engine,
         environment: environnement.clone(),
         connection: variant,
+        // Une connexion neuve n'a aucune console : elles se créent depuis son menu « … ».
+        consoles: Vec::new(),
     };
 
     // Un projet candidat, validé à part : muter d'abord puis valider obligerait à défaire la
@@ -1808,6 +1895,7 @@ mod tests_parcours {
                 engine: Engine::PostgreSql,
                 environment: EnvironmentId::brut("dev"),
                 connection: variante_de(1),
+                consoles: Vec::new(),
             }],
         }];
 
@@ -1886,18 +1974,21 @@ mod tests_renommage {
                         engine: crate::config::model::Engine::PostgreSql,
                         environment: EnvironmentId::brut("dev"),
                         connection: variante(Some(reference_de("Halle", "analytics", "dev"))),
+                        consoles: Vec::new(),
                     },
                     Database {
                         name: "analytics".to_owned(),
                         engine: crate::config::model::Engine::PostgreSql,
                         environment: EnvironmentId::brut("prod"),
                         connection: variante(Some(reference_de("Halle", "analytics", "prod"))),
+                        consoles: Vec::new(),
                     },
                     Database {
                         name: "shop".to_owned(),
                         engine: crate::config::model::Engine::MySql,
                         environment: EnvironmentId::brut("prod"),
                         connection: variante(Some(reference_de("Halle", "shop", "prod"))),
+                        consoles: Vec::new(),
                     },
                 ],
             },
@@ -2586,107 +2677,252 @@ mod tests_suppression {
     }
 }
 
-// --- Les requêtes enregistrées (`12f`) ---
+// --- Les consoles (20 août 2026) ---
 
 #[cfg(test)]
-mod tests_requetes {
+mod tests_consoles {
     use super::*;
 
+    fn connexion(nom: &str, env: &str) -> Database {
+        Database {
+            name: nom.to_owned(),
+            engine: crate::config::model::Engine::PostgreSql,
+            environment: EnvironmentId::brut(env),
+            connection: crate::config::model::ConnectionSettings {
+                host: "localhost".into(),
+                port: 5432,
+                default_database: nom.to_owned(),
+                username: "lecteur".into(),
+                password: None,
+                ssl_mode: crate::config::model::SslMode::Prefer,
+                ca_certificate: None,
+                read_only: true,
+                reconnect_on_startup: false,
+                tunnel: None,
+            },
+            consoles: Vec::new(),
+        }
+    }
+
+    /// `analytics` déclarée **en dev et en prod** : le décor qui rend visible la confusion que
+    /// l'environnement évite dans l'identité d'une console.
     fn projets() -> Vec<Project> {
         vec![Project {
             name: "Halle".into(),
             active_environment: EnvironmentId::brut("prod"),
             environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
-            databases: Vec::new(),
+            databases: vec![connexion("analytics", "dev"), connexion("analytics", "prod")],
             queries: Vec::new(),
         }]
     }
 
-    #[test]
-    fn enregistrer_ajoute_puis_remplace_sous_le_meme_nom() {
-        let p = enregistrer_requete(&projets(), "Halle", "CA par jour", "select 1").expect("ajout");
-        assert_eq!(p[0].queries.len(), 1);
+    fn prod() -> EnvironmentId {
+        EnvironmentId::brut("prod")
+    }
 
-        let p = enregistrer_requete(&p, "Halle", "CA par jour", "select 2").expect("remplacement");
-        // **Le même nom remplace, il ne duplique pas.** Sinon la liste se remplirait de variantes
-        // homonymes qu'on ne saurait plus distinguer — et « Enregistrer » n'est pas
-        // « Enregistrer sous ».
-        assert_eq!(p[0].queries.len(), 1);
-        assert_eq!(p[0].queries[0].sql, "select 2");
+    #[test]
+    fn une_console_creee_est_vide_et_porte_son_nom() {
+        let p = ajouter_console(&projets(), "Halle", "analytics", &prod(), "Exploration")
+            .expect("création");
+        assert_eq!(p[0].databases[1].consoles.len(), 1);
+        assert_eq!(p[0].databases[1].consoles[0].name, "Exploration");
+        assert_eq!(p[0].databases[1].consoles[0].sql, "");
+        // La connexion de dev, elle, n'a rien reçu.
+        assert!(p[0].databases[0].consoles.is_empty());
+    }
+
+    /// **Le test qui dit pourquoi l'environnement est dans l'identité.** Sans lui, la seconde
+    /// création verrait un homonyme et refuserait — ou pire, écrirait dans la mauvaise connexion.
+    #[test]
+    fn deux_connexions_homonymes_portent_chacune_leur_console_de_meme_nom() {
+        let p = ajouter_console(&projets(), "Halle", "analytics", &prod(), "Exploration")
+            .expect("prod");
+        let p = ajouter_console(
+            &p,
+            "Halle",
+            "analytics",
+            &EnvironmentId::brut("dev"),
+            "Exploration",
+        )
+        .expect("dev");
+        assert_eq!(p[0].databases[0].consoles[0].name, "Exploration");
+        assert_eq!(p[0].databases[1].consoles[0].name, "Exploration");
+    }
+
+    #[test]
+    fn deux_consoles_de_meme_nom_sous_une_connexion_sont_refusees() {
+        let p = ajouter_console(&projets(), "Halle", "analytics", &prod(), "Exploration")
+            .expect("création");
+        assert!(matches!(
+            ajouter_console(&p, "Halle", "analytics", &prod(), "Exploration"),
+            Err(ConsoleError::NomDeja { .. })
+        ));
     }
 
     #[test]
     fn un_nom_vide_ou_blanc_est_refuse() {
-        assert_eq!(
-            enregistrer_requete(&projets(), "Halle", "   ", "select 1"),
-            Err(QueryError::NomVide)
-        );
+        assert!(matches!(
+            ajouter_console(&projets(), "Halle", "analytics", &prod(), "   "),
+            Err(ConsoleError::NomVide)
+        ));
     }
 
     #[test]
-    fn le_nom_est_debarrasse_de_ses_espaces() {
-        let p = enregistrer_requete(&projets(), "Halle", "  CA  ", "select 1").expect("ajout");
-        // Sinon « CA » et « CA » (avec espace) seraient deux entrées, indiscernables dans la liste.
-        assert_eq!(p[0].queries[0].name, "CA");
+    fn ecrire_dans_une_console_absente_est_un_refus() {
+        // Le geste a changé de nature depuis `12f` : on écrit dans une console qui existe déjà.
+        assert!(matches!(
+            enregistrer_sql_de_console(&projets(), "Halle", "analytics", &prod(), "X", "select 1"),
+            Err(ConsoleError::Inconnue { .. })
+        ));
     }
 
     #[test]
-    fn retirer_une_requete_absente_n_est_pas_un_echec() {
-        // Le geste a déjà eu son effet. Refuser rendrait la suppression dépendante d'un état qu'on ne
-        // voit plus — même arbitrage qu'en `08j` pour un secret déjà effacé.
-        let p = retirer_requete(&projets(), "Halle", "jamais écrite").expect("pas un échec");
-        assert!(p[0].queries.is_empty());
+    fn le_texte_dune_console_se_persiste_et_se_remplace() {
+        let p =
+            ajouter_console(&projets(), "Halle", "analytics", &prod(), "Exploration").expect("créée");
+        let p = enregistrer_sql_de_console(
+            &p,
+            "Halle",
+            "analytics",
+            &prod(),
+            "Exploration",
+            "select 1",
+        )
+        .expect("écriture");
+        assert_eq!(p[0].databases[1].consoles[0].sql, "select 1");
+        let p = enregistrer_sql_de_console(
+            &p,
+            "Halle",
+            "analytics",
+            &prod(),
+            "Exploration",
+            "select 2",
+        )
+        .expect("réécriture");
+        assert_eq!(p[0].databases[1].consoles.len(), 1);
+        assert_eq!(p[0].databases[1].consoles[0].sql, "select 2");
     }
 
     #[test]
-    fn renommer_refuse_un_nom_deja_pris() {
-        let p = enregistrer_requete(&projets(), "Halle", "A", "select 1").expect("ajout");
-        let p = enregistrer_requete(&p, "Halle", "B", "select 2").expect("ajout");
-        // Deux requêtes homonymes seraient indiscernables dans la liste, et « Enregistrer » ne saurait
-        // plus laquelle mettre à jour.
-        assert_eq!(
-            renommer_requete(&p, "Halle", "A", "B"),
-            Err(QueryError::NomDeja { nom: "B".into() })
-        );
-        // Renommer en son propre nom est accepté sans rien faire.
-        let p = renommer_requete(&p, "Halle", "A", "A").expect("le même nom est l'état voulu");
-        assert_eq!(p[0].queries[0].name, "A");
+    fn renommer_garde_le_texte() {
+        let p =
+            ajouter_console(&projets(), "Halle", "analytics", &prod(), "Exploration").expect("créée");
+        let p = enregistrer_sql_de_console(
+            &p,
+            "Halle",
+            "analytics",
+            &prod(),
+            "Exploration",
+            "select 1",
+        )
+        .expect("écriture");
+        let p = renommer_console(&p, "Halle", "analytics", &prod(), "Exploration", "Audit")
+            .expect("renommage");
+        assert_eq!(p[0].databases[1].consoles[0].name, "Audit");
+        assert_eq!(p[0].databases[1].consoles[0].sql, "select 1");
     }
 
     #[test]
-    fn renommer_une_requete_inconnue_est_refuse() {
-        assert_eq!(
-            renommer_requete(&projets(), "Halle", "absente", "autre"),
-            Err(QueryError::Inconnue {
-                nom: "absente".into()
-            })
-        );
+    fn renommer_vers_un_nom_pris_est_refuse_mais_vers_soi_meme_est_accepte() {
+        let p = ajouter_console(&projets(), "Halle", "analytics", &prod(), "A").expect("A");
+        let p = ajouter_console(&p, "Halle", "analytics", &prod(), "B").expect("B");
+        assert!(matches!(
+            renommer_console(&p, "Halle", "analytics", &prod(), "A", "B"),
+            Err(ConsoleError::NomDeja { .. })
+        ));
+        assert!(renommer_console(&p, "Halle", "analytics", &prod(), "A", "A").is_ok());
     }
 
     #[test]
-    fn un_projet_inconnu_est_refuse_par_les_trois() {
-        for issue in [
-            enregistrer_requete(&projets(), "Absent", "A", "select 1"),
-            retirer_requete(&projets(), "Absent", "A"),
-            renommer_requete(&projets(), "Absent", "A", "B"),
-        ] {
-            assert!(matches!(issue, Err(QueryError::ProjetInconnu { .. })));
-        }
+    fn retirer_une_console_absente_nest_pas_un_echec() {
+        assert!(retirer_console(&projets(), "Halle", "analytics", &prod(), "Fantôme").is_ok());
     }
 
     #[test]
-    fn les_requetes_appartiennent_au_projet_visé_seulement() {
-        let mut deux = projets();
-        deux.push(Project {
-            name: "Outils".into(),
+    fn une_connexion_inconnue_est_un_refus_nomme() {
+        assert!(matches!(
+            ajouter_console(&projets(), "Halle", "absente", &prod(), "X"),
+            Err(ConsoleError::ConnexionInconnue { .. })
+        ));
+        assert!(matches!(
+            ajouter_console(&projets(), "Ailleurs", "analytics", &prod(), "X"),
+            Err(ConsoleError::ProjetInconnu { .. })
+        ));
+    }
+
+    // --- La reprise des requêtes de `12f` ---
+
+    #[test]
+    fn les_requetes_deviennent_des_consoles_de_la_premiere_connexion() {
+        let mut projets = projets();
+        projets[0].queries = vec![
+            crate::config::model::SavedQuery {
+                name: "CA par jour".into(),
+                sql: "select 1".into(),
+            },
+            crate::config::model::SavedQuery {
+                name: "Top clients".into(),
+                sql: "select 2".into(),
+            },
+        ];
+        migrer_requetes_en_consoles(&mut projets);
+        assert!(projets[0].queries.is_empty());
+        let consoles = &projets[0].databases[0].consoles;
+        assert_eq!(consoles.len(), 2);
+        assert_eq!(consoles[0].name, "CA par jour");
+        assert_eq!(consoles[0].sql, "select 1");
+        assert_eq!(consoles[1].sql, "select 2");
+    }
+
+    /// **Rien n'est perdu quand il n'y a nulle part où verser.** Les requêtes restent dans le
+    /// projet, donc dans le fichier, et la migration se rejouera au prochain chargement — une fois
+    /// qu'une connexion aura été déclarée.
+    #[test]
+    fn sans_connexion_les_requetes_attendent() {
+        let mut projets = vec![Project {
+            name: "Neuf".into(),
             active_environment: EnvironmentId::brut("dev"),
             environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
             databases: Vec::new(),
-            queries: Vec::new(),
+            queries: vec![crate::config::model::SavedQuery {
+                name: "CA".into(),
+                sql: "select 1".into(),
+            }],
+        }];
+        migrer_requetes_en_consoles(&mut projets);
+        assert_eq!(projets[0].queries.len(), 1);
+    }
+
+    /// La migration ne doit **jamais** échouer : un homonyme bloquerait tout le chargement.
+    #[test]
+    fn un_homonyme_est_suffixe_plutot_que_refuse() {
+        let mut projets = projets();
+        projets[0].databases[0].consoles.push(Console {
+            name: "CA".into(),
+            sql: "déjà là".into(),
         });
-        let p = enregistrer_requete(&deux, "Halle", "A", "select 1").expect("ajout");
-        // Sans ce test, une écriture sur « le premier projet » passerait inaperçue.
-        assert_eq!(p[0].queries.len(), 1);
-        assert!(p[1].queries.is_empty());
+        projets[0].queries = vec![crate::config::model::SavedQuery {
+            name: "CA".into(),
+            sql: "select 1".into(),
+        }];
+        migrer_requetes_en_consoles(&mut projets);
+        let consoles = &projets[0].databases[0].consoles;
+        assert_eq!(consoles.len(), 2);
+        assert_eq!(consoles[0].sql, "déjà là");
+        assert_eq!(consoles[1].name, "CA (reprise)");
+        assert_eq!(consoles[1].sql, "select 1");
+    }
+
+    /// Une migration déjà faite ne se rejoue pas : le champ est vide, la boucle passe son chemin.
+    #[test]
+    fn la_migration_est_idempotente() {
+        let mut projets = projets();
+        projets[0].queries = vec![crate::config::model::SavedQuery {
+            name: "CA".into(),
+            sql: "select 1".into(),
+        }];
+        migrer_requetes_en_consoles(&mut projets);
+        migrer_requetes_en_consoles(&mut projets);
+        assert_eq!(projets[0].databases[0].consoles.len(), 1);
     }
 }

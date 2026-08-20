@@ -1,5 +1,11 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { deleteQuery, renameQuery, savePreferences, saveQuery } from '../data/commandes'
+import {
+  createConsole,
+  deleteConsole,
+  renameConsole,
+  saveConsole,
+  savePreferences,
+} from '../data/commandes'
 import { useConfiguration } from '../data/useConfiguration'
 import { Sprite } from '../design/icons/Sprite'
 import type { Database, Preferences, Project } from '../domain/config'
@@ -206,16 +212,48 @@ export function App() {
             onEditDatabase={(project, database) => setEdition({ project, database })}
             // Le renommage rend les projets à jour : les reposer ici évite un second aller-retour,
             // et supprime la fenêtre pendant laquelle l'arbre montrerait l'ancien nom.
-            // Les trois écritures de `12f`. Elles rendent les projets à jour, donc l'écran n'a pas à
-            // relire — et la liste « Mes requêtes » suit immédiatement.
-            onSaveQuery={async (project, name, sql) => {
-              setProjects(await saveQuery({ project, name, sql, renameTo: null }))
+            // Les quatre écritures sur les consoles. Elles rendent les projets à jour, donc l'écran
+            // n'a pas à relire — et l'arbre suit immédiatement.
+            onCreateConsole={async (project, database, environment, name) => {
+              setProjects(
+                await createConsole({
+                  project,
+                  database,
+                  environment,
+                  name,
+                  sql: null,
+                  renameTo: null,
+                }),
+              )
             }}
-            onDeleteQuery={async (project, name) => {
-              setProjects(await deleteQuery({ project, name, sql: null, renameTo: null }))
+            onSaveConsole={async (project, database, environment, name, sql) => {
+              setProjects(
+                await saveConsole({ project, database, environment, name, sql, renameTo: null }),
+              )
             }}
-            onRenameQuery={async (project, name, renameTo) => {
-              setProjects(await renameQuery({ project, name, sql: null, renameTo }))
+            onDeleteConsole={async (project, database, environment, name) => {
+              setProjects(
+                await deleteConsole({
+                  project,
+                  database,
+                  environment,
+                  name,
+                  sql: null,
+                  renameTo: null,
+                }),
+              )
+            }}
+            onRenameConsole={async (project, database, environment, name, renameTo) => {
+              setProjects(
+                await renameConsole({
+                  project,
+                  database,
+                  environment,
+                  name,
+                  sql: null,
+                  renameTo,
+                }),
+              )
             }}
             onDelete={async (cible) => {
               const issue =

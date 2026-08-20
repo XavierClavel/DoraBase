@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { ouvrirUneConsole } from './pourLesTests'
 
 // `A8` de bout en bout : la console mongo, l'arbre de documents, le schéma déduit. Des géométries et
 // des couleurs, donc hors de portée de jsdom.
@@ -12,7 +13,7 @@ test.beforeEach(async ({ page }) => {
   // La collection : c'est elle dont la sidebar montre le schéma déduit, et elle reste affichée
   // quand la console prend le centre.
   await page.getByRole('treeitem', { name: /^evenements .*k/ }).click()
-  await page.getByRole('button', { name: /Nouvelle console/ }).click()
+  await ouvrirUneConsole(page, 'evenements')
   await page.waitForSelector('[aria-label="Commande MongoDB"]')
   await page.evaluate(() => document.fonts.ready)
 })
@@ -128,7 +129,9 @@ test('une console SQL et une console mongo cohabitent dans la même bande', asyn
   // La base PostgreSQL du décor, dans le même projet.
   await page.getByRole('treeitem', { name: /^analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
-  await page.getByRole('button', { name: /Nouvelle console/ }).click()
+  // **Sur `analytics`, et non sur la base mongo** : c'est une console *SQL* qu'on ajoute ici, et le
+  // dialecte suit la connexion depuis laquelle on la crée.
+  await ouvrirUneConsole(page, 'analytics')
 
   await expect(page.locator('[aria-label="Requête SQL"]')).toBeVisible()
   // Trois onglets : la collection ouverte par le `beforeEach`, sa console mongo, et celle-ci.

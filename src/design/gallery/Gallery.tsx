@@ -13,7 +13,6 @@ import { Button } from '../../ui/Button/Button'
 import { Chip } from '../../ui/Chip/Chip'
 import { CollapsiblePanel } from '../../ui/CollapsiblePanel/CollapsiblePanel'
 import { ColumnRow } from '../../ui/ColumnRow/ColumnRow'
-import { ConsoleFooterButton } from '../../ui/ConsoleFooterButton/ConsoleFooterButton'
 import { type Column, DataTable } from '../../ui/DataTable/DataTable'
 import { Dot } from '../../ui/Dot/Dot'
 import { Field } from '../../ui/Field/Field'
@@ -25,6 +24,11 @@ import { SegmentedControl } from '../../ui/SegmentedControl/SegmentedControl'
 import { Select } from '../../ui/Select/Select'
 import { Sidebar } from '../../ui/Sidebar/Sidebar'
 import { SidebarFilterBar } from '../../ui/SidebarFilterBar/SidebarFilterBar'
+import {
+  SidebarFooter,
+  SidebarFooterButton,
+  SidebarFooterRow,
+} from '../../ui/SidebarFooter/SidebarFooter'
 import { SidebarSectionTitle } from '../../ui/SidebarSectionTitle/SidebarSectionTitle'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
 import { StatTile } from '../../ui/StatTile/StatTile'
@@ -751,7 +755,18 @@ function SidebarGallery() {
             filter={
               <SidebarFilterBar value={filtre} onChange={setFiltre} matchCount={2} totalCount={8} />
             }
-            footer={<ConsoleFooterButton onClick={() => {}} />}
+            footer={
+              <SidebarFooter>
+                <SidebarFooterRow>
+                  <SidebarFooterButton icon="plus" onClick={() => {}}>
+                    Connexion
+                  </SidebarFooterButton>
+                  <SidebarFooterButton icon="bag" onClick={() => {}}>
+                    Projet
+                  </SidebarFooterButton>
+                </SidebarFooterRow>
+              </SidebarFooter>
+            }
           >
             <TreeRow
               depth={0}
@@ -842,11 +857,12 @@ function SidebarGallery() {
         </div>
       </Sub>
       <Note>
-        Arbre et colonnes reproduisent A5 ligne pour ligne. Le pied « Nouvelle console », lui,
-        n'existe pas dans A5 — il appartient aux consoles (A7, A8) et n'est montré ici que pour
-        couvrir la brique. Aucune récursion ni modèle de données : l'écran consommateur aplatit son
-        arbre et place lui-même ses lignes. Sélection et filtre sont de simples états locaux à la
-        galerie, pour que les états se voient vraiment.
+        Arbre et colonnes reproduisent A5 ligne pour ligne. Le pied porte les deux gestes de
+        structure — « Connexion » et « Projet » — de même facture et à mi-largeur : c'est la forme
+        retenue le 20 août 2026, après qu'un pied à trois registres a été démêlé. Aucune récursion
+        ni modèle de données : l'écran consommateur aplatit son arbre et place lui-même ses lignes.
+        Sélection et filtre sont de simples états locaux à la galerie, pour que les états se voient
+        vraiment.
       </Note>
     </Section>
   )
@@ -1329,18 +1345,21 @@ const PROJETS_DEMO = [
         engine: 'postgresql' as const,
         environment: 'prod',
         connection: REGLAGES_DE_GALERIE,
+        consoles: [],
       },
       {
         name: 'shop',
         engine: 'mysql' as const,
         environment: 'prod',
         connection: REGLAGES_DE_GALERIE,
+        consoles: [],
       },
       {
         name: 'cache',
         engine: 'redis' as const,
         environment: 'prod',
         connection: REGLAGES_DE_GALERIE,
+        consoles: [],
       },
     ],
   },
@@ -1355,6 +1374,7 @@ const PROJETS_DEMO = [
         engine: 'mongodb' as const,
         environment: 'dev',
         connection: REGLAGES_DE_GALERIE,
+        consoles: [],
       },
     ],
   },

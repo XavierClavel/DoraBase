@@ -14,8 +14,14 @@ function projet(overrides: Partial<Project> = {}): Project {
     queries: [],
     databases: [
       // **Dans l'environnement actif du projet** (`23g`) : l'arbre ne liste que celles-là.
-      { name: 'analytics', engine: 'postgresql', environment: 'prod', connection: REGLAGES },
-      { name: 'shop', engine: 'mysql', environment: 'prod', connection: REGLAGES },
+      {
+        name: 'analytics',
+        engine: 'postgresql',
+        environment: 'prod',
+        connection: REGLAGES,
+        consoles: [],
+      },
+      { name: 'shop', engine: 'mysql', environment: 'prod', connection: REGLAGES, consoles: [] },
     ],
     ...overrides,
   }
@@ -192,7 +198,13 @@ test('un projet replié annonce son nombre de bases', () => {
 test('un projet à une seule base l’annonce au singulier', () => {
   const p = projet({
     databases: [
-      { name: 'analytics', engine: 'postgresql', environment: 'dev', connection: REGLAGES },
+      {
+        name: 'analytics',
+        engine: 'postgresql',
+        environment: 'dev',
+        connection: REGLAGES,
+        consoles: [],
+      },
     ],
   })
   expect(aplatir([p], new Set(), RIEN, JAMAIS)[0]?.meta).toBe('1 base')

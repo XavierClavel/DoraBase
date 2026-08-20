@@ -1,0 +1,78 @@
+/*
+ * **Le filet, le remplissage et les gouttières vivent ici, en un seul endroit.**
+ *
+ * L'ancien pied en portait deux : un `border-top` sur l'enveloppe de `ConsoleFooterButton`, un autre
+ * sur le `.footer` d'`ExplorerSidebar`. Le doublon ne se voyait pas — les deux filets étaient
+ * adjacents — mais il y avait deux éléments capables d'en porter un, donc il serait revenu. Le
+ * conteneur reprend les trois responsabilités, et l'enveloppe de l'ancien composant disparaît.
+ */
+.root {
+  /* `border-box` ici aussi : les 8 px de remplissage s'ajouteraient sinon à la largeur d'étirement
+     du panneau, et le pied dépasserait de la colonne — défaut n° 67, dans sa version conteneur. */
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  /* 8px : hors de l'échelle `--space-*` (3·5·6·7·9·11·14·16), comme le remplissage horizontal de
+     `Button.xs/.sm`. Même convention que partout dans ce projet — littéral et commentaire, plutôt
+     qu'une approximation qui trahirait le pixel du handoff. */
+  padding: 8px;
+  gap: var(--space-3);
+  border-top: 1px solid var(--divider-2);
+}
+
+.row {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.button {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* `1 1 0` et `min-width: 0` : dans une rangée, les deux boutons se partagent la place également et
+     rétrécissent avant de déborder. Sans `min-width: 0`, le contenu impose sa largeur et interdit
+     l'ellipse — le défaut n° 67 sous une autre forme. Hors rangée, l'enfant unique d'une colonne
+     `flex` s'étire déjà sur toute la largeur. */
+  flex: 1 1 0;
+  min-width: 0;
+  /* 28 px rendus, soit les 26 px du handoff plus ses deux filets — voir la note de `SidebarFooter`
+     sur `box-sizing`. Vaut `--h-btn-md`, mais pas dans le même modèle de boîte que `Button`. */
+  height: 28px;
+  padding: 0 8px; /* hors échelle `--space-*`, convention de `Button.xs/.sm` */
+  gap: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--field);
+  /* Encre pleine et graisse 700, et non les `--ink-2` / semibold d'un `Button` secondaire : à 11 px
+     sur un fond clair bordé, un libellé à 55 % d'opacité se lit comme désactivé. Un `Button`
+     secondaire vit entouré d'autres contrôles qui le situent ; ces trois-là sont seuls en bas d'une
+     colonne, et doivent s'annoncer. */
+  font: var(--weight-bold) var(--text-label) var(--font-ui);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.button:hover {
+  border-color: var(--hover-border);
+  background: var(--hover-bg);
+}
+
+.button:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* L'icône ne rétrécit jamais : c'est elle qui reste lisible quand le mot cède. */
+.button svg {
+  flex: none;
+}
+
+/* Le `title` du bouton porte le libellé entier, et son `aria-label` le nom complet de l'action. */
+.label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

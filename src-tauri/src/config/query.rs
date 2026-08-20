@@ -63,6 +63,7 @@ mod tests {
             engine: Engine::PostgreSql,
             environment: EnvironmentId::brut(env),
             connection: reglages(),
+            consoles: Vec::new(),
         }
     }
 
