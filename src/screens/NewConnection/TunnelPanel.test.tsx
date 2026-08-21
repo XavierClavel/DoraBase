@@ -114,7 +114,13 @@ test('le libellé d’aide du compte de service est annoncé, pas seulement affi
   // Un texte simplement posé à côté du champ n'est **pas** annoncé par un lecteur d'écran. Le
   // lien est ce qui fait la différence entre « le vide est une valeur » compris, et un champ
   // qui a l'air oublié.
-  expect(document.getElementById(decrit as string)?.textContent).toMatch(/identifiants par défaut/i)
+  const aide = document.getElementById(decrit as string)?.textContent
+  expect(aide).toMatch(/identifiants par défaut/i)
+  // **La commande entière** (`06i`) : « identifiants par défaut » seul laisse deviner
+  // comment on les installe, et `gcloud auth login` — la commande voisine, que tout le monde
+  // essaie d'abord — n'alimente que le CLI, pas les applications. Le libellé doit porter
+  // celle qui marche.
+  expect(aide).toContain('gcloud auth application-default login')
 })
 
 test('changer de type efface les champs de l’autre sorte', async () => {

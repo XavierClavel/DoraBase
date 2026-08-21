@@ -32,10 +32,15 @@ redirection), `06e` (le choix du port local, et la façon de signaler une chute)
   Connect**. Quatre cas réels, aucun maquetté, et chacun ajoute un champ à `A2`. À
   reprendre quand un besoin les réclame — le modèle de `05d` les accueille sans refonte.
 - **Installer le binaire pour l'utilisateur.** Télécharger un exécutable et le lancer est
-  une décision de sécurité qui n'appartient pas à ce scope.
+  une décision de sécurité qui n'appartient pas à ce scope. **Renversé le 21 août 2026** :
+  `06h` embarque le binaire dans le bundle, à version épinglée et empreinte vérifiée — ce
+  qui répond à la réserve plutôt que de l'ignorer. Ce scope reste écrit comme si le binaire
+  était extérieur, et c'est ce qui a rendu `06h` petit.
 - **Le chemin du binaire en configuration.** Ce scope le cherche ; s'il faut un jour le
   saisir, ce sera une préférence de machine (`15`), pas un champ de connexion.
 - **Le panneau de `A2`** → `08k`.
+- **Le diagnostic de l'authentification** — ce que signifie l'absence de fichier de compte
+  de service, et les trois échecs qui en découlent → `06i`.
 
 ## Approche
 

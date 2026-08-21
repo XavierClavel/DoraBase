@@ -1,13 +1,70 @@
-//! Trouver le binaire `cloud-sql-proxy`. Voir `specs/06g` § « Trouver le binaire ».
+//! Trouver le binaire `cloud-sql-proxy`. Voir `specs/06g` § « Trouver le binaire », et
+//! `specs/06h-binaire-embarque.md` pour le binaire livré avec le bundle.
 
 use std::path::{Path, PathBuf};
 
 use crate::engine::EngineError;
 
-/// Le nom du binaire officiel, tel que Google le distribue.
+/// Le nom du binaire officiel, tel que Google le distribue. C'est aussi le nom sous lequel
+/// Tauri copie le binaire externe dans le bundle, en retirant le triplet du nom du fichier.
 const NOM: &str = "cloud-sql-proxy";
 
-/// Les répertoires fouillés, dans l'ordre : le `PATH` d'abord, puis les emplacements usuels.
+/// Le verrou, inclus à la compilation. Voir `specs/06h-binaire-embarque.md`.
+///
+/// **Le même fichier que celui que lit le script de téléchargement.** Deux sources — une
+/// constante Rust et une ligne de script — divergeraient au premier relèvement de version,
+/// et le journal annoncerait alors une version que l'app ne lance pas.
+const VERROU: &str = include_str!("../../../cloud-sql-proxy.lock");
+
+/// La version du proxy embarquée dans le bundle.
+///
+/// Utile pour les journaux et l'attribution : un bogue du proxy se diagnostique par sa
+/// version, et un binaire embarqué ne se laisse pas interroger depuis un terminal.
+pub fn version_embarquee() -> &'static str {
+    valeur_du_verrou("version").unwrap_or("inconnue")
+}
+
+/// Lit une valeur du verrou. Format volontairement pauvre — `clef = valeur`, `#` en
+/// commentaire — pour être lu ici sans dépendance et en trois lignes de script.
+fn valeur_du_verrou(clef: &str) -> Option<&'static str> {
+    VERROU.lines().find_map(|ligne| {
+        let (gauche, droite) = ligne.split_once('=')?;
+        (gauche.trim() == clef).then(|| droite.trim())
+    })
+}
+
+/// Le répertoire où Tauri place le binaire embarqué : celui de l'exécutable de l'app.
+///
+/// Dans un bundle macOS, c'est `Contents/MacOS`, à côté de l'exécutable principal. En
+/// développement, c'est `target/debug`, où `tauri dev` copie le sidecar — donc le même
+/// chemin de code sert dans les deux cas.
+fn emplacement_embarque() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()?
+        .parent()
+        .map(Path::to_path_buf)
+}
+
+/// Le binaire donné est-il celui que le bundle embarque ?
+///
+/// Sert au journal : savoir **lequel** des deux a été lancé est la première question qu'on
+/// se pose devant un message du proxy qu'on ne reconnaît pas.
+pub fn est_embarque(chemin: &Path) -> bool {
+    emplacement_embarque().is_some_and(|repertoire| chemin.parent() == Some(&*repertoire))
+}
+
+/// Les répertoires fouillés, dans l'ordre : **l'embarqué d'abord**, puis le `PATH`, puis les
+/// emplacements usuels.
+///
+/// **Pourquoi l'embarqué gagne** (`06h`). Si le `PATH` passait devant, le comportement de
+/// l'app dépendrait de ce que l'utilisateur a installé, et un proxy d'une autre version
+/// pourrait écrire des journaux que `sortie::est_pret` ne reconnaît pas — une attente qui
+/// expire alors que le proxy marche. La version embarquée est celle contre laquelle
+/// `sortie` a été relue.
+///
+/// **Pourquoi le `PATH` reste** (`06g`). Sans bundle — `cargo run`, `cargo test`, la machine
+/// de développement — il n'y a pas de sidecar à côté de l'exécutable. Le repli est aussi ce
+/// qui garde valables, sans retouche, les tests écrits avant `06h`.
 ///
 /// **Pourquoi ne pas se contenter du `PATH`.** Une application lancée depuis le Finder
 /// n'hérite pas du `PATH` du shell de l'utilisateur : macOS lui en donne un minimal, qui ne
@@ -15,9 +72,13 @@ const NOM: &str = "cloud-sql-proxy";
 /// serait donc introuvable dans l'app packagée alors qu'il se trouve depuis un terminal —
 /// panne d'autant plus déroutante que `which cloud-sql-proxy` répond.
 pub fn emplacements_par_defaut() -> Vec<PathBuf> {
-    let mut emplacements: Vec<PathBuf> = std::env::var_os("PATH")
-        .map(|path| std::env::split_paths(&path).collect())
-        .unwrap_or_default();
+    let mut emplacements: Vec<PathBuf> = emplacement_embarque().into_iter().collect();
+
+    emplacements.extend(
+        std::env::var_os("PATH")
+            .map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
+            .unwrap_or_default(),
+    );
 
     for usuel in ["/opt/homebrew/bin", "/usr/local/bin"] {
         let chemin = PathBuf::from(usuel);
@@ -123,6 +184,60 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
+    fn l_embarque_gagne_contre_un_binaire_du_path() {
+        // **Le critère d'`06h`.** Deux répertoires contenant chacun un `cloud-sql-proxy` :
+        // celui de l'app packagée doit gagner, sinon le comportement dépendrait de ce que
+        // l'utilisateur a installé — et une autre version pourrait écrire des journaux que
+        // `sortie::est_pret` ne reconnaît pas.
+        let embarque = repertoire_avec_executable("cloud-sql-proxy");
+        let installe = repertoire_avec_executable("cloud-sql-proxy-du-path");
+        // Le second répertoire porte le binaire sous son vrai nom, lui aussi : c'est bien
+        // d'un choix entre deux candidats valables qu'il s'agit.
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let chemin = installe.join("cloud-sql-proxy");
+            std::fs::write(&chemin, "#!/bin/sh\nexit 0\n").expect("écriture");
+            std::fs::set_permissions(&chemin, std::fs::Permissions::from_mode(0o755))
+                .expect("droits");
+        }
+
+        let trouve = localiser_dans(&[embarque.clone(), installe]).expect("un des deux");
+        assert_eq!(trouve, embarque.join("cloud-sql-proxy"));
+    }
+
+    #[test]
+    fn le_verrou_donne_une_version_et_deux_empreintes() {
+        // Le verrou est la source unique de vérité partagée avec le script de
+        // téléchargement. Une clef renommée d'un côté et pas de l'autre casserait le
+        // script sans casser la compilation : ce test est le seul garde-fou côté Rust.
+        let version = version_embarquee();
+        assert_ne!(version, "inconnue", "le verrou doit porter une version");
+        assert!(
+            version.starts_with('2') && version.contains('.'),
+            "{version}"
+        );
+
+        for triplet in ["aarch64-apple-darwin", "x86_64-apple-darwin"] {
+            let empreinte = valeur_du_verrou(&format!("sha256-{triplet}"))
+                .unwrap_or_else(|| panic!("empreinte manquante pour {triplet}"));
+            assert_eq!(empreinte.len(), 64, "{triplet} : {empreinte}");
+            assert!(
+                empreinte.chars().all(|c| c.is_ascii_hexdigit()),
+                "{triplet} : {empreinte}"
+            );
+        }
+    }
+
+    #[test]
+    fn un_commentaire_du_verrou_n_est_pas_lu_comme_une_clef() {
+        // Les commentaires du verrou contiennent des `=` en prose ; les lire comme des
+        // clefs donnerait une version fantaisiste sans jamais échouer.
+        assert_eq!(valeur_du_verrou("# version"), None);
+        assert_eq!(valeur_du_verrou("clef-qui-n-existe-pas"), None);
+    }
+
+    #[test]
     fn les_emplacements_par_defaut_incluent_homebrew() {
         // Le PATH d'une application lancée depuis le Finder ne contient **pas** celui du
         // shell de l'utilisateur : sur macOS, une app graphique hérite d'un PATH minimal.
@@ -141,5 +256,19 @@ mod tests {
             en_texte.iter().any(|c| c == "/usr/local/bin"),
             "{en_texte:?}"
         );
+    }
+
+    #[test]
+    fn l_emplacement_de_l_executable_est_cherche_en_premier() {
+        // C'est là que Tauri copie le binaire embarqué : dans le bundle, à côté de
+        // l'exécutable de l'app. L'ordre de cette liste **est** la règle d'`06h` ; un
+        // `push` au lieu d'un `insert` la renverserait sans rien casser d'autre.
+        let attendu = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(std::path::Path::to_path_buf));
+        let Some(attendu) = attendu else {
+            return;
+        };
+        assert_eq!(emplacements_par_defaut().first(), Some(&attendu));
     }
 }

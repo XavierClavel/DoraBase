@@ -53,7 +53,8 @@ seul `PATH` le rendrait donc introuvable dans l'app packagée alors que `which` 
 un terminal — panne d'autant plus déroutante que l'outil *est* installé. `06g` fouille les
 emplacements usuels en plus du `PATH` ; tout scope qui lance un programme tiers devra faire de
 même. **Non vérifié dans l'app packagée**, faute de diffusion : à confirmer avec le point 2
-du § 0 de `REPRISE.md`, qui liste déjà les observations à l'œil.
+du § 0 de `REPRISE.md`, qui liste déjà les observations à l'œil. `06h` retire le proxy Cloud SQL
+de ce risque en l'embarquant ; la règle vaut toujours pour tout autre programme tiers.
 
 **Un sous-processus dont personne ne lit la sortie se bloque en écriture.** Le tampon du
 système se remplit et l'enfant s'arrête au milieu d'un `write`. C'est pourquoi `06g` draine la
@@ -284,6 +285,8 @@ se pose : ajouter `blob:` à la directive concernée, ou gérer l'écriture côt
 | [`06e`](06e-tunnel-ssh.md) | Tunnel SSH vers un bastion | **fait** (écran de confiance à trancher) |
 | [`06f`](06f-tls-verifie.md) | Le TLS branché, et **vérifié** — `rustls`, cinq modes distincts | **fait** |
 | [`06g`](06g-proxy-cloud-sql.md) | Proxy Cloud SQL : lancer et surveiller `cloud-sql-proxy` | **fait** (chemin heureux contre une vraie instance non observé) |
+| [`06h`](06h-binaire-embarque.md) | Le binaire du proxy embarqué dans le bundle, épinglé et vérifié | **fait** (bundle depuis le Finder et notarisation non observés) |
+| [`06i`](06i-identifiants-gcloud.md) | S'authentifier avec les identifiants du CLI `gcloud` (ADC), et les trois échecs | **fait** (chemin heureux contre une vraie instance non observé) |
 
 **Pourquoi `05` a été découpé en trois** (5 août 2026) : le périmètre indexé —
 « modèle de domaine, persistance, Trousseau » — mêlait trois préoccupations
@@ -562,7 +565,10 @@ vraiment une entité de configuration.
 que de la connexion.
 
 Le support Cloud SQL s'est pris dans l'ordre `05d` → `06g` → `08k`, et cet ordre était
-contraignant : `06g` ouvre ce que `05d` décrit, `08k` saisit ce que `06g` sait ouvrir.
+contraignant : `06g` ouvre ce que `05d` décrit, `08k` saisit ce que `06g` sait ouvrir. La
+suite se prend dans l'ordre `06h` → `06i` : embarquer le binaire avant de soigner le
+diagnostic de l'authentification, sinon le message le plus fréquent resterait « installez
+`cloud-sql-proxy` » et masquerait celui qu'`06i` écrit.
 Chaque étape laissait l'application compilable et testée — après `05d` seul, le modèle sait
 décrire un proxy Cloud SQL que l'écran ne propose pas encore, et c'était un état cohérent.
 
