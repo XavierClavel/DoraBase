@@ -202,8 +202,13 @@ export function TunnelPanel({
                 {/* **Lié au champ par `aria-describedby`**, et non simplement posé à côté : un
                     texte voisin n'est pas annoncé par un lecteur d'écran, et c'est précisément
                     l'information qui empêche de lire ce champ vide comme un champ oublié. */}
+                {/* **La commande, entière** (`06i`). « Identifiants par défaut » seul
+                    laisse l'utilisateur deviner comment on les installe, et « authentifiez-vous
+                    avec gcloud » l'enverrait sur `gcloud auth login`, qui n'alimente que le CLI
+                    et ne suffit pas. */}
                 <p id={aideId} className={styles.tunnelHint}>
-                  Vide : identifiants par défaut de l'application
+                  Vide : identifiants par défaut de l'application — installés par{' '}
+                  <code>gcloud auth application-default login</code>
                 </p>
               </div>
             )}

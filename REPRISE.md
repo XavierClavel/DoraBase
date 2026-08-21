@@ -39,6 +39,7 @@ pnpm tauri dev
 | 6 | ~~`⌘E`, modifier une cellule, `⌘Z`~~ | **Fait le 10 août** : la bascule et l'annulation répondent sous WKWebView, malgré les raccourcis système. Deux défauts d'affichage relevés au passage (`DEFAUTS.md` n° 36 et 37), corrigés | `11b` |
 
 | 7 | Régler « Afficher les barres de défilement : toujours » (Réglages ▸ Apparence), puis regarder la sidebar et la bande d'onglets | La barre de la sidebar doit être **fine, sans piste**, et son curseur ne se voir qu'au survol ; la bande d'onglets ne doit en montrer aucune. **Non vérifiable ici** : Chromium sans tête rend des barres en survol, qui n'occupent aucune place — la mesure vaut 0 avec comme sans la correction (`DEFAUTS.md` n° 73) | — |
+| 2c | Construire un bundle (`pnpm tauri build`), le lancer **depuis le Finder** sur une machine où `cloud-sql-proxy` n'est pas installé, et ouvrir une connexion Cloud SQL | Le proxy doit démarrer : c'est la seule preuve d'`06h`, et la seule observation du `PATH` minimal d'une app graphique — jamais constaté, seulement anticipé (`specs/README.md`). Si l'erreur dit « le binaire est introuvable », le sidecar n'a pas été embarqué ou n'est pas à côté de l'exécutable | `06h` |
 | 8 | Cliquer une autre application pour défocaliser DoraBase | Les trois feux tricolores doivent rester visibles (grisés). Signalé le 18 août : ils **disparaissent**. Boutons dessinés par le système sous `titleBarStyle: "Overlay"` — donc **ni reproductible ni corrigeable depuis le web** ; l'expérience à tenter est de passer `hiddenTitle` à `false` le temps d'un lancement pour savoir si la disparition vient de la superposition ou du thème | `tauri.conf.json` |
 
 **Quatre vérifications restent — et l'usage réel en a appris bien plus qu'elles** : dix-neuf défauts,
@@ -167,6 +168,11 @@ MongoDB), `A9` (structure et DDL), `A10` (préférences).
 **Le support Cloud SQL est livré** (`05d`, `06g`, `08k`) : une connexion PostgreSQL peut passer par
 le Cloud SQL Auth Proxy, et `A2` sait le saisir. Deux réserves, plus bas.
 
+**Et l'utilisateur n'a plus rien à installer** (`06h`, `06i`, 21 août 2026) : le binaire
+`cloud-sql-proxy` est **embarqué dans le bundle**, à version épinglée et empreinte vérifiée, et
+l'authentification réemploie ce que `gcloud auth application-default login` a déjà écrit. Reste une
+seule dépendance externe, pour un unique login : le SDK `gcloud`.
+
 **Quatre moteurs répondent** : PostgreSQL (`06`), MongoDB (`18`), SQLite (`17`) et MySQL (`16`).
 Les trois specs de moteur restantes sont **écrites**, et aucune n'attend du code :
 
@@ -204,6 +210,7 @@ couvre, et les deux manquants n'attendent qu'un compte.
 | `23c`, `23e`, `23f` | les cinq commandes d'environnement, l'édition d'un projet, le retrait d'un environnement | **fait** |
 | `24a`–`24d` | **le parcours de création en deux étapes** — projet, bande de progression, enchaînement, deux gestes | **fait** |
 | `05d`, `06g`, `08k` | **le support Cloud SQL** — le proxy en énumération à données et sa migration v2 → v3, le pilotage de `cloud-sql-proxy`, le panneau de `A2` à deux visages | **fait** (deux réserves plus bas) |
+| `06h`, `06i` | **le proxy livré avec l'app** — binaire embarqué à empreinte vérifiée, et l'authentification par les identifiants du CLI `gcloud` | **fait** (bundle ouvert depuis le Finder et notarisation : à observer) |
 | `19a` | Redis — **n'entre pas dans le contrat**, et pourquoi | écrite, conclusion négative |
 | `20`, `21` | Snowflake, BigQuery — **aucun décor de test** | écrites, bloquées |
 
@@ -321,6 +328,27 @@ deux, et « jamais tentée » n'est pas « hors ligne ».
 **Clé d'hôte SSH vérifiée contre `~/.ssh/known_hosts`**, hôte inconnu refusé avec un message qui
 donne la manœuvre (`06e`). Quatre verdicts distincts là où `russh` n'en offre que deux. **L'écran
 de confiance à la première connexion serait la vraie réponse**, et le design ne l'a pas maquetté.
+
+**Le binaire du proxy est embarqué, et l'embarqué gagne contre le `PATH`** (`06h`, 21 août 2026).
+Renversement assumé d'un « hors périmètre » de `06g`, qui refusait de télécharger un exécutable :
+la réserve est traitée, pas ignorée — version épinglée dans `src-tauri/cloud-sql-proxy.lock`,
+empreinte SHA-256 vérifiée par `scripts/telecharger-proxy.sh`, binaire jamais commis. L'ordre de
+recherche est la règle : si le `PATH` passait devant, le comportement de l'app dépendrait de ce que
+l'utilisateur a installé, et un proxy d'une autre version pourrait écrire des journaux que
+`sortie::est_pret` ne reconnaît pas — soit une attente qui expire alors que le proxy marche. Le
+`PATH` reste en repli pour `cargo run`/`cargo test`, où il n'y a pas de sidecar.
+
+**L'authentification passe par les identifiants par défaut de l'application, et `--gcloud-auth` est
+écarté** (`06i`). Le proxy sait déléguer à `gcloud` (`-g`), ce qui dispenserait d'un second login,
+mais il faut alors `gcloud` **dans le `PATH` du sous-processus** — celui d'une app lancée depuis le
+Finder est minimal, et `gcloud` vit sous `~/google-cloud-sdk/bin` ou Homebrew. Autrement dit : `06h`
+supprime une dépendance au `PATH`, et `--gcloud-auth` en réintroduirait une, plus fragile, pour
+économiser un login unique. À reprendre si ce second login se révèle un obstacle réel.
+
+Corollaire de rédaction, qui vaut pour tout message à venir : **jamais « authentifiez-vous avec
+gcloud »**. `gcloud auth login` et `gcloud auth application-default login` se ressemblent, ouvrent
+toutes deux un navigateur, et seule la seconde écrit le fichier que les bibliothèques clientes
+lisent. Un message doit porter la ligne à copier, et dire que l'autre ne suffit pas.
 
 **Une seule identité pour une connexion** : `projet/base/environnement`. C'est à la fois la clé
 du registre (`09b`) et la référence du secret (`08e`). Deux conventions divergeraient.
@@ -649,6 +677,21 @@ Deux réserves restent, toutes deux hors d'atteinte depuis ici :
   qui reste inconnu est ce que seul le vrai binaire peut apprendre : la forme exacte de ses lignes
   de journal, et le comportement de ses codes de sortie.
 - **Le sélecteur de fichier natif du champ « Compte de service »** — vérification 2b du § 0.
+
+**`06h` et `06i` ont retiré la principale friction** (21 août 2026) : plus rien à installer sauf
+`gcloud`, et trois échecs d'authentification qui portent leur réparation. Deux réserves, elles aussi
+hors d'atteinte depuis ici :
+
+- **Le bundle n'a pas été ouvert depuis le Finder sur une machine sans `cloud-sql-proxy`.** Ce qui
+  **est** vérifié, sur un `.app` construit le 21 août 2026 : le sidecar est bien dans
+  `Contents/MacOS/cloud-sql-proxy`, il porte la version du verrou (2.25.3), les trois fichiers de
+  licence sont dans `Contents/Resources/licences/`, et le binaire répond sous un environnement
+  réduit à `PATH=/usr/bin:/bin` — donc il ne dépend lui-même d'aucun `PATH`. La CI répète ces
+  contrôles à chaque `pnpm tauri build`. Ce qui reste inconnu est l'aller-retour complet dans
+  l'app graphique, sur une machine où le binaire n'est installé nulle part : § 0, ligne 2c.
+- **La notarisation avec un binaire embarqué n'est pas vérifiée** — elle demande une identité de
+  signature que ce poste n'a pas. Un exécutable embarqué non signé est refusé au lancement sur une
+  machine tierce, et cela ne se voit **qu'après** distribution.
 
 `08k` n'a **aucune maquette**, Cloud SQL étant absent du handoff : ses deux champs et ses deux
 libellés sont inventés, et attendent un passage de design (`specs/README.md` § À trancher).

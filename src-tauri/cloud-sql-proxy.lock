@@ -1,0 +1,13 @@
+# Le Cloud SQL Auth Proxy embarqué dans le bundle. Voir `specs/06h-binaire-embarque.md`.
+#
+# **Source unique de vérité.** Le script `scripts/telecharger-proxy.sh` lit ce fichier pour
+# savoir quoi télécharger et quoi vérifier ; le code Rust l'inclut pour connaître la version
+# qu'il lance. Relever la version, c'est éditer ces trois lignes, et rien d'autre.
+#
+# Les empreintes ont été calculées le 21 août 2026 sur les fichiers téléchargés depuis
+# `storage.googleapis.com/cloud-sql-connectors`. Ce ne sont pas des empreintes publiées par
+# Google — le dépôt n'en publie pas — mais celles de ce que nous avons vu et embarqué. C'est
+# ce qui rend une substitution ultérieure détectable, pas ce qui prouve l'origine.
+version = 2.25.3
+sha256-aarch64-apple-darwin = 9c8c3fcffcfc46fcaba7185c186528b124b50a89152edf584e146a5ea900a087
+sha256-x86_64-apple-darwin = 2e12fc20f359a6920c6a50b81a609305583e5d80daacf2ccd0e42c5eaebb244f

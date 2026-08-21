@@ -6,10 +6,12 @@
 //!
 //! Découpage :
 //! - `binaire` — trouver `cloud-sql-proxy`, ou dire comment l'installer ;
+//! - `identifiants` — avec quoi il s'authentifie, et les échecs qui en découlent (`06i`) ;
 //! - `sortie` — les deux lignes de journal dont on dépend ;
 //! - `journal` — les dernières lignes, seul diagnostic disponible si le processus meurt.
 
 pub mod binaire;
+pub mod identifiants;
 pub mod journal;
 pub mod sortie;
 
@@ -75,6 +77,14 @@ impl CloudSqlProxy {
         port_local_demande: Option<u16>,
     ) -> Result<Self, EngineError> {
         let binaire = binaire::localiser()?;
+        // **Avant de lancer le proxy** (`06i`) : l'absence totale d'identifiants se voit
+        // sans rien lancer, et attendre le délai de démarrage pour l'apprendre coûterait
+        // vingt secondes pour un diagnostic qu'on avait déjà.
+        //
+        // Ici et non dans `ouvrir_avec`, pour la même raison que `localiser` : les tests
+        // pilotent un faux binaire et n'ont pas le droit de dépendre de ce qui est
+        // configuré sur la machine qui les exécute.
+        identifiants::controler(proxy)?;
         Self::ouvrir_avec(&binaire, proxy, port_local_demande).await
     }
 
@@ -140,7 +150,17 @@ impl CloudSqlProxy {
             EngineError::local("la sortie du proxy cloud-sql-proxy est illisible")
         })?;
 
-        let journal = Arc::new(Journal::default());
+        // En-tête du journal : **lequel** des deux binaires tourne. Il voyage avec tout
+        // message d'échec, et c'est la première question devant une sortie du proxy qu'on ne
+        // reconnaît pas — le binaire embarqué d'`06h`, ou celui de la machine.
+        let journal = Arc::new(Journal::avec_entete(if binaire::est_embarque(binaire) {
+            format!(
+                "cloud-sql-proxy embarqué, version {}",
+                binaire::version_embarquee()
+            )
+        } else {
+            format!("cloud-sql-proxy hors bundle ({})", binaire.display())
+        }));
         let mut lignes = BufReader::new(sortie).lines();
 
         // Phase d'attente : on lit **dans cette tâche**, pas dans le drain, parce qu'il faut
@@ -168,20 +188,28 @@ impl CloudSqlProxy {
             Ok(Some(port)) => port,
             Ok(None) => {
                 let _ = enfant.kill().await;
-                return Err(EngineError::local(format!(
-                    "le proxy cloud-sql-proxy s'est arrêté avant d'accepter les connexions : {}",
-                    journal.dernieres()
+                let dit = journal.dernieres();
+                // Enrichi quand l'échec est reconnaissable, **intact** sinon (`06i`).
+                return Err(EngineError::local(identifiants::enrichir(
+                    format!(
+                        "le proxy cloud-sql-proxy s'est arrêté avant d'accepter les \
+                         connexions : {dit}"
+                    ),
+                    &dit,
                 )));
             }
             Err(_) => {
                 // Le tuer avant de rendre : un proxy abandonné garderait le port, et la
                 // tentative suivante croirait parler à sa propre instance.
                 let _ = enfant.kill().await;
-                return Err(EngineError::local(format!(
-                    "le proxy cloud-sql-proxy n'a pas annoncé être prêt dans le délai de {} s — \
-                     ce qu'il a écrit : {}",
-                    delai.as_secs().max(1),
-                    journal.dernieres()
+                let dit = journal.dernieres();
+                return Err(EngineError::local(identifiants::enrichir(
+                    format!(
+                        "le proxy cloud-sql-proxy n'a pas annoncé être prêt dans le délai de \
+                         {} s — ce qu'il a écrit : {dit}",
+                        delai.as_secs().max(1)
+                    ),
+                    &dit,
                 )));
             }
         };
