@@ -8,6 +8,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "tauri": "tauri",
+    "proxy:embarquer": "bash scripts/telecharger-proxy.sh",
+    "proxy:embarquer:tous": "bash scripts/telecharger-proxy.sh --tous",
     "typecheck": "tsc -b",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",

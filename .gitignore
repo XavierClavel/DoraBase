@@ -4,3 +4,5 @@ src-tauri/target/
 test-results/
 playwright-report/
 .DS_Store
+src-tauri/binaries/
+src-tauri/licences/cloud-sql-proxy/VERSION

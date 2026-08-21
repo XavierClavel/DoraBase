@@ -90,6 +90,23 @@ jobs:
 
       - run: pnpm tauri build
 
+      # **La seule vérification automatisable d'`06h`.** Que le binaire du proxy soit
+      # *embarqué* se prouve ici ; qu'il soit *trouvé* par l'app lancée depuis le Finder
+      # demande un œil humain (§ 0 de `REPRISE.md`). Sans cette étape, un `externalBin`
+      # retiré de `tauri.conf.json` laisserait la CI verte et casserait Cloud SQL chez
+      # l'utilisateur — panne invisible en développement, où le `PATH` fournit le binaire.
+      - name: le proxy Cloud SQL est bien dans le bundle
+        run: |
+          set -euo pipefail
+          app=src-tauri/target/release/bundle/macos/DoraBase.app
+          test -x "$app/Contents/MacOS/cloud-sql-proxy"
+          test -f "$app/Contents/Resources/licences/cloud-sql-proxy/LICENSE"
+          test -f "$app/Contents/Resources/licences/cloud-sql-proxy/VERSION"
+          # Le binaire embarqué doit porter la version du verrou, et non celle qu'un cache
+          # aurait laissée : c'est tout l'objet du verrou.
+          attendue=$(sed -n 's/^version *= *//p' src-tauri/cloud-sql-proxy.lock | head -1)
+          "$app/Contents/MacOS/cloud-sql-proxy" --version | grep -F "$attendue"
+
   # Second job, sur Linux, dédié aux tests qui exigent une vraie base.
   #
   # Pourquoi un job séparé : les *service containers* de GitHub Actions n'existent que sur
