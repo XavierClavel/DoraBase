@@ -71,6 +71,10 @@ Le port local sort de l'énumération parce qu'il est vrai des deux, et qu'un ch
 dupliqué dans chaque membre obligerait chaque lecteur à faire un `match` pour lire une
 donnée qui ne varie pas.
 
+> **`credentials_file_path` a été retiré le 24 août 2026** (`06j`), avec un cran de migration
+> v3 → v4. `ProxyCloudSql` ne porte plus que `instance_connection_name`. Ce qui suit décrit la
+> forme v3, celle que la migration doit encore savoir lire.
+
 `credentials_file_path: None` signifie **« identifiants par défaut de l'application »** —
 le cas courant, quand l'utilisateur s'est authentifié par `gcloud auth
 application-default login`. Ce n'est pas un trou dans la configuration, et le nommer

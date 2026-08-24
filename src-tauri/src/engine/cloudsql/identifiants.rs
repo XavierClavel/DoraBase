@@ -9,7 +9,6 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::config::ProxyCloudSql;
 use crate::engine::EngineError;
 
 /// La variable que les bibliothèques clientes de Google lisent avant tout le reste.
@@ -42,9 +41,11 @@ fn chemin_bien_connu(maison: &Path) -> PathBuf {
 /// le contenu d'un fichier par mégarde en aval.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Sources {
-    /// Un chemin saisi dans `A2`, passé en `--credentials-file`.
-    pub chemin_saisi: bool,
     /// La variable `GOOGLE_APPLICATION_CREDENTIALS`.
+    ///
+    /// **La seule échappatoire restée** pour un compte de service, depuis que `06j` a retiré
+    /// le champ de `A2` : le proxy la lit de lui-même, donc elle ne coûte ni champ, ni valeur
+    /// persistée.
     pub variable: bool,
     /// Le fichier écrit par `gcloud auth application-default login`.
     pub fichier_bien_connu: bool,
@@ -56,27 +57,23 @@ impl Sources {
     /// **Existence seulement, jamais le contenu.** Même exigence qu'`06g` sur le fichier de
     /// compte de service et qu'`06e` sur la clé privée : ce qui n'est pas lu ne peut pas
     /// fuir dans un journal.
-    pub fn observees(proxy: &ProxyCloudSql) -> Self {
+    pub fn observees() -> Self {
         let maison = std::env::var_os("HOME").map(PathBuf::from);
         Self {
-            chemin_saisi: proxy
-                .credentials_file_path
-                .as_deref()
-                .is_some_and(|chemin| !chemin.trim().is_empty()),
             variable: std::env::var_os(VARIABLE)
                 .is_some_and(|valeur| !valeur.to_string_lossy().trim().is_empty()),
             fichier_bien_connu: maison.is_some_and(|maison| chemin_bien_connu(&maison).is_file()),
         }
     }
 
-    /// Rien du tout : ni chemin saisi, ni variable, ni fichier de `gcloud`.
+    /// Rien du tout : ni variable, ni fichier de `gcloud`.
     fn aucune(self) -> bool {
-        !self.chemin_saisi && !self.variable && !self.fichier_bien_connu
+        !self.variable && !self.fichier_bien_connu
     }
 
     /// L'échec qu'on peut annoncer sans lancer le proxy.
     ///
-    /// **Il ne parle que si les trois sources manquent.** Un contrôle qui ne regarderait que
+    /// **Il ne parle que si les deux sources manquent.** Un contrôle qui ne regarderait que
     /// le fichier de `gcloud` refuserait une machine dont la variable est renseignée — et un
     /// faux refus coûte plus cher qu'un diagnostic tardif.
     pub fn controler(self) -> Result<(), EngineError> {
@@ -88,15 +85,18 @@ impl Sources {
              authentifiez-vous avec les deux commandes suivantes, puis réessayez :\n  \
              {COMMANDES}\n\
              (« gcloud auth login » ne suffit pas : elle n'authentifie que le CLI lui-même, \
-             pas les applications. Vous pouvez aussi désigner un fichier de compte de \
-             service dans le champ « Compte de service ».)"
+             pas les applications. Un compte de service reste possible en désignant son \
+             fichier dans la variable {VARIABLE}.)"
         )))
     }
 }
 
-/// Le contrôle préalable, pour cette connexion.
-pub fn controler(proxy: &ProxyCloudSql) -> Result<(), EngineError> {
-    Sources::observees(proxy).controler()
+/// Le contrôle préalable.
+///
+/// Sans paramètre depuis `06j` : il ne reste rien, dans la connexion, qui décrive avec quoi
+/// s'authentifier — c'est la machine qui le dit, pas la configuration.
+pub fn controler() -> Result<(), EngineError> {
+    Sources::observees().controler()
 }
 
 /// La réparation à ajouter, quand ce que le proxy a écrit est un échec reconnaissable.
@@ -164,16 +164,8 @@ pub fn enrichir(message: String, dit: &str) -> String {
 mod tests {
     use super::*;
 
-    fn sans_chemin() -> ProxyCloudSql {
-        ProxyCloudSql {
-            instance_connection_name: "acme:europe-west1:analytics".into(),
-            credentials_file_path: None,
-        }
-    }
-
-    /// Les trois sources absentes.
+    /// Les deux sources absentes.
     const RIEN: Sources = Sources {
-        chemin_saisi: false,
         variable: false,
         fichier_bien_connu: false,
     };
@@ -201,13 +193,9 @@ mod tests {
     #[test]
     fn une_seule_source_suffit_a_faire_taire_le_controle() {
         // **Le faux refus est le risque de ce contrôle.** Une machine dont la variable est
-        // renseignée, ou dont le champ « Compte de service » est rempli, est correctement
-        // configurée : refuser d'essayer serait pire que le diagnostic tardif qu'on évite.
+        // renseignée est correctement configurée, même sans `gcloud` : refuser d'essayer
+        // serait pire que le diagnostic tardif qu'on évite.
         for source in [
-            Sources {
-                chemin_saisi: true,
-                ..RIEN
-            },
             Sources {
                 variable: true,
                 ..RIEN
@@ -222,15 +210,14 @@ mod tests {
     }
 
     #[test]
-    fn un_chemin_vide_n_est_pas_un_chemin() {
-        // `05d` fait du vide une valeur signifiant « identifiants par défaut ». Le prendre
-        // pour un chemin saisi ferait taire le contrôle exactement dans le cas qu'il sert.
-        let mut proxy = sans_chemin();
-        proxy.credentials_file_path = Some("   ".into());
-        assert!(!Sources::observees(&proxy).chemin_saisi);
-
-        proxy.credentials_file_path = Some("/tmp/compte.json".into());
-        assert!(Sources::observees(&proxy).chemin_saisi);
+    fn la_variable_reste_la_voie_du_compte_de_service() {
+        // **Ce que `06j` n'a pas fermé.** Le champ de `A2` est parti, la voie non : le
+        // message doit nommer la variable, sinon une machine sans `gcloud` — un serveur de
+        // rebond, un poste verrouillé — n'a plus aucune indication.
+        let erreur = RIEN.controler().expect_err("aucune source");
+        assert!(erreur.message.contains(VARIABLE), "{erreur}");
+        // Et il ne doit plus renvoyer vers un champ qui n'existe plus.
+        assert!(!erreur.message.contains("Compte de service"), "{erreur}");
     }
 
     #[test]

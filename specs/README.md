@@ -157,10 +157,13 @@ SQL Auth Proxy (`05d`, `06g`, `08k`) vient d'une demande fonctionnelle, pas du b
 design : `A2` ne montrait qu'un sélecteur « Type » à une seule valeur, `SSH`. `08k` invente
 donc deux champs — « Instance » et « Compte de service » —, un libellé d'aide et un libellé
 de badge, en restant dans le vocabulaire visuel de `08c` pour qu'une maquette ultérieure ait
-peu à corriger. Deux points méritent une décision de design : le nom de connexion d'instance
-est long et prend trois colonnes de la grille, ce qui n'a pas été composé ; et un champ dont
-le **vide** est une valeur valable (« identifiants par défaut de l'application ») n'a aucun
-précédent dans le handoff.
+peu à corriger.
+
+**Il n'en reste qu'un** (24 août 2026, `06j`) : « Compte de service » est parti, et avec lui
+le seul champ du projet dont le **vide** était une valeur valable — donc le seul qui n'avait
+aucun précédent dans le handoff. Le visage Cloud SQL est maintenant un champ « Instance » et
+une phrase d'authentification. Reste un point de design : ce nom de connexion est long et
+prend trois colonnes de la grille, ce qui n'a pas été composé.
 
 Quatre options avancées sont laissées de côté, chacune ajoutant un champ à `A2` : IP privée,
 authentification IAM automatique, usurpation de compte de service, Private Service Connect.
@@ -287,6 +290,7 @@ se pose : ajouter `blob:` à la directive concernée, ou gérer l'écriture côt
 | [`06g`](06g-proxy-cloud-sql.md) | Proxy Cloud SQL : lancer et surveiller `cloud-sql-proxy` | **fait** (chemin heureux contre une vraie instance non observé) |
 | [`06h`](06h-binaire-embarque.md) | Le binaire du proxy embarqué dans le bundle, épinglé et vérifié | **fait** (bundle depuis le Finder et notarisation non observés) |
 | [`06i`](06i-identifiants-gcloud.md) | S'authentifier avec les identifiants du CLI `gcloud` (ADC), et les trois échecs | **fait** (chemin heureux contre une vraie instance non observé) |
+| [`06j`](06j-une-seule-voie-d-authentification.md) | Le champ « Compte de service » retiré, et la migration v3 → v4 | **fait** |
 
 **Pourquoi `05` a été découpé en trois** (5 août 2026) : le périmètre indexé —
 « modèle de domaine, persistance, Trousseau » — mêlait trois préoccupations

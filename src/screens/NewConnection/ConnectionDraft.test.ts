@@ -14,14 +14,12 @@ test('un tunnel neuf est SSH, sur le port 22', () => {
   })
 })
 
-test('un proxy Cloud SQL neuf n’invente ni instance ni compte de service', () => {
+test('un proxy Cloud SQL neuf n’invente pas d’instance', () => {
+  // Un seul champ depuis `06j` : le compte de service ne se saisit plus, donc il n'y a plus
+  // qu'une chaîne vide à ne pas préremplir.
   expect(emptyProxy('cloud-sql')).toEqual({
     kind: 'cloud-sql',
     instanceConnectionName: '',
-    // Chaîne vide et non `null` : un champ de saisie ne peut pas porter `null`, et le vide
-    // signifie « identifiants par défaut de l'application » — une valeur, pas un trou. La
-    // conversion la traduit en `null`, une seule fois, au bon endroit.
-    credentialsFilePath: '',
   })
 })
 
@@ -42,9 +40,5 @@ test('les deux sortes de proxy portent exactement leurs champs, et pas ceux de l
     'privateKeyPath',
     'username',
   ])
-  expect(Object.keys(emptyProxy('cloud-sql')).sort()).toEqual([
-    'credentialsFilePath',
-    'instanceConnectionName',
-    'kind',
-  ])
+  expect(Object.keys(emptyProxy('cloud-sql')).sort()).toEqual(['instanceConnectionName', 'kind'])
 })

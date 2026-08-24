@@ -41,6 +41,10 @@ redirection), `06e` (le choix du port local, et la façon de signaler une chute)
 - **Le panneau de `A2`** → `08k`.
 - **Le diagnostic de l'authentification** — ce que signifie l'absence de fichier de compte
   de service, et les trois échecs qui en découlent → `06i`.
+- **Le fichier de compte de service lui-même**, que ce scope passait en `--credentials-file`.
+  **Retiré le 24 août 2026** → `06j` : la ligne de commande du proxy ne porte plus aucune
+  option d'identifiants, et deux tests de ce scope ont été remplacés par un seul, qui
+  l'énumère en entier.
 
 ## Approche
 
