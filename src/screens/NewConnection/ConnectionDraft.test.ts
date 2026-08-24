@@ -20,6 +20,9 @@ test('un proxy Cloud SQL neuf n’invente pas d’instance', () => {
   expect(emptyProxy('cloud-sql')).toEqual({
     kind: 'cloud-sql',
     instanceConnectionName: '',
+    // `06k` : éteinte par défaut. Une connexion Cloud SQL ordinaire s'authentifie par rôle et
+    // mot de passe ; allumer IAM d'office ferait échouer le cas courant.
+    autoIamAuthn: false,
   })
 })
 
@@ -40,5 +43,9 @@ test('les deux sortes de proxy portent exactement leurs champs, et pas ceux de l
     'privateKeyPath',
     'username',
   ])
-  expect(Object.keys(emptyProxy('cloud-sql')).sort()).toEqual(['instanceConnectionName', 'kind'])
+  expect(Object.keys(emptyProxy('cloud-sql')).sort()).toEqual([
+    'autoIamAuthn',
+    'instanceConnectionName',
+    'kind',
+  ])
 })

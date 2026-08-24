@@ -291,6 +291,7 @@ se pose : ajouter `blob:` à la directive concernée, ou gérer l'écriture côt
 | [`06h`](06h-binaire-embarque.md) | Le binaire du proxy embarqué dans le bundle, épinglé et vérifié | **fait** (bundle depuis le Finder et notarisation non observés) |
 | [`06i`](06i-identifiants-gcloud.md) | S'authentifier avec les identifiants du CLI `gcloud` (ADC), et les trois échecs | **fait** (chemin heureux contre une vraie instance non observé) |
 | [`06j`](06j-une-seule-voie-d-authentification.md) | Le champ « Compte de service » retiré, et la migration v3 → v4 | **fait** |
+| [`06k`](06k-authentification-iam.md) | L'authentification IAM de base de données (`--auto-iam-authn`) | **fait** (instance IAM réelle non observée depuis ici) |
 
 **Pourquoi `05` a été découpé en trois** (5 août 2026) : le périmètre indexé —
 « modèle de domaine, persistance, Trousseau » — mêlait trois préoccupations

@@ -366,7 +366,20 @@ export type ProxyCloudSql = {
  * champ dans `A2`, ni une valeur à persister. Le cran de migration v3 → v4 retire la
  * clé des fichiers existants.
  */
-instanceConnectionName: string, };
+instanceConnectionName: string, 
+/**
+ * L'authentification IAM de base de données (`--auto-iam-authn`, `06k`).
+ *
+ * Quand elle est active, l'utilisateur de la connexion est un **principal IAM** — une
+ * adresse — et non un rôle PostgreSQL à mot de passe : le proxy obtient un jeton et le
+ * présente à sa place. Le champ « Mot de passe » de `A2` ne sert alors à rien.
+ *
+ * **`#[serde(default)]`, et donc aucun cran de migration.** Un champ *ajouté* avec une
+ * valeur par défaut ne perd rien d'un fichier plus ancien — au contraire du champ
+ * *retiré* par `06j`, qui exigeait une sauvegarde avant de disparaître. `false` est la
+ * bonne valeur pour une connexion écrite avant ce scope : elle n'utilisait pas IAM.
+ */
+autoIamAuthn: boolean, };
 
 /**
  * Un bastion SSH. Le **chemin** de la clé privée est de la configuration, pas un

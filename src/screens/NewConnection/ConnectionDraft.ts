@@ -87,6 +87,9 @@ export type ProxyCloudSqlDraft = {
   /** `projet:région:instance`. Non validé ici : `06g` refuse à l'ouverture, avec le message du
    * proxy lui-même — un nom peut devenir valable entre la saisie et la connexion. */
   instanceConnectionName: string
+  /** L'authentification IAM de base de données (`06k`). Un booléen des deux côtés : rien à
+   * traduire, contrairement au chemin qu'`06j` a retiré. */
+  autoIamAuthn: boolean
 }
 
 /**
@@ -130,7 +133,7 @@ export function emptyProxy(kind: ProxyKind): ProxyDraft {
       // vrai pour la quasi-totalité des bastions.
       return { kind: 'ssh', bastionHost: '', bastionPort: '22', username: '', privateKeyPath: '' }
     case 'cloud-sql':
-      return { kind: 'cloud-sql', instanceConnectionName: '' }
+      return { kind: 'cloud-sql', instanceConnectionName: '', autoIamAuthn: false }
   }
 }
 
@@ -212,6 +215,7 @@ function brouillonDeProxy(tunnel: Tunnel): TunnelDraft {
         proxy: {
           kind: 'cloud-sql',
           instanceConnectionName: tunnel.proxy.instanceConnectionName,
+          autoIamAuthn: tunnel.proxy.autoIamAuthn,
         },
       }
   }
