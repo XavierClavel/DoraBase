@@ -20,13 +20,15 @@ use super::error::traduire;
 /// l'appel ne doit pas se traduire par une connexion directe silencieuse.
 /// La connexion s'authentifie-t-elle par IAM plutôt que par mot de passe ?
 ///
-/// Lu sur le proxy et non sur un champ de la connexion : c'est le proxy qui présente le jeton,
-/// donc c'est lui qui sait. Un `match` ici plutôt qu'un booléen de plus dans `ConnectionSettings`
-/// — l'information existe déjà, la dupliquer ouvrirait la porte à ce que les deux divergent.
+/// **C'est-à-dire : passe-t-elle par un proxy Cloud SQL ?** `06k` a d'abord porté un booléen,
+/// puis l'a retiré le jour même : le mode est toujours actif, donc la question se réduit à la
+/// sorte du proxy. La fonction reste, parce que c'est *elle* qui porte le nom du concept —
+/// `preparer` demande « est-on en IAM ? », pas « est-ce du Cloud SQL ? », et le jour où les
+/// deux cesseront de coïncider, il n'y aura qu'ici à toucher.
 fn authentification_iam(variante: &ConnectionSettings) -> bool {
     matches!(
         variante.tunnel.as_ref().map(|tunnel| &tunnel.proxy),
-        Some(crate::config::Proxy::CloudSql(cloud)) if cloud.auto_iam_authn
+        Some(crate::config::Proxy::CloudSql(_))
     )
 }
 
@@ -175,7 +177,6 @@ mod tests {
             local_port: None,
             proxy: Proxy::CloudSql(crate::config::ProxyCloudSql {
                 instance_connection_name: "acme-prod:europe-west1:analytics".into(),
-                auto_iam_authn: true,
             }),
         });
         variante
@@ -198,15 +199,10 @@ mod tests {
         let config = preparer(&variante(), None, None).expect("préparation");
         assert_eq!(config.get_password(), None);
 
-        let mut sans_iam = avec_iam();
-        sans_iam.tunnel = Some(Tunnel {
-            local_port: None,
-            proxy: Proxy::CloudSql(crate::config::ProxyCloudSql {
-                instance_connection_name: "acme-prod:europe-west1:analytics".into(),
-                auto_iam_authn: false,
-            }),
-        });
-        let config = preparer(&sans_iam, None, Some(("127.0.0.1", 6543))).expect("préparation");
+        // Un tunnel SSH n'est pas de l'IAM : la cible derrière le bastion est une base
+        // ordinaire, avec son rôle et son mot de passe.
+        let config =
+            preparer(&avec_tunnel(), None, Some(("127.0.0.1", 6543))).expect("préparation");
         assert_eq!(config.get_password(), None);
     }
 

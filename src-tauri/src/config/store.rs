@@ -1532,7 +1532,6 @@ mod tests {
             local_port: Some(5433),
             proxy: Proxy::CloudSql(ProxyCloudSql {
                 instance_connection_name: "acme-prod:europe-west1:analytics".into(),
-                auto_iam_authn: false,
             }),
         });
         let projet = Project {

@@ -365,21 +365,14 @@ export type ProxyCloudSql = {
  * `GOOGLE_APPLICATION_CREDENTIALS`, que le proxy lit tout seul, et qui ne coûte ni un
  * champ dans `A2`, ni une valeur à persister. Le cran de migration v3 → v4 retire la
  * clé des fichiers existants.
- */
-instanceConnectionName: string, 
-/**
- * L'authentification IAM de base de données (`--auto-iam-authn`, `06k`).
  *
- * Quand elle est active, l'utilisateur de la connexion est un **principal IAM** — une
- * adresse — et non un rôle PostgreSQL à mot de passe : le proxy obtient un jeton et le
- * présente à sa place. Le champ « Mot de passe » de `A2` ne sert alors à rien.
- *
- * **`#[serde(default)]`, et donc aucun cran de migration.** Un champ *ajouté* avec une
- * valeur par défaut ne perd rien d'un fichier plus ancien — au contraire du champ
- * *retiré* par `06j`, qui exigeait une sauvegarde avant de disparaître. `false` est la
- * bonne valeur pour une connexion écrite avant ce scope : elle n'utilisait pas IAM.
+ * **Et toujours un seul** (`06k`, 24 août 2026). L'authentification IAM de base de
+ * données a d'abord été un booléen ici, puis une bascule dans `A2` ; les deux sont
+ * partis le jour même, sur décision : le mode est **toujours** actif. Un booléen dont
+ * la seule valeur possible est celle que le code applique de toute façon ne décrit rien
+ * — il donne seulement l'occasion de diverger.
  */
-autoIamAuthn: boolean, };
+instanceConnectionName: string, };
 
 /**
  * Un bastion SSH. Le **chemin** de la clé privée est de la configuration, pas un

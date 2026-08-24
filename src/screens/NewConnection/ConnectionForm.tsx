@@ -21,6 +21,14 @@ import { ToggleWithLabel } from './ToggleWithLabel'
  * de projet, que `05a` n'autorise pas à commencer par un caractère de contrôle.
  */
 
+/** Pourquoi le port est grisé derrière un proxy Cloud SQL. Dit, jamais deviné. */
+const RAISON_PORT_CLOUD_SQL =
+  "Le port est choisi par l'application à l'ouverture du proxy Cloud SQL, et lu sur ce que le proxy annonce. Une valeur saisie ici ne serait pas employée."
+
+/** Pourquoi le mot de passe est grisé derrière un proxy Cloud SQL. */
+const RAISON_MOT_DE_PASSE_CLOUD_SQL =
+  "L'authentification est celle de Cloud SQL IAM : le proxy présente un jeton à la place d'un mot de passe. L'utilisateur est un principal IAM — une adresse."
+
 /** Pourquoi les trois champs d'identité sont verrouillés en édition. Dit, jamais deviné. */
 const RAISON_VERROU =
   'Ces trois champs identifient la base : les changer déplacerait son mot de passe et fermerait sa connexion. Supprimez et redéclarez la base pour la renommer.'
@@ -93,6 +101,23 @@ export function ConnectionForm({
   // **Un moteur de fichier n'a pas de serveur** (`17a`) : cinq champs du formulaire ne veulent rien
   // dire pour lui, et les afficher laisserait croire qu'ils comptent.
   const fichier = estUnFichier(draft.engine)
+  /*
+   * **Ce que le proxy Cloud SQL décide à la place de l'utilisateur** (24 août 2026).
+   *
+   * Deux champs cessent d'avoir un sens quand la connexion passe par lui :
+   * - le **port**, choisi par l'application à l'ouverture du proxy et lu sur ce qu'il annonce
+   *   (`06g`) — la valeur saisie ne serait jamais employée ;
+   * - le **mot de passe**, l'authentification étant IAM (`06k`) : le proxy présente un jeton.
+   *
+   * Grisés plutôt que masqués : leur disparition ferait croire que la connexion n'a ni port ni
+   * mot de passe, alors qu'elle en a — simplement, ce n'est plus l'utilisateur qui les donne.
+   * Chacun porte un `title` qui dit **pourquoi**, la leçon de `09f` valant ici : un champ
+   * désactivé sans explication se lit comme un bug.
+   *
+   * Lu sur le tunnel **réellement déclaré**, et non sur la sorte affichée dans le panneau : tant
+   * qu'aucune instance n'est saisie, il n'y a pas de proxy, et griser d'avance serait mentir.
+   */
+  const parCloudSql = draft.tunnel?.proxy.kind === 'cloud-sql'
 
   /*
    * **« + Nouveau projet… » n'existe plus** (`24c`).
@@ -192,7 +217,9 @@ export function ConnectionForm({
             label="Port"
             mono
             inputMode="numeric"
-            value={draft.port}
+            disabled={parCloudSql}
+            title={parCloudSql ? RAISON_PORT_CLOUD_SQL : undefined}
+            value={parCloudSql ? 'auto' : draft.port}
             onChange={(event) => onChange({ port: event.target.value })}
           />
         </div>
@@ -226,29 +253,37 @@ export function ConnectionForm({
           mono
           type={passwordVisible ? 'text' : 'password'}
           className={styles.passwordField}
-          value={draft.password}
+          disabled={parCloudSql}
+          title={parCloudSql ? RAISON_MOT_DE_PASSE_CLOUD_SQL : undefined}
+          value={parCloudSql ? '' : draft.password}
           onChange={(event) => onChange({ password: event.target.value })}
           suffix={
-            <>
-              <button
-                type="button"
-                className={styles.eye}
-                onClick={() => setPasswordVisible((visible) => !visible)}
-                aria-label={
-                  passwordVisible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'
-                }
-                aria-pressed={passwordVisible}
-              >
-                <Icon name="eye" size={14} strokeWidth={1.8} />
-              </button>
-              {/* Le badge annonce **où** le secret sera rangé. `05c` choisit le mécanisme selon
+            // **Ni l'œil ni le badge derrière un proxy Cloud SQL.** C'est le raisonnement de
+            // `17a` sur le moteur de fichier, appliqué ici : « le badge Trousseau promettrait
+            // de ranger un secret qui n'existe pas ». Il n'y en aura pas — le proxy présente un
+            // jeton —, et un œil qui dévoile un champ vide et grisé ne dévoile rien.
+            parCloudSql ? undefined : (
+              <>
+                <button
+                  type="button"
+                  className={styles.eye}
+                  onClick={() => setPasswordVisible((visible) => !visible)}
+                  aria-label={
+                    passwordVisible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'
+                  }
+                  aria-pressed={passwordVisible}
+                >
+                  <Icon name="eye" size={14} strokeWidth={1.8} />
+                </button>
+                {/* Le badge annonce **où** le secret sera rangé. `05c` choisit le mécanisme selon
                 la signature du binaire : en développement c'est un fichier chiffré, pas le
                 Trousseau. Le libellé exact viendra de `08e`, qui interrogera le magasin —
                 ici il reflète le cas signé, comme le mockup. */}
-              <Badge tone="success" icon={<Icon name="lock" size={12} strokeWidth={2} />}>
-                Trousseau
-              </Badge>
-            </>
+                <Badge tone="success" icon={<Icon name="lock" size={12} strokeWidth={2} />}>
+                  Trousseau
+                </Badge>
+              </>
+            )
           }
         />
       )}

@@ -154,13 +154,18 @@ impl CloudSqlProxy {
             .arg("--address")
             .arg("127.0.0.1");
 
-        // `06k` — l'authentification IAM de base de données. Sans cette option, le proxy relaie
-        // le mot de passe tel quel, et un utilisateur qui est un **principal IAM** se voit
-        // refuser par PostgreSQL : « IAM user authentication failed ». Avec elle, le proxy
-        // obtient un jeton et le présente à la place.
-        if proxy.auto_iam_authn {
-            commande.arg("--auto-iam-authn");
-        }
+        // `06k` — l'authentification IAM de base de données, **toujours active**. Sans cette
+        // option, le proxy relaie le mot de passe tel quel, et un utilisateur qui est un
+        // principal IAM se voit refuser par PostgreSQL : « IAM user authentication failed ».
+        // Avec elle, le proxy obtient un jeton et le présente à la place.
+        //
+        // **Sans bascule, et c'est une décision, pas un raccourci** (24 août 2026) : le seul
+        // usage connu du projet est en IAM, et une bascule à deux positions dont une n'est
+        // jamais choisie coûte un champ persisté, une conversion, un état d'écran et deux
+        // chemins à tester. Le jour où un rôle à mot de passe se présentera, c'est ce
+        // commentaire qu'il faudra venir contredire — pas un booléen oublié qu'il faudra
+        // retrouver.
+        commande.arg("--auto-iam-authn");
 
         // **Aucune option d'identifiants** (`06j`). Le proxy prend les identifiants par
         // défaut de l'application : `GOOGLE_APPLICATION_CREDENTIALS`, à défaut le fichier
@@ -488,7 +493,6 @@ while true; do sleep 1; done
     fn configuration() -> ProxyCloudSql {
         ProxyCloudSql {
             instance_connection_name: "acme:europe-west1:analytics".into(),
-            auto_iam_authn: false,
         }
     }
 
@@ -775,50 +779,17 @@ while true; do sleep 1; done
         proxy.fermer().await;
 
         let mots: Vec<&str> = arguments.split_whitespace().collect();
-        // L'instance, le port et l'adresse : rien d'autre. Le port varie, donc il est lu et
-        // non comparé.
-        assert_eq!(mots.len(), 5, "{arguments}");
+        // L'instance, le port, l'adresse, et l'authentification IAM : rien d'autre. Le port
+        // varie, donc il est lu et non comparé.
+        assert_eq!(mots.len(), 6, "{arguments}");
         assert_eq!(mots[0], "acme:europe-west1:analytics", "{arguments}");
         assert_eq!(mots[1], "--port", "{arguments}");
         assert!(mots[2].parse::<u16>().is_ok(), "{arguments}");
         assert_eq!(mots[3], "--address", "{arguments}");
         assert_eq!(mots[4], "127.0.0.1", "{arguments}");
-    }
-
-    #[tokio::test]
-    async fn l_authentification_iam_ajoute_son_option_et_elle_seule() {
-        let mouchard = faux_binaire(
-            "mouchard-iam",
-            r#"#!/bin/sh
-echo "args: $*"
-echo "Listening on 127.0.0.1:65003"
-echo "ready for new connections"
-while true; do sleep 1; done
-"#,
-        );
-
-        let mut config = configuration();
-        config.auto_iam_authn = true;
-        let proxy = CloudSqlProxy::ouvrir_avec(&mouchard, &config, None)
-            .await
-            .expect("ouverture");
-        assert!(
-            proxy.journal().contains("--auto-iam-authn"),
-            "{}",
-            proxy.journal()
-        );
-        proxy.fermer().await;
-
-        // Et **seulement** quand elle est demandée : l'option active un mode d'authentification
-        // différent, qui ferait échouer un rôle PostgreSQL ordinaire.
-        let proxy = CloudSqlProxy::ouvrir_avec(&mouchard, &configuration(), None)
-            .await
-            .expect("ouverture");
-        assert!(
-            !proxy.journal().contains("--auto-iam-authn"),
-            "{}",
-            proxy.journal()
-        );
-        proxy.fermer().await;
+        // `06k`, toujours actif : c'est le seul mode d'authentification du scope, et
+        // l'énumération est ce qui le dit — une assertion de présence laisserait passer sa
+        // disparition dans un `if` réintroduit.
+        assert_eq!(mots[5], "--auto-iam-authn", "{arguments}");
     }
 }

@@ -13,10 +13,14 @@ non des rôles PostgreSQL à mot de passe. C'est `--auto-iam-authn`, mis hors p�
 
 ## Périmètre
 
-- Une bascule « Authentification IAM » dans le visage Cloud SQL de `A2`.
-- `auto_iam_authn` sur `ProxyCloudSql`, et `--auto-iam-authn` passé au proxy.
+- `--auto-iam-authn` passé au proxy, **toujours**.
 - Le mot de passe : ce que l'application envoie quand il n'y en a pas.
 - Ce que l'écran en dit **avant** l'échec.
+
+> **Révisé le jour même.** Ce scope a d'abord porté une bascule dans `A2` et un
+> `auto_iam_authn` sur `ProxyCloudSql`. Les deux sont partis sur décision : le mode est
+> désormais **toujours** actif — voir « Sans bascule » ci-dessous. Ce qui reste est le
+> comportement, pas le choix.
 
 ## Hors périmètre
 
@@ -51,15 +55,43 @@ n'est enregistré. C'est ce que fait `psql`, où l'on valide l'invite sans rien 
 Un secret enregistré, lui, **gagne** : le mot de passe vide est un repli, pas une règle, et
 écraser ce qu'un utilisateur a délibérément enregistré serait décider à sa place.
 
+### Sans bascule, et c'est une décision
+
+Un interrupteur à deux positions dont une n'est jamais choisie coûte un champ persisté, une
+conversion dans les deux sens, un état d'écran et deux chemins à tester — pour décrire un
+choix que personne ne fait. Le seul usage connu du projet est en IAM.
+
+Le jour où un rôle à mot de passe se présentera, c'est le **commentaire** du lancement qu'il
+faudra venir contredire, à un endroit qui dit pourquoi il est là. C'est préférable à un
+booléen oublié qu'il faudrait retrouver, et dont plus personne ne saurait dire s'il a jamais
+valu autre chose que `true`.
+
+Conséquence sur `A2` : la phrase du panneau ne dépend plus de rien, et deux champs du
+formulaire sont **grisés** derrière un proxy Cloud SQL — le mot de passe, qui ne sert pas, et
+le port, que l'application choisit. Voir « Ce que le proxy décide ».
+
+### Ce que le proxy décide à la place de l'utilisateur
+
+Le **port** est choisi à l'ouverture et lu sur ce que le proxy annonce (`06g`) : une valeur
+saisie ne serait jamais employée. Le **mot de passe** ne sert pas, l'authentification étant
+IAM. Les deux champs sont donc désactivés, et affichent respectivement « auto » et rien.
+
+**Grisés plutôt que masqués.** Les faire disparaître dirait que la connexion n'a ni port ni
+mot de passe, alors qu'elle a les deux — simplement, ce n'est plus l'utilisateur qui les
+donne. C'est l'inverse du choix de `17a`, qui *masque* les cinq champs sans objet d'un moteur
+de fichier : là, la connexion n'a réellement ni hôte ni port.
+
+Chacun porte un `title` qui dit **pourquoi**, la leçon de `09f` : un champ désactivé sans
+explication se lit comme un bug.
+
 ### Un champ ajouté ne demande pas de cran de migration
 
-`#[serde(default)]` suffit : un fichier écrit avant ce scope se lit, et `false` est la bonne
-valeur pour une connexion qui n'utilisait pas IAM — elle ne perd rien.
+La question s'est posée le temps que le booléen existe, et sa réponse vaut d'être gardée :
+`#[serde(default)]` aurait suffi. Un champ **retiré** exige un cran, parce qu'il fait
+disparaître une valeur que l'utilisateur avait saisie et qu'il faut donc sauvegarder d'abord
+(`06j`) ; un champ **ajouté** ne détruit rien.
 
-C'est l'exacte symétrie de `06j`, et la raison mérite d'être dite parce que les deux cas se
-ressemblent : un champ **retiré** exige un cran, parce qu'il fait disparaître une valeur que
-l'utilisateur avait saisie et qu'il faut donc sauvegarder d'abord ; un champ **ajouté** ne
-détruit rien.
+Le booléen étant parti à son tour, `ProxyCloudSql` n'a pas bougé : la v4 reste la v4.
 
 ### La phrase compte autant que la bascule
 
@@ -74,9 +106,10 @@ savoir *avant* l'échec, pas seulement l'expliquer après.
 
 ### Comment tester cela
 
-- **Sans réseau** : l'option présente **et seulement** quand elle est demandée, avec le faux
-  binaire mouchard de `06g` ; le mot de passe vide configuré, et pas inventé hors de ce mode ;
-  un secret enregistré qui l'emporte ; la bascule et sa phrase, côté écran.
+- **Sans réseau** : la ligne de commande **énumérée en entier**, l'option comprise — une
+  assertion de présence laisserait passer sa disparition dans un `if` réintroduit ; le mot de
+  passe vide configuré, et pas inventé hors de ce mode ; un secret enregistré qui l'emporte ;
+  les deux champs grisés avec leur `title`, et laissés à l'utilisateur sans proxy Cloud SQL.
 - **Avec une vraie instance**, conditionné à une variable comme le reste de la famille : le
   décor d'un compte IAM n'est pas celui d'un rôle à mot de passe, d'où
   `DORABASE_TEST_CLOUDSQL_IAM` en plus des variables de `06g`.
@@ -85,12 +118,12 @@ savoir *avant* l'échec, pas seulement l'expliquer après.
 
 - Une connexion aboutit vers une instance en authentification IAM, avec une adresse pour
   utilisateur et aucun mot de passe.
-- `--auto-iam-authn` n'est passé que lorsque la bascule est active — l'option change le mode
-  d'authentification, et l'ajouter d'office ferait échouer un rôle ordinaire.
+- `--auto-iam-authn` est dans la ligne de commande, et l'énumération de celle-ci le prouve.
+- Le port et le mot de passe de `A2` sont grisés derrière un proxy Cloud SQL, et **eux seuls** :
+  un tunnel SSH les laisse à l'utilisateur.
 - Sans secret enregistré, la connexion configure un mot de passe **vide** en mode IAM, et
   **aucun** hors de ce mode.
 - Un secret enregistré est envoyé tel quel, même en mode IAM.
-- Le panneau dit, quand la bascule est active, que l'utilisateur est un principal IAM et que
-  le mot de passe n'est pas utilisé.
-- Un fichier de configuration écrit avant ce scope se lit sans migration, avec la bascule
-  éteinte.
+- Le panneau dit que l'utilisateur est un principal IAM et que le mot de passe n'est pas
+  utilisé.
+- Un fichier de configuration écrit avant ce scope se lit sans migration.

@@ -314,7 +314,6 @@ test('les champs du panneau font 28 px, contre 30 pour le formulaire', async ({ 
       // La boîte visible de la liste : son enveloppe `wrap`, qui porte la bordure. `[role=combobox]`
       // et non `select` — plus de composant natif dans ce produit.
       select: hauteur(panneau.querySelector('[role=combobox]')?.closest('[class*="wrap"]') ?? null),
-      portLocal: hauteur(panneau.querySelector('output')),
     }
   })
 
@@ -324,7 +323,6 @@ test('les champs du panneau font 28 px, contre 30 pour le formulaire', async ({ 
   expect(new Set(mesures?.champs)).toHaveProperty('size', 1)
   expect(mesures?.champs[0]).toBe(30)
   expect(mesures?.select).toBe(30)
-  expect(mesures?.portLocal).toBe(30)
 })
 
 test('la grille du panneau suit 130px 1fr 84px 1fr', async ({ page }) => {
@@ -345,31 +343,11 @@ test('la grille du panneau suit 130px 1fr 84px 1fr', async ({ page }) => {
   expect(largeurs?.[1]).toBe(largeurs?.[3])
 })
 
-test('le port local mappé est en pointillés, seul du formulaire', async ({ page }) => {
-  await deplierTunnel(page)
-
-  const styles = await page.evaluate(() => {
-    const local = document.querySelector('output')
-    if (!local) return null
-    const s = getComputedStyle(local)
-    // Combien d'autres éléments du formulaire ont une bordure en pointillés ?
-    const pointilles = [...document.querySelectorAll('[role=dialog] *')].filter(
-      (el) => getComputedStyle(el).borderTopStyle === 'dashed',
-    ).length
-    return {
-      style: s.borderTopStyle,
-      largeur: Math.round(local.getBoundingClientRect().width),
-      pointilles,
-    }
-  })
-
-  expect(styles?.style).toBe('dashed')
-  expect(styles?.largeur).toBe(220)
-  // Le seul pointillé du handoff : s'il en apparaissait un second, c'est que quelqu'un a
-  // réemployé la classe pour autre chose que « affiché, pas saisissable ».
-  expect(styles?.pointilles).toBe(1)
-})
-
+// **Le « Port local mappé » a été retiré du panneau** (24 août 2026). Sa mesure part avec lui :
+// il était le seul pointillé du handoff — « affiché, pas saisissable » —, et le test comptait
+// les bordures en pointillés du formulaire pour qu'aucune autre n'apparaisse. Ce qu'il
+// protégeait vaut désormais pour le champ « Port » grisé du formulaire, dont l'état est
+// vérifié par Vitest ; un pointillé de plus n'aurait plus de règle à contredire.
 test('le badge « SSH activé » apparaît quand un bastion est saisi', async ({ page }) => {
   await deplierTunnel(page)
   await expect(page.getByText('SSH activé')).toHaveCount(0)
