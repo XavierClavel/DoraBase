@@ -1170,3 +1170,35 @@ mise en page sans écrire la mesure qui le tient revient à changer du CSS en es
    provoquer la connexion — la seule manière de voir une erreur qui n'existe pas tant que personne
    ne se connecte.
 
+111. **Un binaire embarqué que seule ma machine possédait.** La CI a rougi au premier passage de
+   `06h`, sur les deux jobs à la fois, et pas là où l'attention portait : ni le bundle ni la
+   notarisation, mais `pnpm domain:check` sur macOS et `cargo test` sur Linux, tous deux sur
+   « resource path `binaries/cloud-sql-proxy-…` doesn't exist ».
+
+   **Ce que le scope avait mal lu** : déclarer un `externalBin` dans `tauri.conf.json` ne concerne
+   pas que le packaging. Le script de construction de Tauri vérifie la présence du fichier à
+   **chaque compilation** — `cargo build`, `cargo test`, `cargo clippy` compris. Le téléchargement
+   n'est donc pas une étape de livraison mais une **dépendance de compilation**, et l'avoir câblé
+   aux seuls `beforeDevCommand`/`beforeBuildCommand` le rendait absent partout ailleurs.
+
+   S'y ajoutait une seconde erreur, de la même famille : le script refusait explicitement tout
+   triplet non-macOS — « macOS seulement, voir Hors périmètre de `06h` ». Le raisonnement
+   confondait *livrer sur Linux*, qui n'est en effet pas au périmètre, et *compiler sur Linux*, que
+   la CI fait à chaque poussée depuis des mois.
+
+   **Pourquoi rien ne l'a vu avant** : sur cette machine, le binaire était là — téléchargé à la
+   main pendant l'écriture du scope, puis présent dans `src-tauri/binaries/` pour toutes les
+   exécutions suivantes. Chaque `cargo test` local passait donc *grâce à un état que le dépôt ne
+   contient pas*. C'est la forme la plus commune du faux vert : un contrôle qui réussit pour une
+   raison qui n'existe que chez celui qui le lance.
+
+   **La règle** : quand un scope ajoute une dépendance à un fichier absent du dépôt, la question à
+   se poser n'est pas « le script qui le fabrique est-il appelé ? » mais « **que voit un clone
+   neuf ?** ». La CI est la seule à répondre honnêtement — et il faut la lire, pas la supposer.
+
+   **Ce qui l'a attrapé** : la CI, au premier passage, comme annoncé. Correction : les deux
+   triplets Linux entrent dans le verrou avec leurs empreintes, `suffixe_de` les connaît, le script
+   accepte un triplet nommé — pour qu'un autre système s'essaie depuis n'importe quelle machine —
+   et calcule son empreinte avec `sha256sum` ou `shasum` selon ce qui existe. Une étape de
+   téléchargement est ajoutée **avant les commandes cargo** dans chacun des deux jobs.
+

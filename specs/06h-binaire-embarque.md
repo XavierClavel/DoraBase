@@ -25,9 +25,14 @@ c'est cette couture qui rend ce scope petit).
 - **La mise à jour du proxy embarqué.** Épingler une version, c'est accepter de la relever
   à la main. Un canal de mise à jour séparé de celui de l'app est un scope à lui seul, et
   il n'a pas de demande.
-- **Windows et Linux.** Le bundle ne cible que macOS (`tauri.conf.json`,
-  `minimumSystemVersion: 13.0`). Le mécanisme retenu est par-triplet, donc il les
-  accueillera sans refonte, mais rien n'est produit ni testé pour eux ici.
+- **Windows et Linux comme cibles de livraison.** Le bundle ne vise que macOS
+  (`tauri.conf.json`, `minimumSystemVersion: 13.0`). Le mécanisme est par-triplet, donc il
+  les accueillera sans refonte, mais rien n'est produit ni essayé pour eux.
+
+  **Nuance apprise le 24 août 2026** (défaut n° 111) : les deux triplets **Linux** sont tout
+  de même dans le verrou, et le script sait les télécharger. Non pour livrer, mais parce
+  qu'un `externalBin` déclaré est exigé par *toute* compilation — voir « Le coût caché »
+  ci-dessous. Sans eux, `cargo test` ne compile pas sur le runner Linux de la CI.
 - **Le chemin du binaire en préférence** — toujours hors périmètre, pour la raison
   d'`06g` : ce serait une préférence de machine (`15`), pas un champ de connexion.
 
@@ -51,6 +56,22 @@ développement. Ce repli est aussi ce qui garde les tests d'`06g` valables tels 
 
 `localiser_dans` reste la fonction testable, `emplacements_par_defaut` gagne l'emplacement
 du sidecar en tête de liste. Aucun autre appelant ne change.
+
+### Le coût caché d'un `externalBin` : toute compilation en dépend
+
+Déclarer un binaire externe ne concerne pas que le bundle. Le script de construction de Tauri
+**vérifie sa présence à chaque compilation** : `cargo build`, `cargo test`, `cargo clippy` et
+`pnpm domain:check` échouent tous sur « resource path … doesn't exist » bien avant qu'il soit
+question de packaging.
+
+Conséquence à assumer, et à ne pas découvrir : le téléchargement n'est pas une étape de
+livraison mais une **dépendance de compilation**. Elle est câblée aux trois endroits qui
+compilent — `beforeDevCommand`, `beforeBuildCommand`, et une étape explicite dans chacun des
+deux jobs de CI, avant leurs commandes cargo. Y compris le job Linux, qui ne produit pourtant
+aucun bundle.
+
+C'est le prix du choix fait plus haut — un sidecar signé avec l'app plutôt qu'un fichier posé
+à la main. Il est réel : un clone neuf ne compile pas sans un téléchargement de 40 Mo.
 
 ### Épinglé, vérifié, et pas dans Git
 
@@ -93,6 +114,8 @@ embarqué ne se laisse pas interroger par `--version` depuis un terminal.
   sidecar existe, vérifié par un test sur l'ordre de recherche.
 - Sans sidecar, tout `06g` passe encore — les tests existants ne sont pas retouchés.
 - Le script refuse une empreinte qui ne correspond pas, et ne laisse aucun fichier.
+- **Un clone neuf compile**, sur les deux systèmes de la CI, après la seule étape de
+  téléchargement — vérifié par la CI elle-même, dont les deux jobs partent d'un dépôt vide.
 - La licence Apache 2.0 et la version du proxy sont livrées dans le bundle.
 - L'app packagée passe la notarisation avec le binaire embarqué — vérifié sur un vrai
   bundle, pas déduit.
