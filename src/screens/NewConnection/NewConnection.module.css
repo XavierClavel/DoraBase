@@ -195,8 +195,16 @@
  * Marge latérale seule, 16px : le mockup ne pose ni marge haute ni marge basse sur ce bloc,
  * l'espacement venant du remplissage du formulaire au-dessus et du pied en dessous.
  */
+/* Le bloc du panneau proxy / tunnel, entre le choix du moteur et le formulaire.
+ *
+ * **Le `padding-top` n'est pas cosmétique, il rétablit un rythme.** Jusqu'au 24 août 2026 le
+ * panneau était en dernier, et les 16px qui le séparaient du formulaire venaient du
+ * `padding` de celui-ci ; `.engineBlock`, lui, n'a **pas** de padding bas, pour la même
+ * raison — c'est le bloc suivant qui payait l'écart. Passé entre les deux, le panneau se
+ * retrouvait collé au sélecteur de moteur : il prend donc à son tour les 16px au-dessus, et
+ * les deux écarts qui l'encadrent redeviennent égaux. */
 .tunnelBlock {
-  padding: 0 var(--space-8);
+  padding: var(--space-8) var(--space-8) 0;
 }
 
 /* Grille propre au panneau : `130px 1fr 84px 1fr`, rien de commun avec le `1fr 1fr` du

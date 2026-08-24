@@ -297,6 +297,33 @@ test('les champs du visage Cloud SQL font 28 px aussi (08k)', async ({ page }) =
   expect(mesures?.largeurInstance).toBeGreaterThan((mesures?.largeurType ?? 0) * 2)
 })
 
+test('le panneau est à égale distance du moteur et du formulaire', async ({ page }) => {
+  // Mesuré et non lu dans la feuille de style : le `padding` de `.tunnelBlock` et celui de
+  // `.form` sont écrits à deux endroits, et c'est leur **somme à l'écran** qui compte. Le
+  // panneau est passé entre les deux blocs le 24 août 2026, et s'est retrouvé collé au
+  // sélecteur de moteur — un écart de 0 contre 16 en dessous.
+  const ecarts = await page.evaluate(() => {
+    const bas = (el: Element | null | undefined) => el?.getBoundingClientRect().bottom ?? null
+    const haut = (el: Element | null | undefined) => el?.getBoundingClientRect().top ?? null
+    // Le bloc du moteur, dont le `padding` bas vaut zéro : son bord est donc celui du
+    // sélecteur lui-même. `[role=radiogroup]` ne marcherait pas — `RadioGroup` est un vrai
+    // `<fieldset>`, précisément pour que `disabled` désactive nativement ses contrôles.
+    const moteur = document.querySelector('[class*=engineBlock]')
+    const panneau = [...document.querySelectorAll('section')].find((s) =>
+      s.textContent?.includes('Proxy / tunnel'),
+    )
+    const premierChamp = document.querySelector('[class*=rowIdentity]')
+    if (!moteur || !panneau || !premierChamp) return null
+    return {
+      avant: Math.round((haut(panneau) ?? 0) - (bas(moteur) ?? 0)),
+      apres: Math.round((haut(premierChamp) ?? 0) - (bas(panneau) ?? 0)),
+    }
+  })
+
+  expect(ecarts?.avant).toBe(16)
+  expect(ecarts?.apres).toBe(16)
+})
+
 test('les champs du panneau font 28 px, contre 30 pour le formulaire', async ({ page }) => {
   await deplierTunnel(page)
 
