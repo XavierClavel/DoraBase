@@ -101,6 +101,25 @@ test('le port local mappé est commun aux deux visages', async () => {
   expect(panneau.getByLabelText('Port local mappé')).toHaveTextContent('auto')
 })
 
+test('la bascule IAM change ce que le panneau dit du mot de passe', async () => {
+  monter()
+  const panneau = await choisirLeType('Cloud SQL')
+
+  // Éteinte par défaut : le cas courant est un rôle PostgreSQL à mot de passe.
+  const bascule = panneau.getByRole('switch', { name: 'Authentification IAM' })
+  expect(bascule).toHaveAttribute('aria-checked', 'false')
+
+  await userEvent.click(bascule)
+  expect(bascule).toHaveAttribute('aria-checked', 'true')
+  // **Ce que l'écran doit dire avant l'échec** (`06k`) : l'identifiant est une adresse, et le
+  // champ « Mot de passe » ne sert plus. Sans cette phrase, une connexion IAM se saisit comme
+  // une autre et n'apprend qu'après coup, sur « IAM user authentication failed ».
+  expect(panneau.getByText(/principal IAM/i)).toBeInTheDocument()
+  expect(
+    panneau.getByText(/mot de passe n’est pas utilisé|mot de passe n'est pas utilisé/i),
+  ).toBeInTheDocument()
+})
+
 test('le visage Cloud SQL dit comment il s’authentifie, avec la commande entière', async () => {
   monter()
   const panneau = await choisirLeType('Cloud SQL')

@@ -213,6 +213,18 @@ pub struct ProxyCloudSql {
     /// champ dans `A2`, ni une valeur à persister. Le cran de migration v3 → v4 retire la
     /// clé des fichiers existants.
     pub instance_connection_name: String,
+    /// L'authentification IAM de base de données (`--auto-iam-authn`, `06k`).
+    ///
+    /// Quand elle est active, l'utilisateur de la connexion est un **principal IAM** — une
+    /// adresse — et non un rôle PostgreSQL à mot de passe : le proxy obtient un jeton et le
+    /// présente à sa place. Le champ « Mot de passe » de `A2` ne sert alors à rien.
+    ///
+    /// **`#[serde(default)]`, et donc aucun cran de migration.** Un champ *ajouté* avec une
+    /// valeur par défaut ne perd rien d'un fichier plus ancien — au contraire du champ
+    /// *retiré* par `06j`, qui exigeait une sauvegarde avant de disparaître. `false` est la
+    /// bonne valeur pour une connexion écrite avant ce scope : elle n'utilisait pas IAM.
+    #[serde(default)]
+    pub auto_iam_authn: bool,
 }
 
 /// Ce qui **diffère** entre les deux sortes de proxy.
@@ -913,6 +925,7 @@ mod tests {
             local_port: Some(5433),
             proxy: Proxy::CloudSql(ProxyCloudSql {
                 instance_connection_name: "acme-prod:europe-west1:analytics".into(),
+                auto_iam_authn: false,
             }),
         };
 
@@ -927,10 +940,11 @@ mod tests {
         // rouvert une voie d'authentification que `06i` a fermée.
         assert_eq!(
             json["proxy"].as_object().expect("objet").len(),
-            2,
+            3,
             "{}",
             json["proxy"]
         );
+        assert_eq!(json["proxy"]["autoIamAuthn"], false);
         assert_eq!(json["localPort"], 5433);
     }
 
@@ -947,6 +961,7 @@ mod tests {
             }),
             Proxy::CloudSql(ProxyCloudSql {
                 instance_connection_name: "p:r:i".into(),
+                auto_iam_authn: true,
             }),
         ] {
             let tunnel = Tunnel {
