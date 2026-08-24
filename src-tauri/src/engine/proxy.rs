@@ -158,10 +158,13 @@ impl ProxyOuvert {
         }
     }
 
-    pub fn qualifier(&self, erreur: EngineError) -> EngineError {
+    /// **Asynchrone à cause de Cloud SQL seul** : le proxy Cloud SQL laisse une fenêtre
+    /// courte au sous-processus pour expliquer l'échec, qu'il écrit au moment du refus et non
+    /// avant. Le tunnel SSH, lui, sait déjà tout ce qu'il sait.
+    pub async fn qualifier(&self, erreur: EngineError) -> EngineError {
         match self {
             Self::Ssh(t) => t.qualifier(erreur),
-            Self::CloudSql(p) => p.qualifier(erreur),
+            Self::CloudSql(p) => p.qualifier(erreur).await,
         }
     }
 

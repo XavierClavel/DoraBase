@@ -67,9 +67,16 @@ applique à un hôte inconnu de `known_hosts` : un échec doit porter sa répara
 
 ### Attendre « ready for new connections », pas sonder le port
 
-Le proxy écrit une ligne sur sa sortie d'erreur quand il accepte les connexions. On
-attend **cette ligne**, avec un délai borné, et l'on collecte au passage ce qu'il écrit
-avant — c'est là que se trouvent ses propres messages d'échec, autrement perdus.
+Le proxy écrit une ligne quand il accepte les connexions. On attend **cette ligne**, avec un
+délai borné, et l'on collecte au passage ce qu'il écrit avant — c'est là que se trouvent ses
+propres messages d'échec, autrement perdus.
+
+> **Correction du 24 août 2026** (défaut n° 109). Ce scope affirmait que le proxy écrivait sur
+> la **sortie d'erreur**, et que c'était « notre seul canal ». C'est l'inverse : v2 écrit son
+> journal courant — dont cette ligne — sur la **sortie standard**, et ne réserve stderr qu'à
+> son erreur terminale. Les deux sont désormais lues. Les faux binaires des tests avaient été
+> écrits d'après cette affirmation, donc rien ne l'a démentie avant la première connexion
+> réelle.
 
 Sonder le port en boucle serait plus simple et faux : un refus de connexion pendant le
 démarrage est indistinguable d'un refus définitif, donc l'attente confondrait « pas
@@ -156,6 +163,10 @@ CI :
   erreurs **distinctes**, chacune couverte.
 - La mort du proxy après l'ouverture se distingue d'une erreur de base dans le message
   remonté — même exigence que `06e`, `A3` affichant deux lignes.
+- **Un proxy vivant qui refuse la connexion joint ce qu'il a écrit** (ajouté le 24 août 2026,
+  défaut n° 110) : v2 ne compose avec l'instance qu'à la première connexion, donc un nom
+  d'instance faux le laisse « prêt » puis échouer sans mourir. `qualifier` laisse une fenêtre
+  courte au proxy pour s'expliquer, et adjoint sa ligne à l'erreur observée.
 - Le port rendu est celui que le **proxy annonce**, pas celui qu'on lui a demandé —
   vérifié avec un faux binaire qui annonce délibérément un autre port que celui reçu.
 - `fermer()` laisse le processus **mort**, vérifié en attendant sa sortie, et le port

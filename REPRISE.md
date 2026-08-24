@@ -173,6 +173,17 @@ le Cloud SQL Auth Proxy, et `A2` sait le saisir. Deux réserves, plus bas.
 l'authentification réemploie ce que `gcloud auth application-default login` a déjà écrit. Reste une
 seule dépendance externe, pour un unique login : le SDK `gcloud`.
 
+**La première connexion réelle a trouvé deux défauts, tous deux corrigés le 24 août 2026** —
+`DEFAUTS.md` n° 109 et 110. Le premier : `cloud-sql-proxy` v2 écrit son journal courant sur la
+**sortie standard**, pas sur la sortie d'erreur comme `06g` l'affirmait, et le code jetait stdout —
+donc l'app n'entendait le proxy que lorsqu'il mourait, et un proxy qui servait très bien expirait
+sur le délai de 20 s « sans avoir rien écrit ». Le second : v2 ne compose avec l'instance qu'à la
+**première connexion**, donc un nom d'instance faux le laisse annoncer « prêt », puis échouer en
+restant vivant — `qualifier` laisse désormais une fenêtre de 300 ms au proxy pour s'expliquer et
+joint sa ligne à l'erreur. La leçon du n° 109 vaut au-delà de Cloud SQL : **ce qu'un double de test
+émet doit venir d'une observation de l'original**, et une observation faite avec `2>&1` ne dit rien
+de la séparation des flux.
+
 **Et une seule voie d'authentification** (`06j`, 24 août 2026) : le champ « Compte de service » a
 été retiré de `A2`, `credentialsFilePath` du modèle, `--credentials-file` de la ligne de commande
 du proxy, et un cran de migration **v3 → v4** retire la clé des fichiers existants. Un compte de
