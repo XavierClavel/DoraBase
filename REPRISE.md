@@ -762,8 +762,10 @@ hors d'atteinte depuis ici :
   **est** vérifié, sur un `.app` construit le 21 août 2026 : le sidecar est bien dans
   `Contents/MacOS/cloud-sql-proxy`, il porte la version du verrou (2.25.3), les trois fichiers de
   licence sont dans `Contents/Resources/licences/`, et le binaire répond sous un environnement
-  réduit à `PATH=/usr/bin:/bin` — donc il ne dépend lui-même d'aucun `PATH`. La CI répète ces
-  contrôles à chaque `pnpm tauri build`. Ce qui reste inconnu est l'aller-retour complet dans
+  réduit à `PATH=/usr/bin:/bin` — donc il ne dépend lui-même d'aucun `PATH`. **Et la CI les a
+  effectivement passés** le 24 août 2026, sur une machine qui partait d'un dépôt vide :
+  « cloud-sql-proxy version 2.25.3+darwin.arm64 », lu dans le bundle qu'elle venait de construire.
+  C'est ce qui manquait aux vérifications faites ici — voir les défauts n° 111 à 113. Ce qui reste inconnu est l'aller-retour complet dans
   l'app graphique, sur une machine où le binaire n'est installé nulle part : § 0, ligne 2c.
 - **La notarisation avec un binaire embarqué n'est pas vérifiée** — elle demande une identité de
   signature que ce poste n'a pas. Un exécutable embarqué non signé est refusé au lancement sur une
