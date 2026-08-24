@@ -1202,3 +1202,29 @@ mise en page sans écrire la mesure qui le tient revient à changer du CSS en es
    et calcule son empreinte avec `sha256sum` ou `shasum` selon ce qui existe. Une étape de
    téléchargement est ajoutée **avant les commandes cargo** dans chacun des deux jobs.
 
+112. **Un test qui attendait une durée, et non une condition.** Trouvé par la CI dans la foulée du
+   n° 111, une fois les deux jobs allés assez loin pour exécuter les tests :
+   `un_proxy_vivant_qui_a_refuse_la_connexion_joint_ce_qu_il_a_dit` échouait sur le runner macOS
+   après avoir passé huit fois de suite en local.
+
+   Le décor : un faux proxy qui écrit sa ligne d'échec après `sleep 0.2`, et une qualification qui
+   laisse **300 ms** au proxy pour s'expliquer. Cent millisecondes de marge — assez sur une machine
+   au repos, rien du tout sur un runner partagé, où l'ordonnancement suffit à les manger.
+
+   **La faute n'est pas la marge, c'est la nature de l'attente.** Un test qui dort le temps qu'il
+   croit nécessaire mesure la charge de la machine ; il faut attendre **la condition**, avec une
+   borne large qui ne coûte rien quand tout va bien. La fenêtre de production, elle, est un
+   compromis — assez pour le cas courant, jamais assez pour une CI chargée — et un test qui la
+   réemploie hérite du compromis sans en avoir besoin.
+
+   Correction : `qualifier_avec_delai` expose la fenêtre, comme `ouvrir_avec_delai` le fait depuis
+   `06g` — mais dans l'autre sens, le test l'**allongeant** au lieu de la raccourcir. Le second test
+   temporisé du même commit, qui dormait 200 ms en attendant que les deux flux se rejoignent, passe
+   à une attente de condition bornée à dix secondes. Les deux restent rapides : la boucle rend la
+   main dès que la ligne paraît.
+
+   **Ce qui l'a attrapé** : la CI, sur une machine plus lente que celle de l'auteur — le même
+   mécanisme que le n° 111, à un jour d'intervalle et sur le même scope. Un test répété huit fois en
+   local après correction ne prouve rien de plus qu'avant ; c'est la forme de l'attente qui a changé,
+   pas le nombre d'essais.
+
