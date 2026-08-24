@@ -28,6 +28,14 @@ jobs:
           workspaces: src-tauri
 
       - run: pnpm install --frozen-lockfile
+
+      # **Avant toute commande cargo, et c'est structurel** (défaut n° 111). Déclarer un
+      # `externalBin` dans `tauri.conf.json` fait exiger le fichier par le script de
+      # construction de Tauri : sans lui, `cargo build`, `cargo test`, `cargo clippy` et
+      # `pnpm domain:check` échouent tous sur « resource path … doesn't exist », bien avant
+      # d'arriver au bundle. Ce n'est donc pas une étape de packaging, c'est une dépendance
+      # de compilation.
+      - run: pnpm proxy:embarquer
       # Un marqueur de sabotage laissé par un contrôle négatif ne casse rien — c'est
       # justement le problème. Voir l'en-tête du script.
       - run: ./scripts/verifier-aucun-sabotage.sh
@@ -183,6 +191,12 @@ jobs:
       # `-c ssl_cert_file=…` à `postgres` — pas exprimable dans les options d'un service container.
       # PostgreSQL rejoint donc MongoDB et MySQL : une seule façon de monter le décor, en local comme
       # ici, plutôt que deux qui divergent.
+      # **Même raison que dans le job macOS** (défaut n° 111) : un `externalBin` déclaré est
+      # exigé par le script de construction de Tauri, donc par `cargo test`, même sur un
+      # système qui ne recevra jamais de bundle. Appelé directement et non par `pnpm` : ce job
+      # n'installe pas Node, n'ayant rien à faire du front.
+      - run: bash scripts/telecharger-proxy.sh
+
       - name: monter le décor PostgreSQL
         run: ./scripts/pg-test.sh demarrer
         env:

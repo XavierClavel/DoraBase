@@ -11,6 +11,14 @@
 #   scripts/telecharger-proxy.sh           l'architecture de cette machine
 #   scripts/telecharger-proxy.sh --tous    les deux architectures macOS, pour un bundle
 #                                          universel ou une construction croisée
+#   scripts/telecharger-proxy.sh <triplet> un triplet nommé, pour une construction croisée
+#                                          ou pour essayer le chemin d'un autre système
+#
+# **À lancer avant toute compilation**, et pas seulement avant un bundle : déclarer un
+# `externalBin` dans `tauri.conf.json` fait exiger le fichier par le script de construction de
+# Tauri, donc par `cargo build`, `cargo test` et `cargo clippy` — voir défaut n° 111. Les
+# scripts `pnpm proxy:embarquer` et les `beforeDevCommand`/`beforeBuildCommand` le font ;
+# la CI l'appelle explicitement avant ses étapes Rust.
 #
 # Idempotent : un fichier déjà présent et de bonne empreinte n'est pas retéléchargé, ce qui
 # permet de l'appeler avant chaque `tauri dev` sans coût.
@@ -43,16 +51,27 @@ suffixe_de() {
   case $1 in
     aarch64-apple-darwin) printf 'darwin.arm64' ;;
     x86_64-apple-darwin) printf 'darwin.amd64' ;;
+    # **Linux n'est pas une cible de livraison**, le bundle ne visant que macOS. Ces deux
+    # entrées existent parce qu'un `externalBin` déclaré est exigé par **toute** compilation,
+    # y compris `cargo test` sur le runner Linux de la CI (défaut n° 111).
+    x86_64-unknown-linux-gnu) printf 'linux.amd64' ;;
+    aarch64-unknown-linux-gnu) printf 'linux.arm64' ;;
     *)
-      echo "erreur : triplet non pris en charge par ce scope : $1" >&2
-      echo "  (macOS seulement — voir « Hors périmètre » de specs/06h)" >&2
+      echo "erreur : triplet inconnu du verrou : $1" >&2
+      echo "  (ajoutez-le à suffixe_de et au verrou, avec son empreinte)" >&2
       exit 1
       ;;
   esac
 }
 
+# `sha256sum` sur Linux, `shasum -a 256` sur macOS. Les deux existent souvent, aucun des deux
+# partout : le script tourne sur les deux systèmes depuis que la CI l'appelle (défaut n° 111).
 empreinte_de() {
-  shasum -a 256 "$1" | cut -d' ' -f1
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    shasum -a 256 "$1" | cut -d' ' -f1
+  fi
 }
 
 # Le temporaire en cours, effacé quoi qu'il arrive — échec d'empreinte, `curl` interrompu,
@@ -109,6 +128,11 @@ inscrire_la_version() {
 
 if [[ ${1:-} == --tous ]]; then
   triplets=(aarch64-apple-darwin x86_64-apple-darwin)
+elif [[ -n ${1:-} ]]; then
+  # Un triplet explicite : pour une construction croisée, et pour **essayer** depuis une autre
+  # machine le chemin qu'un système donné suivra — c'est ce qui manquait quand la CI Linux a
+  # échoué sur un cas jamais exercé (défaut n° 111).
+  triplets=("$1")
 else
   # Le triplet de cette machine, tel que `rustc` le nomme — la même source que celle dont
   # Tauri se sert pour choisir le fichier à embarquer.
