@@ -173,6 +173,15 @@ le Cloud SQL Auth Proxy, et `A2` sait le saisir. Deux réserves, plus bas.
 l'authentification réemploie ce que `gcloud auth application-default login` a déjà écrit. Reste une
 seule dépendance externe, pour un unique login : le SDK `gcloud`.
 
+**La CI a trouvé le troisième** (`DEFAUTS.md` n° 111) : déclarer un `externalBin` fait exiger le
+fichier par **toute** compilation — `cargo build`, `cargo test`, `cargo clippy`, `domain:check` — et
+pas seulement par le bundle. Le téléchargement est donc une **dépendance de compilation**, câblée
+aux deux jobs avant leurs commandes cargo, job Linux compris, qui ne produit pourtant aucun bundle.
+Rien ne l'avait vu parce que le binaire était présent sur cette machine depuis l'écriture du scope :
+chaque `cargo test` local passait grâce à un état que le dépôt ne contient pas. **La règle** : quand
+un scope ajoute une dépendance à un fichier absent du dépôt, la question n'est pas « le script qui
+le fabrique est-il appelé ? » mais « que voit un clone neuf ? ».
+
 **La première connexion réelle a trouvé deux défauts, tous deux corrigés le 24 août 2026** —
 `DEFAUTS.md` n° 109 et 110. Le premier : `cloud-sql-proxy` v2 écrit son journal courant sur la
 **sortie standard**, pas sur la sortie d'erreur comme `06g` l'affirmait, et le code jetait stdout —

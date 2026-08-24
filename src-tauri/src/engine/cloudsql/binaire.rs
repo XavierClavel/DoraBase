@@ -207,7 +207,7 @@ mod tests {
     }
 
     #[test]
-    fn le_verrou_donne_une_version_et_deux_empreintes() {
+    fn le_verrou_donne_une_version_et_une_empreinte_par_triplet() {
         // Le verrou est la source unique de vérité partagée avec le script de
         // téléchargement. Une clef renommée d'un côté et pas de l'autre casserait le
         // script sans casser la compilation : ce test est le seul garde-fou côté Rust.
@@ -218,7 +218,16 @@ mod tests {
             "{version}"
         );
 
-        for triplet in ["aarch64-apple-darwin", "x86_64-apple-darwin"] {
+        // **Les quatre, dont les deux Linux.** Ceux-ci ne servent pas à livrer — le bundle ne
+        // cible que macOS — mais un `externalBin` déclaré est exigé par **toute** compilation,
+        // donc par `cargo test` sur le runner Linux de la CI (défaut n° 111). Un verrou qui les
+        // perdrait rendrait le projet incompilable là-bas, et rien ici ne le dirait.
+        for triplet in [
+            "aarch64-apple-darwin",
+            "x86_64-apple-darwin",
+            "x86_64-unknown-linux-gnu",
+            "aarch64-unknown-linux-gnu",
+        ] {
             let empreinte = valeur_du_verrou(&format!("sha256-{triplet}"))
                 .unwrap_or_else(|| panic!("empreinte manquante pour {triplet}"));
             assert_eq!(empreinte.len(), 64, "{triplet} : {empreinte}");
