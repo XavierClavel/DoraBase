@@ -24,8 +24,12 @@ machine qui le dit.
 
 - **L'authentification IAM de base de données** (`--auto-iam-authn`), qui rendrait le champ
   « Mot de passe » inutile en faisant du jeton IAM le mot de passe. C'est le sujet voisin,
-  et il **ajoute** un champ là où ce scope en retire un. Toujours hors périmètre, comme
-  depuis `06g`.
+  et il **ajoute** un champ là où ce scope en retire un. → **Écrit le jour même** : `06k`,
+  réclamé par le premier usage réel. Les deux scopes restent séparés, et c'est ce qui rend
+  chacun lisible : l'un ferme une voie, l'autre en ouvre une.
+
+  Conséquence à connaître : la remarque du « mot de passe » ci-dessous vaut pour une
+  connexion **sans** IAM. Avec `06k`, le mot de passe cesse effectivement de servir.
 - **Le mot de passe.** Il reste nécessaire : le proxy authentifie auprès de l'**instance**,
   pas auprès de PostgreSQL. Une fois le tunnel ouvert, c'est une connexion ordinaire sur
   `127.0.0.1`, avec son rôle et son mot de passe.

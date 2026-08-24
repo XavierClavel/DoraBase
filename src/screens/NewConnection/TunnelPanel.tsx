@@ -5,6 +5,7 @@ import { Field } from '../../ui/Field/Field'
 import { Select } from '../../ui/Select/Select'
 import { emptyProxy, type ProxyDraft, type ProxyKind, type TunnelDraft } from './ConnectionDraft'
 import styles from './NewConnection.module.css'
+import { ToggleWithLabel } from './ToggleWithLabel'
 
 type TunnelPanelProps = {
   /** `null` quand la connexion ne passe par aucun proxy. */
@@ -182,10 +183,31 @@ export function TunnelPanel({
               // place. La commande reste **entière** (`06i`) : « authentifiez-vous avec
               // gcloud » enverrait sur `gcloud auth login`, qui n'alimente que le CLI et ne
               // suffit pas.
-              <p id={aideId} className={styles.tunnelHint}>
-                Authentification : identifiants par défaut de l'application, installés par{' '}
-                <code>gcloud auth application-default login</code>
-              </p>
+              <div>
+                <ToggleWithLabel
+                  checked={proxy.autoIamAuthn}
+                  onCheckedChange={(autoIamAuthn) => onProxyChange({ ...proxy, autoIamAuthn })}
+                  label="Authentification IAM"
+                />
+                <p id={aideId} className={styles.tunnelHint}>
+                  {proxy.autoIamAuthn ? (
+                    // Ce que l'utilisateur doit savoir **avant** de voir l'échec : son
+                    // identifiant n'est plus un rôle PostgreSQL mais une adresse, et le champ
+                    // « Mot de passe » ne sert plus à rien. Sans cette phrase, une connexion
+                    // IAM se saisit comme une autre et échoue avec « IAM user authentication
+                    // failed », qui n'apprend qu'après coup.
+                    <>
+                      L'utilisateur est un principal IAM — une adresse. Le mot de passe n'est pas
+                      utilisé : le proxy présente un jeton à sa place.
+                    </>
+                  ) : (
+                    <>
+                      Authentification : identifiants par défaut de l'application, installés par{' '}
+                      <code>gcloud auth application-default login</code>
+                    </>
+                  )}
+                </p>
+              </div>
             )}
 
             <div>

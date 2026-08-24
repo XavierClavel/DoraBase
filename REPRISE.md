@@ -184,6 +184,18 @@ joint sa ligne à l'erreur. La leçon du n° 109 vaut au-delà de Cloud SQL : **
 émet doit venir d'une observation de l'original**, et une observation faite avec `2>&1` ne dit rien
 de la séparation des flux.
 
+**L'authentification IAM de base de données est livrée** (`06k`, 24 août 2026), sortie du hors
+périmètre de `06g` par la même connexion réelle. Une bascule dans le visage Cloud SQL de `A2`, un
+booléen sur `ProxyCloudSql`, `--auto-iam-authn` passé au proxy — et **aucun cran de migration**, un
+champ ajouté avec `#[serde(default)]` ne détruisant rien, à l'inverse du champ retiré par `06j`.
+
+Le piège de ce scope est côté client et vaut d'être retenu : `tokio-postgres` échoue **avant tout
+échange** si le serveur réclame un mot de passe et qu'aucun n'a été configuré. En mode IAM, ne rien
+donner produisait donc « password authentication required » — un message qui accuse le mot de passe
+manquant là où ne rien avoir à donner est le fonctionnement attendu. L'application configure une
+chaîne **vide**, comme `psql` où l'on valide l'invite sans rien saisir ; un secret enregistré, lui,
+gagne toujours.
+
 **Et une seule voie d'authentification** (`06j`, 24 août 2026) : le champ « Compte de service » a
 été retiré de `A2`, `credentialsFilePath` du modèle, `--credentials-file` de la ligne de commande
 du proxy, et un cran de migration **v3 → v4** retire la clé des fichiers existants. Un compte de
@@ -229,6 +241,7 @@ couvre, et les deux manquants n'attendent qu'un compte.
 | `05d`, `06g`, `08k` | **le support Cloud SQL** — le proxy en énumération à données et sa migration v2 → v3, le pilotage de `cloud-sql-proxy`, le panneau de `A2` à deux visages | **fait** (deux réserves plus bas) |
 | `06h`, `06i` | **le proxy livré avec l'app** — binaire embarqué à empreinte vérifiée, et l'authentification par les identifiants du CLI `gcloud` | **fait** (bundle ouvert depuis le Finder et notarisation : à observer) |
 | `06j` | **une seule voie d'authentification** — le champ « Compte de service » retiré, et la migration v3 → v4 | **fait** |
+| `06k` | **l'authentification IAM de base de données** — `--auto-iam-authn`, la bascule de `A2`, et le mot de passe vide | **fait** (instance IAM réelle non observée depuis ici) |
 | `19a` | Redis — **n'entre pas dans le contrat**, et pourquoi | écrite, conclusion négative |
 | `20`, `21` | Snowflake, BigQuery — **aucun décor de test** | écrites, bloquées |
 

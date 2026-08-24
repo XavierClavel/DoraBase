@@ -31,6 +31,9 @@ redirection), `06e` (le choix du port local, et la façon de signaler une chute)
   (`--auto-iam-authn`), **l'usurpation de compte de service**, **Private Service
   Connect**. Quatre cas réels, aucun maquetté, et chacun ajoute un champ à `A2`. À
   reprendre quand un besoin les réclame — le modèle de `05d` les accueille sans refonte.
+  **L'authentification IAM est sortie de cette liste le 24 août 2026** → `06k` : le besoin
+  s'est présenté au premier usage réel, et le modèle l'a effectivement accueillie sans
+  refonte — un champ, une option, aucun cran de migration. Les trois autres restent dehors.
 - **Installer le binaire pour l'utilisateur.** Télécharger un exécutable et le lancer est
   une décision de sécurité qui n'appartient pas à ce scope. **Renversé le 21 août 2026** :
   `06h` embarque le binaire dans le bundle, à version épinglée et empreinte vérifiée — ce

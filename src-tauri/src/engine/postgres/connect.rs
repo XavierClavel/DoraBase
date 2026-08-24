@@ -18,6 +18,18 @@ use super::error::traduire;
 /// mais sans redirection est refusée**, pas connectée en direct — se connecter sans le bastion
 /// que l'utilisateur a demandé contournerait sa consigne de sécurité, et un `None` oublié à
 /// l'appel ne doit pas se traduire par une connexion directe silencieuse.
+/// La connexion s'authentifie-t-elle par IAM plutôt que par mot de passe ?
+///
+/// Lu sur le proxy et non sur un champ de la connexion : c'est le proxy qui présente le jeton,
+/// donc c'est lui qui sait. Un `match` ici plutôt qu'un booléen de plus dans `ConnectionSettings`
+/// — l'information existe déjà, la dupliquer ouvrirait la porte à ce que les deux divergent.
+fn authentification_iam(variante: &ConnectionSettings) -> bool {
+    matches!(
+        variante.tunnel.as_ref().map(|tunnel| &tunnel.proxy),
+        Some(crate::config::Proxy::CloudSql(cloud)) if cloud.auto_iam_authn
+    )
+}
+
 pub fn preparer(
     variante: &ConnectionSettings,
     mot_de_passe: Option<&Secret>,
@@ -44,8 +56,21 @@ pub fn preparer(
         .user(&variante.username)
         .ssl_mode(traduire_mode_ssl(variante.ssl_mode));
 
-    if let Some(secret) = mot_de_passe {
-        config.password(secret.expose());
+    match mot_de_passe {
+        Some(secret) => {
+            config.password(secret.expose());
+        }
+        // **Un mot de passe vide, et non pas d'appel du tout** (`06k`). En authentification
+        // IAM, c'est le proxy qui présente le jeton ; le client n'a rien à donner. Mais
+        // `tokio-postgres` refuse **côté client**, avant tout échange, quand le serveur
+        // réclame un mot de passe et qu'aucun n'a été configuré : l'erreur serait « password
+        // authentication required », qui accuse le mot de passe manquant là où c'est
+        // exactement le fonctionnement attendu. Une chaîne vide traverse et laisse le serveur
+        // trancher — c'est ce que fait `psql`, où l'on valide l'invite sans rien saisir.
+        None if authentification_iam(variante) => {
+            config.password("");
+        }
+        None => {}
     }
 
     // `application_name` apparaît dans `pg_stat_activity` : c'est ce qui permet à un
@@ -139,6 +164,61 @@ mod tests {
             reconnect_on_startup: false,
             tunnel: None,
         }
+    }
+
+    /// Une connexion derrière un proxy Cloud SQL en authentification IAM.
+    fn avec_iam() -> ConnectionSettings {
+        let mut variante = variante();
+        // L'utilisateur **est** un principal IAM : une adresse, pas un rôle à mot de passe.
+        variante.username = "analytics@exemple-invente.test".into();
+        variante.tunnel = Some(Tunnel {
+            local_port: None,
+            proxy: Proxy::CloudSql(crate::config::ProxyCloudSql {
+                instance_connection_name: "acme-prod:europe-west1:analytics".into(),
+                auto_iam_authn: true,
+            }),
+        });
+        variante
+    }
+
+    #[test]
+    fn en_authentification_iam_un_mot_de_passe_vide_est_configure() {
+        // **Le défaut évité** (`06k`) : sans mot de passe du tout, `tokio-postgres` refuse
+        // côté client dès que le serveur en réclame un — « password authentication required »
+        // —, alors que ne rien avoir à donner est précisément le fonctionnement attendu.
+        let config = preparer(&avec_iam(), None, Some(("127.0.0.1", 6543))).expect("préparation");
+        assert_eq!(config.get_password(), Some(&b""[..]));
+    }
+
+    #[test]
+    fn sans_authentification_iam_aucun_mot_de_passe_n_est_invente() {
+        // L'autre moitié : une connexion ordinaire sans secret ne doit pas se voir attribuer
+        // un mot de passe vide, qui transformerait « aucun secret enregistré » en « secret
+        // vide refusé par le serveur ».
+        let config = preparer(&variante(), None, None).expect("préparation");
+        assert_eq!(config.get_password(), None);
+
+        let mut sans_iam = avec_iam();
+        sans_iam.tunnel = Some(Tunnel {
+            local_port: None,
+            proxy: Proxy::CloudSql(crate::config::ProxyCloudSql {
+                instance_connection_name: "acme-prod:europe-west1:analytics".into(),
+                auto_iam_authn: false,
+            }),
+        });
+        let config = preparer(&sans_iam, None, Some(("127.0.0.1", 6543))).expect("préparation");
+        assert_eq!(config.get_password(), None);
+    }
+
+    #[test]
+    fn un_secret_enregistre_gagne_meme_en_authentification_iam() {
+        // Le mot de passe vide est un **repli**, pas une règle : un utilisateur qui a
+        // enregistré un secret l'a fait pour une raison, et l'écraser serait décider à sa
+        // place.
+        let secret = Secret::new("garde-moi".to_owned());
+        let config =
+            preparer(&avec_iam(), Some(&secret), Some(("127.0.0.1", 6543))).expect("préparation");
+        assert_eq!(config.get_password(), Some(&b"garde-moi"[..]));
     }
 
     fn avec_tunnel() -> ConnectionSettings {

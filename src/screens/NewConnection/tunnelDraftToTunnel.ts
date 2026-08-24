@@ -45,6 +45,7 @@ function proxyDraftToProxy(proxy: TunnelDraft['proxy']): ProxyModele {
       return {
         kind: 'cloud-sql',
         instanceConnectionName: proxy.instanceConnectionName,
+        autoIamAuthn: proxy.autoIamAuthn,
       }
   }
 }
