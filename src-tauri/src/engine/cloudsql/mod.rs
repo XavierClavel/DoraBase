@@ -359,7 +359,19 @@ impl CloudSqlProxy {
     /// cela ; la fenêtre laissée ici est courte, bornée, et elle s'arrête dès que le proxy a
     /// parlé.
     pub async fn qualifier(&self, erreur: EngineError) -> EngineError {
-        let echecs = self.attendre_une_explication().await;
+        self.qualifier_avec_delai(erreur, DELAI_EXPLICATION).await
+    }
+
+    /// La même chose, avec la fenêtre en paramètre.
+    ///
+    /// Séparée pour la même raison qu'`ouvrir_avec_delai`, mais dans l'autre sens : là-bas le
+    /// test raccourcissait le délai pour ne pas durer vingt secondes, ici il l'**allonge**.
+    /// Une fenêtre de production courte est un compromis — assez pour le cas courant, jamais
+    /// assez pour un runner de CI chargé —, et un test qui la garderait mesurerait la machine
+    /// et non le code. Avec une borne large, il reste rapide : la boucle rend la main dès que
+    /// le proxy a parlé.
+    pub async fn qualifier_avec_delai(&self, erreur: EngineError, delai: Duration) -> EngineError {
+        let echecs = self.attendre_une_explication(delai).await;
         // L'état est lu **après** l'attente : le proxy peut mourir pendant, et c'est alors la
         // qualification d'`06e` — « est tombé » — qui doit gagner.
         let qualifiee = qualifier_avec(self.etat(), SUJET, erreur);
@@ -385,9 +397,9 @@ impl CloudSqlProxy {
     /// personne, et lui ajouter une notification pour ce seul usage coûterait un état partagé
     /// de plus. La boucle s'arrête **dès** que quelque chose apparaît, donc le cas courant —
     /// le proxy a déjà parlé — ne coûte rien.
-    async fn attendre_une_explication(&self) -> Vec<String> {
+    async fn attendre_une_explication(&self, delai: Duration) -> Vec<String> {
         const PAS: Duration = Duration::from_millis(50);
-        let echeance = tokio::time::Instant::now() + DELAI_EXPLICATION;
+        let echeance = tokio::time::Instant::now() + delai;
         loop {
             let echecs = self.journal.echecs();
             if !echecs.is_empty() || tokio::time::Instant::now() >= echeance {
@@ -490,6 +502,25 @@ echo "The proxy has started successfully and is ready for new connections!"
 while true; do sleep 1; done
 "#;
 
+    /// Attend qu'une ligne apparaisse dans le journal du proxy, ou échoue en le disant.
+    ///
+    /// **Une condition et une borne large**, jamais un `sleep` calibré : un test qui dort le
+    /// temps qu'il croit nécessaire mesure la charge de la machine, et il passe chez celui qui
+    /// l'écrit avant de tomber ailleurs (défaut n° 112).
+    async fn attendre_dans_le_journal(proxy: &CloudSqlProxy, motif: &str) {
+        let echeance = tokio::time::Instant::now() + Duration::from_secs(10);
+        while tokio::time::Instant::now() < echeance {
+            if proxy.journal().contains(motif) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        panic!(
+            "« {motif} » n'est pas arrivé dans le journal : {}",
+            proxy.journal()
+        );
+    }
+
     fn configuration() -> ProxyCloudSql {
         ProxyCloudSql {
             instance_connection_name: "acme:europe-west1:analytics".into(),
@@ -543,9 +574,11 @@ while true; do sleep 1; done
         let proxy = CloudSqlProxy::ouvrir_avec(&bavard, &configuration(), None)
             .await
             .expect("ouverture");
-        // Laisser les deux lecteurs se rejoindre : l'ordre entre les flux n'est pas garanti,
-        // donc la ligne de stderr peut arriver après celle qui a débloqué l'attente.
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        // **Attendre la condition, pas une durée** (défaut n° 112). L'ordre entre les deux flux
+        // n'est pas garanti, donc la ligne de stderr peut arriver après celle qui a débloqué
+        // l'attente ; dormir 200 ms le supposait, et le supposer est ce qui rend un test
+        // dépendant de la charge de la machine.
+        attendre_dans_le_journal(&proxy, "sur la sortie d erreur").await;
 
         let journal = proxy.journal();
         assert!(journal.contains("sur la sortie standard"), "{journal}");
@@ -703,8 +736,16 @@ while true; do sleep 1; done
             .await
             .expect("ouverture");
 
+        // **Une borne large, pas la fenêtre de production** (défaut n° 112). Ce test attendait
+        // les 300 ms de `DELAI_EXPLICATION` sur un faux binaire qui parle après 200 : il
+        // passait ici et tombait sur un runner de CI chargé, où l'ordonnancement suffit à
+        // manger l'écart. La borne ne coûte rien quand tout va bien — la boucle rend la main
+        // dès que le proxy a parlé.
         let qualifiee = proxy
-            .qualifier(EngineError::local("connection reset by peer"))
+            .qualifier_avec_delai(
+                EngineError::local("connection reset by peer"),
+                Duration::from_secs(10),
+            )
             .await;
 
         // Le proxy est **vivant** : ce n'est pas la qualification « est tombé » d'`06e`.
@@ -731,8 +772,13 @@ while true; do sleep 1; done
             .await
             .expect("ouverture");
 
+        // Fenêtre courte **à dessein** : ici on vérifie qu'aucune explication n'apparaît, et
+        // rien ne peut la faire apparaître — attendre plus longtemps ne rendrait pas le test
+        // plus sûr, seulement plus lent.
         let erreur = EngineError::from_engine("28P01", "password authentication failed");
-        let qualifiee = proxy.qualifier(erreur.clone()).await;
+        let qualifiee = proxy
+            .qualifier_avec_delai(erreur.clone(), Duration::from_millis(50))
+            .await;
 
         assert_eq!(qualifiee.message, erreur.message);
         // Le code SQLSTATE survit aussi : le reconstruire en `local` le perdrait, et `A3`
