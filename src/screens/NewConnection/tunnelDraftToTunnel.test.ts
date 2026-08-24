@@ -35,7 +35,6 @@ test('un brouillon Cloud SQL se convertit en proxy cloud-sql', () => {
     proxy: {
       kind: 'cloud-sql',
       instanceConnectionName: 'acme:europe-west1:analytics',
-      autoIamAuthn: true,
     },
   })
 
@@ -45,11 +44,8 @@ test('un brouillon Cloud SQL se convertit en proxy cloud-sql', () => {
   expect(tunnel?.proxy).toEqual({
     kind: 'cloud-sql',
     instanceConnectionName: 'acme:europe-west1:analytics',
-    // `06k` : la bascule traverse telle quelle, sans traduction — un booléen des deux côtés.
-    autoIamAuthn: true,
   })
   expect(Object.keys(tunnelDraftToTunnel(emptyTunnel('cloud-sql'))?.proxy ?? {}).sort()).toEqual([
-    'autoIamAuthn',
     'instanceConnectionName',
     'kind',
   ])

@@ -5,7 +5,6 @@ import { Field } from '../../ui/Field/Field'
 import { Select } from '../../ui/Select/Select'
 import { emptyProxy, type ProxyDraft, type ProxyKind, type TunnelDraft } from './ConnectionDraft'
 import styles from './NewConnection.module.css'
-import { ToggleWithLabel } from './ToggleWithLabel'
 
 type TunnelPanelProps = {
   /** `null` quand la connexion ne passe par aucun proxy. */
@@ -172,60 +171,29 @@ export function TunnelPanel({
                 }
               />
             ) : (
-              // **Aucun champ dans cette ligne** (`06j`). Un « Compte de service » s'y
-              // saisissait ; il est parti avec la voie qu'il ouvrait — l'authentification est
-              // celle de la machine, pas celle de la connexion. Il reste donc une phrase,
-              // et rien à remplir.
+              // **Aucun champ dans cette ligne.** Un « Compte de service » s'y saisissait
+              // (`06j`), puis une bascule « Authentification IAM » (`06k`) : les deux sont
+              // partis, l'un parce que l'authentification est celle de la machine et non de la
+              // connexion, l'autre parce que le mode est désormais **toujours** actif. Il reste
+              // une phrase, et rien à remplir.
               //
               // **Un paragraphe simple, plus lié par `aria-describedby`.** Le lien existait
               // pour empêcher qu'un champ vide se lise comme un champ oublié ; sans champ,
-              // cette raison tombe, et un texte informatif dans le flux est annoncé à sa
-              // place. La commande reste **entière** (`06i`) : « authentifiez-vous avec
-              // gcloud » enverrait sur `gcloud auth login`, qui n'alimente que le CLI et ne
-              // suffit pas.
-              <div>
-                <ToggleWithLabel
-                  checked={proxy.autoIamAuthn}
-                  onCheckedChange={(autoIamAuthn) => onProxyChange({ ...proxy, autoIamAuthn })}
-                  label="Authentification IAM"
-                />
-                <p id={aideId} className={styles.tunnelHint}>
-                  {proxy.autoIamAuthn ? (
-                    // Ce que l'utilisateur doit savoir **avant** de voir l'échec : son
-                    // identifiant n'est plus un rôle PostgreSQL mais une adresse, et le champ
-                    // « Mot de passe » ne sert plus à rien. Sans cette phrase, une connexion
-                    // IAM se saisit comme une autre et échoue avec « IAM user authentication
-                    // failed », qui n'apprend qu'après coup.
-                    <>
-                      L'utilisateur est un principal IAM — une adresse. Le mot de passe n'est pas
-                      utilisé : le proxy présente un jeton à sa place.
-                    </>
-                  ) : (
-                    <>
-                      Authentification : identifiants par défaut de l'application, installés par{' '}
-                      <code>gcloud auth application-default login</code>
-                    </>
-                  )}
-                </p>
-              </div>
+              // cette raison tombe, et un texte informatif dans le flux est annoncé à sa place.
+              //
+              // Les deux phrases sont là parce qu'elles répondent à deux questions
+              // différentes, et qu'aucune ne se devine : **avec quoi** l'application
+              // s'authentifie — la commande `gcloud` entière, jamais « authentifiez-vous avec
+              // gcloud », qui enverrait sur `gcloud auth login` (`06i`) — et **ce que
+              // l'utilisateur doit saisir**, à savoir une adresse et pas un rôle, sans mot de
+              // passe. Sans la seconde, une connexion IAM se remplit comme une autre et
+              // n'apprend qu'à l'échec, sur « IAM user authentication failed ».
+              <p id={aideId} className={styles.tunnelHint}>
+                Authentification IAM, par les identifiants par défaut de l'application — installés
+                par <code>gcloud auth application-default login</code>. L'utilisateur est un
+                principal IAM (une adresse) ; le mot de passe n'est pas utilisé.
+              </p>
             )}
-
-            <div>
-              {/* **Un `<output>`, et pas un `<input disabled>` ni un `<div>`.**
-                  `<output>` désigne « le résultat d'un calcul de l'application » : c'est
-                  exactement ce port, choisi à l'ouverture du proxy (`06e`, `06g`), jamais saisi.
-                  Une première version employait un `<div aria-label>` — que Biome a refusé, à
-                  juste titre : `aria-label` sur un élément sans rôle est **ignoré**, donc un
-                  lecteur d'écran n'aurait rien annoncé. `<output>` est *labelable*, donc un vrai
-                  `<label for>` le nomme, et il n'est éditable ni focalisable par nature — ce qui
-                  est plus solide qu'un `aria-disabled` qui l'affirme. */}
-              <label className={styles.label} htmlFor="tunnel-local-port">
-                Port local mappé
-              </label>
-              <output id="tunnel-local-port" className={styles.localPort}>
-                {tunnel?.localPort == null ? 'auto' : `auto (${tunnel.localPort})`}
-              </output>
-            </div>
           </div>
         </div>
       </CollapsiblePanel>

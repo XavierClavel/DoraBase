@@ -184,6 +184,22 @@ joint sa ligne à l'erreur. La leçon du n° 109 vaut au-delà de Cloud SQL : **
 émet doit venir d'une observation de l'original**, et une observation faite avec `2>&1` ne dit rien
 de la séparation des flux.
 
+**`A2` a été remanié le 24 août 2026, à la demande, une fois la première connexion réelle
+obtenue** : le panneau « Proxy / tunnel » **précède** le formulaire — par où l'on joint la base
+se décide avant ce qu'on y saisit, et ce choix change les champs qui suivent ; l'authentification
+IAM n'a plus de bascule, elle est **toujours** active ; le port et le mot de passe sont **grisés**
+derrière un proxy Cloud SQL, avec un `title` qui dit pourquoi ; et le « Port local mappé » a quitté
+le panneau, le port étant désormais annoncé par le champ « Port » lui-même, à « auto ».
+
+Deux choix méritent d'être connus. **Grisés plutôt que masqués** : les faire disparaître dirait
+que la connexion n'a ni port ni mot de passe, alors qu'elle a les deux — simplement, ce n'est plus
+l'utilisateur qui les donne. C'est l'inverse du choix de `17a`, qui masque les cinq champs d'un
+moteur de fichier, lequel n'a réellement ni hôte ni port. **Sans bascule** : un interrupteur dont
+une position n'est jamais choisie coûte un champ persisté, une conversion, un état d'écran et deux
+chemins à tester ; le jour où un rôle à mot de passe se présentera, c'est le commentaire du
+lancement qu'il faudra contredire, pas un booléen oublié dont personne ne saura s'il a jamais valu
+autre chose que `true`.
+
 **L'authentification IAM de base de données est livrée** (`06k`, 24 août 2026), sortie du hors
 périmètre de `06g` par la même connexion réelle. Une bascule dans le visage Cloud SQL de `A2`, un
 booléen sur `ProxyCloudSql`, `--auto-iam-authn` passé au proxy — et **aucun cran de migration**, un

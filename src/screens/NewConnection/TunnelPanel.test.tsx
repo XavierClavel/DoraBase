@@ -88,38 +88,26 @@ test('le visage SSH ne montre aucun champ Cloud SQL', async () => {
   }
 })
 
-test('le port local mappé est commun aux deux visages', async () => {
-  monter()
-  // Un seul dépliage : `deplier` **bascule** l'en-tête, donc l'appeler deux fois refermerait le
-  // panneau. Le sélecteur est actionné directement sur le panneau déjà ouvert.
-  const panneau = await deplier()
-  expect(panneau.getByLabelText('Port local mappé')).toHaveTextContent('auto')
-
-  await choisirDansLaListe('Type', 'Cloud SQL')
-  // Le seul champ qui ne bouge pas est le seul qui est commun aux deux sortes — c'est ce que
-  // `05d` exprime en sortant `localPort` de l'énumération.
-  expect(panneau.getByLabelText('Port local mappé')).toHaveTextContent('auto')
-})
-
-test('la bascule IAM change ce que le panneau dit du mot de passe', async () => {
+// **Le « Port local mappé » a été retiré du panneau** (24 août 2026). Trois tests partent avec
+// lui : qu'il soit un `<output>`, qu'il reste hors de l'ordre de tabulation, et qu'il affiche
+// « auto » sans numéro tant qu'aucun proxy n'est ouvert. Ce qu'ils protégeaient — « affiché,
+// jamais saisi » — se vérifie désormais sur le champ « Port » du formulaire, grisé et valant
+// « auto » derrière un proxy Cloud SQL (`ConnectionForm.test.tsx`).
+test('le visage Cloud SQL dit qu’il est en IAM, et ce que cela change à la saisie', async () => {
   monter()
   const panneau = await choisirLeType('Cloud SQL')
 
-  // Éteinte par défaut : le cas courant est un rôle PostgreSQL à mot de passe.
-  const bascule = panneau.getByRole('switch', { name: 'Authentification IAM' })
-  expect(bascule).toHaveAttribute('aria-checked', 'false')
+  // **Plus de bascule** (24 août 2026) : le mode est toujours actif, et un interrupteur à deux
+  // positions dont une n'est jamais choisie coûte un champ persisté, une conversion et deux
+  // chemins à tester.
+  expect(panneau.queryByRole('switch', { name: 'Authentification IAM' })).not.toBeInTheDocument()
 
-  await userEvent.click(bascule)
-  expect(bascule).toHaveAttribute('aria-checked', 'true')
-  // **Ce que l'écran doit dire avant l'échec** (`06k`) : l'identifiant est une adresse, et le
-  // champ « Mot de passe » ne sert plus. Sans cette phrase, une connexion IAM se saisit comme
-  // une autre et n'apprend qu'après coup, sur « IAM user authentication failed ».
-  expect(panneau.getByText(/principal IAM/i)).toBeInTheDocument()
-  expect(
-    panneau.getByText(/mot de passe n’est pas utilisé|mot de passe n'est pas utilisé/i),
-  ).toBeInTheDocument()
+  // Reste ce que l'écran seul ne montre pas, et qui ne se devine pas : l'identifiant est une
+  // adresse, et le mot de passe ne sert plus. Sans cette phrase, une connexion IAM se remplit
+  // comme une autre et n'apprend qu'à l'échec.
+  const aide = panneau.getByText(/principal IAM/i)
+  expect(aide.textContent).toMatch(/mot de passe n['’]est pas utilisé/i)
 })
-
 test('le visage Cloud SQL dit comment il s’authentifie, avec la commande entière', async () => {
   monter()
   const panneau = await choisirLeType('Cloud SQL')
@@ -190,9 +178,12 @@ test('le port du bastion est prérempli à 22, celui de la base à 5432', async 
   // 22 est le port de SSH ; 5432 celui de PostgreSQL. Deux champs « Port » distincts, et les
   // confondre ferait tenter la base sur le port du bastion.
   expect(panneau.getByLabelText('Port')).toHaveValue('22')
+  // L'ordre est celui du DOM, et le panneau **précède** désormais le formulaire (24 août
+  // 2026) : le port du bastion vient donc en premier. Assertion sur l'ordre et non sur un
+  // ensemble, parce que c'est ce qui distingue les deux champs homonymes.
   expect(screen.getAllByLabelText('Port').map((p) => (p as HTMLInputElement).value)).toEqual([
-    '5432',
     '22',
+    '5432',
   ])
 })
 
@@ -210,37 +201,6 @@ test('saisir un bastion crée le tunnel et fait apparaître le badge', async () 
   // Saisir un bastion *est* la déclaration qu'on en veut un ; une case à cocher de plus
   // serait une étape que le handoff ne maquette pas.
   expect(screen.getByText('SSH activé')).toBeInTheDocument()
-})
-
-// --- Le port local est affiché, jamais saisi ---
-
-test('le port local est un <output>, pas un champ de saisie', async () => {
-  monter()
-  const panneau = await deplier()
-  const local = panneau.getByLabelText('Port local mappé')
-  // `<output>` = « le résultat d'un calcul de l'application ». Ni éditable ni focalisable par
-  // nature, ce qui est plus solide qu'un `aria-disabled` qui l'affirme — et il est *labelable*,
-  // donc un vrai `<label for>` le nomme là où un `aria-label` sur un `<div>` serait ignoré.
-  expect(local.tagName).toBe('OUTPUT')
-})
-
-test('le port local n’est pas dans l’ordre de tabulation', async () => {
-  monter()
-  const panneau = await deplier()
-  const local = panneau.getByLabelText('Port local mappé')
-  // Vingt-cinq tabulations : plus que le formulaire n'a de contrôles, donc la boucle en fait
-  // le tour complet. Un `<output>` n'y entre jamais.
-  for (let i = 0; i < 25; i++) {
-    await userEvent.tab()
-    expect(local).not.toHaveFocus()
-  }
-})
-
-test('sans tunnel ouvert, le port local affiche « auto » sans numéro', async () => {
-  monter()
-  const panneau = await deplier()
-  // Inventer un numéro avant l'ouverture serait un mensonge, et « auto (0) » serait pire.
-  expect(panneau.getByLabelText('Port local mappé')).toHaveTextContent(/^auto$/)
 })
 
 // --- « Parcourir… » ---
@@ -294,4 +254,57 @@ test('replier ne perd pas ce qui a été saisi', async () => {
   // L'état vit dans le brouillon, pas dans le DOM du panneau : replier par curiosité ne doit
   // pas coûter la saisie.
   expect(screen.getByLabelText('Hôte du bastion')).toHaveValue('bastion.example')
+})
+
+// --- Ce que le proxy Cloud SQL décide à la place de l'utilisateur (24 août 2026) ---
+
+/** Déclare un proxy Cloud SQL en saisissant une instance — c'est la saisie qui le déclare. */
+async function declarerCloudSql() {
+  const panneau = await choisirLeType('Cloud SQL')
+  await userEvent.type(panneau.getByLabelText('Instance'), 'acme:europe-west1:analytics')
+  return panneau
+}
+
+test('derrière un proxy Cloud SQL, le port de la base est grisé et vaut « auto »', async () => {
+  monter()
+  await declarerCloudSql()
+
+  // Le port du formulaire, pas celui du bastion : le second n'existe pas dans ce visage.
+  const port = screen.getByLabelText('Port') as HTMLInputElement
+  expect(port).toBeDisabled()
+  expect(port.value).toBe('auto')
+  // **Grisé et non masqué** : le faire disparaître ferait croire que la connexion n'a pas de
+  // port, alors qu'elle en a un — simplement, ce n'est plus l'utilisateur qui le donne.
+  expect(port).toBeInTheDocument()
+  // Et il dit **pourquoi**, la leçon de `09f` : un champ désactivé sans explication se lit
+  // comme un bug.
+  expect(port.getAttribute('title')).toMatch(/proxy Cloud SQL/i)
+})
+
+test('derrière un proxy Cloud SQL, le mot de passe est grisé', async () => {
+  monter()
+  await declarerCloudSql()
+
+  const motDePasse = screen.getByLabelText('Mot de passe')
+  expect(motDePasse).toBeDisabled()
+  expect(motDePasse.getAttribute('title')).toMatch(/IAM/i)
+
+  // **Ni l'œil ni le badge « Trousseau »** : c'est le raisonnement de `17a` sur le moteur de
+  // fichier — le badge promettrait de ranger un secret qui n'existera pas, le proxy présentant
+  // un jeton. Et un œil qui dévoile un champ vide et grisé ne dévoile rien.
+  expect(screen.queryByLabelText(/Afficher le mot de passe/)).not.toBeInTheDocument()
+  expect(screen.queryByText('Trousseau')).not.toBeInTheDocument()
+})
+
+test('sans proxy Cloud SQL, ni le port ni le mot de passe ne sont grisés', async () => {
+  monter()
+  // L'autre moitié du critère : un tunnel SSH laisse les deux champs à l'utilisateur, la cible
+  // derrière le bastion étant une base ordinaire, avec son port et son rôle.
+  const panneau = await deplier()
+  await userEvent.type(panneau.getByLabelText('Hôte du bastion'), 'bastion.exemple.net')
+
+  const [, port] = screen.getAllByLabelText('Port')
+  expect(port).toBeEnabled()
+  expect((port as HTMLInputElement).value).toBe('5432')
+  expect(screen.getByLabelText('Mot de passe')).toBeEnabled()
 })
