@@ -1228,3 +1228,28 @@ mise en page sans écrire la mesure qui le tient revient à changer du CSS en es
    local après correction ne prouve rien de plus qu'avant ; c'est la forme de l'attente qui a changé,
    pas le nombre d'essais.
 
+113. **Une sonde de disponibilité qui répondait pour le mauvais serveur.** `engine` a échoué sur un
+   run et passé sur l'autre, au même commit — donc pas une régression, mais une instabilité qui
+   attendait son heure. Le message : « attente du serveur. **prêt** », puis, la ligne suivante,
+   « psql: FATAL: database "dorabase_test" does not exist ».
+
+   L'image officielle de PostgreSQL démarre un serveur **temporaire** pour son initialisation, et ce
+   serveur n'écoute que sur la socket Unix — `listen_addresses` y est vide, délibérément, pour que
+   rien d'extérieur ne le joigne pendant qu'il se prépare. Or `pg_test.sh` sondait précisément par
+   la socket, avec `docker exec … pg_isready -U dorabase -d dorabase_test`. Il obtenait donc « prêt »
+   du serveur temporaire, parfois avant même que `POSTGRES_DB` existe.
+
+   **`pg_isready` ne vérifie pas la base**, malgré son `-d` : il rend l'état de la *connexion*, pas
+   l'existence de ce qu'on lui nomme. Le `-d dorabase_test` de la sonde donnait l'illusion du
+   contraire, et c'est ce qui rendait la faute invisible à la lecture.
+
+   Reproduit en local en sondant un conteneur neuf toutes les 300 ms des trois façons : à la
+   deuxième itération, socket « prêt », TCP encore refusé. La sonde passe donc par
+   `-h 127.0.0.1` **depuis l'intérieur du conteneur** — le serveur temporaire refuse, le définitif
+   accepte —, ce qui ne demande rien à la machine hôte. `mysql-test.sh` le faisait déjà, sans que
+   personne ait relié les deux.
+
+   **Antérieur au travail Cloud SQL**, et sans rapport avec lui : c'est la CI relancée plusieurs
+   fois de suite qui a fini par tomber dans la fenêtre. Une instabilité de décor ne se voit qu'au
+   nombre d'essais, ce qui est un argument pour lire *aussi* les runs qui passent.
+

@@ -105,10 +105,20 @@ demarrer() {
   # tours quoi qu'il arrive, puis lançait `psql` — qui rendait « container is not running ». Un
   # message qui ne dit ni que le serveur a refusé de démarrer, ni pourquoi : c'est ce qui a fait
   # chercher la cause dans la CI plutôt que dans le journal du conteneur, qui la contenait.
+  # **La sonde passe par TCP, et c'est ce qui la rend juste** (24 août 2026). L'image
+  # officielle démarre un serveur **temporaire** pour son initialisation, et ce serveur
+  # n'écoute que sur la socket Unix — `listen_addresses` y est vide, délibérément, pour que
+  # rien d'extérieur ne le joigne. Une sonde par socket répond donc « prêt » pendant
+  # l'initialisation, avant même que `POSTGRES_DB` existe : le script annonçait « prêt » puis
+  # `psql` échouait sur « database "dorabase_test" does not exist ». Observé en CI, puis
+  # reproduit ici — socket « prêt » à l'itération 2, TCP encore refusé.
+  #
+  # Joindre 127.0.0.1 **depuis l'intérieur du conteneur** distingue les deux serveurs sans
+  # rien exiger de la machine hôte : le temporaire refuse, le définitif accepte.
   printf 'attente du serveur' >&2
   pret=
   for _ in $(seq 1 60); do
-    if docker exec "$NOM" pg_isready -U dorabase -d dorabase_test >/dev/null 2>&1; then
+    if docker exec "$NOM" pg_isready -h 127.0.0.1 -U dorabase -d dorabase_test >/dev/null 2>&1; then
       printf ' prêt\n' >&2
       pret=oui
       break
