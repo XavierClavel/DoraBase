@@ -14,7 +14,9 @@ brouillon en configuration).
 ## Périmètre
 
 - Le `Select` « Type » avec ses deux options, et le contenu du panneau qui suit.
-- Les deux champs Cloud SQL : « Instance » et « Compte de service ».
+- Les deux champs Cloud SQL : « Instance » et « Compte de service ». **« Compte de service »
+  a été retiré le 24 août 2026** → `06j` ; ce qui suit décrit l'écran tel qu'il a été livré,
+  et `06j` dit ce qui en reste.
 - Le badge, qui nomme la sorte active.
 - `TunnelDraft` aligné sur l'union du modèle, et la conversion de `08e`.
 - Le comportement au **changement de Type**.
@@ -57,6 +59,11 @@ commun aux deux — c'est exactement ce que `05d` exprime en le sortant de l'én
 le panneau le rend visible : la seule partie qui ne bouge pas est la seule qui est commune.
 
 ### Le champ « Compte de service » dit ce que le vide signifie
+
+> **Retiré par `06j`** (24 août 2026). Ce qui suit reste écrit parce qu'il explique un choix
+> qui a tenu quatre jours, et pourquoi il ne tenait pas : le vide était bien une valeur, mais
+> une valeur qu'il fallait persister, migrer, projeter et traduire entre `''` et `null` — pour
+> la moins employée des trois sources d'identifiants. Il reste la phrase, sans le champ.
 
 Même `Field` mono, même bouton « Parcourir… », même permission `dialog:allow-open` déjà
 accordée par `08c` — rien à ajouter aux capacités.

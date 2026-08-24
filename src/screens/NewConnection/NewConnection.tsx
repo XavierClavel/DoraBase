@@ -30,7 +30,7 @@ import {
   mettreAJourLaVariante,
 } from './enregistrerLaBase'
 import styles from './NewConnection.module.css'
-import { ouvrirSelecteurDeCle, ouvrirSelecteurDeCompteDeService } from './ouvrirSelecteurDeCle'
+import { ouvrirSelecteurDeCle } from './ouvrirSelecteurDeCle'
 import { TunnelPanel } from './TunnelPanel'
 import { codeDe, messageDe, testerLaConnexion } from './testerLaConnexion'
 
@@ -52,7 +52,6 @@ type NewConnectionProps = {
    */
   onBrowseKey?: () => Promise<string | null>
   /** Le sélecteur du fichier de compte de service Google, injecté pour la même raison. */
-  onBrowseCredentials?: () => Promise<string | null>
   /**
    * Appelle la commande `test_connection`.
    *
@@ -131,7 +130,6 @@ export function NewConnection({
   onClose,
   projects = [],
   onBrowseKey = ouvrirSelecteurDeCle,
-  onBrowseCredentials = ouvrirSelecteurDeCompteDeService,
   onTest = testerLaConnexion,
   onSave = enregistrerLaBase,
   edition,
@@ -437,7 +435,6 @@ export function NewConnection({
         open={tunnelOuvert}
         onOpenChange={setTunnelOuvert}
         onBrowseKey={onBrowseKey}
-        onBrowseCredentials={onBrowseCredentials}
       />
 
       {echecOuvert && test.phase === 'echoue' && (

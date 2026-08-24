@@ -32,15 +32,13 @@ type TunnelPanelProps = {
    * du bouton testable, et laisse l'appel réel au seul endroit qui tourne dans l'app.
    */
   onBrowseKey: () => Promise<string | null>
-  /** La même chose pour le fichier de compte de service Google. */
-  onBrowseCredentials: () => Promise<string | null>
 }
 
 /**
  * Les deux sortes de proxy : `05d` les modélise, `06g` ouvre la seconde.
  *
- * Cloud SQL **n'est pas dans le handoff** : ce libellé, comme les deux champs de son visage,
- * est inventé ici. Voir `specs/README.md` § À trancher.
+ * Cloud SQL **n'est pas dans le handoff** : ce libellé, comme le champ de son visage, est
+ * inventé ici. Voir `specs/README.md` § À trancher.
  */
 const TYPES = [
   { value: 'ssh', label: 'SSH' },
@@ -75,7 +73,6 @@ export function TunnelPanel({
   open,
   onOpenChange,
   onBrowseKey,
-  onBrowseCredentials,
 }: TunnelPanelProps) {
   const aideId = useId()
 
@@ -174,43 +171,21 @@ export function TunnelPanel({
                 }
               />
             ) : (
-              <div>
-                <Field
-                  label="Compte de service"
-                  size="sm"
-                  mono
-                  aria-describedby={aideId}
-                  value={proxy.credentialsFilePath}
-                  onChange={(event) =>
-                    onProxyChange({ ...proxy, credentialsFilePath: event.target.value })
-                  }
-                  suffix={
-                    <button
-                      type="button"
-                      className={styles.browse}
-                      onClick={() =>
-                        parcourir(onBrowseCredentials, (chemin) => ({
-                          ...proxy,
-                          credentialsFilePath: chemin,
-                        }))
-                      }
-                    >
-                      Parcourir…
-                    </button>
-                  }
-                />
-                {/* **Lié au champ par `aria-describedby`**, et non simplement posé à côté : un
-                    texte voisin n'est pas annoncé par un lecteur d'écran, et c'est précisément
-                    l'information qui empêche de lire ce champ vide comme un champ oublié. */}
-                {/* **La commande, entière** (`06i`). « Identifiants par défaut » seul
-                    laisse l'utilisateur deviner comment on les installe, et « authentifiez-vous
-                    avec gcloud » l'enverrait sur `gcloud auth login`, qui n'alimente que le CLI
-                    et ne suffit pas. */}
-                <p id={aideId} className={styles.tunnelHint}>
-                  Vide : identifiants par défaut de l'application — installés par{' '}
-                  <code>gcloud auth application-default login</code>
-                </p>
-              </div>
+              // **Aucun champ dans cette ligne** (`06j`). Un « Compte de service » s'y
+              // saisissait ; il est parti avec la voie qu'il ouvrait — l'authentification est
+              // celle de la machine, pas celle de la connexion. Il reste donc une phrase,
+              // et rien à remplir.
+              //
+              // **Un paragraphe simple, plus lié par `aria-describedby`.** Le lien existait
+              // pour empêcher qu'un champ vide se lise comme un champ oublié ; sans champ,
+              // cette raison tombe, et un texte informatif dans le flux est annoncé à sa
+              // place. La commande reste **entière** (`06i`) : « authentifiez-vous avec
+              // gcloud » enverrait sur `gcloud auth login`, qui n'alimente que le CLI et ne
+              // suffit pas.
+              <p id={aideId} className={styles.tunnelHint}>
+                Authentification : identifiants par défaut de l'application, installés par{' '}
+                <code>gcloud auth application-default login</code>
+              </p>
             )}
 
             <div>

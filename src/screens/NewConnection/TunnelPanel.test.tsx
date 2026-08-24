@@ -4,18 +4,11 @@ import { Sprite } from '../../design/icons/Sprite'
 import { choisirDansLaListe, optionsDeLaListe } from '../../ui/Select/pourLesTests'
 import { NewConnection } from './NewConnection'
 
-function monter(
-  onBrowseKey?: () => Promise<string | null>,
-  onBrowseCredentials?: () => Promise<string | null>,
-) {
+function monter(onBrowseKey?: () => Promise<string | null>) {
   return render(
     <>
       <Sprite />
-      <NewConnection
-        onClose={() => {}}
-        onBrowseKey={onBrowseKey ?? (async () => null)}
-        onBrowseCredentials={onBrowseCredentials ?? (async () => null)}
-      />
+      <NewConnection onClose={() => {}} onBrowseKey={onBrowseKey ?? (async () => null)} />
     </>,
   )
 }
@@ -70,12 +63,15 @@ test('le sélecteur de type propose les deux sortes', async () => {
   expect(await optionsDeLaListe('Type')).toEqual(['SSH', 'Cloud SQL'])
 })
 
-test('le visage Cloud SQL montre ses deux champs, et aucun champ de bastion', async () => {
+test('le visage Cloud SQL montre son seul champ, et aucun champ de bastion', async () => {
   monter()
   const panneau = await choisirLeType('Cloud SQL')
 
   expect(panneau.getByLabelText('Instance')).toBeInTheDocument()
-  expect(panneau.getByLabelText('Compte de service')).toBeInTheDocument()
+  // **Plus de champ de compte de service** (`06j`) : l'authentification est celle de la
+  // machine, pas celle de la connexion. Le voir revenir voudrait dire qu'on a rouvert une voie
+  // que `06i` a fermée, et qu'un chemin est de nouveau persisté sans migration pour le porter.
+  expect(panneau.queryByLabelText('Compte de service')).not.toBeInTheDocument()
   // L'autre moitié du critère, et la plus importante : les champs de l'autre sorte ne sont pas
   // seulement vides, ils sont **absents**. Un champ masqué en CSS resterait dans l'arbre
   // d'accessibilité et serait annoncé.
@@ -87,7 +83,7 @@ test('le visage Cloud SQL montre ses deux champs, et aucun champ de bastion', as
 test('le visage SSH ne montre aucun champ Cloud SQL', async () => {
   monter()
   const panneau = await deplier()
-  for (const nom of ['Instance', 'Compte de service']) {
+  for (const nom of ['Instance']) {
     expect(panneau.queryByLabelText(nom)).not.toBeInTheDocument()
   }
 })
@@ -105,24 +101,20 @@ test('le port local mappé est commun aux deux visages', async () => {
   expect(panneau.getByLabelText('Port local mappé')).toHaveTextContent('auto')
 })
 
-test('le libellé d’aide du compte de service est annoncé, pas seulement affiché', async () => {
+test('le visage Cloud SQL dit comment il s’authentifie, avec la commande entière', async () => {
   monter()
   const panneau = await choisirLeType('Cloud SQL')
-  const champ = panneau.getByLabelText('Compte de service')
-  const decrit = champ.getAttribute('aria-describedby')
-  expect(decrit).toBeTruthy()
-  // Un texte simplement posé à côté du champ n'est **pas** annoncé par un lecteur d'écran. Le
-  // lien est ce qui fait la différence entre « le vide est une valeur » compris, et un champ
-  // qui a l'air oublié.
-  const aide = document.getElementById(decrit as string)?.textContent
-  expect(aide).toMatch(/identifiants par défaut/i)
-  // **La commande entière** (`06i`) : « identifiants par défaut » seul laisse deviner
-  // comment on les installe, et `gcloud auth login` — la commande voisine, que tout le monde
-  // essaie d'abord — n'alimente que le CLI, pas les applications. Le libellé doit porter
-  // celle qui marche.
-  expect(aide).toContain('gcloud auth application-default login')
-})
 
+  // **Un texte, plus un libellé de champ** (`06j`). Le lien `aria-describedby` existait pour
+  // qu'un champ vide ne se lise pas comme un champ oublié ; sans champ, c'est le texte lui-même
+  // qui porte l'information, et il doit rester dans le flux du panneau.
+  const aide = panneau.getByText(/identifiants par défaut/i)
+  expect(aide).toBeInTheDocument()
+  // **La commande entière** (`06i`) : « identifiants par défaut » seul laisse deviner comment
+  // on les installe, et `gcloud auth login` — la commande voisine, que tout le monde essaie
+  // d'abord — n'alimente que le CLI, pas les applications.
+  expect(aide.textContent).toContain('gcloud auth application-default login')
+})
 test('changer de type efface les champs de l’autre sorte', async () => {
   monter()
   const panneau = await deplier()
@@ -168,22 +160,10 @@ test('changer le type sans rien saisir ne déclare aucun proxy', async () => {
   expect(panneau.queryByText(/activé/)).not.toBeInTheDocument()
 })
 
-test('« Parcourir… » remplit le champ de compte de service', async () => {
-  monter(undefined, async () => '/Users/dora/sa.json')
-  const panneau = await choisirLeType('Cloud SQL')
-  await userEvent.click(panneau.getByRole('button', { name: 'Parcourir…' }))
-  expect(panneau.getByLabelText('Compte de service')).toHaveValue('/Users/dora/sa.json')
-})
-
-test('annuler le sélecteur de compte de service n’efface pas le chemin saisi', async () => {
-  monter(undefined, async () => null)
-  const panneau = await choisirLeType('Cloud SQL')
-  await userEvent.type(panneau.getByLabelText('Compte de service'), '/deja/sa.json')
-  await userEvent.click(panneau.getByRole('button', { name: 'Parcourir…' }))
-  // `null` = annulation. Écraser le chemin déjà saisi serait une perte — même règle que `08c`
-  // applique à la clé privée.
-  expect(panneau.getByLabelText('Compte de service')).toHaveValue('/deja/sa.json')
-})
+// **Deux tests retirés ici** (`06j`) : « Parcourir… » remplissait le champ de compte de
+// service, et son annulation ne devait pas effacer le chemin saisi. Le champ n'existe plus,
+// donc ni le bouton ni son annulation — et `ouvrirSelecteurDeCompteDeService` est parti avec
+// eux. Le même geste sur la clé privée SSH reste couvert par `08c`.
 
 test('le port du bastion est prérempli à 22, celui de la base à 5432', async () => {
   monter()

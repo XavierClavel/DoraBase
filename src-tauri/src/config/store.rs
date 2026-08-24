@@ -23,7 +23,7 @@ use super::model::{
 ///
 /// **v3, par `05d`** : `tunnel` porte `{ localPort, proxy: { kind, … } }` au lieu de quatre champs
 /// SSH à plat.
-pub const VERSION_COURANTE: u32 = 3;
+pub const VERSION_COURANTE: u32 = 4;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ConfigFile {
@@ -270,15 +270,21 @@ fn migrer(cible: &Path, brut: &str, mut valeur: serde_json::Value, depuis: u32) 
     if depuis < 3 {
         hisser_les_tunnels_vers_le_proxy(&mut valeur);
     }
+    // v3 → v4 (`06j`) : même patron, même raison — un cran qui ne connaît ni les projets, ni
+    // les bases, et qui s'applique avant les crans à types dédiés.
+    if depuis < 4 {
+        retirer_les_comptes_de_service(&mut valeur);
+    }
     let brut_migre = valeur.to_string();
 
     // v0 → v1 : la v0 n'a jamais été diffusée, sa forme est celle de la v1.
     // v1 → v2 : `23a`/`23b`. La chaîne est écrite pour se composer — une v1 lue depuis une v0 passe
     // ensuite par le même bras que si elle venait du disque.
     // v2 → v3 : `05d`, déjà appliqué ci-dessus ; il ne reste qu'à lire la forme courante.
+    // v3 → v4 : `06j`, de même.
     let migre = match depuis {
         0 | 1 => migration_v1_vers_v2(&brut_migre),
-        2 => serde_json::from_str::<ConfigFile>(&brut_migre)
+        2 | 3 => serde_json::from_str::<ConfigFile>(&brut_migre)
             .map(|fichier| (fichier.projects, fichier.preferences)),
         _ => {
             return LoadOutcome::Unreadable {
@@ -345,6 +351,45 @@ fn hisser_les_tunnels_vers_le_proxy(valeur: &mut serde_json::Value) {
         serde_json::Value::Array(elements) => {
             for element in elements {
                 hisser_les_tunnels_vers_le_proxy(element);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// v3 → v4 (`06j`) : le chemin de compte de service disparaît des proxys Cloud SQL.
+///
+/// **Pourquoi un cran, alors que `serde` ignore les clés inconnues.** Sans lui, un fichier v3
+/// serait lu comme courant, la clé serait silencieusement perdue à la première écriture, et
+/// aucune sauvegarde n'aurait été prise. Le cran existe pour deux effets, tous deux dans
+/// `migrer` : la version du fichier finit par dire la vérité sur le modèle qu'il porte, et
+/// l'original part dans `config.v3.bak` **avant** que la clé s'en aille. Un utilisateur qui
+/// avait désigné un compte de service peut donc le retrouver ; sans ce cran, il n'aurait
+/// nulle part où le chercher.
+///
+/// **Ce qui reste possible après ce retrait** : `GOOGLE_APPLICATION_CREDENTIALS`, que le
+/// proxy lit de lui-même. Le retrait ferme un champ, pas une voie.
+///
+/// Même écriture que `hisser_les_tunnels_vers_le_proxy`, et pour la même raison : descendre
+/// l'arbre en cherchant les proxys plutôt qu'en connaissant le chemin qui y mène évite de
+/// décrire deux fois ce qui les entoure. Elle ne valide rien non plus — `migrer`
+/// désérialise juste après, donc ce qu'elle laisserait mal formé part en quarantaine.
+fn retirer_les_comptes_de_service(valeur: &mut serde_json::Value) {
+    match valeur {
+        serde_json::Value::Object(objet) => {
+            // Uniquement sous un proxy Cloud SQL, reconnu à son étiquette. Retirer la clé
+            // partout où elle porte ce nom marcherait aujourd'hui et deviendrait faux le jour
+            // où un autre objet la porte pour une autre raison.
+            if objet.get("kind").and_then(serde_json::Value::as_str) == Some("cloud-sql") {
+                objet.remove("credentialsFilePath");
+            }
+            for (_, enfant) in objet.iter_mut() {
+                retirer_les_comptes_de_service(enfant);
+            }
+        }
+        serde_json::Value::Array(elements) => {
+            for element in elements {
+                retirer_les_comptes_de_service(element);
             }
         }
         _ => {}
@@ -1195,6 +1240,158 @@ mod tests {
         assert!(projects[0].databases[0].connection.tunnel.is_none());
     }
 
+    // --- `06j` : migration v3 → v4, le compte de service disparaît ---
+
+    /// Un fichier de version 3 tel que l'application **écrivait** réellement, avec un proxy
+    /// Cloud SQL portant un chemin de compte de service.
+    ///
+    /// Littéral, pour la même raison que `V2_AVEC_TUNNEL_PLAT` : le champ n'existe plus dans
+    /// le code, donc rien ne peut le produire.
+    const V3_AVEC_COMPTE_DE_SERVICE: &str = r#"{
+      "version": 3,
+      "projects": [{
+        "name": "acme",
+        "activeEnvironment": "dev",
+        "environments": [
+          { "id": "dev", "label": "dev", "color": "green", "production": false }
+        ],
+        "databases": [{
+          "name": "analytics",
+          "engine": "postgresql",
+          "environment": "dev",
+          "connection": {
+            "host": "db.internal",
+            "port": 5432,
+            "defaultDatabase": "analytics",
+            "username": "dora_ro",
+            "password": null,
+            "sslMode": "require",
+            "readOnly": true,
+            "reconnectOnStartup": false,
+            "tunnel": {
+              "localPort": 5433,
+              "proxy": {
+                "kind": "cloud-sql",
+                "instanceConnectionName": "acme-prod:europe-west1:analytics",
+                "credentialsFilePath": "/home/dora/comptes/analytics.json"
+              }
+            }
+          },
+          "consoles": []
+        }]
+      }]
+    }"#;
+
+    #[test]
+    fn un_fichier_v3_perd_son_compte_de_service_et_garde_le_reste() {
+        let dir = tempfile::tempdir().unwrap();
+        let chemin = dir.path().join("config.json");
+        fs::write(&chemin, V3_AVEC_COMPTE_DE_SERVICE).unwrap();
+
+        let issue = load(&chemin);
+        let LoadOutcome::Loaded { projects, .. } = issue else {
+            panic!("un fichier v3 doit se lire après migration, obtenu {issue:?}");
+        };
+        let tunnel = projects[0].databases[0]
+            .connection
+            .tunnel
+            .as_ref()
+            .expect("le tunnel doit survivre");
+        // Le port local et l'instance **survivent** : le cran ne retire qu'une clé. Une
+        // migration qui emporterait le reste passerait un test qui ne regarde que l'absence.
+        assert_eq!(tunnel.local_port, Some(5433));
+        let Proxy::CloudSql(cloud) = &tunnel.proxy else {
+            panic!("le proxy doit rester un proxy Cloud SQL");
+        };
+        assert_eq!(
+            cloud.instance_connection_name,
+            "acme-prod:europe-west1:analytics"
+        );
+    }
+
+    #[test]
+    fn la_migration_du_compte_de_service_laisse_une_sauvegarde() {
+        // **C'est la raison d'être du cran** : `serde` ignorant les clés inconnues, un fichier
+        // v3 se lirait sans lui — et le chemin de compte de service disparaîtrait à la
+        // première écriture, sans que l'utilisateur ait où le retrouver. La sauvegarde est
+        // donc l'objet du test, pas un effet de bord.
+        let dir = tempfile::tempdir().unwrap();
+        let chemin = dir.path().join("config.json");
+        fs::write(&chemin, V3_AVEC_COMPTE_DE_SERVICE).unwrap();
+
+        let _ = load(&chemin);
+
+        let sauvegardes: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entree| {
+                entree
+                    .file_name()
+                    .to_string_lossy()
+                    .contains("config.json.avant-v3")
+            })
+            .collect();
+        assert_eq!(sauvegardes.len(), 1, "une seule sauvegarde attendue");
+        let sauvegarde = fs::read_to_string(sauvegardes[0].path()).unwrap();
+        assert_eq!(sauvegarde, V3_AVEC_COMPTE_DE_SERVICE);
+        // Et le chemin y est **encore** : c'est ce qui rend le retrait réparable.
+        assert!(sauvegarde.contains("/home/dora/comptes/analytics.json"));
+    }
+
+    #[test]
+    fn le_cran_du_compte_de_service_ne_touche_que_les_proxys_cloud_sql() {
+        // Retirer la clé partout où ce nom apparaît marcherait aujourd'hui et deviendrait faux
+        // le jour où un autre objet la porte. Le décor met la même clé **hors** d'un proxy
+        // Cloud SQL, et le cran doit l'y laisser.
+        let mut valeur: serde_json::Value = serde_json::from_str(
+            r#"{
+              "ailleurs": { "credentialsFilePath": "/a/garder" },
+              "tunnel": {
+                "proxy": {
+                  "kind": "cloud-sql",
+                  "instanceConnectionName": "p:r:i",
+                  "credentialsFilePath": "/a/retirer"
+                }
+              },
+              "ssh": {
+                "kind": "ssh",
+                "credentialsFilePath": "/a/garder/aussi"
+              }
+            }"#,
+        )
+        .unwrap();
+
+        retirer_les_comptes_de_service(&mut valeur);
+
+        assert!(valeur["tunnel"]["proxy"]["credentialsFilePath"].is_null());
+        assert_eq!(valeur["ailleurs"]["credentialsFilePath"], "/a/garder");
+        assert_eq!(valeur["ssh"]["credentialsFilePath"], "/a/garder/aussi");
+    }
+
+    #[test]
+    fn un_fichier_v2_traverse_les_deux_crans_du_proxy() {
+        // Les deux crans du proxy se composent : un fichier v2 passe par le hissement **puis**
+        // par le retrait. Le sabotage qui fait tomber ce test est de borner le second à
+        // `depuis == 3`.
+        let dir = tempfile::tempdir().unwrap();
+        let chemin = dir.path().join("config.json");
+        fs::write(&chemin, V2_AVEC_TUNNEL_PLAT).unwrap();
+
+        let issue = load(&chemin);
+        let LoadOutcome::Loaded { projects, .. } = issue else {
+            panic!("obtenu {issue:?}");
+        };
+        // Un tunnel v2 est SSH : le retrait n'a rien à y faire, et ne doit rien y casser.
+        assert!(matches!(
+            projects[0].databases[0]
+                .connection
+                .tunnel
+                .as_ref()
+                .map(|t| &t.proxy),
+            Some(Proxy::Ssh(_))
+        ));
+    }
+
     #[test]
     fn un_fichier_v1_a_tunnel_traverse_les_deux_crans() {
         // Le cran du proxy et celui des environnements sont **orthogonaux**, et c'est ce test qui
@@ -1335,7 +1532,6 @@ mod tests {
             local_port: Some(5433),
             proxy: Proxy::CloudSql(ProxyCloudSql {
                 instance_connection_name: "acme-prod:europe-west1:analytics".into(),
-                credentials_file_path: None,
             }),
         });
         let projet = Project {

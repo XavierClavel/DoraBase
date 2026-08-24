@@ -39,14 +39,12 @@ function proxyDraftToProxy(proxy: TunnelDraft['proxy']): ProxyModele {
       }
     }
     case 'cloud-sql':
+      // **Rien à traduire** (`06j`) : le brouillon et le modèle portent le même unique champ.
+      // Un `credentialsFilePath` vivait ici et demandait de traduire `''` en `null` ; il est
+      // parti avec le champ de `A2`.
       return {
         kind: 'cloud-sql',
         instanceConnectionName: proxy.instanceConnectionName,
-        // Le vide **est** une valeur : « identifiants par défaut de l'application ». La
-        // traduction en `null` se fait ici, une seule fois — envoyer `""` ferait passer
-        // `--credentials-file ""` au proxy, qui échouerait, là où l'absence d'option est le cas
-        // courant et celui qui marche (`06f`).
-        credentialsFilePath: proxy.credentialsFilePath === '' ? null : proxy.credentialsFilePath,
       }
   }
 }

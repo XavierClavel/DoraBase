@@ -84,7 +84,7 @@ impl CloudSqlProxy {
         // Ici et non dans `ouvrir_avec`, pour la même raison que `localiser` : les tests
         // pilotent un faux binaire et n'ont pas le droit de dépendre de ce qui est
         // configuré sur la machine qui les exécute.
-        identifiants::controler(proxy)?;
+        identifiants::controler()?;
         Self::ouvrir_avec(&binaire, proxy, port_local_demande).await
     }
 
@@ -122,12 +122,11 @@ impl CloudSqlProxy {
             .arg("--address")
             .arg("127.0.0.1");
 
-        // **Seulement quand il est donné.** `--credentials-file ""` ferait échouer le proxy
-        // là où l'absence d'option signifie « identifiants par défaut de l'application » —
-        // le cas courant.
-        if let Some(chemin) = &proxy.credentials_file_path {
-            commande.arg("--credentials-file").arg(chemin);
-        }
+        // **Aucune option d'identifiants** (`06j`). Le proxy prend les identifiants par
+        // défaut de l'application : `GOOGLE_APPLICATION_CREDENTIALS`, à défaut le fichier
+        // qu'écrit `gcloud auth application-default login`. Un `--credentials-file` a existé
+        // ici ; il est parti avec le champ de `A2`, et une machine qui a besoin d'un compte
+        // de service passe par la variable — que le proxy lit sans qu'on la lui passe.
 
         commande
             .stdin(std::process::Stdio::null())
@@ -363,7 +362,6 @@ while true; do sleep 1; done
     fn configuration() -> ProxyCloudSql {
         ProxyCloudSql {
             instance_connection_name: "acme:europe-west1:analytics".into(),
-            credentials_file_path: None,
         }
     }
 
@@ -507,10 +505,20 @@ exit 2
     }
 
     #[tokio::test]
-    async fn le_fichier_de_compte_de_service_est_passe_quand_il_est_donne() {
-        // Et **seulement** quand il est donné : `--credentials-file` avec une chaîne vide
-        // ferait échouer le proxy là où l'absence d'option signifie « identifiants par
-        // défaut de l'application », le cas courant.
+    async fn la_ligne_de_commande_ne_porte_aucun_identifiant() {
+        // **Ce test remplace deux tests de `06g`** — celui qui vérifiait le passage de
+        // `--credentials-file`, et la sentinelle qui vérifiait que le contenu du fichier
+        // n'apparaissait nulle part. Les deux portaient sur une option qui n'existe plus
+        // (`06j`).
+        //
+        // Il ne les affaiblit pas, il déplace la garantie : plutôt que de vérifier qu'un
+        // secret ne fuit pas d'une ligne de commande qui le porte, il vérifie que la ligne
+        // **ne porte rien** dont un secret puisse fuir. La sentinelle qui compte désormais
+        // est celle d'`identifiants.rs`, sur le fichier d'identifiants par défaut.
+        //
+        // Énuméré en dur et non « ne contient pas `--credentials-file` » : une option
+        // d'authentification **future** — `--token`, `--json-credentials`, `-g` — passerait
+        // une formulation négative sans être vue.
         let mouchard = faux_binaire(
             "mouchard",
             r#"#!/bin/sh
@@ -521,63 +529,26 @@ while true; do sleep 1; done
 "#,
         );
 
-        let mut config = configuration();
-        config.credentials_file_path = Some("/tmp/sa.json".into());
-        let proxy = CloudSqlProxy::ouvrir_avec(&mouchard, &config, None)
-            .await
-            .expect("ouverture");
-        assert!(
-            proxy.journal().contains("--credentials-file"),
-            "{}",
-            proxy.journal()
-        );
-        assert!(
-            proxy.journal().contains("/tmp/sa.json"),
-            "{}",
-            proxy.journal()
-        );
-        proxy.fermer().await;
-
         let proxy = CloudSqlProxy::ouvrir_avec(&mouchard, &configuration(), None)
             .await
-            .expect("ouverture sans fichier");
-        assert!(
-            !proxy.journal().contains("--credentials-file"),
-            "{}",
-            proxy.journal()
-        );
+            .expect("ouverture");
+        let journal = proxy.journal();
+        let arguments = journal
+            .split("args: ")
+            .nth(1)
+            .and_then(|reste| reste.split(" / ").next())
+            .expect("la ligne des arguments")
+            .to_owned();
         proxy.fermer().await;
-    }
 
-    #[tokio::test]
-    async fn le_contenu_du_fichier_de_compte_de_service_n_apparait_jamais() {
-        // Sentinelle **et contrôle positif**, comme `06e` le fait pour la clé privée : sans
-        // le second, un test qui ne trouve pas la sentinelle ne prouve rien — il pourrait
-        // simplement chercher dans une chaîne vide.
-        const SENTINELLE: &str = "SENTINELLE-CLE-PRIVEE-DU-COMPTE-DE-SERVICE";
-        let repertoire = std::env::temp_dir().join(format!("dorabase-sa-{}", std::process::id()));
-        std::fs::create_dir_all(&repertoire).expect("répertoire");
-        let fichier = repertoire.join("sa.json");
-        std::fs::write(&fichier, format!(r#"{{"private_key":"{SENTINELLE}"}}"#)).expect("écriture");
-
-        let mourant = faux_binaire(
-            "sentinelle",
-            r#"#!/bin/sh
-echo "failed to authorize" >&2
-exit 1
-"#,
-        );
-        let mut config = configuration();
-        config.credentials_file_path = Some(fichier.display().to_string());
-
-        let erreur = CloudSqlProxy::ouvrir_avec(&mourant, &config, None)
-            .await
-            .expect_err("échec attendu");
-
-        assert!(!erreur.message.contains(SENTINELLE), "{erreur}");
-        // Contrôle positif : la sentinelle **est** bien dans le fichier, donc l'absence
-        // ci-dessus dit quelque chose.
-        let contenu = std::fs::read_to_string(&fichier).expect("lecture");
-        assert!(contenu.contains(SENTINELLE));
+        let mots: Vec<&str> = arguments.split_whitespace().collect();
+        // L'instance, le port et l'adresse : rien d'autre. Le port varie, donc il est lu et
+        // non comparé.
+        assert_eq!(mots.len(), 5, "{arguments}");
+        assert_eq!(mots[0], "acme:europe-west1:analytics", "{arguments}");
+        assert_eq!(mots[1], "--port", "{arguments}");
+        assert!(mots[2].parse::<u16>().is_ok(), "{arguments}");
+        assert_eq!(mots[3], "--address", "{arguments}");
+        assert_eq!(mots[4], "127.0.0.1", "{arguments}");
     }
 }
