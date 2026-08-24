@@ -106,7 +106,7 @@ impl PostgresAdapter {
             // chercher un problème de PostgreSQL. `A3` distingue les deux lignes ; l'erreur
             // doit les distinguer aussi.
             Err(erreur) => Err(match &proxy {
-                Some(p) => p.qualifier(erreur),
+                Some(p) => p.qualifier(erreur).await,
                 None => erreur,
             }),
         }

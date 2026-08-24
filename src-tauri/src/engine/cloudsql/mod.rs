@@ -44,6 +44,13 @@ pub(crate) const SUJET: &str = "le proxy Cloud SQL";
 /// échecs, parce qu'il accuse le mauvais coupable.
 const DELAI_DEMARRAGE: Duration = Duration::from_secs(20);
 
+/// La fenêtre laissée au proxy pour expliquer un échec de connexion déjà survenu.
+///
+/// Courte **délibérément** : elle s'ajoute à une erreur que l'utilisateur attend déjà, et le
+/// proxy écrit sa ligne dans la foulée du refus, pas après réflexion. Trop longue, elle ferait
+/// traîner chaque échec de connexion ; trop courte, elle rendrait le diagnostic aléatoire.
+const DELAI_EXPLICATION: Duration = Duration::from_millis(300);
+
 /// Un proxy Cloud SQL ouvert, et le port local sur lequel il écoute.
 pub struct CloudSqlProxy {
     port_local: u16,
@@ -52,12 +59,18 @@ pub struct CloudSqlProxy {
     /// Sous `Mutex` parce que `etat()` doit pouvoir l'interroger (`try_wait`) depuis une
     /// référence partagée, là où l'API de `Child` exige un emprunt mutable.
     processus: Mutex<Option<Child>>,
-    /// La tâche qui vide la sortie d'erreur du processus.
+    /// La tâche qui vide le canal où les deux sorties se rejoignent.
     ///
-    /// **Elle n'est pas optionnelle.** Si personne ne lit ce tuyau, le tampon du système se
+    /// **Elle n'est pas optionnelle.** Si personne ne lit ces tuyaux, le tampon du système se
     /// remplit et le proxy se **bloque en écriture** — panne silencieuse, et d'autant plus
     /// déroutante que la connexion aurait d'abord marché.
     drain: JoinHandle<()>,
+    /// Les deux tâches qui lisent les tuyaux et les versent dans le canal — une par sortie.
+    ///
+    /// Gardées pour être **arrêtées** à la fermeture, au même titre que le drain : une tâche
+    /// bloquée sur la lecture d'un tuyau dont le processus est mort ne s'arrête pas d'elle-même
+    /// tant que le descripteur vit.
+    lecteurs: Vec<JoinHandle<()>>,
     journal: Arc<Journal>,
 }
 
@@ -67,6 +80,25 @@ pub struct CloudSqlProxy {
 impl std::fmt::Debug for CloudSqlProxy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "CloudSqlProxy {{ port_local: {} }}", self.port_local)
+    }
+}
+
+/// Verse chaque ligne d'une sortie du processus dans le canal commun.
+///
+/// Une fonction libre plutôt qu'une fermeture : les deux tâches en ont besoin, et les types
+/// des deux sorties diffèrent (`ChildStdout`, `ChildStderr`) — c'est le générique qui les
+/// réunit.
+async fn relayer<F>(sortie: F, envoi: tokio::sync::mpsc::UnboundedSender<String>)
+where
+    F: tokio::io::AsyncRead + Unpin,
+{
+    let mut lignes = BufReader::new(sortie).lines();
+    while let Ok(Some(ligne)) = lignes.next_line().await {
+        // L'erreur d'envoi signifie que plus personne n'écoute : le proxy a été fermé, et
+        // continuer à lire ne servirait qu'à tenir le tuyau ouvert.
+        if envoi.send(ligne).is_err() {
+            return;
+        }
     }
 }
 
@@ -130,9 +162,17 @@ impl CloudSqlProxy {
 
         commande
             .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            // Le proxy écrit ses journaux sur la sortie d'erreur, y compris la ligne de
-            // disponibilité. C'est notre seul canal.
+            // **Les deux sorties, et non la seule sortie d'erreur.** Défaut trouvé le 24 août
+            // 2026, à la première connexion réelle : `cloud-sql-proxy` v2 écrit son journal
+            // courant sur la **sortie standard** — « Authorizing… », « Listening on… » et la
+            // ligne de disponibilité — et ne réserve à la sortie d'erreur que sa ligne
+            // d'erreur terminale. Jeter stdout revenait donc à n'entendre le proxy que
+            // lorsqu'il meurt : un proxy qui marchait très bien expirait sur le délai de 20 s
+            // sans avoir « rien écrit ».
+            //
+            // Les deux sont lues, et pour la même raison qu'il fallait déjà drainer :
+            // un tuyau que personne ne lit finit par bloquer l'enfant en écriture.
+            .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             // Filet en plus de `Drop` : si le processus parent meurt brutalement, l'enfant
             // ne survit pas en gardant le port.
@@ -145,8 +185,11 @@ impl CloudSqlProxy {
             ))
         })?;
 
-        let sortie = enfant.stderr.take().ok_or_else(|| {
+        let sortie_standard = enfant.stdout.take().ok_or_else(|| {
             EngineError::local("la sortie du proxy cloud-sql-proxy est illisible")
+        })?;
+        let sortie_erreur = enfant.stderr.take().ok_or_else(|| {
+            EngineError::local("la sortie d'erreur du proxy cloud-sql-proxy est illisible")
         })?;
 
         // En-tête du journal : **lequel** des deux binaires tourne. Il voyage avec tout
@@ -160,13 +203,25 @@ impl CloudSqlProxy {
         } else {
             format!("cloud-sql-proxy hors bundle ({})", binaire.display())
         }));
-        let mut lignes = BufReader::new(sortie).lines();
+        // Les deux flux se rejoignent dans un canal, et le reste du code ne voit qu'une
+        // suite de lignes. **L'ordre entre les deux n'est pas garanti** et n'a pas à l'être :
+        // on cherche des repères — le port, la disponibilité —, pas une chronologie.
+        //
+        // Le canal se ferme quand les **deux** lecteurs ont fini, c'est-à-dire quand le
+        // processus a fermé ses deux sorties. C'est ce qui garde son sens à « fin de flux
+        // sans ligne de disponibilité = mort ou mourant » : une seule sortie fermée ne suffit
+        // pas à le conclure.
+        let (envoi, mut lignes) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let lecteurs = vec![
+            tokio::spawn(relayer(sortie_standard, envoi.clone())),
+            tokio::spawn(relayer(sortie_erreur, envoi)),
+        ];
 
         // Phase d'attente : on lit **dans cette tâche**, pas dans le drain, parce qu'il faut
         // pouvoir échouer et rendre l'erreur à l'appelant.
         let attente = async {
             let mut port_annonce = None;
-            while let Ok(Some(ligne)) = lignes.next_line().await {
+            while let Some(ligne) = lignes.recv().await {
                 journal.noter(ligne.clone());
                 if let Some(port) = sortie::port_annonce(&ligne) {
                     port_annonce = Some(port);
@@ -218,7 +273,7 @@ impl CloudSqlProxy {
         let drain = tokio::spawn({
             let journal = Arc::clone(&journal);
             async move {
-                while let Ok(Some(ligne)) = lignes.next_line().await {
+                while let Some(ligne) = lignes.recv().await {
                     journal.noter(ligne);
                 }
             }
@@ -228,6 +283,7 @@ impl CloudSqlProxy {
             port_local,
             processus: Mutex::new(Some(enfant)),
             drain,
+            lecteurs,
             journal,
         })
     }
@@ -280,9 +336,52 @@ impl CloudSqlProxy {
         }
     }
 
-    /// Qualifie une erreur de connexion à la base selon l'état du proxy.
-    pub fn qualifier(&self, erreur: EngineError) -> EngineError {
-        qualifier_avec(self.etat(), SUJET, erreur)
+    /// Qualifie une erreur de connexion à la base selon l'état du proxy, **et selon ce que
+    /// le proxy a dit de cet échec**.
+    ///
+    /// **Asynchrone, et c'est le point** (24 août 2026). Le proxy ne compose avec l'instance
+    /// qu'à la première connexion : quand PostgreSQL échoue, l'explication — nom d'instance
+    /// faux, projet inexistant, droit manquant — est en train d'être écrite, pas déjà écrite.
+    /// Rendre immédiatement rendrait l'erreur brute de PostgreSQL, qui ne dit rien de tout
+    /// cela ; la fenêtre laissée ici est courte, bornée, et elle s'arrête dès que le proxy a
+    /// parlé.
+    pub async fn qualifier(&self, erreur: EngineError) -> EngineError {
+        let echecs = self.attendre_une_explication().await;
+        // L'état est lu **après** l'attente : le proxy peut mourir pendant, et c'est alors la
+        // qualification d'`06e` — « est tombé » — qui doit gagner.
+        let qualifiee = qualifier_avec(self.etat(), SUJET, erreur);
+        if echecs.is_empty() {
+            return qualifiee;
+        }
+
+        let dit = echecs.join(" / ");
+        // Ajouté, jamais substitué : même règle qu'en `06i`. L'erreur observée reste lisible,
+        // et la ligne du proxy vient s'y adjoindre avec sa réparation quand on la reconnaît.
+        EngineError::local(identifiants::enrichir(
+            format!(
+                "{} — ce que {SUJET} a écrit : {dit}",
+                qualifiee.message.trim_end_matches('.')
+            ),
+            &dit,
+        ))
+    }
+
+    /// Laisse au proxy une fenêtre courte pour expliquer l'échec, et rend ce qu'il a écrit.
+    ///
+    /// Sondé plutôt qu'attendu sur un signal : le drain note dans le journal sans prévenir
+    /// personne, et lui ajouter une notification pour ce seul usage coûterait un état partagé
+    /// de plus. La boucle s'arrête **dès** que quelque chose apparaît, donc le cas courant —
+    /// le proxy a déjà parlé — ne coûte rien.
+    async fn attendre_une_explication(&self) -> Vec<String> {
+        const PAS: Duration = Duration::from_millis(50);
+        let echeance = tokio::time::Instant::now() + DELAI_EXPLICATION;
+        loop {
+            let echecs = self.journal.echecs();
+            if !echecs.is_empty() || tokio::time::Instant::now() >= echeance {
+                return echecs;
+            }
+            tokio::time::sleep(PAS).await;
+        }
     }
 
     /// Tue le proxy et **attend** sa sortie, ce qui garantit que le port est rendu.
@@ -309,6 +408,9 @@ impl CloudSqlProxy {
             let _ = enfant.kill().await;
         }
         self.drain.abort();
+        for lecteur in &self.lecteurs {
+            lecteur.abort();
+        }
     }
 }
 
@@ -325,6 +427,9 @@ impl Drop for CloudSqlProxy {
             }
         }
         self.drain.abort();
+        for lecteur in &self.lecteurs {
+            lecteur.abort();
+        }
     }
 }
 
@@ -359,6 +464,19 @@ echo "The proxy has started successfully and is ready for new connections!" >&2
 while true; do sleep 1; done
 "#;
 
+    /// Le même, mais qui écrit sur la **sortie standard** — comme le vrai proxy.
+    ///
+    /// **C'est le décor du défaut du 24 août 2026.** Le faux binaire d'origine écrivait sur
+    /// la sortie d'erreur, comme les commentaires de `06g` l'affirmaient ; le vrai proxy v2
+    /// écrit son journal courant sur stdout et ne réserve stderr qu'à son erreur terminale.
+    /// Tous les tests passaient donc pendant qu'aucune connexion réelle ne pouvait aboutir.
+    const HEUREUX_SUR_STDOUT: &str = r#"#!/bin/sh
+echo "Authorizing with Application Default Credentials"
+echo "[$1] Listening on 127.0.0.1:$3"
+echo "The proxy has started successfully and is ready for new connections!"
+while true; do sleep 1; done
+"#;
+
     fn configuration() -> ProxyCloudSql {
         ProxyCloudSql {
             instance_connection_name: "acme:europe-west1:analytics".into(),
@@ -374,6 +492,51 @@ while true; do sleep 1; done
 
         assert_ne!(proxy.port_local(), 0);
         assert_eq!(proxy.etat(), EtatProxy::Vivant);
+        proxy.fermer().await;
+    }
+
+    #[tokio::test]
+    async fn un_proxy_qui_parle_sur_la_sortie_standard_est_entendu() {
+        // **Le test qui manquait.** Sans lui, jeter stdout laissait la suite verte et la
+        // première connexion réelle expirait au bout de 20 s, sur un proxy qui marchait et
+        // dont on affirmait qu'il « n'avait rien écrit ».
+        let binaire = faux_binaire("stdout", HEUREUX_SUR_STDOUT);
+        let proxy = CloudSqlProxy::ouvrir_avec(&binaire, &configuration(), None)
+            .await
+            .expect("un proxy qui annonce sur stdout doit être entendu");
+
+        assert_eq!(proxy.etat(), EtatProxy::Vivant);
+        assert!(
+            proxy.journal().contains("Authorizing"),
+            "{}",
+            proxy.journal()
+        );
+        proxy.fermer().await;
+    }
+
+    #[tokio::test]
+    async fn les_deux_sorties_arrivent_dans_le_journal() {
+        // Le vrai proxy sépare les deux : le journal courant sur stdout, l'erreur terminale
+        // sur stderr. Un diagnostic qui n'aurait que l'une des deux serait à moitié aveugle.
+        let bavard = faux_binaire(
+            "bavard",
+            r#"#!/bin/sh
+echo "sur la sortie standard"
+echo "sur la sortie d erreur" >&2
+echo "ready for new connections"
+while true; do sleep 1; done
+"#,
+        );
+        let proxy = CloudSqlProxy::ouvrir_avec(&bavard, &configuration(), None)
+            .await
+            .expect("ouverture");
+        // Laisser les deux lecteurs se rejoindre : l'ordre entre les flux n'est pas garanti,
+        // donc la ligne de stderr peut arriver après celle qui a débloqué l'attente.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        let journal = proxy.journal();
+        assert!(journal.contains("sur la sortie standard"), "{journal}");
+        assert!(journal.contains("sur la sortie d erreur"), "{journal}");
         proxy.fermer().await;
     }
 
@@ -489,7 +652,9 @@ exit 2
             "{:?}",
             proxy.etat()
         );
-        let qualifiee = proxy.qualifier(EngineError::local("connection refused"));
+        let qualifiee = proxy
+            .qualifier(EngineError::local("connection refused"))
+            .await;
         // Le sujet vient de la constante que la production emploie ; que son contenu nomme
         // bien Cloud SQL est vérifié dans `engine/proxy.rs`, comme pour le tunnel.
         assert!(qualifiee.message.contains(SUJET), "{qualifiee}");
@@ -501,6 +666,65 @@ exit 2
             "{}",
             proxy.journal()
         );
+        proxy.fermer().await;
+    }
+
+    #[tokio::test]
+    async fn un_proxy_vivant_qui_a_refuse_la_connexion_joint_ce_qu_il_a_dit() {
+        // **Le second défaut du 24 août 2026.** Le proxy v2 ne compose avec l'instance qu'à la
+        // première connexion : un nom faux, un projet inexistant ou un droit manquant le
+        // laissent annoncer « prêt », puis échouer **en restant vivant**. `qualifier` ne
+        // voyait donc qu'un proxy en bonne santé, et laissait remonter l'erreur PostgreSQL
+        // brute — « connection reset », qui n'apprend rien.
+        let refusant = faux_binaire(
+            "refusant",
+            r#"#!/bin/sh
+echo "[$1] Listening on 127.0.0.1:$3"
+echo "The proxy has started successfully and is ready for new connections!"
+sleep 0.2
+echo "[$1] failed to connect to instance: googleapi: Error 400: Project specified in the request is invalid., errorInvalidProject"
+while true; do sleep 1; done
+"#,
+        );
+        let proxy = CloudSqlProxy::ouvrir_avec(&refusant, &configuration(), None)
+            .await
+            .expect("ouverture");
+
+        let qualifiee = proxy
+            .qualifier(EngineError::local("connection reset by peer"))
+            .await;
+
+        // Le proxy est **vivant** : ce n'est pas la qualification « est tombé » d'`06e`.
+        assert_eq!(proxy.etat(), EtatProxy::Vivant);
+        // L'erreur observée reste lisible — ajouter, jamais substituer.
+        assert!(
+            qualifiee.message.contains("connection reset"),
+            "{qualifiee}"
+        );
+        // Et ce que le proxy a dit s'y joint, avec ce qui l'a fait échouer.
+        assert!(
+            qualifiee.message.contains("errorInvalidProject"),
+            "{qualifiee}"
+        );
+        proxy.fermer().await;
+    }
+
+    #[tokio::test]
+    async fn un_proxy_qui_n_a_rien_a_dire_laisse_l_erreur_intacte() {
+        // La fenêtre d'explication ne doit pas transformer un échec ordinaire — base
+        // inexistante, mot de passe faux — en un message qui accuse le proxy.
+        let binaire = faux_binaire("muet-mais-vivant", HEUREUX_SUR_STDOUT);
+        let proxy = CloudSqlProxy::ouvrir_avec(&binaire, &configuration(), None)
+            .await
+            .expect("ouverture");
+
+        let erreur = EngineError::from_engine("28P01", "password authentication failed");
+        let qualifiee = proxy.qualifier(erreur.clone()).await;
+
+        assert_eq!(qualifiee.message, erreur.message);
+        // Le code SQLSTATE survit aussi : le reconstruire en `local` le perdrait, et `A3`
+        // s'en sert.
+        assert_eq!(qualifiee.code, erreur.code);
         proxy.fermer().await;
     }
 

@@ -49,6 +49,21 @@ impl Journal {
         }
     }
 
+    /// Les lignes qui disent un échec, s'il y en a.
+    ///
+    /// Séparé de `dernieres` : un échec de connexion se qualifie avec **ce qui a échoué**, pas
+    /// avec les vingt dernières lignes, dont les trois du démarrage qui ont réussi.
+    pub fn echecs(&self) -> Vec<String> {
+        let Ok(lignes) = self.lignes.lock() else {
+            return Vec::new();
+        };
+        lignes
+            .iter()
+            .filter(|ligne| super::sortie::est_un_echec(ligne))
+            .cloned()
+            .collect()
+    }
+
     fn corps(&self) -> String {
         let Ok(lignes) = self.lignes.lock() else {
             return "journal du proxy illisible".to_owned();

@@ -88,7 +88,7 @@ impl MongoAdapter {
             // La qualification de `06e` : sans elle, un bastion tombé produit un « connection
             // refused » sur `127.0.0.1`, qui envoie chercher un problème de MongoDB.
             Err(erreur) => Err(match &proxy {
-                Some(p) => p.qualifier(erreur),
+                Some(p) => p.qualifier(erreur).await,
                 None => erreur,
             }),
         }

@@ -1,6 +1,11 @@
 //! Lecture des lignes écrites par `cloud-sql-proxy`. Voir `specs/06g` § « Attendre
 //! “ready for new connections” ».
 //!
+//! **Sur quelle sortie.** Le proxy v2 écrit son journal courant — dont les deux lignes
+//! ci-dessous — sur la **sortie standard**, et réserve la sortie d'erreur à sa ligne d'erreur
+//! terminale. `mod.rs` lit donc les deux ; ces fonctions ne savent pas d'où vient la ligne, et
+//! n'ont pas à le savoir.
+//!
 //! **Deux fonctions et rien de plus.** Le format des journaux du proxy n'est pas un contrat
 //! stable de Google, et ces deux repères sont les seuls dont on dépende. Les isoler ici
 //! rend visible ce qui casserait si le format changeait, et limite la réparation à un
@@ -24,6 +29,23 @@ pub fn port_annonce(ligne: &str) -> Option<u16> {
 /// texte exact a déjà changé entre versions majeures du proxy.
 pub fn est_pret(ligne: &str) -> bool {
     ligne.contains("ready for new connections")
+}
+
+/// La ligne dit-elle un échec ?
+///
+/// **Pourquoi ce troisième repère** (24 août 2026). Le proxy v2 **ne compose pas** avec
+/// l'instance au démarrage : il annonce être prêt, et ne découvre qu'à la première connexion
+/// qu'un nom d'instance est faux, qu'un projet n'existe pas, ou qu'un compte n'a pas le droit.
+/// Il l'écrit alors dans son journal **et reste vivant** — donc `qualifier` ne voyait qu'un
+/// proxy en bonne santé et laissait remonter l'erreur PostgreSQL brute, qui ne dit rien de
+/// tout cela.
+///
+/// Volontairement large : il vaut mieux joindre une ligne de trop au diagnostic qu'en oublier
+/// une. Ce que cette fonction décide n'est pas « c'est grave », mais « ça mérite d'être montré
+/// à quelqu'un qui cherche pourquoi sa connexion échoue ».
+pub fn est_un_echec(ligne: &str) -> bool {
+    let bas = ligne.to_lowercase();
+    bas.contains("error") || bas.contains("failed") || bas.contains("unable to")
 }
 
 #[cfg(test)]
@@ -59,6 +81,27 @@ mod tests {
         // Une adresse sans numéro lisible ne doit pas produire un port par défaut : mieux
         // vaut ne rien savoir que croire savoir.
         assert_eq!(port_annonce("Listening on 127.0.0.1:pas-un-port"), None);
+    }
+
+    /// Les lignes que le proxy écrit quand la connexion arrive et que l'instance est fausse,
+    /// relevées le 24 août 2026 en le lançant contre un projet inexistant.
+    const ECHECS_REELS: [&str; 2] = [
+        "2026/08/24 09:53:55 [pas-un-projet:europe-west1:inst] failed to connect to instance: \
+         failed to get instance: refresh error: failed to get instance metadata: googleapi: \
+         Error 400: Project specified in the request is invalid., errorInvalidProject",
+        "2026/08/24 09:53:52 The proxy has encountered a terminal error: unable to start",
+    ];
+
+    #[test]
+    fn les_lignes_d_echec_sont_reconnues_et_les_autres_non() {
+        for ligne in ECHECS_REELS {
+            assert!(est_un_echec(ligne), "{ligne}");
+        }
+        // Le journal courant ne doit pas être pris pour un échec, sinon toute connexion
+        // qualifiée traînerait trois lignes sans intérêt.
+        for ligne in REELLES {
+            assert!(!est_un_echec(ligne), "{ligne}");
+        }
     }
 
     #[test]

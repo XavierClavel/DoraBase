@@ -1123,3 +1123,50 @@ mise en page sans écrire la mesure qui le tient revient à changer du CSS en es
    qui partent), et le décor court « PostgreSQL 17.6 » laissait assez de marge pour que rien ne se
    produise. C'est le n° 102 sous une forme nouvelle : **mettre le décor dans l'état où seule la
    règle peut sauver la mesure**, et vérifier que la mesure rougit quand on retire la règle.
+
+109. **Le proxy parlait, personne n'écoutait.** Signalé le 24 août 2026, à la **première connexion
+   Cloud SQL réelle** : « le proxy cloud-sql-proxy n'a pas annoncé être prêt dans le délai de 20 s
+   — ce qu'il a écrit : le proxy n'a rien écrit ». Le proxy tournait pourtant, et servait.
+
+   `06g` avait posé, en commentaire et en toutes lettres, que « le proxy écrit ses journaux sur la
+   sortie d'erreur, y compris la ligne de disponibilité. C'est notre seul canal » — et le code
+   jetait `stdout`. C'est **l'inverse** : `cloud-sql-proxy` v2 écrit son journal courant sur la
+   **sortie standard** — « Authorizing… », « Listening on… », « ready for new connections » — et ne
+   réserve à la sortie d'erreur que sa ligne d'erreur terminale. L'application n'entendait donc le
+   proxy que lorsqu'il mourait.
+
+   **Pourquoi la suite de tests était verte** : les faux binaires de `06g` écrivent avec `>&2`,
+   parce qu'ils ont été écrits d'après le commentaire. Ils vérifiaient donc que le code lit ce
+   qu'on lui envoie là où il regarde. La vérification manuelle qui aurait dû trancher — lancer le
+   vrai binaire et regarder — avait bien été faite, mais avec `2>&1`, qui fusionne les deux flux et
+   efface précisément la distinction en cause.
+
+   **La règle** : quand un test simule une interface externe, ce que le double émet doit venir
+   d'une **observation** de l'original, pas de ce que le code attend. Et une observation qui fusionne
+   deux canaux ne dit rien de leur séparation — `2>&1` était le confort qui a coûté la panne.
+
+   **Ce qui l'a attrapé** : l'usage réel, puis deux exécutions du vrai binaire, l'une jetant `stdout`
+   et l'autre `stderr`. Correction : les deux sorties sont lues et versées dans un même canal. Deux
+   tests neufs, dont un faux binaire qui n'écrit **que** sur `stdout` — celui qui manquait.
+
+110. **Un proxy en bonne santé qui refusait toutes les connexions.** Trouvé dans la foulée du n° 109,
+   en cherchant ce que l'utilisateur verrait ensuite. `cloud-sql-proxy` v2 **ne compose pas** avec
+   l'instance au démarrage : il annonce être prêt, écoute, et ne découvre qu'à la **première
+   connexion** qu'un nom d'instance est faux, qu'un projet n'existe pas ou qu'un compte n'a pas le
+   droit. Il l'écrit alors dans son journal, **et reste vivant**.
+
+   Or `qualifier` ne distinguait que deux états : proxy tombé — message d'`06e` — ou proxy vivant,
+   auquel cas l'erreur PostgreSQL remontait brute. Un nom d'instance mal saisi produisait donc une
+   erreur de socket qui envoyait chercher un problème de base de données, alors que l'explication
+   exacte — « Error 400: Project specified in the request is invalid » — venait d'être écrite une
+   milliseconde plus tôt.
+
+   **La difficulté réelle** est le « une milliseconde plus tôt » : l'explication est écrite au moment
+   du refus, pas avant. `qualifier` est donc devenu asynchrone et laisse au proxy une fenêtre de
+   300 ms, qu'il quitte dès que quelque chose apparaît. C'est la seule dépense de ce genre du projet,
+   et elle est bornée des deux côtés.
+
+   **Ce qui l'a attrapé** : le vrai binaire, lancé contre un projet inexistant, avec un `nc` pour
+   provoquer la connexion — la seule manière de voir une erreur qui n'existe pas tant que personne
+   ne se connecte.
+
