@@ -32,7 +32,7 @@ pnpm tauri dev
 | --- | --- | --- | --- |
 | 1 | ~~Tester la connexion~~ | **Fait le 10 août** : le pont répond, la connexion aboutit | `08d` |
 | 2 | ~~« Parcourir… » du panneau tunnel~~ | **Fait le 10 août** : le sélecteur natif s'ouvre et le chemin arrive dans le champ | `08c` |
-| 2b | Basculer « Type » sur « Cloud SQL », cliquer « Parcourir… », puis annuler | Le sélecteur s'ouvre sur un filtre `.json` ; le chemin choisi arrive dans « Compte de service », et une annulation ne l'efface pas. Le visage SSH est vérifié depuis le 10 août (ligne 2), celui-ci ne l'est pas — c'est un **second** appel, avec son propre filtre | `08k` |
+| ~~2b~~ | ~~Basculer « Type » sur « Cloud SQL », cliquer « Parcourir… »~~ | **Sans objet depuis le 24 août 2026** : `06j` a retiré le champ « Compte de service », son bouton et son sélecteur. Il n'y a plus de second appel au sélecteur natif, donc plus rien à observer ici — le seul restant est celui de la clé SSH, vérifié depuis le 10 août (ligne 2) | `06j` |
 | 3 | ~~Enregistrer une base, quitter, relancer~~ | **Fait le 10 août** : le projet et sa base survivent au redémarrage | `09b` |
 | 4 | Cliquer la pastille projet de la barre de titre | **Défaut trouvé le 10 août** : la fenêtre ne bougeait pas, mais le menu ne paraissait pas — un `overflow: hidden` de la barre le découpait (`DEFAUTS.md` n° 35). Corrigé ; **à reprendre** pour confirmer que le menu s'ouvre dans l'application | `09c` |
 | 5 | ~~« Copier la ligne en INSERT », puis coller~~ | **Fait le 10 août** : le SQL arrive dans le presse-papiers | `10f` |
@@ -173,6 +173,12 @@ le Cloud SQL Auth Proxy, et `A2` sait le saisir. Deux réserves, plus bas.
 l'authentification réemploie ce que `gcloud auth application-default login` a déjà écrit. Reste une
 seule dépendance externe, pour un unique login : le SDK `gcloud`.
 
+**Et une seule voie d'authentification** (`06j`, 24 août 2026) : le champ « Compte de service » a
+été retiré de `A2`, `credentialsFilePath` du modèle, `--credentials-file` de la ligne de commande
+du proxy, et un cran de migration **v3 → v4** retire la clé des fichiers existants. Un compte de
+service reste possible par `GOOGLE_APPLICATION_CREDENTIALS`, que le proxy lit tout seul : le champ
+est fermé, pas la voie. **`VERSION_COURANTE` vaut donc 4.**
+
 **Quatre moteurs répondent** : PostgreSQL (`06`), MongoDB (`18`), SQLite (`17`) et MySQL (`16`).
 Les trois specs de moteur restantes sont **écrites**, et aucune n'attend du code :
 
@@ -211,6 +217,7 @@ couvre, et les deux manquants n'attendent qu'un compte.
 | `24a`–`24d` | **le parcours de création en deux étapes** — projet, bande de progression, enchaînement, deux gestes | **fait** |
 | `05d`, `06g`, `08k` | **le support Cloud SQL** — le proxy en énumération à données et sa migration v2 → v3, le pilotage de `cloud-sql-proxy`, le panneau de `A2` à deux visages | **fait** (deux réserves plus bas) |
 | `06h`, `06i` | **le proxy livré avec l'app** — binaire embarqué à empreinte vérifiée, et l'authentification par les identifiants du CLI `gcloud` | **fait** (bundle ouvert depuis le Finder et notarisation : à observer) |
+| `06j` | **une seule voie d'authentification** — le champ « Compte de service » retiré, et la migration v3 → v4 | **fait** |
 | `19a` | Redis — **n'entre pas dans le contrat**, et pourquoi | écrite, conclusion négative |
 | `20`, `21` | Snowflake, BigQuery — **aucun décor de test** | écrites, bloquées |
 
@@ -350,6 +357,19 @@ gcloud »**. `gcloud auth login` et `gcloud auth application-default login` se r
 toutes deux un navigateur, et seule la seconde écrit le fichier que les bibliothèques clientes
 lisent. Un message doit porter la ligne à copier, et dire que l'autre ne suffit pas.
 
+**Le compte de service ne se saisit plus** (`06j`, 24 août 2026). Deux voies d'authentification
+obligeaient à choisir laquelle explique un échec, et la voie saisie était la moins employée des
+trois — tout en étant la seule à devoir être persistée, migrée, projetée en TypeScript, et traduite
+entre `''` et `null`. Un champ qui coûte cela doit gagner sa place ; celui-là ne la gagnait pas.
+`GOOGLE_APPLICATION_CREDENTIALS` reste lue par le proxy sans qu'on la lui passe, donc une machine
+sans `gcloud` garde un chemin : **le champ est fermé, pas la voie**.
+
+**Le mot de passe reste nécessaire en Cloud SQL**, et ce n'est pas un oubli. Le proxy authentifie
+auprès de l'**instance** — IAM, certificat éphémère — pas auprès de PostgreSQL : une fois le tunnel
+ouvert, c'est une connexion ordinaire sur `127.0.0.1`, avec son rôle et son mot de passe. Ce qui
+rendrait le champ inutile est `--auto-iam-authn`, où le jeton IAM *sert* de mot de passe — hors
+périmètre depuis `06g`, et qui **ajouterait** un champ à `A2`.
+
 **Une seule identité pour une connexion** : `projet/base/environnement`. C'est à la fois la clé
 du registre (`09b`) et la référence du secret (`08e`). Deux conventions divergeraient.
 
@@ -408,6 +428,12 @@ sa conversion. Le cran v2 → v3 n'est pas de ce genre : c'est une réécriture 
 **Le nouveau déclencheur** : à la **prochaine** migration qui demande un `mod vN` de types dédiés.
 Ce jour-là, deux d'entre eux cohabiteront dans `store.rs`, et c'est cette cohabitation — pas le
 compte de lignes — qui justifie le fichier séparé.
+
+**La v4 est arrivée le 24 août 2026 (`06j`) et ne le déclenche pas non plus** : c'est encore une
+passe sur du `serde_json::Value`, une vingtaine de lignes, sans type d'ancienne forme à maintenir.
+Le déclencheur tient donc toujours, et il commence à mériter d'être relu : deux crans de suite l'ont
+manqué pour la même raison, ce qui dit surtout que les migrations de ce projet sont structurelles et
+non typées.
 
 ## 5. Huit règles tirées des défauts rencontrés
 
@@ -676,7 +702,8 @@ Deux réserves restent, toutes deux hors d'atteinte depuis ici :
   `DORABASE_TEST_CLOUDSQL_INSTANCE`, `_DATABASE`, `_USER`, plus `_PASSWORD` ou `_CREDENTIALS`. Ce
   qui reste inconnu est ce que seul le vrai binaire peut apprendre : la forme exacte de ses lignes
   de journal, et le comportement de ses codes de sortie.
-- **Le sélecteur de fichier natif du champ « Compte de service »** — vérification 2b du § 0.
+- ~~Le sélecteur de fichier natif du champ « Compte de service »~~ — **sans objet** : `06j` a
+  retiré le champ le 24 août 2026.
 
 **`06h` et `06i` ont retiré la principale friction** (21 août 2026) : plus rien à installer sauf
 `gcloud`, et trois échecs d'authentification qui portent leur réparation. Deux réserves, elles aussi

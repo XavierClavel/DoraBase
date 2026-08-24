@@ -19,6 +19,8 @@ libellé qui explique son vide).
 - Un contrôle **avant** de lancer le proxy quand il n'y a aucun identifiant à trouver.
 - Trois échecs d'authentification distincts, chacun portant sa réparation.
 - Un libellé : celui d'`08k` sous « Compte de service » cite désormais la commande exacte.
+  **Le champ a été retiré depuis** (`06j`, 24 août 2026) : la phrase reste, seule, et le
+  contrôle préalable ne compte plus que deux sources au lieu de trois.
 
 ## Hors périmètre
 

@@ -204,13 +204,15 @@ pub struct ProxySsh {
 pub struct ProxyCloudSql {
     /// `projet:région:instance`, la forme exigée par le proxy. **Non validée ici** :
     /// `06g` refuse à l'ouverture, avec le message du proxy lui-même.
-    pub instance_connection_name: String,
-    /// `None` signifie **« identifiants par défaut de l'application »** — le cas courant,
-    /// quand l'utilisateur a fait `gcloud auth application-default login`. Ce n'est pas un
-    /// champ oublié, et le nommer ainsi évite qu'un lecteur le prenne pour tel.
     ///
-    /// Un **chemin**, donc pas un secret : même raison que la clé privée SSH.
-    pub credentials_file_path: Option<String>,
+    /// **Un seul champ, et c'est délibéré** (`06j`, 24 août 2026). Un `credentials_file_path`
+    /// a existé ici jusqu'à la v3 du fichier de configuration. Il a été retiré parce que
+    /// l'authentification passe désormais par les identifiants par défaut de l'application
+    /// (`06i`) : un chemin de compte de service reste possible par la variable
+    /// `GOOGLE_APPLICATION_CREDENTIALS`, que le proxy lit tout seul, et qui ne coûte ni un
+    /// champ dans `A2`, ni une valeur à persister. Le cran de migration v3 → v4 retire la
+    /// clé des fichiers existants.
+    pub instance_connection_name: String,
 }
 
 /// Ce qui **diffère** entre les deux sortes de proxy.
@@ -911,7 +913,6 @@ mod tests {
             local_port: Some(5433),
             proxy: Proxy::CloudSql(ProxyCloudSql {
                 instance_connection_name: "acme-prod:europe-west1:analytics".into(),
-                credentials_file_path: None,
             }),
         };
 
@@ -921,9 +922,15 @@ mod tests {
             json["proxy"]["instanceConnectionName"],
             "acme-prod:europe-west1:analytics"
         );
-        // `None` signifie « identifiants par défaut de l'application » : une valeur, pas un
-        // trou. Elle doit donc traverser explicitement, et non disparaître.
-        assert!(json["proxy"]["credentialsFilePath"].is_null());
+        // Et **rien d'autre** : l'instance et l'étiquette. Un champ de compte de service a
+        // existé ici jusqu'à la v3 (`06j`) ; le voir réapparaître voudrait dire qu'on a
+        // rouvert une voie d'authentification que `06i` a fermée.
+        assert_eq!(
+            json["proxy"].as_object().expect("objet").len(),
+            2,
+            "{}",
+            json["proxy"]
+        );
         assert_eq!(json["localPort"], 5433);
     }
 
@@ -940,7 +947,6 @@ mod tests {
             }),
             Proxy::CloudSql(ProxyCloudSql {
                 instance_connection_name: "p:r:i".into(),
-                credentials_file_path: Some("/sa.json".into()),
             }),
         ] {
             let tunnel = Tunnel {

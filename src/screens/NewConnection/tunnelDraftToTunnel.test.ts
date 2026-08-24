@@ -35,23 +35,20 @@ test('un brouillon Cloud SQL se convertit en proxy cloud-sql', () => {
     proxy: {
       kind: 'cloud-sql',
       instanceConnectionName: 'acme:europe-west1:analytics',
-      credentialsFilePath: '/Users/dora/sa.json',
     },
   })
 
+  // **Rien de plus que l'instance et l'étiquette** (`06j`). Un `credentialsFilePath` était
+  // converti ici — `''` devenait `null` —, et cette traduction a disparu avec le champ : un
+  // brouillon Cloud SQL et le proxy qu'il produit portent désormais les mêmes clés.
   expect(tunnel?.proxy).toEqual({
     kind: 'cloud-sql',
     instanceConnectionName: 'acme:europe-west1:analytics',
-    credentialsFilePath: '/Users/dora/sa.json',
   })
-})
-
-test('un compte de service vide devient null, et non une chaîne vide', () => {
-  // `05d` : `None` signifie « identifiants par défaut de l'application ». Envoyer `""` ferait
-  // passer `--credentials-file ""` au proxy, qui échouerait — là où l'absence d'option est le
-  // cas courant et celui qui marche.
-  const tunnel = tunnelDraftToTunnel(emptyTunnel('cloud-sql'))
-  expect(tunnel?.proxy).toMatchObject({ kind: 'cloud-sql', credentialsFilePath: null })
+  expect(Object.keys(tunnelDraftToTunnel(emptyTunnel('cloud-sql'))?.proxy ?? {}).sort()).toEqual([
+    'instanceConnectionName',
+    'kind',
+  ])
 })
 
 test('un port de bastion illisible devient 0 plutôt que NaN', () => {

@@ -550,9 +550,6 @@ mod tests {
             local_port: None,
             proxy: Proxy::CloudSql(ProxyCloudSql {
                 instance_connection_name: instance,
-                // `None` signifie « identifiants par défaut de l'application ». Le fichier de
-                // compte de service s'exerce en posant `DORABASE_TEST_CLOUDSQL_CREDENTIALS`.
-                credentials_file_path: std::env::var("DORABASE_TEST_CLOUDSQL_CREDENTIALS").ok(),
             }),
         });
 
@@ -610,7 +607,6 @@ mod tests {
             local_port: None,
             proxy: Proxy::CloudSql(ProxyCloudSql {
                 instance_connection_name: "p:r:i".into(),
-                credentials_file_path: None,
             }),
         });
 
