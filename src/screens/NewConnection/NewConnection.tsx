@@ -420,13 +420,11 @@ export function NewConnection({
         <Stepper etapes={[{ libelle: 'PROJET' }, { libelle: 'CONNEXION' }]} courante={1} />
       )}
       <EngineSelector value={draft.engine} onValueChange={(engine) => patch({ engine })} />
-      <ConnectionForm
-        draft={draft}
-        onChange={patch}
-        projects={projects}
-        verrouille={!!edition}
-        projetImpose={projetImpose}
-      />
+      {/* **Le panneau passe avant le formulaire** (24 août 2026, à la demande). L'ordre dit
+          quelque chose : par où l'on joint la base se décide avant ce qu'on y saisit, parce
+          que ce choix **change** les champs qui suivent — avec un proxy Cloud SQL, l'hôte
+          n'est pas saisi, le port vaut « auto » et le mot de passe ne sert pas. Le mettre en
+          dernier faisait remplir des champs qu'on découvrait ensuite inutiles. */}
       <TunnelPanel
         tunnel={draft.tunnel}
         kind={draft.tunnel?.proxy.kind ?? sorteProxy}
@@ -435,6 +433,13 @@ export function NewConnection({
         open={tunnelOuvert}
         onOpenChange={setTunnelOuvert}
         onBrowseKey={onBrowseKey}
+      />
+      <ConnectionForm
+        draft={draft}
+        onChange={patch}
+        projects={projects}
+        verrouille={!!edition}
+        projetImpose={projetImpose}
       />
 
       {echecOuvert && test.phase === 'echoue' && (

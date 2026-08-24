@@ -271,6 +271,10 @@ test('tout le formulaire est atteignable au clavier', async () => {
   monter([{ id: 'print', name: 'Atelier Nord', environments: TRIO_DE_TEST }])
   const attendus = [
     'PostgreSQL', // groupe de moteurs : une seule entrée
+    // **Le panneau proxy / tunnel vient en deuxième** (24 août 2026) : il précède désormais le
+    // formulaire, parce que le choix du proxy change les champs qui suivent. Son en-tête est un
+    // bouton, donc il entre dans l'ordre de tabulation avant « Nom de la base ».
+    'Proxy / tunnel',
     'Nom de la base',
     'Projet',
     'dev', // groupe d'environnements : une seule entrée
@@ -309,9 +313,25 @@ test('tout le formulaire est atteignable au clavier', async () => {
     return copie.textContent?.trim() ?? null
   }
 
+  /**
+   * Le nom d'un contrôle qui **porte son nom dans son contenu**, comme l'en-tête du panneau
+   * proxy / tunnel.
+   *
+   * En dernier recours, et c'est important : un `<button role="radio">` du sélecteur de moteur
+   * a une étiquette *et* un contenu, et prendre le contenu d'abord rendrait « PgPostgreSQL ».
+   */
+  function nomOuContenu(element: Element | null): string | null {
+    const nom = nomAccessible(element)
+    if (nom) return nom
+    if (element?.tagName !== 'BUTTON') return null
+    const copie = element.cloneNode(true) as HTMLElement
+    for (const masque of copie.querySelectorAll('[aria-hidden="true"]')) masque.remove()
+    return copie.textContent?.trim() || null
+  }
+
   const atteints: string[] = []
   for (let i = 0; i < attendus.length; i++) {
-    const nom = nomAccessible(document.activeElement)
+    const nom = nomOuContenu(document.activeElement)
     if (nom) atteints.push(nom)
     await userEvent.tab()
   }

@@ -60,6 +60,10 @@ le panneau le rend visible : la seule partie qui ne bouge pas est la seule qui e
 
 ### Le champ « Compte de service » dit ce que le vide signifie
 
+> **Le panneau a changé de place et de contenu le 24 août 2026** : il précède désormais le
+> formulaire, son « Port local mappé » a été retiré, et son visage Cloud SQL n'a plus qu'un
+> champ. Voir `06j` et `06k`, qui portent les raisons.
+
 > **Retiré par `06j`** (24 août 2026). Ce qui suit reste écrit parce qu'il explique un choix
 > qui a tenu quatre jours, et pourquoi il ne tenait pas : le vide était bien une valeur, mais
 > une valeur qu'il fallait persister, migrer, projeter et traduire entre `''` et `null` — pour

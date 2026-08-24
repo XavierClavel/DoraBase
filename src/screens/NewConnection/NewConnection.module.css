@@ -207,11 +207,14 @@
   gap: 10px;
 }
 
-/* Rangée pleine largeur : clé privée puis port local mappé. */
+/* Rangée pleine largeur : la clé privée, ou la phrase d'authentification du visage Cloud SQL.
+ * Une seule colonne depuis le 24 août 2026 : le « Port local mappé » qui occupait les 220 px
+ * de droite a été retiré du panneau — le port est choisi par l'application, et le formulaire
+ * l'annonce désormais à sa place, dans le champ « Port ». */
 .tunnelKeyRow {
   display: grid;
   grid-column: 1 / -1;
-  grid-template-columns: 1fr 220px;
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 

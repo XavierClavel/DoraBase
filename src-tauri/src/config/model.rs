@@ -212,19 +212,13 @@ pub struct ProxyCloudSql {
     /// `GOOGLE_APPLICATION_CREDENTIALS`, que le proxy lit tout seul, et qui ne coûte ni un
     /// champ dans `A2`, ni une valeur à persister. Le cran de migration v3 → v4 retire la
     /// clé des fichiers existants.
+    ///
+    /// **Et toujours un seul** (`06k`, 24 août 2026). L'authentification IAM de base de
+    /// données a d'abord été un booléen ici, puis une bascule dans `A2` ; les deux sont
+    /// partis le jour même, sur décision : le mode est **toujours** actif. Un booléen dont
+    /// la seule valeur possible est celle que le code applique de toute façon ne décrit rien
+    /// — il donne seulement l'occasion de diverger.
     pub instance_connection_name: String,
-    /// L'authentification IAM de base de données (`--auto-iam-authn`, `06k`).
-    ///
-    /// Quand elle est active, l'utilisateur de la connexion est un **principal IAM** — une
-    /// adresse — et non un rôle PostgreSQL à mot de passe : le proxy obtient un jeton et le
-    /// présente à sa place. Le champ « Mot de passe » de `A2` ne sert alors à rien.
-    ///
-    /// **`#[serde(default)]`, et donc aucun cran de migration.** Un champ *ajouté* avec une
-    /// valeur par défaut ne perd rien d'un fichier plus ancien — au contraire du champ
-    /// *retiré* par `06j`, qui exigeait une sauvegarde avant de disparaître. `false` est la
-    /// bonne valeur pour une connexion écrite avant ce scope : elle n'utilisait pas IAM.
-    #[serde(default)]
-    pub auto_iam_authn: bool,
 }
 
 /// Ce qui **diffère** entre les deux sortes de proxy.
@@ -925,7 +919,6 @@ mod tests {
             local_port: Some(5433),
             proxy: Proxy::CloudSql(ProxyCloudSql {
                 instance_connection_name: "acme-prod:europe-west1:analytics".into(),
-                auto_iam_authn: false,
             }),
         };
 
@@ -940,11 +933,10 @@ mod tests {
         // rouvert une voie d'authentification que `06i` a fermée.
         assert_eq!(
             json["proxy"].as_object().expect("objet").len(),
-            3,
+            2,
             "{}",
             json["proxy"]
         );
-        assert_eq!(json["proxy"]["autoIamAuthn"], false);
         assert_eq!(json["localPort"], 5433);
     }
 
@@ -961,7 +953,6 @@ mod tests {
             }),
             Proxy::CloudSql(ProxyCloudSql {
                 instance_connection_name: "p:r:i".into(),
-                auto_iam_authn: true,
             }),
         ] {
             let tunnel = Tunnel {

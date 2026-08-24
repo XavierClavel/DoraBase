@@ -550,9 +550,6 @@ mod tests {
             local_port: None,
             proxy: Proxy::CloudSql(ProxyCloudSql {
                 instance_connection_name: instance,
-                // Exercé en posant `DORABASE_TEST_CLOUDSQL_IAM` : le décor d'un compte IAM
-                // n'est pas le même que celui d'un rôle à mot de passe.
-                auto_iam_authn: std::env::var("DORABASE_TEST_CLOUDSQL_IAM").is_ok(),
             }),
         });
 
@@ -610,7 +607,6 @@ mod tests {
             local_port: None,
             proxy: Proxy::CloudSql(ProxyCloudSql {
                 instance_connection_name: "p:r:i".into(),
-                auto_iam_authn: false,
             }),
         });
 
