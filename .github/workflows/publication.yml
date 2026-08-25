@@ -68,11 +68,29 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # **Les deux architectures du proxy**, et non celle de la machine : Tauri fusionne les
-      # deux sidecars par `lipo` pour la cible universelle, et il échoue si l'un manque.
-      # Comme dans `ci.yml`, c'est une dépendance de compilation et non une étape de
-      # packaging (défaut n° 111).
+      # **Les deux architectures du proxy, et leur fusion.** Tauri ne fond rien : pour
+      # `--target universal-apple-darwin` il exige un fichier
+      # `cloud-sql-proxy-universal-apple-darwin` déjà universel, et son absence n'apparaît
+      # qu'au *bundling* — donc après cinq minutes de compilation. C'est
+      # `telecharger-proxy.sh --tous` qui appelle `lipo`. Comme dans `ci.yml`, c'est une
+      # dépendance de compilation et non une étape de packaging (défaut n° 111).
       - run: pnpm proxy:embarquer:tous
+
+      # Le même fait, constaté en deux secondes plutôt qu'en cinq minutes. Le script vient de
+      # produire ce fichier et vérifie déjà son contenu ; cette étape existe pour que l'échec
+      # tombe **avant** la compilation, et le message dit quoi lancer.
+      - name: le sidecar universel est là avant de compiler
+        run: |
+          set -euo pipefail
+          universel=src-tauri/binaries/cloud-sql-proxy-universal-apple-darwin
+          if [[ ! -f $universel ]]; then
+            echo "::error::$universel manque — 'pnpm proxy:embarquer:tous' doit le fondre"
+            exit 1
+          fi
+          archs=$(lipo -archs "$universel")
+          echo "$universel : $archs"
+          grep -q arm64 <<<"$archs"
+          grep -q x86_64 <<<"$archs"
 
       # ── Ce qui doit être vrai avant de publier un binaire ──────────────────────────────
       #

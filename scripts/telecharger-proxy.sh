@@ -9,8 +9,8 @@
 #
 # Usage :
 #   scripts/telecharger-proxy.sh           l'architecture de cette machine
-#   scripts/telecharger-proxy.sh --tous    les deux architectures macOS, pour un bundle
-#                                          universel ou une construction croisée
+#   scripts/telecharger-proxy.sh --tous    les deux architectures macOS **et le binaire
+#                                          universel fondu**, pour `--target universal-apple-darwin`
 #   scripts/telecharger-proxy.sh <triplet> un triplet nommé, pour une construction croisée
 #                                          ou pour essayer le chemin d'un autre système
 #
@@ -19,6 +19,12 @@
 # Tauri, donc par `cargo build`, `cargo test` et `cargo clippy` — voir défaut n° 111. Les
 # scripts `pnpm proxy:embarquer` et les `beforeDevCommand`/`beforeBuildCommand` le font ;
 # la CI l'appelle explicitement avant ses étapes Rust.
+#
+# **Tauri ne fusionne pas les sidecars.** Pour `--target universal-apple-darwin`, il exige un
+# fichier nommé `cloud-sql-proxy-universal-apple-darwin`, déjà fondu : les deux binaires par
+# architecture ne lui suffisent pas, et il échoue au *bundling* — donc après cinq minutes de
+# compilation — sur « resource path … doesn't exist ». Constaté en CI le 25 août 2026, sur le
+# premier tag poussé. La fusion est donc le travail de ce script, par `lipo`.
 #
 # Idempotent : un fichier déjà présent et de bonne empreinte n'est pas retéléchargé, ce qui
 # permet de l'appeler avant chaque `tauri dev` sans coût.
@@ -118,6 +124,44 @@ recuperer() {
   echo "cloud-sql-proxy $version ($triplet) : installé et vérifié"
 }
 
+# Le binaire universel, fondu depuis les deux tranches. `lipo` fait partie des outils de
+# ligne de commande d'Xcode, présents sur tout Mac qui compile — et ce chemin n'existe que
+# sur macOS, la cible universelle n'ayant pas de sens ailleurs.
+fondre() {
+  local universel=$destination/cloud-sql-proxy-universal-apple-darwin
+  local arm=$destination/cloud-sql-proxy-aarch64-apple-darwin
+  local intel=$destination/cloud-sql-proxy-x86_64-apple-darwin
+
+  # L'idempotence se vérifie sur le **contenu** des tranches, et non sur la présence du
+  # fichier : un universel laissé par une version antérieure du verrou porterait le bon nom
+  # avec le mauvais binaire, et le bundle l'embarquerait sans rien remarquer.
+  if [[ -f $universel ]]; then
+    local temporaire_arm temporaire_intel
+    temporaire_arm=$(mktemp)
+    temporaire_intel=$(mktemp)
+    if lipo -thin arm64 "$universel" -output "$temporaire_arm" 2>/dev/null \
+      && lipo -thin x86_64 "$universel" -output "$temporaire_intel" 2>/dev/null \
+      && [[ $(empreinte_de "$temporaire_arm") == $(empreinte_de "$arm") ]] \
+      && [[ $(empreinte_de "$temporaire_intel") == $(empreinte_de "$intel") ]]; then
+      rm -f "$temporaire_arm" "$temporaire_intel"
+      echo "cloud-sql-proxy $version (universal-apple-darwin) : déjà fondu et vérifié"
+      return
+    fi
+    rm -f "$temporaire_arm" "$temporaire_intel"
+  fi
+
+  echo "cloud-sql-proxy $version (universal-apple-darwin) : fusion des deux tranches…"
+  lipo -create "$arm" "$intel" -output "$universel"
+  chmod 755 "$universel"
+  # Ce que `lipo` a écrit, et non ce qu'on lui a demandé : une fusion qui ne rend pas les deux
+  # architectures produirait un bundle « universel » qui n'en est pas.
+  local archs
+  archs=$(lipo -archs "$universel")
+  grep -q arm64 <<<"$archs"
+  grep -q x86_64 <<<"$archs"
+  echo "cloud-sql-proxy $version (universal-apple-darwin) : fondu — $archs"
+}
+
 # La version, écrite là où le bundle la copiera. Une seule source — le verrou — pour
 # l'attribution comme pour le code : deux versions annoncées dont une fausse serait pire
 # qu'aucune. Voir `src-tauri/licences/cloud-sql-proxy/ATTRIBUTION.md`.
@@ -126,8 +170,14 @@ inscrire_la_version() {
   printf 'cloud-sql-proxy %s\n' "$version" > "$fichier"
 }
 
-if [[ ${1:-} == --tous ]]; then
+fusionner=false
+
+if [[ ${1:-} == --tous || ${1:-} == universal-apple-darwin ]]; then
+  # Les deux tranches, puis leur fusion. C'est ce que demande `--target
+  # universal-apple-darwin`, et le seul usage de `--tous` : personne ne veut deux binaires par
+  # architecture pour eux-mêmes.
   triplets=(aarch64-apple-darwin x86_64-apple-darwin)
+  fusionner=true
 elif [[ -n ${1:-} ]]; then
   # Un triplet explicite : pour une construction croisée, et pour **essayer** depuis une autre
   # machine le chemin qu'un système donné suivra — c'est ce qui manquait quand la CI Linux a
@@ -142,5 +192,9 @@ fi
 for triplet in "${triplets[@]}"; do
   recuperer "$triplet"
 done
+
+if [[ $fusionner == true ]]; then
+  fondre
+fi
 
 inscrire_la_version
