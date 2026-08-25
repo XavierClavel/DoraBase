@@ -2,7 +2,7 @@
 
 Conventions de travail sur DoraBase, pour les agents comme pour les humains.
 
-**Ce fichier est le seul document du dépôt.** Le 25 août 2026, `REPRISE.md`, `DEFAUTS.md`,
+**Ce fichier est le seul document *interne* du dépôt.** Le 25 août 2026, `REPRISE.md`, `DEFAUTS.md`,
 les 89 specs de `specs/`, les plans de `plans/` et le bundle de handoff `design/handoff/`
 ont été retirés. Ce qui restait de vrai y était soit déjà dans le code, soit repris ici.
 
@@ -10,6 +10,12 @@ ont été retirés. Ce qui restait de vrai y était soit déjà dans le code, so
 Ce fichier ne garde que ce qu'aucun des trois ne peut dire — les intentions, les
 décisions et leurs raisons, les prohibitions, et ce qui reste hors de portée de
 l'outillage.
+
+**`README.md` s'est ajouté le 25 août 2026**, et le partage est net : il s'adresse à qui
+**télécharge ou publie**, ce fichier à qui **écrit du code**. Le README porte donc le lien
+des versions, le geste d'installation et le flux de publication ; les raisons de ces choix
+restent ici. Ce qui vaut pour les deux, c'est qu'aucun des deux ne redit ce que le code dit
+déjà.
 
 **Les numéros que portent les commentaires** — `06d`, `10b`, `25a`… — sont ceux des specs
 retirées. Ils ont été laissés en place : ils nomment le chantier qui a produit une
@@ -224,6 +230,55 @@ sans rien saisir ; un secret enregistré gagne toujours.
 
 **Convention Rust à 4 espaces**, pas de `rustfmt.toml` alignant Rust sur le JS du projet.
 
+### La publication : un tag, et rien d'autre
+
+**Le tag est le déclencheur, le commit ne l'est pas.** `ci.yml` tourne sur chaque push et
+chaque PR ; `publication.yml` ne tourne que sur un tag `vX.Y.Z`, motif **ancré** sur les
+trois nombres. Une release est un geste, pas un effet de bord d'un push — et un motif large
+(`v*`) accepterait `v1.2` ou `v0.1.0-essai`, dont le nom de bundle n'a été décidé par
+personne. Le format de version est fermé pour la même raison : un suffixe de pré-version
+traverserait `Info.plist`, le nom du `.dmg` et le nom du tag sans que quiconque ait tranché
+ce qu'il y devient.
+
+**Le numéro de version vit à trois endroits qui ne se parlent pas** : `package.json` — le
+seul que `tauri.conf.json` lise, donc celui qui finit dans l'`Info.plist` et dans le nom du
+`.dmg` —, `src-tauri/Cargo.toml` et `src-tauri/Cargo.lock`. Rien dans l'outillage ne les
+relie : relevés à la main dans deux fichiers sur trois, ils laissent la CI verte et publient
+un `.dmg` dont le nom contredit son `Info.plist`. D'où `scripts/version.sh`, qui les écrit
+d'un geste, et `scripts/verifier-version.py`, qui refuse la divergence — appelé par
+`verifier-tout.sh`, par la CI, par le script de relèvement sur sa propre sortie, et par le
+workflow de publication **avec le numéro du tag en argument**.
+
+**Le bundle publié est universel.** `--target universal-apple-darwin`, donc les deux
+architectures du proxy (`pnpm proxy:embarquer:tous`) et les deux cibles rustup. Deux fichiers
+séparés obligeraient l'utilisateur à savoir quel Mac il a, question à laquelle un explorateur
+de bases de données n'a pas à faire répondre. Conséquence à ne pas perdre : `lipo` **invalide
+les signatures** des tranches qu'il fusionne, et une étape vérifie que les deux architectures
+sont bien là — une cible mal nommée produirait un bundle mono-architecture au chemin attendu,
+publié sous le nom « universal ».
+
+**`"signingIdentity": "-"` dans `tauri.conf.json`** — signature ad hoc, posée par Tauri
+**avant** la fabrication du `.dmg`, donc au bon moment. JSON n'accepte pas de commentaire :
+la raison est ici. Sans elle, le bundle universel n'est pas signé du tout et macOS le refuse
+sur toute machine autre que celle qui l'a construit — un exécutable **embarqué** non signé le
+fait refuser à coup sûr. Ce n'est pas une notarisation : l'utilisateur garde un geste au
+premier lancement, et le README le dit franchement plutôt que de laisser croire à une
+application cassée.
+
+**Les vérifications rapides sont rejouées dans le job de publication** — sabotage, typecheck,
+lint, Vitest, `cargo test`. Le tag est censé être posé sur un `main` vert, et le script refuse
+de le poser ailleurs ; mais « censé » n'est pas une vérification, et une release est publique.
+Playwright et les tests sur base réelle restent dans `ci.yml` : ils demandent un serveur et
+quatre décors, et ce job n'a pas à les remonter une seconde fois.
+
+**Un artefact de CI n'est pas une version.** Chaque commit rend son `.dmg` en artefact, gardé
+sept jours — sans quoi essayer un commit demandait de le compiler soi-même, alors que
+« est-ce que ça se lance ? » ne se tranche qu'en lançant et que Playwright ne pilote pas
+WKWebView. Il est **mono-architecture** et réservé aux comptes qui ont accès au dépôt. Et
+c'est le `.dmg` seul qui est rendu, pas le `.app` : `upload-artifact` réempaquette dans un zip
+qui perd les bits d'exécution et les liens symboliques du bundle, et un `.app` ainsi
+transporté ne se lance pas. Le `.dmg` est une image opaque, il traverse intact.
+
 **Baloo 2 restreinte au latin, Nunito et JetBrains Mono complètes.** Le critère n'est pas
 « ce sous-ensemble sert-il » mais « cette police rend-elle des données arbitraires ».
 Baloo 2 ne porte que du chrome applicatif. Les polices sont **embarquées**, jamais
@@ -404,6 +459,12 @@ présenter comme vérifiées tant qu'un humain ne les a pas faites :
 - **Construire un bundle, le lancer depuis le Finder** sur une machine où `cloud-sql-proxy`
   n'est pas installé, et ouvrir une connexion Cloud SQL. Seule preuve du sidecar embarqué
   et du `PATH` minimal d'une app graphique.
+- **Télécharger le `.dmg` d'une release depuis un *autre* Mac**, le glisser dans
+  *Applications* et le lancer. C'est la seule preuve du chemin réel : quarantaine posée par le
+  navigateur, signature ad hoc acceptée ou non, et le geste du README exact — le libellé du
+  bouton de *Réglages Système* change d'une version de macOS à l'autre. La CI vérifie que le
+  bundle est signé et universel ; elle ne peut pas vérifier ce que Gatekeeper en fait chez
+  quelqu'un d'autre, la machine qui construit étant celle qui signe.
 - **Régler « Afficher les barres de défilement : toujours »**, puis regarder la sidebar et
   la bande d'onglets. Chromium sans tête rend des barres en survol, qui n'occupent aucune
   place : la mesure vaut 0 avec comme sans la correction.
@@ -506,6 +567,8 @@ pnpm test:e2e       # Playwright, webServer auto
 pnpm typecheck      # tsc -b — le seul qui compile quelque chose
 pnpm lint           # Biome
 pnpm tokens:check   # garde-fou : échoue si tokens.css/ts ont été édités à la main
+./scripts/version.sh correctif|fonction|majeur|X.Y.Z   # relève les 3 fichiers, committe, tag
+                                                       # ne pousse rien ; le README décrit le flux
 pnpm domain:check   # idem pour les projections ts-rs (exige un arbre git propre)
 
 cd src-tauri && cargo test --features db-tests   # avec les décors
@@ -545,10 +608,12 @@ Aucun de ces points ne bloque le code en place.
 - **L'écran de confiance SSH à la première connexion**, aujourd'hui contourné par un refus.
 - **Une variante d'icône simplifiée sous 32 px** : la carte du sac à dos devient un amas de
   pixels. Visible au Dock réduit, en vignette Finder, en barre des menus.
-- **Un Developer ID pour *diffuser*** (Gatekeeper, notarisation). Décision d'achat, à
-  prendre avant la première distribution, pas avant d'écrire du code. **La notarisation
-  avec un binaire embarqué n'est pas vérifiée** — un exécutable embarqué non signé est
-  refusé au lancement sur une machine tierce, et cela ne se voit qu'**après** distribution.
+- **Un Developer ID pour *diffuser*** (Gatekeeper, notarisation). Décision d'achat. La
+  diffusion existe désormais sans lui — `publication.yml` publie un `.dmg` universel signé en
+  **ad hoc**, et le README porte le geste de contournement au premier lancement. Ce que le
+  Developer ID achèterait, c'est la disparition de ce geste : une installation sans mise en
+  garde. **La notarisation avec un binaire embarqué n'est toujours pas vérifiée**, et cela ne
+  se voit qu'**après** distribution.
 - **Le visage Cloud SQL n'a jamais été conçu** : ses champs et ses libellés sont inventés.
   Un nom d'instance est long et prend trois colonnes de la grille, ce qui n'a pas été
   composé.
