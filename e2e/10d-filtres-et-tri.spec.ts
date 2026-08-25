@@ -6,8 +6,8 @@ import { deplierUnEnvironnement } from './pourLesTests'
 test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
   await deplierUnEnvironnement(page)
-  await page.getByRole('treeitem', { name: /analytics/ }).click()
-  await page.getByRole('treeitem', { name: 'public' }).click()
+  await page.getByRole('treeitem', { name: /analytics/ }).dblclick()
+  await page.getByRole('treeitem', { name: 'public' }).dblclick()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()
   await page.waitForSelector('[role=grid]')
   await page.evaluate(() => document.fonts.ready)

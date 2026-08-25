@@ -211,7 +211,7 @@ export function Workbench({
    * le préchauffage l'alimente. Le poser dans l'un des deux l'aurait rendu inaccessible à l'autre.
    */
   const structures = useStructures(passerelleStructures)
-  const { deplies, charge, etatDeBase, basculer, rafraichir } = useArbre(
+  const { deplies, charge, etatDeBase, basculer, charger, rafraichir } = useArbre(
     projects,
     passerelle,
     structures.prechauffer,
@@ -1113,6 +1113,12 @@ export function Workbench({
               selectedId={selection?.id ?? null}
               onSelect={(noeud) => {
                 setSelection(noeud)
+                // **Sélectionner charge ce qu'on va regarder**, le dépliage n'étant plus le geste du
+                // clic : un schéma sélectionné mais jamais déplié montrerait sinon une liste d'objets
+                // vide dans `A4`. Sur une connexion, cela ouvre la connexion — ce que le clic simple
+                // faisait déjà quand il dépliait, et ce qui rend vraie la pastille d'état de sa ligne.
+                // Sans effet sur ce qui est déjà chargé.
+                charger(noeud)
                 // Une **feuille** de l'arbre est un objet : la sélectionner l'ouvre. Un simple
                 // clic suffit, parce qu'une feuille n'a pas d'autre geste — pas de dépliage à
                 // distinguer. Dans la liste du centre, où sélectionner remplit le panneau de

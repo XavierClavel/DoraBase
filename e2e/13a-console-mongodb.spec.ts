@@ -8,11 +8,11 @@ test.beforeEach(async ({ page }) => {
   await deplierUnEnvironnement(page)
   // **La base documentaire du décor.** Le dialecte de la console se dérive de son moteur : c'est ce
   // chemin-là, et pas un réglage, qui ouvre une console mongo (`13a`).
-  await page.getByRole('treeitem', { name: /^evenements/ }).click()
-  await page.getByRole('treeitem', { name: 'atelier_journal' }).click()
+  await page.getByRole('treeitem', { name: /^evenements/ }).dblclick()
+  await page.getByRole('treeitem', { name: 'atelier_journal' }).dblclick()
   // La collection : c'est elle dont la sidebar montre le schéma déduit, et elle reste affichée
   // quand la console prend le centre.
-  await page.getByRole('treeitem', { name: /^evenements .*k/ }).click()
+  await page.getByRole('treeitem', { name: /^evenements .*k/ }).dblclick()
   await ouvrirUneConsole(page, 'evenements')
   await page.waitForSelector('[aria-label="Commande MongoDB"]')
   await page.evaluate(() => document.fonts.ready)
@@ -127,8 +127,8 @@ test('la sidebar dit « Schéma déduit » et affiche les fréquences partielles
 
 test('une console SQL et une console mongo cohabitent dans la même bande', async ({ page }) => {
   // La base PostgreSQL du décor, dans le même projet.
-  await page.getByRole('treeitem', { name: /^analytics/ }).click()
-  await page.getByRole('treeitem', { name: 'public' }).click()
+  await page.getByRole('treeitem', { name: /^analytics/ }).dblclick()
+  await page.getByRole('treeitem', { name: 'public' }).dblclick()
   // **Sur `analytics`, et non sur la base mongo** : c'est une console *SQL* qu'on ajoute ici, et le
   // dialecte suit la connexion depuis laquelle on la crée.
   await ouvrirUneConsole(page, 'analytics')

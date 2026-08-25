@@ -10,7 +10,7 @@ import { deplierUnEnvironnement } from './pourLesTests'
 test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
   await deplierUnEnvironnement(page)
-  await page.getByRole('treeitem', { name: /analytics/ }).click()
+  await page.getByRole('treeitem', { name: /analytics/ }).dblclick()
   await page.evaluate(() => document.fonts.ready)
 })
 

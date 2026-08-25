@@ -161,17 +161,24 @@ function passerelles() {
  * connexion ne produit qu'une ligne de message.
  */
 async function ouvrirLesEnvironnements(utilisateur: ReturnType<typeof userEvent.setup>) {
-  await utilisateur.click(screen.getByRole('treeitem', { name: /Atelier Nord/ }))
+  await utilisateur.dblClick(screen.getByRole('treeitem', { name: /Atelier Nord/ }))
   const environnements = screen
     .getAllByRole('treeitem')
     .filter((ligne) => ligne.getAttribute('aria-level') === '2')
-  for (const ligne of environnements) await utilisateur.click(ligne)
+  for (const ligne of environnements) await utilisateur.dblClick(ligne)
 }
 
+/**
+ * **Le double-clic déplie ; le clic simple ne le fait plus.** Un clic sélectionne, et c'est tout —
+ * sans quoi regarder une connexion refermait le sous-arbre qu'on venait d'ouvrir. Toute chaîne de
+ * dépliage passe donc par `dblClick`, qui **sélectionne aussi** : ses deux clics font leur travail
+ * avant que le second geste ne déplie. Les tests qui attendaient un schéma sélectionné le sont
+ * toujours.
+ */
 async function ouvrirLArbreJusquAuSchema(utilisateur: ReturnType<typeof userEvent.setup>) {
   await ouvrirLesEnvironnements(utilisateur)
-  await utilisateur.click(await screen.findByRole('treeitem', { name: /analytics/ }))
-  await utilisateur.click(await screen.findByRole('treeitem', { name: 'public' }))
+  await utilisateur.dblClick(await screen.findByRole('treeitem', { name: /analytics/ }))
+  await utilisateur.dblClick(await screen.findByRole('treeitem', { name: 'public' }))
 }
 
 /** Une prévisualisation qui répond, pour les tests qui ne portent pas sur elle. */
@@ -347,13 +354,16 @@ describe('Workbench', () => {
   it('un projet, un environnement, une connexion : le centre reste vide', async () => {
     const utilisateur = userEvent.setup()
     monter()
-    await utilisateur.click(screen.getByRole('treeitem', { name: /Atelier Nord/ }))
+    // Le double-clic déplie **et** sélectionne : il faut le dépliage pour atteindre le palier
+    // suivant, et la sélection est ce que ce test regarde. Le dernier geste est un clic simple —
+    // une connexion sélectionnée sans être dépliée est exactement le cas à couvrir.
+    await utilisateur.dblClick(screen.getByRole('treeitem', { name: /Atelier Nord/ }))
     expect(screen.getByText('Sélectionner une entité pour commencer')).toBeInTheDocument()
 
     const environnements = screen
       .getAllByRole('treeitem')
       .filter((ligne) => ligne.getAttribute('aria-level') === '2')
-    for (const ligne of environnements) await utilisateur.click(ligne)
+    for (const ligne of environnements) await utilisateur.dblClick(ligne)
     expect(screen.getByText('Sélectionner une entité pour commencer')).toBeInTheDocument()
 
     await utilisateur.click(await screen.findByRole('treeitem', { name: /analytics/ }))
@@ -552,7 +562,9 @@ describe('Workbench', () => {
     )
 
     await ouvrirLesEnvironnements(utilisateur)
-    await utilisateur.click(await screen.findByRole('treeitem', { name: /analytics/ }))
+    // **Déplié, non seulement sélectionné** : le message d'échec est une *ligne enfant* de la
+    // connexion, donc il n'a de place que sous un nœud ouvert.
+    await utilisateur.dblClick(await screen.findByRole('treeitem', { name: /analytics/ }))
 
     expect(await screen.findByText(/hôte injoignable/)).toBeInTheDocument()
     // L'autre base reste visible : un échec ne vide pas l'arbre.
@@ -1545,12 +1557,12 @@ describe('les structures en mémoire', () => {
     const utilisateur = userEvent.setup()
     const { detail, structures } = monter()
     await ouvrirLesEnvironnements(utilisateur)
-    await utilisateur.click(await screen.findByRole('treeitem', { name: /analytics/ }))
+    await utilisateur.dblClick(await screen.findByRole('treeitem', { name: /analytics/ }))
     // Le préchauffage a fini : les deux tables du décor sont en mémoire.
     await waitFor(() => expect(structures.describeTable).toHaveBeenCalledTimes(2))
     const avant = vi.mocked(detail.describeTable).mock.calls.length
 
-    await utilisateur.click(await screen.findByRole('treeitem', { name: 'public' }))
+    await utilisateur.dblClick(await screen.findByRole('treeitem', { name: 'public' }))
     await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
     expect(await screen.findByRole('tab', { name: /orders/ })).toBeInTheDocument()
 
@@ -1563,11 +1575,11 @@ describe('les structures en mémoire', () => {
     const utilisateur = userEvent.setup()
     const { structures, passerelle } = monter()
     await ouvrirLesEnvironnements(utilisateur)
-    await utilisateur.click(await screen.findByRole('treeitem', { name: /analytics/ }))
+    await utilisateur.dblClick(await screen.findByRole('treeitem', { name: /analytics/ }))
     await waitFor(() => expect(structures.describeTable).toHaveBeenCalled())
     const listesAvant = vi.mocked(structures.listObjects).mock.calls.length
 
-    await utilisateur.click(await screen.findByRole('treeitem', { name: 'public' }))
+    await utilisateur.dblClick(await screen.findByRole('treeitem', { name: 'public' }))
 
     // L'arbre a listé les objets pour les afficher (`passerelle.listObjects`) ; le préchauffage les
     // reçoit et n'en redemande pas (`structures.listObjects` ne bouge pas). Sans ce passage de
