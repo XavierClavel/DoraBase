@@ -250,7 +250,8 @@ d'un geste, et `scripts/verifier-version.py`, qui refuse la divergence — appel
 workflow de publication **avec le numéro du tag en argument**.
 
 **Le bundle publié est universel.** `--target universal-apple-darwin`, donc les deux
-architectures du proxy (`pnpm proxy:embarquer:tous`) et les deux cibles rustup. Deux fichiers
+architectures du proxy **et leur fusion** (`pnpm proxy:embarquer:tous`, qui appelle `lipo` —
+Tauri, lui, ne fond rien) et les deux cibles rustup. Deux fichiers
 séparés obligeraient l'utilisateur à savoir quel Mac il a, question à laquelle un explorateur
 de bases de données n'a pas à faire répondre. Conséquence à ne pas perdre : `lipo` **invalide
 les signatures** des tranches qu'il fusionne, et une étape vérifie que les deux architectures
@@ -331,6 +332,26 @@ manière de reprendre des données sans que `serde` les efface en silence.
 - **Les feux tricolores de macOS sont hors d'atteinte du CSS** sous
   `titleBarStyle: "Overlay"` : ils sont dessinés par le système par-dessus la fenêtre.
   Ni grisables derrière une modale, ni capturables par Playwright.
+- **Tauri ne fusionne pas les sidecars pour une cible universelle.** `--target
+  universal-apple-darwin` exige un `externalBin` nommé `…-universal-apple-darwin`, **déjà
+  fondu** ; les deux fichiers par architecture ne lui suffisent pas. Et l'absence n'apparaît
+  qu'au *bundling*, après la compilation des deux cibles — cinq minutes perdues par tentative.
+  La fusion est le travail de `scripts/telecharger-proxy.sh --tous`, par `lipo`, et
+  `publication.yml` la constate avant de compiler.
+- **Le bundler copie *tous* les binaires de la crate, pas seulement l'application.** Pour une
+  cible universelle, Tauri ne fond que le binaire de l'app : `export-types` reste absent de
+  `target/universal-apple-darwin/release/`, et le bundling échoue dessus — après la compilation
+  des deux cibles. D'où `build.beforeBundleCommand`, seul point d'accroche entre la compilation
+  et le bundling, branché sur `scripts/fondre-binaires-universels.sh`. Le hook **ne fait rien**
+  hors construction universelle : un hook qui échoue hors de son cas finit débranché.
+- **`rustup target add` s'applique à la toolchain résolue au répertoire courant.**
+  `rust-toolchain.toml` est dans `src-tauri/` : lancé depuis la racine, l'ajout va à une autre
+  toolchain, et la compilation croisée échoue avec « Target … is not installed » en annonçant la
+  liste où elle manque. La CI le lance avec `working-directory: src-tauri`.
+- **`lipo -thin` rend la tranche à l'octet près.** C'est ce qui permet de vérifier
+  l'idempotence d'une fusion sur le **contenu** plutôt que sur la présence du fichier : un
+  universel laissé par une version antérieure du verrou porterait le bon nom avec le mauvais
+  binaire, et le bundle l'embarquerait sans rien remarquer.
 - **`cloud-sql-proxy` v2 écrit son journal courant sur la sortie standard**, pas sur la
   sortie d'erreur — et il ne compose avec l'instance qu'à la **première connexion** : un
   nom d'instance faux le laisse annoncer « prêt », puis échouer en restant vivant.
@@ -617,6 +638,12 @@ Aucun de ces points ne bloque le code en place.
 - **Le visage Cloud SQL n'a jamais été conçu** : ses champs et ses libellés sont inventés.
   Un nom d'instance est long et prend trois colonnes de la grille, ce qui n'a pas été
   composé.
+- **`export-types` voyage dans le bundle** — 6,3 Mo d'un outil de développement dans le `.app`
+  livré, parce que le bundler copie tous les binaires de la crate. Ce n'était pas visible avant
+  la cible universelle, qui a rendu la copie bruyante. Le retirer demande qu'il cesse d'être un
+  binaire (un `examples/`, par exemple), ce qui touche `domain:build`, la clef `default-run` et
+  le garde `verifier-default-run.py` — donc trois décisions déjà prises, à rejouer ensemble.
+  Rien n'est cassé en attendant ; c'est du poids, pas un défaut.
 - **Déplacer une connexion d'un environnement à un autre** n'existe pas, délibérément : cela
   demande de déplacer un secret du Trousseau, donc son geste et sa conception. La
   confirmation de suppression ne le propose pas — offrir une action absente est pire que
