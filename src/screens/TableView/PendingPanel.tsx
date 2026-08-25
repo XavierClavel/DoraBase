@@ -1,5 +1,4 @@
 import { Icon } from '../../design/icons/Icon'
-import type { EnvironmentId } from '../../domain/config'
 import type { Value } from '../../domain/engine'
 import { Badge } from '../../ui/Badge/Badge'
 import { cx } from '../../ui/cx'
@@ -11,8 +10,15 @@ type PendingPanelProps = {
   attente: EnAttente
   /** `public.orders`, pour l'en-tête des cartes et le titre. */
   table: string
-  /** L'environnement de la base : l'encart d'avertissement n'existe que pour `prod`. */
-  environment?: EnvironmentId
+  /**
+   * Vrai quand l'environnement de la connexion est **marqué production** (`23g`).
+   *
+   * C'était l'identifiant d'environnement, comparé à la chaîne `'prod'`. Un environnement nommé
+   * « live » et marqué production n'avait donc pas l'encart, et un « prod » que l'utilisateur n'avait
+   * pas marqué l'avait — l'exact inverse de ce que `23g` promet. Le drapeau se lit sur la
+   * déclaration, et l'écran reçoit le drapeau plutôt que de le recalculer.
+   */
+  production?: boolean
   /**
    * Le SQL rendu par le moteur, ou `null` tant qu'il n'est pas revenu.
    *
@@ -58,7 +64,7 @@ type PendingPanelProps = {
 export function PendingPanel({
   attente,
   table,
-  environment,
+  production = false,
   sql,
   erreurSql = null,
   onRetirer,
@@ -181,7 +187,7 @@ export function PendingPanel({
           </section>
         )}
 
-        {environment === 'prod' && !apresEcriture && (
+        {production && !apresEcriture && (
           // Sur l'**environnement déclaré**, jamais sur une devinette à partir du nom de l'hôte :
           // un serveur nommé `db-prod-replica` peut être une copie de travail, et l'inverse existe.
           <p className={styles.production}>

@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { ouvrirUneConsole } from './pourLesTests'
+import { deplierUnEnvironnement, ouvrirUneConsole } from './pourLesTests'
 
 // Le partage vertical et sa mémorisation : de la mise en page, donc hors de portée de Vitest.
 test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await ouvrirUneConsole(page, 'analytics')
@@ -72,7 +72,7 @@ test('glisser la poignée du bas redimensionne en hauteur, et la taille survit',
   // **Et la hauteur est mémorisée** : rouvrir une console sur une taille par défaut ferait perdre le
   // réglage à chaque fois.
   await page.reload()
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await ouvrirUneConsole(page, 'analytics')

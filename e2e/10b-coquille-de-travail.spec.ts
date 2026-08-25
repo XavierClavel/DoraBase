@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { ouvrirUneConsole } from './pourLesTests'
+import { deplierUnEnvironnement, ouvrirUneConsole } from './pourLesTests'
 
 // **Ce test part de `/`, pas de `?gallery`.** C'est le point de `10b` : `A4` était vérifié pièce
 // par pièce en galerie et n'avait jamais été vu entier dans l'application. Un écran qu'on ne
@@ -44,7 +44,12 @@ test('la coquille a les dimensions du mockup', async ({ page }) => {
   })
 
   expect(mesures.titre).toBe('40px')
-  expect(mesures.sidebar).toBe(212)
+  // **228 et non 212, et c'est le cinquième palier de l'arbre qui les demande** (`25a`). La taille par
+  // défaut du `SplitPane` suit la colonne de `A4`, passée de 252 à 268 px de contenu : le palier le
+  // plus profond y a gagné les 16 px que son indentation lui prenait. Le plancher suit aussi — 196 au
+  // lieu de 180 — parce qu'à 180 un objet du palier 4 laisse cinq caractères, formellement correct et
+  // illisible.
+  expect(mesures.sidebar).toBe(228)
   expect(mesures.bande).toBe('34px')
   // **Deux poignées d'un pixel, et non de cinq.** Elles en faisaient cinq, transparents : entre une
   // sidebar en `--paper-alt` et un centre en `--paper`, ces cinq pixels dessinaient une bande claire
@@ -62,7 +67,7 @@ test('la coquille a les dimensions du mockup', async ({ page }) => {
 test('ouvrir une table depuis l’arbre ouvre un onglet, et la sidebar liste ses colonnes', async ({
   page,
 }) => {
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()
@@ -76,7 +81,7 @@ test('ouvrir une table depuis l’arbre ouvre un onglet, et la sidebar liste ses
 test('les trois colonnes se partagent la largeur, et la grille en garde l’essentiel', async ({
   page,
 }) => {
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()
@@ -101,7 +106,7 @@ test('les trois colonnes se partagent la largeur, et la grille en garde l’esse
     }
   })
 
-  expect(mesures.sidebar).toBe(212)
+  expect(mesures.sidebar).toBe(228)
   expect(mesures.panneau).toBe(296)
   // Le centre prend tout le reste : la fenêtre moins les deux colonnes, les deux poignées et les
   // filets. Une valeur exacte serait fragile ; ce qui compte est qu'elle soit large.
@@ -109,7 +114,7 @@ test('les trois colonnes se partagent la largeur, et la grille en garde l’esse
 })
 
 test('la barre d’état court sur toute la largeur, sous les trois colonnes', async ({ page }) => {
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()
@@ -133,7 +138,7 @@ test('la barre d’état court sur toute la largeur, sous les trois colonnes', a
 test('avec beaucoup d’onglets, la bande défile et le couple de vues reste atteignable', async ({
   page,
 }) => {
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
 
@@ -196,7 +201,7 @@ test('avec beaucoup d’onglets, la bande défile et le couple de vues reste att
 })
 
 test('fermer le dernier onglet laisse l’écran de travail debout', async ({ page }) => {
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()

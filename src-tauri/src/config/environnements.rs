@@ -94,11 +94,6 @@ pub struct SuppressionEnv {
     pub cles_a_fermer: Vec<String>,
     /// Les mots de passe que le magasin n'a pas su effacer. **Dits, jamais tus** (`23f`).
     pub secrets_residuels: Vec<String>,
-    /// L'environnement devenu actif, quand c'est l'actif qui a été retiré.
-    ///
-    /// `None` quand l'actif n'a pas bougé. L'écran l'annonce : sinon l'arbre changerait de contenu
-    /// sans explication.
-    pub nouvel_actif: Option<EnvironmentId>,
 }
 
 /// Localise un projet, ou dit lequel manque.
@@ -301,17 +296,6 @@ pub fn supprimer(
         .databases
         .retain(|base| &base.environment != environnement);
 
-    // **L'actif suit** (`23c`) : un projet dont l'environnement actif ne désigne rien afficherait un
-    // arbre vide sans dire pourquoi. Le premier restant est pris parce que l'ordre est celui du
-    // sélecteur, donc celui que l'utilisateur voit.
-    let nouvel_actif = if &candidat.active_environment == environnement {
-        let premier = candidat.environments[0].id.clone();
-        candidat.active_environment = premier.clone();
-        Some(premier)
-    } else {
-        None
-    };
-
     candidat.valider()?;
     suivants[index] = candidat;
 
@@ -341,7 +325,6 @@ pub fn supprimer(
         connexions_supprimees,
         cles_a_fermer,
         secrets_residuels,
-        nouvel_actif,
     })
 }
 
@@ -432,7 +415,6 @@ mod tests {
     fn projets() -> Vec<Project> {
         vec![Project {
             name: "Atelier Nord".into(),
-            active_environment: EnvironmentId::brut("atelier"),
             environments: vec![
                 declaration("atelier", EnvironmentColor::Green, false),
                 declaration("vitrine", EnvironmentColor::Red, true),
@@ -682,44 +664,6 @@ mod tests {
         assert!(magasin.retrieve(&autre).expect("lecture").is_none());
         assert!(issue.secrets_residuels.is_empty());
         assert_eq!(issue.cles_a_fermer.len(), 2);
-    }
-
-    #[test]
-    fn supprimer_l_actif_en_designe_un_autre_et_le_dit() {
-        let mut ecrit = None;
-        let issue = supprimer(
-            &projets(),
-            "Atelier Nord",
-            &EnvironmentId::brut("atelier"),
-            &magasin(false),
-            &mut ecriture(&mut ecrit),
-        )
-        .expect("suppression");
-
-        // Le premier restant, qui est le premier du sélecteur — donc celui que l'utilisateur voit.
-        assert_eq!(issue.projects[0].active_environment.as_str(), "vitrine");
-        // **Rendu, et non déduit par l'écran** : c'est ce retour qui permet à la confirmation de
-        // l'annoncer, plutôt que de laisser l'arbre changer de contenu sans explication.
-        assert_eq!(
-            issue.nouvel_actif.as_ref().map(EnvironmentId::as_str),
-            Some("vitrine")
-        );
-    }
-
-    #[test]
-    fn supprimer_un_environnement_qui_n_est_pas_l_actif_ne_touche_pas_a_l_actif() {
-        let mut ecrit = None;
-        let issue = supprimer(
-            &projets(),
-            "Atelier Nord",
-            &EnvironmentId::brut("coulisses"),
-            &magasin(false),
-            &mut ecriture(&mut ecrit),
-        )
-        .expect("suppression");
-
-        assert_eq!(issue.projects[0].active_environment.as_str(), "atelier");
-        assert!(issue.nouvel_actif.is_none());
     }
 
     #[test]

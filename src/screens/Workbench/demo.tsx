@@ -47,7 +47,6 @@ const ENVIRONNEMENTS_DE_DEMO: EnvironmentDeclaration[] = [
 const PROJETS: Project[] = [
   {
     name: 'Atelier Nord',
-    activeEnvironment: 'prod',
     // **Quatre environnements, et non trois** (`23g`) : un décor qui n'en porte que
     // trois laisserait passer un écran qui relit le trio en dur. `preprod` est
     // justement celui qu'aucune table de constantes ne connaît.
@@ -109,7 +108,6 @@ const PROJETS: Project[] = [
   },
   {
     name: 'Outils internes',
-    activeEnvironment: 'dev',
     environments: ENVIRONNEMENTS_DE_DEMO,
     databases: [],
     queries: [],
@@ -734,7 +732,6 @@ export function WorkbenchDemo() {
         // Un résidu annoncé : le cas que la commande réelle produit sur un Trousseau verrouillé, et
         // le seul moyen de voir cet état de la modale sans pont Tauri.
         leftoverSecrets: emportees && emportees.length > 0 ? ['dorabase/…/…'] : [],
-        newActiveEnvironment: null,
       }
     },
   }
@@ -761,8 +758,6 @@ export function WorkbenchDemo() {
               ...projets,
               {
                 name: request.name,
-                // Le premier déclaré, comme le cœur le fait (`24a`).
-                activeEnvironment: request.environments[0]?.id ?? 'dev',
                 environments: request.environments.map((declaration) => ({
                   ...declaration,
                   // L'identifiant est dérivé en Rust ; la démo reprend la même règle, en plus simple.

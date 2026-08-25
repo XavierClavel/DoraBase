@@ -5,20 +5,19 @@ import { Sprite } from '../../design/icons/Sprite'
 import type { EnvironmentId, Project } from '../../domain/config'
 import type { ColumnInfo, ConnectionState, SchemaInfo, TableSummary } from '../../domain/engine'
 import { REGLAGES, TRIO_DE_TEST } from '../NewConnection/pourLesTests'
-import { type Charge, idBase, idProjet, idSchema, type Noeud } from './arbre'
+import { type Charge, idBase, idEnvironnement, idProjet, idSchema, type Noeud } from './arbre'
 import type { CibleDeSuppression } from './DeleteConnectionDialog'
 import { ExplorerSidebar, type ExplorerSidebarProps, filtrer } from './ExplorerSidebar'
 
 const PROJETS: Project[] = [
   {
     name: 'Atelier Nord',
-    activeEnvironment: 'prod',
     environments: TRIO_DE_TEST,
     queries: [],
     databases: [
-      // **Les connexions sont dans l'environnement actif du projet** (`23g`) : l'arbre ne montre que
-      // celles-là, et un décor qui les déclare ailleurs afficherait un arbre vide — ce qui ferait
-      // échouer trente tests pour une raison qui n'a rien à voir avec eux.
+      // **Les deux connexions sont dans le même environnement** : le décor mesure le menu « … », le
+      // filtre et le renommage de console, pas le palier d'environnement — `arbre.test.ts` s'en
+      // charge. Les regrouper évite de déplier deux branches dans chaque test.
       {
         name: 'analytics',
         engine: 'postgresql',
@@ -47,6 +46,34 @@ const table = (name: string): TableSummary => ({
 })
 
 const RIEN: Charge = { schemas: {}, objets: {}, enCours: new Set(), echecs: {} }
+
+const P = 'Atelier Nord'
+const ID_PROJET = idProjet(P)
+const ID_PROD = idEnvironnement(P, 'prod')
+const ID_ANALYTICS = idBase(P, 'prod', 'analytics')
+const ID_PUBLIC = idSchema(P, 'prod', 'analytics', 'public')
+
+/** Le projet et son environnement `prod` dépliés : la porte d'entrée des connexions (`25a`). */
+const JUSQU_AUX_CONNEXIONS = [ID_PROJET, ID_PROD]
+
+/**
+ * La ligne d'arbre dont le libellé est `label`, au palier `niveau`.
+ *
+ * Le nom accessible d'une ligne porte aussi sa méta et son badge — « prod PROD », « dev 0
+ * connexion » — donc une expression régulière ancrée sur le seul libellé ne trouve rien, et une
+ * non ancrée confond « Atelier » avec « Atelier Nord ». Le palier lève l'ambiguïté.
+ */
+function ligne(label: string, niveau: string): HTMLElement {
+  const trouvee = screen
+    .getAllByRole('treeitem')
+    .find(
+      (e) =>
+        e.getAttribute('aria-level') === niveau &&
+        (e.textContent === label || e.textContent?.startsWith(`${label} `) === true),
+    )
+  if (trouvee === undefined) throw new Error(`aucune ligne « ${label} » au palier ${niveau}`)
+  return trouvee
+}
 
 function Piloté({
   charge = RIEN,
@@ -108,23 +135,49 @@ function Piloté({
 // --- L'arbre ---
 
 test('l’arbre s’annonce comme tel, avec ses niveaux', () => {
-  render(<Piloté initial={[idProjet('Atelier Nord')]} />)
-  expect(screen.getByRole('tree', { name: 'Projets et bases' })).toBeInTheDocument()
+  render(<Piloté initial={JUSQU_AUX_CONNEXIONS} />)
+  // **« environnements » est dans le nom de l'arbre** depuis `25a` : c'est un palier, et l'annoncer
+  // « Projets et bases » tairait ce qu'on parcourt.
+  expect(
+    screen.getByRole('tree', { name: 'Projets, environnements et connexions' }),
+  ).toBeInTheDocument()
   const elements = screen.getAllByRole('treeitem')
   // L'arbre est aplati dans le DOM : `aria-level` porte la profondeur qu'une imbrication aurait
   // donnée gratuitement. Sans lui, un lecteur d'écran annoncerait une liste plate.
-  expect(elements.map((e) => e.getAttribute('aria-level'))).toEqual(['1', '2', '2'])
+  //
+  // Projet, ses trois environnements déclarés, puis les deux connexions de `prod` : les
+  // environnements sont au niveau 2, les connexions au 3.
+  expect(elements.map((e) => e.getAttribute('aria-level'))).toEqual(['1', '2', '2', '2', '3', '3'])
+})
+
+// Les cinq paliers, jusqu'au bout : projet, environnement, connexion, schéma, objet.
+test('les cinq paliers s’annoncent de 1 à 5', () => {
+  render(
+    <Piloté
+      initial={[...JUSQU_AUX_CONNEXIONS, ID_ANALYTICS, ID_PUBLIC]}
+      charge={{
+        ...RIEN,
+        schemas: { [ID_ANALYTICS]: [schema('public')] },
+        objets: { [ID_PUBLIC]: [table('orders')] },
+      }}
+    />,
+  )
+  // `ligne` cherche par palier ; ces appels échouent donc si l'un des cinq manque.
+  expect(ligne('Atelier Nord', '1')).toBeInTheDocument()
+  expect(ligne('prod', '2')).toBeInTheDocument()
+  expect(ligne('analytics', '3')).toBeInTheDocument()
+  expect(ligne('public', '4')).toBeInTheDocument()
+  expect(ligne('orders', '5')).toBeInTheDocument()
 })
 
 test('un nœud dépliable annonce son état, une feuille non', () => {
-  const idS = idSchema('Atelier Nord', 'analytics', 'public')
   render(
     <Piloté
-      initial={[idProjet('Atelier Nord'), idBase('Atelier Nord', 'analytics'), idS]}
+      initial={[...JUSQU_AUX_CONNEXIONS, ID_ANALYTICS, ID_PUBLIC]}
       charge={{
         ...RIEN,
-        schemas: { [idBase('Atelier Nord', 'analytics')]: [schema('public')] },
-        objets: { [idS]: [table('orders')] },
+        schemas: { [ID_ANALYTICS]: [schema('public')] },
+        objets: { [ID_PUBLIC]: [table('orders')] },
       }}
     />,
   )
@@ -169,11 +222,10 @@ test('un clic sélectionne et déplie à la fois', async () => {
 // --- Les échecs ---
 
 test('un dépliage qui échoue le dit sans vider l’arbre', () => {
-  const idB = idBase('Atelier Nord', 'analytics')
   render(
     <Piloté
-      initial={[idProjet('Atelier Nord'), idB]}
-      charge={{ ...RIEN, echecs: { [idB]: 'hôte injoignable' } }}
+      initial={[...JUSQU_AUX_CONNEXIONS, ID_ANALYTICS]}
+      charge={{ ...RIEN, echecs: { [ID_ANALYTICS]: 'hôte injoignable' } }}
     />,
   )
   expect(screen.getByText('hôte injoignable')).toBeInTheDocument()
@@ -184,15 +236,41 @@ test('un dépliage qui échoue le dit sans vider l’arbre', () => {
 // Une ligne de message n'est **pas** un `treeitem` : ce n'est pas un nœud de l'arbre mais un état
 // de son chargement, et l'annoncer comme tel ferait compter un enfant qui n'existe pas.
 test('une ligne de message n’est pas un nœud de l’arbre', () => {
-  const idB = idBase('Atelier Nord', 'analytics')
   render(
     <Piloté
-      initial={[idProjet('Atelier Nord'), idB]}
-      charge={{ ...RIEN, enCours: new Set([idB]) }}
+      initial={[...JUSQU_AUX_CONNEXIONS, ID_ANALYTICS]}
+      charge={{ ...RIEN, enCours: new Set([ID_ANALYTICS]) }}
     />,
   )
   expect(screen.getByText('Chargement…')).toBeInTheDocument()
   expect(screen.queryByRole('treeitem', { name: 'Chargement…' })).not.toBeInTheDocument()
+})
+
+/*
+ * **L'indentation d'une ligne de message vient d'`INDENT`, non d'une table CSS** (`25a`).
+ *
+ * Trois règles `.message[data-depth=…]` recopiaient les mêmes 36 et 52 px. Un palier de retard entre
+ * les deux tables se lit comme un message mal aligné, et personne n'y pense en ajoutant un palier.
+ * Le style en ligne est donc ce qui est testable ici — jsdom ne calcule pas le CSS.
+ */
+test('une ligne de message est indentée par INDENT, en style en ligne', () => {
+  render(
+    <Piloté
+      initial={[...JUSQU_AUX_CONNEXIONS, ID_ANALYTICS]}
+      charge={{ ...RIEN, enCours: new Set([ID_ANALYTICS]) }}
+    />,
+  )
+  // Un message enfant d'une connexion (palier 2) est au palier 3 : `INDENT[3]`.
+  expect(screen.getByText('Chargement…')).toHaveStyle({ paddingLeft: '52px' })
+})
+
+// **Un environnement vide le dit** (`23g`), à sa juste indentation : palier 2, donc `INDENT[2]`.
+test('un environnement déplié sans connexion le dit, aligné au palier 2', () => {
+  render(<Piloté initial={[ID_PROJET, idEnvironnement(P, 'staging')]} />)
+  const vide = screen.getByText('Aucune connexion déclarée en staging')
+  expect(vide).toHaveStyle({ paddingLeft: '36px' })
+  // Ce n'est pas un nœud de l'arbre : c'est un fait sur son contenu.
+  expect(screen.queryByRole('treeitem', { name: /Aucune connexion/ })).toBeNull()
 })
 
 // --- Les états de connexion ---
@@ -200,7 +278,7 @@ test('une ligne de message n’est pas un nœud de l’arbre', () => {
 test('l’état d’une base est dans son nom accessible, pas seulement en couleur', () => {
   render(
     <Piloté
-      initial={[idProjet('Atelier Nord')]}
+      initial={JUSQU_AUX_CONNEXIONS}
       etat={{ kind: 'offline', reason: 'hôte injoignable' }}
     />,
   )
@@ -209,19 +287,71 @@ test('l’état d’une base est dans son nom accessible, pas seulement en coule
   ).toBeInTheDocument()
 })
 
+// --- Le palier d'environnement (`25a`) ---
+
+/**
+ * Un environnement de production **qui ne s'appelle pas « prod »**, et un qui s'appelle « prod »
+ * sans l'être : la seule forme de décor qui distingue le drapeau du libellé.
+ */
+const PROJET_A_DRAPEAUX: Project[] = [
+  {
+    name: P,
+    environments: [
+      { id: 'atelier', label: 'Atelier', color: 'green', production: true },
+      { id: 'prod', label: 'prod', color: 'red', production: false },
+    ],
+    queries: [],
+    databases: [
+      {
+        name: 'catalogue',
+        engine: 'postgresql',
+        environment: 'atelier',
+        connection: REGLAGES,
+        consoles: [],
+      },
+    ],
+  },
+]
+
+test('le badge PROD d’un environnement suit son drapeau, jamais son libellé', () => {
+  render(<Piloté projets={PROJET_A_DRAPEAUX} initial={[ID_PROJET]} />)
+  // « Atelier » n'a rien de « prod » dans son nom, et porte pourtant le badge.
+  expect(ligne('Atelier', '2')).toHaveTextContent('PROD')
+  // « prod » n'est pas marqué : aucun badge, sinon la garantie de `23g` serait fausse à l'écran.
+  expect(ligne('prod', '2')).not.toHaveTextContent('PROD')
+})
+
+test('un environnement replié dit son compte de connexions', () => {
+  render(<Piloté projets={PROJET_A_DRAPEAUX} initial={[ID_PROJET]} />)
+  expect(ligne('Atelier', '2')).toHaveTextContent('1 connexion')
+  expect(ligne('prod', '2')).toHaveTextContent('0 connexion')
+})
+
+// La ligne projet a perdu son badge d'environnement : il nommait un environnement actif qui
+// n'existe plus, et l'agréger serait inventer un état composite (`09c`).
+test('la ligne projet ne porte plus de badge d’environnement', () => {
+  render(<Piloté projets={PROJET_A_DRAPEAUX} />)
+  const projet = screen.getByRole('treeitem', { name: /Atelier Nord/ })
+  expect(projet).not.toHaveTextContent('PROD')
+  // Ce qu'elle porte à la place : le compte de connexions du projet entier.
+  expect(projet).toHaveTextContent('1 connexion')
+})
+
 // --- Le filtre ---
 
 // **Les ancêtres d'une correspondance sont conservés** : filtrer sur « orders » sans garder son
 // schéma et sa base produirait une ligne orpheline, indentée sans parent visible.
 test('le filtre garde les ancêtres d’une correspondance', () => {
+  // Cinq paliers depuis `25a` : l'environnement est un ancêtre à conserver comme les autres.
   const noeuds: Noeud[] = [
     { id: 'p', kind: 'project', depth: 0, label: 'Halle' },
-    { id: 'd', kind: 'database', depth: 1, label: 'analytics' },
-    { id: 's', kind: 'schema', depth: 2, label: 'public' },
-    { id: 'o', kind: 'object', depth: 3, label: 'orders' },
-    { id: 'o2', kind: 'object', depth: 3, label: 'users' },
+    { id: 'e', kind: 'environment', depth: 1, label: 'Atelier' },
+    { id: 'd', kind: 'database', depth: 2, label: 'analytics' },
+    { id: 's', kind: 'schema', depth: 3, label: 'public' },
+    { id: 'o', kind: 'object', depth: 4, label: 'orders' },
+    { id: 'o2', kind: 'object', depth: 4, label: 'users' },
   ]
-  expect(filtrer(noeuds, 'orders').map((n) => n.id)).toEqual(['p', 'd', 's', 'o'])
+  expect(filtrer(noeuds, 'orders').map((n) => n.id)).toEqual(['p', 'e', 'd', 's', 'o'])
 })
 
 test('un filtre vide ne retire rien', () => {
@@ -245,17 +375,19 @@ test('le filtre ne fait pas correspondre les lignes de message', () => {
 })
 
 test('un filtre sans résultat le dit', async () => {
-  render(<Piloté initial={[idProjet('Atelier Nord')]} />)
+  render(<Piloté initial={JUSQU_AUX_CONNEXIONS} />)
   await userEvent.type(screen.getByLabelText(/Filtrer/), 'zzz')
   expect(screen.getByText(/Aucune ligne affichée ne correspond/)).toBeInTheDocument()
 })
 
 // Le compteur `n/m` de `04` rappelle implicitement que le filtre porte sur ce qui est affiché.
 test('le filtre affiche son compteur, et seulement quand il est actif', async () => {
-  render(<Piloté initial={[idProjet('Atelier Nord')]} />)
-  expect(screen.queryByText('3/3')).not.toBeInTheDocument()
+  render(<Piloté initial={JUSQU_AUX_CONNEXIONS} />)
+  expect(screen.queryByText(/\d+\/\d+/)).not.toBeInTheDocument()
   await userEvent.type(screen.getByLabelText(/Filtrer/), 'analytics')
-  expect(screen.getByText('2/3')).toBeInTheDocument()
+  // Six lignes affichées — projet, trois environnements, deux connexions — dont trois retenues :
+  // `analytics` et ses deux ancêtres, le projet et l'environnement `prod`.
+  expect(screen.getByText('3/6')).toBeInTheDocument()
 })
 
 // --- Le pied ---
@@ -295,11 +427,7 @@ test('« Nouveau projet » n’est rendu que si le geste existe', () => {
 /** Un retrait qui n'a rien laissé dans le Trousseau. */
 const AUCUN_RESIDU = { leftoverSecrets: [] }
 
-const TOUT_DEPLIE = [
-  idProjet('Atelier Nord'),
-  idBase('Atelier Nord', 'analytics'),
-  idSchema('Atelier Nord', 'analytics', 'public'),
-]
+const TOUT_DEPLIE = [ID_PROJET, ID_PROD, ID_ANALYTICS, ID_PUBLIC]
 
 test('seules les lignes projet et base portent un « … »', () => {
   render(
@@ -317,8 +445,8 @@ test('seules les lignes projet et base portent un « … »', () => {
 
 test('un schéma et une table n’en portent pas — il n’y a rien à y configurer', () => {
   const charge: Charge = {
-    schemas: { [idBase('Atelier Nord', 'analytics')]: [schema('public')] },
-    objets: { [idSchema('Atelier Nord', 'analytics', 'public')]: [table('orders')] },
+    schemas: { [ID_ANALYTICS]: [schema('public')] },
+    objets: { [ID_PUBLIC]: [table('orders')] },
     enCours: new Set(),
     echecs: {},
   }
@@ -564,7 +692,7 @@ test('un double-clic sur une console ouvre le champ de renommage', async () => {
   render(
     <Piloté
       projets={avecConsole('console 1')}
-      initial={[idProjet('Atelier Nord'), idBase('Atelier Nord', 'analytics')]}
+      initial={[...JUSQU_AUX_CONNEXIONS, ID_ANALYTICS]}
       consoles={GESTES_DE_CONSOLE}
     />,
   )
@@ -581,7 +709,7 @@ test('« Entrée » valide le renommage, « Échap » l’abandonne', async () =
   render(
     <Piloté
       projets={avecConsole('console 1')}
-      initial={[idProjet('Atelier Nord'), idBase('Atelier Nord', 'analytics')]}
+      initial={[...JUSQU_AUX_CONNEXIONS, ID_ANALYTICS]}
       consoles={gestes}
     />,
   )
@@ -604,7 +732,7 @@ test('un nom vide ou inchangé n’envoie rien', async () => {
   render(
     <Piloté
       projets={avecConsole('console 1')}
-      initial={[idProjet('Atelier Nord'), idBase('Atelier Nord', 'analytics')]}
+      initial={[...JUSQU_AUX_CONNEXIONS, ID_ANALYTICS]}
       consoles={{ ...GESTES_DE_CONSOLE, onRenommer: renommer }}
     />,
   )
@@ -621,7 +749,7 @@ test('les autres lignes de l’arbre ne se renomment pas au double-clic', async 
   render(
     <Piloté
       projets={avecConsole('console 1')}
-      initial={[idProjet('Atelier Nord'), idBase('Atelier Nord', 'analytics')]}
+      initial={[...JUSQU_AUX_CONNEXIONS, ID_ANALYTICS]}
       consoles={GESTES_DE_CONSOLE}
     />,
   )

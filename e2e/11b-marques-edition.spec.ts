@@ -1,10 +1,11 @@
 import { expect, type Page, test } from '@playwright/test'
+import { deplierUnEnvironnement } from './pourLesTests'
 
 // Les teintes, le coin ambre et les hauteurs sont de la mise en page : hors de portée de Vitest.
 // `11b` les nomme.
 test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()
@@ -137,7 +138,11 @@ test('une cellule modifiée se distingue d’une cellule filtrée autrement que 
   expect(marques?.liseréFiltree).toBe(false)
 })
 
-test('la pastille projet porte le badge ÉDITION et son point ambre', async ({ page }) => {
+// **« L'indicateur » et non « la pastille »** : `ProjectPill` est devenue `SelectionIndicator`
+// (`25b`), ce n'est plus une boîte, et ce n'est plus un contrôle. Le point et le badge, eux, sont
+// exactement ceux du mockup de `A6` — c'est la seule chose que ce test ait jamais mesurée, et le
+// sélecteur les trouve toujours par leur classe dans la barre.
+test('l’indicateur de la barre porte le badge ÉDITION et son point ambre', async ({ page }) => {
   const avant = await page.evaluate(() => {
     const point = document.querySelector('[data-tauri-drag-region] [class*=dot]')
     return point?.getAttribute('data-state')
@@ -157,5 +162,10 @@ test('la pastille projet porte le badge ÉDITION et son point ambre', async ({ p
   // Le point décrit l'état de l'**écran** quand il y a quelque chose à signaler, celui de la
   // connexion sinon. Le badge lève l'ambiguïté sans dépendre de la couleur.
   expect(apres.etat).toBe('pending')
-  await expect(page.getByRole('button', { name: /Édition/ })).toBeVisible()
+  // **Le badge est un texte, plus le nom accessible d'un bouton** (`25b`) : il vivait dans la pastille,
+  // qui était un `<button>` — d'où l'ancien `getByRole('button', { name: /Édition/ })`. L'indicateur
+  // n'a aucun élément focalisable, donc c'est le contenu de la barre qui porte le badge. Et le compte
+  // masqué visuellement l'accompagne : `09d` interdit que la couleur du point porte seule.
+  await expect(page.locator('[data-tauri-drag-region]')).toContainText('Édition')
+  await expect(page.locator('[data-tauri-drag-region]')).toContainText('1 modification en attente')
 })

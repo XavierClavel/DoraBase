@@ -10,12 +10,6 @@ type DeleteEnvironmentDialogProps = {
   libelle: string
   /** Les connexions qui appartiennent à cet environnement, **nommées** (`23f`). */
   connexions: readonly string[]
-  /**
-   * Le libellé de l'environnement qui deviendra actif, ou `null` si l'actif ne bouge pas.
-   *
-   * Annoncé **avant** : sinon l'arbre changerait de contenu au retour de la modale, sans explication.
-   */
-  nouvelActif: string | null
   onClose: () => void
   /** Retire. Rejette avec le refus à afficher — dernier environnement, disque en panne. */
   onDelete: () => Promise<DeleteEnvironmentResult>
@@ -47,7 +41,6 @@ export function DeleteEnvironmentDialog({
   projet,
   libelle,
   connexions,
-  nouvelActif,
   onClose,
   onDelete,
 }: DeleteEnvironmentDialogProps) {
@@ -128,12 +121,6 @@ export function DeleteEnvironmentDialog({
               ))}
             </ul>
             <p className={styles.phrase}>Leurs mots de passe seront retirés du Trousseau.</p>
-            {nouvelActif !== null && (
-              <p className={styles.phrase}>
-                C’est l’environnement actif : <strong>{nouvelActif}</strong> le remplacera, et
-                l’arbre montrera ses connexions.
-              </p>
-            )}
             {/* La phrase que `08j` a rendue obligatoire. En gras parce que c'est celle qu'on lit
                 quand on ne lit qu'une ligne. */}
             <p className={styles.rassurance}>

@@ -1253,3 +1253,78 @@ mise en page sans écrire la mesure qui le tient revient à changer du CSS en es
    fois de suite qui a fini par tomber dans la fenêtre. Une instabilité de décor ne se voit qu'au
    nombre d'essais, ce qui est un argument pour lire *aussi* les runs qui passent.
 
+
+114. **Le cache de l'arbre et la clé de connexion ne parlaient pas de la même connexion.**
+   `useArbre.chargerBase` composait sa clé de cache avec `idBase(project, database)` — sans
+   environnement — deux lignes au-dessus d'un `databaseKey(project, database, environment)` qui, lui,
+   le portait. Les deux identités divergeaient donc **dans la même fonction** : l'IPC distinguait
+   `analytics` en dev d'`analytics` en production, `charge.schemas` non.
+
+   Conséquence : les schémas de l'une s'affichaient sous la ligne de l'autre, le second dépliage ne
+   rechargeait rien (`basculer` teste `charge.schemas[noeud.id]`), et un « hôte injoignable » de
+   production peignait la ligne de dev. **On lisait la structure du mauvais serveur, sans une erreur.**
+
+   Invisible tant que l'arbre ne montrait qu'un environnement à la fois — et c'est exactement ce que
+   le commentaire d'`idConsole` invoquait pour justifier des identités sans environnement. Une
+   garantie adossée à ce que l'écran *montre* tombe le jour où l'écran montre autre chose.
+
+   Correction : `const id = noeud.id`. `chargerSchema` le faisait déjà. C'est la seule écriture qui ne
+   peut pas se désynchroniser de ce que l'arbre a rendu — reconstruire une identité à côté de celle
+   qui existe est le geste qui a créé le défaut.
+
+115. **Retirer une connexion fermait les onglets de son homonyme, et mentait sur le compte.**
+   `viseeParLId` découpait `projet/base/env::schema.table` et n'en lisait que les **deux premiers**
+   segments. Retirer `analytics` en production fermait donc les onglets d'`analytics` en dev.
+
+   Plus grave que la fermeture : la confirmation de `08j` **promet** de dire ce qui sera perdu, et son
+   compte de modifications en attente passait par la même fonction. Elle annonçait donc un chiffre
+   faux sur la seule question où l'utilisateur ne peut pas vérifier lui-même.
+
+   `idOnglet` composait l'environnement depuis `12a`. Le producteur savait, le lecteur avait oublié.
+
+116. **`dialecteDe` cherchait une connexion par son seul nom.** `?.databases.find(d => d.name === nomBase)`
+   rendait le moteur de la première homonyme : une console ouverte sur `analytics` en production
+   pouvait recevoir le dialecte de `analytics` en dev. `useArbre.baseDeclaree`, dix lignes plus loin
+   dans le même dossier, filtrait correctement sur le nom **et** l'environnement, avec un commentaire
+   expliquant pourquoi. Deux fonctions voisines, une seule au courant.
+
+117. **Le garde-fou d'écriture comparait une chaîne, là où `23g` l'interdit noir sur blanc.**
+   `useApplication` posait `cle?.environment === 'prod'` et `PendingPanel` testait
+   `environment === 'prod'`. Or `23g` écrit : « les garde-fous d'écriture et l'encart rouge de
+   production s'accrochent au **drapeau** `production` de la déclaration, jamais à son libellé ».
+
+   L'effet est l'inversion exacte de la garantie : un environnement nommé « live » et **marqué**
+   production n'ouvrait pas la confirmation avant d'écrire, et un « prod » que l'utilisateur avait
+   laissé non marqué l'ouvrait. La spec avait raison sur le fond et sa case était cochée ; c'est un
+   troisième et un quatrième site, écrits ailleurs, qui n'avaient jamais reçu la correction.
+
+   **Le drapeau descend désormais en propriété** (`options.production`, `production?: boolean`) plutôt
+   que d'être recalculé sur place : un écran qui reçoit un booléen ne peut pas se tromper de règle.
+
+118. **Les lignes de schéma n'affichaient aucune icône, et personne ne l'avait vu.**
+   `arbre.ts` demandait `icon: 'folder'` ; le sprite ne porte pas ce nom — c'est `'schema'`. Le
+   glyphe manquait donc depuis `09d`, sur un palier entier de l'arbre.
+
+   **Ce qui l'a caché est un `as never`.** `Noeud.icon` était typé `string`, et `ExplorerSidebar`
+   passait la valeur à `TreeRow` avec `icon={noeud.icon as never}` pour forcer le passage. Le
+   compilateur avait la table des noms sous la main et l'assertion lui interdisait de s'en servir.
+   `IconName` existait, `names.ts` est engendré : tout était en place pour que la faute soit
+   impossible, et une assertion l'a rendue muette.
+
+   Correction : `Noeud.icon?: IconName`, et le cast retiré. Trouvé à l'œil, en regardant une capture
+   pour une autre raison — pas un test n'aurait pu le dire, aucun ne demandait l'icône d'un schéma.
+
+119. **Une icône juste qu'on ne distinguait pas de sa voisine.** Le palier d'environnement de `25a`
+   reçut d'abord `srv` — deux baies empilées, ce qu'un environnement *est*, et le choix qu'une
+   conception UI avait argumenté sur le mockup. À 13 px, dans la colonne, il portait la même
+   silhouette à bandes horizontales que le `db` de la connexion **juste en dessous** : deux paliers
+   voisins, un seul glyphe apparent.
+
+   Remplacé par `pin`, dont la goutte n'a de voisin nulle part dans l'arbre. La sémantique y perd un
+   peu — « un lieu où vivent des connexions » plutôt que « un jeu de serveurs » — et la lisibilité y
+   gagne tout. **Une icône qui dit juste et qu'on confond n'apprend rien.**
+
+   Ce que ça dit de la méthode : le raisonnement sur le mockup avait relevé la bonne valeur
+   d'indentation que la spec `09d` déclarait introuvable, et s'est trompé sur l'icône. Les deux
+   décisions se prenaient sur les mêmes sources ; seule la seconde demandait de **regarder deux
+   lignes ensemble**, ce qu'aucune table de valeurs ne montre.

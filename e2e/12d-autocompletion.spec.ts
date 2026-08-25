@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test'
-import { ouvrirUneConsole } from './pourLesTests'
+import { deplierUnEnvironnement, ouvrirUneConsole } from './pourLesTests'
 
 // L'intégration réelle : la liste s'ouvre, `↑↓` navigue, `⇥` insère. Les règles sont couvertes par
 // les tests unitaires ; ici on vérifie qu'elles sont branchées à CodeMirror.
 test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   // La table est ouverte pour que ses colonnes soient connues : l'autocomplétion ne les invente pas.

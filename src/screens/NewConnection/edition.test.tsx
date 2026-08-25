@@ -35,7 +35,6 @@ const BASE: Database = {
 const APRES: Project[] = [
   {
     name: 'Atelier',
-    activeEnvironment: 'prod',
     environments: TRIO_DE_TEST,
     databases: [BASE],
     queries: [],

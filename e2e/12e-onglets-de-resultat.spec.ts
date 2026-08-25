@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test'
-import { ouvrirUneConsole } from './pourLesTests'
+import { deplierUnEnvironnement, ouvrirUneConsole } from './pourLesTests'
 
 // Les quatre vues et leurs chiffres : de l'assemblage d'écran. Le plan lui-même est couvert par les
 // tests Rust, dont celui qui vérifie qu'`EXPLAIN` n'exécute rien.
 test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await ouvrirUneConsole(page, 'analytics')

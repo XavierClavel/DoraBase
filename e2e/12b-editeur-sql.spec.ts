@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { ouvrirUneConsole } from './pourLesTests'
+import { deplierUnEnvironnement, ouvrirUneConsole } from './pourLesTests'
 
 // La coloration, la gouttière et le fond : des couleurs calculées, donc hors de portée de Vitest.
 test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await ouvrirUneConsole(page, 'analytics')

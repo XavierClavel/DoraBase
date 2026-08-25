@@ -17,7 +17,6 @@ test('un fichier lu rend ses projets', () => {
   const projets = [
     {
       name: 'Halle',
-      activeEnvironment: 'dev',
       environments: TRIO_DE_TEST,
       databases: [],
       queries: [],

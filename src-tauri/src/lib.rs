@@ -23,7 +23,6 @@ pub fn run() {
             config::commands::save_preferences,
             config::commands::save_database,
             config::commands::create_project,
-            config::commands::set_active_environment,
             config::commands::create_environment,
             config::commands::rename_environment,
             config::commands::recolor_environment,

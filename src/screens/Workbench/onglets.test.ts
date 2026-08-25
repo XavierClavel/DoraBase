@@ -149,7 +149,12 @@ describe('les consoles (`12a`)', () => {
 
   it('retirer une base emporte ses consoles comme ses tables (`08j`)', () => {
     const etat = ouvrirConsole(ouvrir(AUCUN_ONGLET, orders), analytics)
-    const cible = { kind: 'database' as const, project: 'Atelier Nord', database: 'analytics' }
+    const cible = {
+      kind: 'database' as const,
+      project: 'Atelier Nord',
+      database: 'analytics',
+      environment: 'prod',
+    }
     // Une console laissée ouverte sur une base dont la déclaration est partie n'aurait plus de
     // connexion pour exécuter quoi que ce soit.
     expect(etat.onglets.map(idOnglet).every((id) => viseeParLId(cible, id))).toBe(true)
@@ -160,9 +165,42 @@ describe('la cible d’un retrait (`08j`)', () => {
   const idDe = (projet: string, base: string) => `${projet}/${base}/prod::public.orders`
 
   it('vise les onglets de la base nommée, et pas ceux d’une voisine', () => {
-    const cible = { kind: 'database' as const, project: 'Halle', database: 'analytics' }
+    const cible = {
+      kind: 'database' as const,
+      project: 'Halle',
+      database: 'analytics',
+      environment: 'prod',
+    }
     expect(viseeParLId(cible, idDe('Halle', 'analytics'))).toBe(true)
     expect(viseeParLId(cible, idDe('Halle', 'shop'))).toBe(false)
+  })
+
+  /*
+   * **Le défaut que le palier d'environnement rend franc** (`25a`).
+   *
+   * `idOnglet` compose `projet/base/env`, et `viseeParLId` ne lisait pas le troisième segment :
+   * retirer `analytics` en production fermait aussi les onglets d'`analytics` en dev, et faussait le
+   * compte de modifications que la confirmation de `08j` promet exact. Le défaut ne se voyait pas
+   * tant que l'arbre ne montrait qu'un environnement à la fois.
+   */
+  it('ne vise pas une connexion homonyme d’un autre environnement', () => {
+    const cible = {
+      kind: 'database' as const,
+      project: 'Halle',
+      database: 'analytics',
+      environment: 'prod',
+    }
+    expect(viseeParLId(cible, 'Halle/analytics/prod::public.orders')).toBe(true)
+    // Même projet, même nom de base, autre environnement : ce sont deux connexions (`23b`).
+    expect(viseeParLId(cible, 'Halle/analytics/dev::public.orders')).toBe(false)
+  })
+
+  // Retirer un **projet** emporte tout, quel que soit l'environnement : c'est la déclaration entière
+  // qui part.
+  it('un retrait de projet emporte tous les environnements', () => {
+    const projet = { kind: 'project' as const, project: 'Halle' }
+    expect(viseeParLId(projet, 'Halle/analytics/dev::public.orders')).toBe(true)
+    expect(viseeParLId(projet, 'Halle/analytics/prod::public.orders')).toBe(true)
   })
 
   it('ne confond pas deux noms dont l’un est le préfixe de l’autre', () => {

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { deplierUnEnvironnement } from './pourLesTests'
 
 // Les consoles persistées dans l'arborescence : de l'assemblage d'écran. Les règles — unicité du nom
 // dans la connexion, reprise des requêtes de `12f` — sont couvertes côté Rust.
@@ -8,7 +9,7 @@ import { expect, test } from '@playwright/test'
 // en plus sur quoi elle s'exécute.
 test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.evaluate(() => document.fonts.ready)
 })

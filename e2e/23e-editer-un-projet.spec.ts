@@ -71,15 +71,19 @@ test('le contenu porte son propre remplissage, celui de la trame de `A2`', async
   expect(m.droiteChamp).toBeLessThan(m.droiteModale)
 })
 
-test('chaque ligne dit combien de connexions en dépendent, et laquelle est active', async ({
-  page,
-}) => {
-  // Le décor déclare ses deux connexions en `prod`, qui est aussi l'environnement actif.
+test('chaque ligne dit combien de connexions en dépendent', async ({ page }) => {
+  // Le décor déclare ses deux connexions en `prod`.
   const prod = page.getByRole('button', { name: 'Retirer prod' }).locator('..')
   await expect(prod).toContainText('2 connexions')
-  await expect(prod).toContainText('actif')
   await expect(page.getByRole('button', { name: 'Retirer dev' }).locator('..')).toContainText(
     'aucune connexion',
+  )
+  // **La marque « · actif » a disparu avec `25a`** : un projet n'a plus d'environnement actif, ils
+  // sont tous des paliers de l'arbre. Elle disait « retirer celui-ci change le contenu de l'arbre » ;
+  // c'est désormais vrai de tous, et le compte le dit déjà mieux. Un test qui la cherchait encore
+  // demanderait le retour d'une notion supprimée.
+  await expect(page.getByRole('dialog', { name: /Modifier Atelier Nord/ })).not.toContainText(
+    'actif',
   )
 })
 
@@ -107,8 +111,10 @@ test('retirer un environnement qui porte des connexions les nomme avant', async 
   // La phrase que `08j` a rendue obligatoire : « supprimer une connexion » se lit comme « supprimer
   // la base ».
   await expect(confirmation).toContainText('bases distantes ne sont pas touchées')
-  // C'est l'environnement actif du décor : son remplaçant est annoncé.
-  await expect(confirmation).toContainText('C’est l’environnement actif')
+  // **Et rien sur un environnement actif** (`25a`) : la modale annonçait le remplaçant de l'actif
+  // quand l'environnement retiré l'était. Il n'y a plus d'actif, donc plus de remplaçant à nommer —
+  // ce qui reste vrai, et qui compte, est le compte et les noms de ce qui part.
+  await expect(confirmation).not.toContainText('environnement actif')
 })
 
 test('un environnement vide se retire sans confirmation, et la liste suit', async ({ page }) => {
@@ -138,18 +144,12 @@ test('les flèches sur la poignée réordonnent la liste', async ({ page }) => {
   await expect.poll(rangs).toBe('dev,preprod,prod,staging')
 })
 
-test('la pastille de la barre de titre mène à la même modale', async ({ page }) => {
-  await page.getByRole('button', { name: 'Terminé' }).click()
-  await expect(modale(page)).toBeHidden()
-
-  await page
-    .getByRole('button', { name: /Atelier Nord/ })
-    .first()
-    .click()
-  await page.getByRole('button', { name: 'Modifier Atelier Nord' }).click()
-
-  // Les deux points d'entrée de `23e` — l'arbre où l'on regarde ses projets, la pastille où l'on
-  // regarde le projet courant — ouvrent le même écran. C'est aussi ce qui aurait attrapé le défaut
-  // n° 89, où une modale montée dans la sidebar était inatteignable depuis la pastille.
-  await expect(modale(page)).toBeVisible()
-})
+/*
+ * **Le test « la pastille de la barre de titre mène à la même modale » a disparu** (`25b`).
+ *
+ * Il vérifiait que les deux points d'entrée de `23e` ouvraient le même écran — l'arbre où l'on
+ * regarde ses projets, la pastille où l'on regardait le projet courant. La pastille n'est plus un
+ * contrôle : le « … » de la ligne projet est désormais le **seul** chemin, et c'est celui que le
+ * `beforeEach` de ce fichier emprunte à chaque test. Ce qui était une garantie de cohérence entre deux
+ * chemins n'a plus deux chemins à comparer.
+ */

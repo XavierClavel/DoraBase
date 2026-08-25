@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test'
-import { ouvrirUneConsole } from './pourLesTests'
+import { deplierUnEnvironnement, ouvrirUneConsole } from './pourLesTests'
 
 // `A8` de bout en bout : la console mongo, l'arbre de documents, le schéma déduit. Des géométries et
 // des couleurs, donc hors de portée de jsdom.
 test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   // **La base documentaire du décor.** Le dialecte de la console se dérive de son moteur : c'est ce
   // chemin-là, et pas un réglage, qui ouvre une console mongo (`13a`).
   await page.getByRole('treeitem', { name: /^evenements/ }).click()
