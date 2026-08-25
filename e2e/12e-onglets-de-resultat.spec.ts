@@ -6,8 +6,8 @@ import { deplierUnEnvironnement, ouvrirUneConsole } from './pourLesTests'
 test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
   await deplierUnEnvironnement(page)
-  await page.getByRole('treeitem', { name: /analytics/ }).click()
-  await page.getByRole('treeitem', { name: 'public' }).click()
+  await page.getByRole('treeitem', { name: /analytics/ }).dblclick()
+  await page.getByRole('treeitem', { name: 'public' }).dblclick()
   await ouvrirUneConsole(page, 'analytics')
   await page.locator('.cm-content').click()
   await page.keyboard.insertText("select date_trunc('day', created_at) from orders")

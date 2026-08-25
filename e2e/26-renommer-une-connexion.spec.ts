@@ -37,8 +37,8 @@ test('la ligne porte le nouveau nom, et l’onglet ouvert reste ouvert', async (
   await page
     .getByRole('treeitem', { name: /analytics/ })
     .first()
-    .click()
-  await page.getByRole('treeitem', { name: 'public' }).click()
+    .dblclick()
+  await page.getByRole('treeitem', { name: 'public' }).dblclick()
   // `^orders` désigne aussi `orders_daily` : le nom accessible complet lève l'ambiguïté.
   await page.getByRole('treeitem', { name: /^orders 1/ }).click()
   await expect(page.getByRole('tab', { name: /orders/ })).toBeVisible()

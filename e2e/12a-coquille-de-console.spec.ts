@@ -5,8 +5,8 @@ import { deplierUnEnvironnement, ouvrirUneConsole } from './pourLesTests'
 test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
   await deplierUnEnvironnement(page)
-  await page.getByRole('treeitem', { name: /analytics/ }).click()
-  await page.getByRole('treeitem', { name: 'public' }).click()
+  await page.getByRole('treeitem', { name: /analytics/ }).dblclick()
+  await page.getByRole('treeitem', { name: 'public' }).dblclick()
   await ouvrirUneConsole(page, 'analytics')
   await page.waitForSelector('[aria-label="Requête SQL"]')
   await page.evaluate(() => document.fonts.ready)
@@ -73,8 +73,8 @@ test('glisser la poignée du bas redimensionne en hauteur, et la taille survit',
   // réglage à chaque fois.
   await page.reload()
   await deplierUnEnvironnement(page)
-  await page.getByRole('treeitem', { name: /analytics/ }).click()
-  await page.getByRole('treeitem', { name: 'public' }).click()
+  await page.getByRole('treeitem', { name: /analytics/ }).dblclick()
+  await page.getByRole('treeitem', { name: 'public' }).dblclick()
   await ouvrirUneConsole(page, 'analytics')
   await page.waitForSelector('[aria-label="Requête SQL"]')
   const hauteurRelue = await page.evaluate(

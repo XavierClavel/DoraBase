@@ -6,8 +6,8 @@ import { deplierUnEnvironnement } from './pourLesTests'
 test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
   await deplierUnEnvironnement(page)
-  await page.getByRole('treeitem', { name: /analytics/ }).click()
-  await page.getByRole('treeitem', { name: 'public' }).click()
+  await page.getByRole('treeitem', { name: /analytics/ }).dblclick()
+  await page.getByRole('treeitem', { name: 'public' }).dblclick()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()
   // Le couple est dans l'en-tête de la colonne de droite depuis `22`, plus dans la bande d'onglets.
   await page.getByRole('button', { name: 'Structure' }).click()

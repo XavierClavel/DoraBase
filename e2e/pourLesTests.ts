@@ -12,6 +12,13 @@ import type { Page } from '@playwright/test'
  * Les valeurs par défaut sont celles du décor de `/?demo` : le projet « Atelier Nord », dont
  * l'environnement `prod` porte les deux connexions (`analytics` et `evenements`).
  *
+ * **Le dépliage est un double-clic, et le clic simple ne déplie plus.** Il faisait les deux —
+ * sélectionner et déplier — et regarder une connexion refermait le sous-arbre qu'on venait d'ouvrir.
+ * Les deux voies sont désormais la flèche et le double-clic ; c'est le second que les specs
+ * empruntent, la flèche faisant onze pixels et sa zone attrapable étant un pseudo-élément qui ne se
+ * vise qu'au point. Le double-clic **sélectionne aussi** — ses deux clics font leur travail avant que
+ * le geste ne déplie — donc une spec qui attend une ligne dépliée *et* désignée n'a rien à ajouter.
+ *
  * **Le motif de l'environnement est ancré**, et ce n'est pas une précaution : le décor déclare
  * `preprod` à côté de `prod`, et `/prod/` désigne les deux — Playwright refuse alors de cliquer, la
  * résolution étant stricte. Le nom accessible d'une ligne d'environnement commence par son libellé,
@@ -23,8 +30,8 @@ export async function deplierUnEnvironnement(
   environnement = 'prod',
   projet = 'Atelier Nord',
 ): Promise<void> {
-  await page.getByRole('treeitem', { name: new RegExp(projet) }).click()
-  await page.getByRole('treeitem', { name: new RegExp(`^${environnement}\\b`) }).click()
+  await page.getByRole('treeitem', { name: new RegExp(projet) }).dblclick()
+  await page.getByRole('treeitem', { name: new RegExp(`^${environnement}\\b`) }).dblclick()
 }
 
 /**

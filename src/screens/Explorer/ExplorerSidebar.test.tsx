@@ -198,7 +198,7 @@ test('déplier un projet ne demande rien pour les schémas', async () => {
   const deplies: Noeud[] = []
   render(<Piloté onToggleSpy={(n) => deplies.push(n)} />)
 
-  await userEvent.click(screen.getByRole('treeitem', { name: /Atelier Nord/ }))
+  await userEvent.dblClick(screen.getByRole('treeitem', { name: /Atelier Nord/ }))
 
   expect(deplies).toHaveLength(1)
   expect(deplies[0]?.kind).toBe('project')
@@ -206,20 +206,65 @@ test('déplier un projet ne demande rien pour les schémas', async () => {
   expect(deplies.filter((n) => n.kind === 'database')).toHaveLength(0)
 })
 
-test('un clic sélectionne et déplie à la fois', async () => {
-  render(<Piloté />)
-  const projet = screen.getByRole('treeitem', { name: /Atelier Nord/ })
-  await userEvent.click(projet)
-  // Le mockup ne montre pas de zone de clic distincte pour le chevron ; en inventer une
-  // réduirait la cible à onze pixels.
-  expect(screen.getByRole('treeitem', { name: /Atelier Nord/ })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  )
-  expect(screen.getByRole('treeitem', { name: /Atelier Nord/ })).toHaveAttribute(
-    'aria-expanded',
-    'true',
-  )
+/**
+ * Le dépliage, détaché du clic simple.
+ *
+ * Le clic faisait les deux, et regarder une connexion refermait le sous-arbre qu'on venait
+ * d'ouvrir. Trois gestes désormais : le clic **sélectionne**, la flèche et le double-clic
+ * **déplient**. Les quatre tests qui suivent couvrent les trois, plus le clavier — sans lui,
+ * déplier serait devenu impossible sans souris.
+ */
+describe('le dépliage n’est plus le clic', () => {
+  const flecheDe = (ligne: HTMLElement) => ligne.querySelector('[data-chevron-zone]') as HTMLElement
+
+  test('un clic sélectionne, et ne déplie pas', async () => {
+    const deplies: Noeud[] = []
+    render(<Piloté onToggleSpy={(n) => deplies.push(n)} />)
+    await userEvent.click(screen.getByRole('treeitem', { name: /Atelier Nord/ }))
+
+    const ligne = screen.getByRole('treeitem', { name: /Atelier Nord/ })
+    expect(ligne).toHaveAttribute('aria-selected', 'true')
+    expect(ligne).toHaveAttribute('aria-expanded', 'false')
+    expect(deplies).toHaveLength(0)
+  })
+
+  test('un clic sur la flèche déplie, sans changer la sélection', async () => {
+    render(<Piloté />)
+    await userEvent.click(flecheDe(screen.getByRole('treeitem', { name: /Atelier Nord/ })))
+
+    const ligne = screen.getByRole('treeitem', { name: /Atelier Nord/ })
+    expect(ligne).toHaveAttribute('aria-expanded', 'true')
+    // La flèche ouvre ; elle ne désigne pas. Sélectionner au passage déplacerait le centre de
+    // l'écran pour un geste qui ne parlait que de l'arbre.
+    expect(ligne).toHaveAttribute('aria-selected', 'false')
+  })
+
+  test('un double-clic déplie, et la ligne finit sélectionnée', async () => {
+    render(<Piloté />)
+    await userEvent.dblClick(screen.getByRole('treeitem', { name: /Atelier Nord/ }))
+
+    const ligne = screen.getByRole('treeitem', { name: /Atelier Nord/ })
+    expect(ligne).toHaveAttribute('aria-expanded', 'true')
+    // Les deux clics du geste sélectionnent d'abord : c'est ce que le double-clic veut dire aussi.
+    expect(ligne).toHaveAttribute('aria-selected', 'true')
+  })
+
+  test('les flèches du clavier déplient et replient', async () => {
+    render(<Piloté />)
+    const ligne = screen.getByRole('treeitem', { name: /Atelier Nord/ })
+    ligne.focus()
+
+    await userEvent.keyboard('{ArrowRight}')
+    expect(screen.getByRole('treeitem', { name: /Atelier Nord/ })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    await userEvent.keyboard('{ArrowLeft}')
+    expect(screen.getByRole('treeitem', { name: /Atelier Nord/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+  })
 })
 
 // --- Les échecs ---

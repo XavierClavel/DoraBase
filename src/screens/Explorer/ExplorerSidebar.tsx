@@ -390,16 +390,23 @@ export function ExplorerSidebar({
                 aria-label={noeud.announce}
                 depth={noeud.depth}
                 label={noeud.label}
-                /* **Le double-clic renomme**, comme dans un explorateur de fichiers — et seulement
-                   une console. Celui d'une table ou d'un schéma vient du serveur ; celui d'une
-                   connexion nous appartient depuis `26`, mais son clic simple **déplie** : un
-                   double-clic replierait puis déplierait, et le champ de saisie apparaîtrait sur une
-                   ligne en train de bouger. Elle se renomme donc par son menu « … », et par là
-                   seulement. */
+                /* **Le double-clic déplie, ou renomme une console.**
+
+                   Déplier : c'est la seconde voie du dépliage, à côté de la flèche, et le geste
+                   qu'on a dans les doigts d'un explorateur de fichiers. Les deux clics qu'il contient
+                   sélectionnent d'abord la ligne — ce que le geste veut dire aussi.
+
+                   Renommer : réservé aux **consoles**, qui n'ont pas de chevron. Celui d'une table ou
+                   d'un schéma vient du serveur ; celui d'une connexion nous appartient depuis `26`,
+                   mais sa ligne se déplie — un double-clic y ferait les deux, et le champ de saisie
+                   apparaîtrait sur une ligne en train de bouger. Elle se renomme donc par son menu
+                   « … », et par là seulement. */
                 onDoubleClick={
-                  noeud.kind === 'console' && consoles !== undefined
-                    ? () => setEnRenommage(noeud.id)
-                    : undefined
+                  noeud.chevron
+                    ? () => onToggle(noeud)
+                    : noeud.kind === 'console' && consoles !== undefined
+                      ? () => setEnRenommage(noeud.id)
+                      : undefined
                 }
                 edition={
                   enRenommage === noeud.id
@@ -445,13 +452,14 @@ export function ExplorerSidebar({
                     y: evenement.clientY,
                   })
                 }}
-                onClick={() => {
-                  // Un clic sur une ligne dépliable fait les deux : il sélectionne *et* déplie. Le
-                  // mockup ne montre pas de zone de clic distincte pour le chevron, et en inventer
-                  // une réduirait la cible à onze pixels.
-                  onSelect(noeud)
-                  if (noeud.chevron) onToggle(noeud)
-                }}
+                /* **Un clic sélectionne, et rien de plus.** Il faisait les deux — sélectionner et
+                   déplier — et le mockup ne montrant pas de zone distincte pour la flèche, la cible
+                   à onze pixels avait servi d'argument. À l'usage, c'est l'inverse qui coûte :
+                   regarder une connexion refermait le sous-arbre qu'on venait d'ouvrir, et le
+                   rouvrir le refermait encore. La flèche gagne donc une zone attrapable en débord
+                   (voir `TreeRow`), et le double-clic est la seconde voie. */
+                onClick={() => onSelect(noeud)}
+                onChevron={noeud.chevron ? () => onToggle(noeud) : undefined}
               />
             ),
           )}

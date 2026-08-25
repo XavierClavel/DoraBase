@@ -76,6 +76,19 @@ type TreeRowProps = {
     onAnnuler: () => void
   }
   onClick?: () => void
+  /**
+   * Le dépliage, **détaché du clic sur la ligne**.
+   *
+   * Un clic sur la ligne sélectionne, et rien de plus ; déplier demande la flèche ou un double-clic.
+   * Le clic simple faisait les deux, et c'est ce qui n'allait pas : regarder une connexion refermait
+   * le sous-arbre qu'on venait d'ouvrir, et le rouvrir le refermait encore.
+   *
+   * **Pas un `<button>` imbriqué**, qui serait invalide et déclencherait les deux gestes : la flèche
+   * est une zone *dans* le bouton de la ligne, et c'est la cible du clic qui départage. Sa zone
+   * attrapable déborde de 5 px sans rien occuper — la même parade que la poignée du `SplitPane`,
+   * pour la même raison : onze pixels de flèche ne se visent pas.
+   */
+  onChevron?: () => void
 } & Omit<
   ButtonHTMLAttributes<HTMLButtonElement>,
   'onClick' | 'className' | 'style' | 'type' | 'children'
@@ -107,18 +120,24 @@ export function TreeRow({
   muted,
   edition,
   onClick,
+  onChevron,
   ...rest
 }: TreeRowProps) {
   const contenu = (
     <>
       {chevron !== undefined && (
-        <Icon
-          name="chevr"
-          size={11}
-          strokeWidth={2.4}
-          data-chevron={chevron}
-          className={cx(styles.chevron, chevron === 'open' && styles.chevronOpen)}
-        />
+        // L'enveloppe porte la zone attrapable, et c'est elle que `closest` reconnaît. Le
+        // `data-chevron` reste sur l'icône : `e2e/a4-sidebar.spec.ts` mesure la flèche elle-même —
+        // sa taille et sa rotation — et non ce qui l'entoure.
+        <span className={styles.chevronZone} data-chevron-zone="">
+          <Icon
+            name="chevr"
+            size={11}
+            strokeWidth={2.4}
+            data-chevron={chevron}
+            className={cx(styles.chevron, chevron === 'open' && styles.chevronOpen)}
+          />
+        </span>
       )}
       {icon !== undefined && (
         <Icon
@@ -191,8 +210,34 @@ export function TreeRow({
       className={className}
       style={{ paddingLeft: INDENT[depth] }}
       data-depth={depth}
-      onClick={onClick}
       {...rest}
+      // **La cible du clic départage les deux gestes.** Un `<button>` dans un `<button>` serait
+      // invalide et déclencherait les deux ; `closest` sur la cible réelle donne le même résultat
+      // sans imbriquer d'élément interactif — et laisse l'activation clavier, dont la cible est le
+      // bouton lui-même, tomber sur la sélection.
+      onClick={(evenement) => {
+        const cible = evenement.target as Element
+        if (onChevron !== undefined && cible.closest?.('[data-chevron-zone]')) onChevron()
+        else onClick()
+      }}
+      // **Les flèches horizontales déplient, comme le veut le motif ARIA de l'arbre.** Sans elles,
+      // détacher le dépliage du clic le rendrait inatteignable au clavier : `Entrée` sélectionne, et
+      // plus rien n'ouvrirait. `ArrowRight` sur un nœud ouvert et `ArrowLeft` sur un nœud fermé ne
+      // font rien — le motif y descend ou remonte d'un cran, ce que cet arbre ne sait pas encore
+      // faire, et basculer à leur place serait pire que le silence.
+      //
+      // **Après `{...rest}`, et le `onKeyDown` de l'appelant est rappelé à la main** : le laisser
+      // écraser celui-ci retirerait les flèches de l'arbre, et l'inverse retirerait les touches de
+      // l'appelant. Le premier qui appelle `preventDefault` gagne.
+      onKeyDown={(evenement) => {
+        rest.onKeyDown?.(evenement)
+        if (onChevron === undefined || evenement.defaultPrevented) return
+        const ouvre = evenement.key === 'ArrowRight' && chevron === 'closed'
+        const ferme = evenement.key === 'ArrowLeft' && chevron === 'open'
+        if (!ouvre && !ferme) return
+        evenement.preventDefault()
+        onChevron()
+      }}
     >
       {contenu}
     </button>
