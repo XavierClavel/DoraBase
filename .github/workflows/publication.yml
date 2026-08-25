@@ -116,18 +116,61 @@ jobs:
       #
       # `NOTARISE` porte cette condition une seule fois : une expression répétée dans cinq `if`
       # finit par différer dans l'un des cinq.
+      #
+      # **Et les cinq secrets sont contrôlés ici, avant de compiler.** Un secret absent vaut la
+      # chaîne vide, que Tauri passe telle quelle à `notarytool` : le 25 août 2026, un
+      # `--issuer ''` a fait échouer la publication **après** la signature, donc après vingt
+      # minutes de compilation — et le nom du secret fautif n'apparaissait nulle part, seulement
+      # « must be a valid UUID ». Chaque forme est donc vérifiée, et le message nomme le secret.
       - name: signature Apple disponible ?
         env:
           IDENTITE: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          CERTIFICAT: ${{ secrets.APPLE_CERTIFICATE }}
+          MOT_DE_PASSE: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          CLEF: ${{ secrets.APPLE_API_KEY }}
+          EMETTEUR: ${{ secrets.APPLE_ISSUER_ID }}
+          P8: ${{ secrets.APPLE_API_KEY_P8 }}
         run: |
           set -euo pipefail
-          if [[ -n ${IDENTITE:-} ]]; then
-            echo "NOTARISE=oui" >> "$GITHUB_ENV"
-            echo "signature et notarisation Apple : activées"
-          else
+          if [[ -z ${IDENTITE:-} ]]; then
             echo "NOTARISE=non" >> "$GITHUB_ENV"
             echo "::notice::pas de secret APPLE_SIGNING_IDENTITY — signature ad hoc, sans notarisation"
+            exit 0
           fi
+
+          manquants=()
+          [[ -n ${CERTIFICAT:-} ]] || manquants+=(APPLE_CERTIFICATE)
+          [[ -n ${MOT_DE_PASSE:-} ]] || manquants+=(APPLE_CERTIFICATE_PASSWORD)
+          [[ -n ${CLEF:-} ]] || manquants+=(APPLE_API_KEY)
+          [[ -n ${EMETTEUR:-} ]] || manquants+=(APPLE_ISSUER_ID)
+          [[ -n ${P8:-} ]] || manquants+=(APPLE_API_KEY_P8)
+          if (( ${#manquants[@]} )); then
+            echo "::error::signature demandée, mais ces secrets sont vides : ${manquants[*]}"
+            echo "  la signature sans notarisation laisserait la fenêtre de Gatekeeper : ce job"
+            echo "  refuse de publier à moitié." >&2
+            exit 1
+          fi
+
+          # Les deux formes qu'Apple impose, et que l'on peut vérifier sans réseau. Un Issuer ID
+          # est un UUID ; un Key ID fait dix caractères alphanumériques majuscules. Les avoir
+          # échangés est l'erreur naturelle, les deux vivant dans le même écran.
+          grep -Eq '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' \
+            <<<"$EMETTEUR" || {
+            echo "::error::APPLE_ISSUER_ID n'est pas un UUID — c'est l'« Issuer ID » d'App Store"
+            echo "  Connect (Users and Access ▸ Integrations), pas le Key ID." >&2
+            exit 1
+          }
+          grep -Eq '^[A-Z0-9]{8,12}$' <<<"$CLEF" || {
+            echo "::error::APPLE_API_KEY ne ressemble pas à un Key ID (dix caractères, A-Z0-9)" >&2
+            exit 1
+          }
+          grep -q '^Developer ID Application:' <<<"$IDENTITE" || {
+            echo "::error::APPLE_SIGNING_IDENTITY doit commencer par « Developer ID Application: »" >&2
+            exit 1
+          }
+
+          echo "NOTARISE=oui" >> "$GITHUB_ENV"
+          echo "signature et notarisation Apple : activées, cinq secrets présents et bien formés"
 
       # La clé App Store Connect est un **fichier** pour `notarytool`, alors qu'un secret est une
       # chaîne : elle est donc écrite ici, en base64 inverse, hors de l'arbre de travail et en 600.
@@ -182,7 +225,9 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          # Le secret s'appelle `APPLE_ISSUER_ID`, la variable que Tauri lit s'appelle
+          # `APPLE_API_ISSUER` : la correspondance se fait ici, une fois.
+          APPLE_API_ISSUER: ${{ secrets.APPLE_ISSUER_ID }}
 
       # La version affichée vient du build et elle est **figée sous Playwright** : sans quoi
       # chaque publication périmerait les captures de fidélité. La contrepartie est de vérifier
