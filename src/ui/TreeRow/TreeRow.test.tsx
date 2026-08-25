@@ -113,3 +113,70 @@ test('les attributs sont transmis à l’élément interactif', () => {
   expect(ligne.tagName).toBe('BUTTON')
   expect(ligne).toHaveAttribute('aria-level', '2')
 })
+
+// --- La flèche, geste distinct du clic sur la ligne ---
+
+// **Un `<button>` dans un `<button>` serait invalide**, et le clic y déclencherait les deux gestes :
+// la flèche est une zone *dans* le bouton de la ligne, et c'est la cible du clic qui départage.
+// Ces trois tests tiennent ce départage — le reste du produit en dépend depuis que déplier n'est
+// plus ce que fait un clic simple.
+test('un clic sur la ligne appelle onClick, et non onChevron', async () => {
+  const onClick = vi.fn()
+  const onChevron = vi.fn()
+  render(
+    <TreeRow
+      depth={0}
+      label="Atelier Nord"
+      chevron="closed"
+      onClick={onClick}
+      onChevron={onChevron}
+    />,
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Atelier Nord' }))
+  expect(onClick).toHaveBeenCalledOnce()
+  expect(onChevron).not.toHaveBeenCalled()
+})
+
+test('un clic sur la flèche appelle onChevron, et non onClick', async () => {
+  const onClick = vi.fn()
+  const onChevron = vi.fn()
+  const { container } = render(
+    <TreeRow
+      depth={0}
+      label="Atelier Nord"
+      chevron="closed"
+      onClick={onClick}
+      onChevron={onChevron}
+    />,
+  )
+  await userEvent.click(container.querySelector('[data-chevron-zone]') as HTMLElement)
+  expect(onChevron).toHaveBeenCalledOnce()
+  expect(onClick).not.toHaveBeenCalled()
+})
+
+// L'activation clavier a le bouton pour cible, donc elle tombe du côté de la sélection : c'est
+// pourquoi les flèches horizontales existent, et c'est le test suivant.
+test('Entrée sélectionne, les flèches horizontales déplient', async () => {
+  const onClick = vi.fn()
+  const onChevron = vi.fn()
+  render(
+    <TreeRow
+      depth={0}
+      label="Atelier Nord"
+      chevron="closed"
+      onClick={onClick}
+      onChevron={onChevron}
+    />,
+  )
+  screen.getByRole('button', { name: 'Atelier Nord' }).focus()
+  await userEvent.keyboard('{Enter}')
+  expect(onClick).toHaveBeenCalledOnce()
+  expect(onChevron).not.toHaveBeenCalled()
+
+  await userEvent.keyboard('{ArrowRight}')
+  expect(onChevron).toHaveBeenCalledOnce()
+  // Un nœud fermé ne se referme pas : le motif ARIA y remonte au parent, ce que cet arbre ne sait
+  // pas encore faire — et basculer à sa place serait pire que le silence.
+  await userEvent.keyboard('{ArrowLeft}')
+  expect(onChevron).toHaveBeenCalledOnce()
+})

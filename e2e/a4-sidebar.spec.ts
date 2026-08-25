@@ -162,12 +162,13 @@ test('deux connexions homonymes de deux environnements se déplient indépendamm
   await expect(enVitrine).toHaveAttribute('aria-expanded', 'true')
   await expect(enAtelier).toHaveCount(0)
 
-  await environnement(page, 'atelier').click()
+  // Déplier est un double-clic depuis que le clic simple ne fait que sélectionner.
+  await environnement(page, 'atelier').dblclick()
   // La seconde `analytics` paraît, **repliée** : le dépliage de sa jumelle ne la concerne pas.
   await expect(enAtelier).toHaveAttribute('aria-expanded', 'false')
   await expect(enVitrine).toHaveAttribute('aria-expanded', 'true')
 
-  await enAtelier.click()
+  await enAtelier.dblclick()
 
   // Les deux sont dépliées, et l'une n'affiche pas la structure de l'autre : `charge.schemas` ne
   // porte de schémas que pour la connexion de « vitrine », donc celle d'« atelier » n'a que sa
@@ -187,7 +188,7 @@ test('deux connexions homonymes de deux environnements se déplient indépendamm
 // Un nœud déplié sans enfant se lit comme un chargement en cours — le doute du défaut de `06d`. Ici
 // rien ne charge : la liste vient de la configuration, donc le vide est un fait, et il se dit.
 test('un environnement sans connexion le dit, aligné au palier 2', async ({ page }) => {
-  await environnement(page, 'coulisses').click()
+  await environnement(page, 'coulisses').dblclick()
 
   const message = sidebar(page).getByText('Aucune connexion déclarée en coulisses')
   await expect(message).toBeVisible()

@@ -19,8 +19,8 @@ test('la coquille a les dimensions du mockup', async ({ page }) => {
   // sont là, avec leur poignée, mais il n'y a pas de bande d'onglets dont mesurer la hauteur. Le
   // schéma est le premier palier qui remplit le centre.
   await deplierUnEnvironnement(page)
-  await page.getByRole('treeitem', { name: /analytics/ }).click()
-  await page.getByRole('treeitem', { name: 'public' }).click()
+  await page.getByRole('treeitem', { name: /analytics/ }).dblclick()
+  await page.getByRole('treeitem', { name: 'public' }).dblclick()
   const mesures = await page.evaluate(() => {
     const barre = document.querySelector('[data-tauri-drag-region]')
     // Le panneau de gauche du `SplitPane` extérieur : c'est lui qui porte la largeur, la
@@ -75,8 +75,8 @@ test('ouvrir une table depuis l’arbre ouvre un onglet, et la sidebar liste ses
   page,
 }) => {
   await deplierUnEnvironnement(page)
-  await page.getByRole('treeitem', { name: /analytics/ }).click()
-  await page.getByRole('treeitem', { name: 'public' }).click()
+  await page.getByRole('treeitem', { name: /analytics/ }).dblclick()
+  await page.getByRole('treeitem', { name: 'public' }).dblclick()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()
 
   await expect(page.getByRole('tab', { name: /orders/ })).toHaveAttribute('aria-selected', 'true')
@@ -89,8 +89,8 @@ test('les trois colonnes se partagent la largeur, et la grille en garde l’esse
   page,
 }) => {
   await deplierUnEnvironnement(page)
-  await page.getByRole('treeitem', { name: /analytics/ }).click()
-  await page.getByRole('treeitem', { name: 'public' }).click()
+  await page.getByRole('treeitem', { name: /analytics/ }).dblclick()
+  await page.getByRole('treeitem', { name: 'public' }).dblclick()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()
   await page.waitForSelector('[role=grid]')
 
@@ -122,8 +122,8 @@ test('les trois colonnes se partagent la largeur, et la grille en garde l’esse
 
 test('la barre d’état court sur toute la largeur, sous les trois colonnes', async ({ page }) => {
   await deplierUnEnvironnement(page)
-  await page.getByRole('treeitem', { name: /analytics/ }).click()
-  await page.getByRole('treeitem', { name: 'public' }).click()
+  await page.getByRole('treeitem', { name: /analytics/ }).dblclick()
+  await page.getByRole('treeitem', { name: 'public' }).dblclick()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()
   await page.waitForSelector('[role=status]')
 
@@ -146,8 +146,8 @@ test('avec beaucoup d’onglets, la bande défile et le couple de vues reste att
   page,
 }) => {
   await deplierUnEnvironnement(page)
-  await page.getByRole('treeitem', { name: /analytics/ }).click()
-  await page.getByRole('treeitem', { name: 'public' }).click()
+  await page.getByRole('treeitem', { name: /analytics/ }).dblclick()
+  await page.getByRole('treeitem', { name: 'public' }).dblclick()
 
   // Ouvrir toutes les tables du schéma : assez pour déborder de la bande.
   for (const nom of [
@@ -209,8 +209,8 @@ test('avec beaucoup d’onglets, la bande défile et le couple de vues reste att
 
 test('fermer le dernier onglet laisse l’écran de travail debout', async ({ page }) => {
   await deplierUnEnvironnement(page)
-  await page.getByRole('treeitem', { name: /analytics/ }).click()
-  await page.getByRole('treeitem', { name: 'public' }).click()
+  await page.getByRole('treeitem', { name: /analytics/ }).dblclick()
+  await page.getByRole('treeitem', { name: 'public' }).dblclick()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()
   await page.getByRole('button', { name: 'Fermer orders' }).click()
 
@@ -258,8 +258,8 @@ test('sans sélection, les deux colonnes restent et le message occupe le centre'
 
   // Le schéma remplit le centre : la bande d'onglets revient, le message part.
   await deplierUnEnvironnement(page)
-  await page.getByRole('treeitem', { name: /analytics/ }).click()
-  await page.getByRole('treeitem', { name: 'public' }).click()
+  await page.getByRole('treeitem', { name: /analytics/ }).dblclick()
+  await page.getByRole('treeitem', { name: 'public' }).dblclick()
   await expect(page.getByText('Sélectionner une entité pour commencer')).toHaveCount(0)
   await expect(page.getByRole('tablist')).toHaveCount(1)
 })
@@ -267,10 +267,39 @@ test('sans sélection, les deux colonnes restent et le message occupe le centre'
 // **Les trois paliers au-dessus du schéma ne remplissent pas le centre.** Ils n'ont ni liste
 // d'objets ni structure : seulement des enfants dans l'arbre.
 test('un projet, un environnement, une connexion : le centre reste vide', async ({ page }) => {
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  // Le double-clic déplie **et** sélectionne : il faut le dépliage pour atteindre le palier suivant,
+  // et la sélection est ce que ce test regarde. Le dernier geste est un clic simple — une connexion
+  // désignée sans être dépliée est exactement le cas à couvrir.
+  await page.getByRole('treeitem', { name: /Atelier Nord/ }).dblclick()
   await expect(page.getByText('Sélectionner une entité pour commencer')).toBeVisible()
-  await page.getByRole('treeitem', { name: /^prod\b/ }).click()
+  await page.getByRole('treeitem', { name: /^prod\b/ }).dblclick()
   await expect(page.getByText('Sélectionner une entité pour commencer')).toBeVisible()
   await page.getByRole('treeitem', { name: /analytics/ }).click()
+  await expect(page.getByText('Sélectionner une entité pour commencer')).toBeVisible()
+})
+
+// **La zone attrapable de la flèche est un pseudo-élément**, donc invisible aux mesures de boîte et
+// hors de portée de jsdom : elle se constate au point, comme celle de la poignée du `SplitPane`. Le
+// test clique **à côté** de la flèche, dans son débord — le seul endroit qui prouve que viser onze
+// pixels n'est pas nécessaire.
+test('la flèche déplie seule, et sa zone attrapable déborde', async ({ page }) => {
+  const projet = page.getByRole('treeitem', { name: /Atelier Nord/ })
+  await expect(projet).toHaveAttribute('aria-expanded', 'false')
+
+  const point = await page.evaluate(() => {
+    const zone = document.querySelector('[data-chevron-zone]')?.getBoundingClientRect()
+    if (!zone) return null
+    // Quatre pixels à gauche du rectangle de la flèche : dehors, et dans le débord de 5.
+    return { x: zone.left - 4, y: zone.top + zone.height / 2, largeur: Math.round(zone.width) }
+  })
+  if (!point) throw new Error('aucune flèche dans l’arbre')
+  // La gouttière garde la largeur du mockup : le débord n'occupe rien.
+  expect(point.largeur).toBe(11)
+
+  await page.mouse.click(point.x, point.y)
+  await expect(projet).toHaveAttribute('aria-expanded', 'true')
+  // La flèche ouvre ; elle ne désigne pas. Sélectionner au passage déplacerait le centre de l'écran
+  // pour un geste qui ne parlait que de l'arbre.
+  await expect(projet).toHaveAttribute('aria-selected', 'false')
   await expect(page.getByText('Sélectionner une entité pour commencer')).toBeVisible()
 })

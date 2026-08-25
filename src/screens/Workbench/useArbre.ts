@@ -162,6 +162,25 @@ export function useArbre(
     [passerelle, marquer, onSchemaDeplie],
   )
 
+  /**
+   * Charge ce qu'un nœud rend lisible, **sans le déplier**.
+   *
+   * Extrait de `basculer`, et ce n'est pas un rangement : le clic sur une ligne ne déplie plus, il
+   * sélectionne. Sélectionner un schéma affiche donc `A4` — sa liste d'objets — sans qu'aucun
+   * dépliage l'ait chargée, et la liste serait restée vide. Le chargement suit désormais **ce qu'on
+   * regarde**, non le geste qui l'a ouvert.
+   *
+   * Rien n'est rechargé au second appel : ce qui est déjà là est déjà à jour, et le bouton
+   * « Rafraîchir » du pied existe pour le cas contraire.
+   */
+  const charger = useCallback(
+    (noeud: Noeud) => {
+      if (noeud.kind === 'database' && !charge.schemas[noeud.id]) void chargerBase(noeud)
+      if (noeud.kind === 'schema' && !charge.objets[noeud.id]) void chargerSchema(noeud)
+    },
+    [charge, chargerBase, chargerSchema],
+  )
+
   /** Déplie ou replie un nœud, et charge ce que le dépliage rend visible. */
   const basculer = useCallback(
     (noeud: Noeud) => {
@@ -173,12 +192,9 @@ export function useArbre(
         return suivant
       })
       if (!ouvrait) return
-      // Rien n'est rechargé au second dépliage : ce qui est déjà là est déjà à jour, et le
-      // bouton « Rafraîchir » du pied existe pour le cas contraire.
-      if (noeud.kind === 'database' && !charge.schemas[noeud.id]) void chargerBase(noeud)
-      if (noeud.kind === 'schema' && !charge.objets[noeud.id]) void chargerSchema(noeud)
+      charger(noeud)
     },
-    [deplies, charge, chargerBase, chargerSchema],
+    [deplies, charger],
   )
 
   /** Oublie tout ce qui est chargé, sans replier : le prochain regard rechargera. */
@@ -188,8 +204,8 @@ export function useArbre(
   }, [])
 
   return useMemo(
-    () => ({ deplies, charge, etatDeBase, basculer, rafraichir }),
-    [deplies, charge, etatDeBase, basculer, rafraichir],
+    () => ({ deplies, charge, etatDeBase, basculer, charger, rafraichir }),
+    [deplies, charge, etatDeBase, basculer, charger, rafraichir],
   )
 }
 
