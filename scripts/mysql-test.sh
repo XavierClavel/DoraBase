@@ -3,7 +3,7 @@
 # Le décor MySQL des specs `16a` → `16c`, monté **de la même façon en local et en CI**.
 #
 # Même principe que `mongo-test.sh` : un script partagé plutôt qu'une variante CI qu'on ne peut pas
-# essayer localement — le défaut qui a fait échouer le garde `default-run` (voir `REPRISE.md` § 6).
+# essayer localement — le défaut qui a fait échouer le garde `default-run`.
 #
 # Un service container aurait suffi ici, contrairement à MongoDB : MySQL n'a pas besoin d'arguments
 # de commande. Le script existe quand même, pour que les trois décors se montent d'une seule façon.

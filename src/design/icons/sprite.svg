@@ -1,3 +1,7 @@
+<!-- Source, éditée à la main : ce sprite était extrait du mockup de handoff, retiré du
+     dépôt le 25 août 2026. Icônes en trait, viewBox 0 0 24 24, fill none, stroke-width
+     1.8–2.2 (2.4–2.6 pour les chevrons), extrémités et jointures arrondies.
+     Toute icône ajoutée doit l’être aussi dans `names.ts`. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
 <defs>
   <symbol id="i-srv" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>

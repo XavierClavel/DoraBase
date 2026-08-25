@@ -51,7 +51,7 @@
  *
  * La ligne de filtres faisait déjà ainsi (`.filterRow`), ce qui explique qu'elle, elle allait au
  * bout : les deux bandes de l'en-tête se contredisaient à l'écran. Signalé le 25 août 2026, capture
- * à l'appui (`DEFAUTS.md` n° 125).
+ * à l'appui.
  *
  * Les teintes de colonne filtrée ou triée restent sur les cellules — elles désignent *une* colonne.
  */

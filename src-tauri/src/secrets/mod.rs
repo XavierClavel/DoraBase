@@ -1,4 +1,4 @@
-//! Stockage des identifiants. Voir `specs/05c-stockage-identifiants.md`.
+//! Stockage des identifiants.
 //!
 //! Un seul type de secret existe dans le handoff : le mot de passe de base de données,
 //! saisi en `A2`. L'interface est générique, mais rien n'est construit pour un second.

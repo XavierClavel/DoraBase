@@ -30,7 +30,7 @@ type SidebarProps = {
 // Colonne de 212 px partagée par A5 → A9. Purement structurelle : elle ne connaît ni
 // l'arbre, ni son état d'ouverture, ni la sélection. L'écran consommateur aplatit son
 // modèle et place lui-même ses `TreeRow`, son `SidebarSectionTitle` et ses `ColumnRow` —
-// voir `specs/04-menu-lateral-standard.md`, qui écarte toute récursion tant qu'aucun écran
+// toute récursion est écartée tant qu'aucun écran
 // n'en impose la forme.
 export function Sidebar({ filter, children, footer, width = 'standard' }: SidebarProps) {
   return (

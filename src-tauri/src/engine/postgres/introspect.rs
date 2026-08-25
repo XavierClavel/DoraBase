@@ -474,7 +474,7 @@ fn assembler_ddl(
     // **Les index qui ne portent pas de contrainte sont ajoutés après le `CREATE TABLE`.** Le
     // mockup d'`A9` les montre ainsi, et sans eux le DDL copié recrée une table *sans ses index* :
     // rejouable, et pourtant pas la même table — le même genre de perte silencieuse que l'identité
-    // manquante (voir `DEFAUTS.md` n° 49).
+    // manquante.
     //
     // Ceux d'une clé primaire ou d'une unicité sont **omis** : PostgreSQL les crée lui-même avec
     // la contrainte, et les répéter ferait échouer le rejeu sur un nom déjà pris. Ils portent le

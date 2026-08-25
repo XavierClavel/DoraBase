@@ -89,7 +89,7 @@ type TreeRowProps = {
 //
 // Ligne d'arbre purement présentationnelle : elle ne connaît ni ses enfants, ni son état
 // d'ouverture, ni le modèle de données. L'écran consommateur aplatit son arbre et fournit
-// une liste de `TreeRow` déjà positionnées — voir `specs/04-menu-lateral-standard.md`, qui
+// une liste de `TreeRow` déjà positionnées — le menu latéral
 // écarte volontairement toute récursion tant qu'aucun écran n'en impose la forme.
 export function TreeRow({
   depth,

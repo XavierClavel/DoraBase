@@ -1,5 +1,4 @@
-//! Politique de clé d'hôte. Voir `specs/06e-tunnel-ssh.md` § « La vérification de la clé
-//! d'hôte, à trancher explicitement ».
+//! Politique de clé d'hôte.
 //!
 //! **La décision, rappelée ici parce que c'est un choix de sécurité :** la clé du bastion est
 //! vérifiée contre le `known_hosts` de l'utilisateur, et un hôte inconnu **fait échouer** la

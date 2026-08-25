@@ -28,8 +28,7 @@ PORT_SSH=${PORT_SSH:-52222}
 # En local il s'appelle `dorabase-test-pg`. En CI c'est le *service container* de GitHub
 # Actions, dont le nom est engendré — on le retrouve par son image. Chercher plutôt que coder
 # en dur permet au **même script** de monter le décor dans les deux environnements, ce qui
-# supprime une classe de divergence local/CI qui a déjà coûté deux corrections sur ce projet
-# (voir `REPRISE.md` § 6).
+# supprime une classe de divergence local/CI qui a déjà coûté deux corrections sur ce projet.
 trouver_pg() {
   if docker inspect dorabase-test-pg >/dev/null 2>&1; then
     echo dorabase-test-pg

@@ -80,7 +80,7 @@ test('aucune assistance à la saisie : ce qu’on tape est un identifiant, pas u
 
 test('« Entrée » empêche le traitement par défaut de la touche', async () => {
   // Sinon l'activation par défaut retombe sur le contrôle qui a le focus *après* la validation — la
-  // croix de la fenêtre que la validation vient d'ouvrir. `DEFAUTS.md` n° 120.
+  // croix de la fenêtre que la validation vient d'ouvrir..
   const { champ } = monter()
   const evenement = createEvent.keyDown(champ, { key: 'Enter' })
   fireEvent(champ, evenement)

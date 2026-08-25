@@ -257,9 +257,9 @@ export function ProjectEditor({
                         }
                       }}
                     >
-                      {/* `sort` — deux flèches haut/bas. Le jeu d'icônes du handoff n'a pas de
-                          poignée, et en dessiner une ferait entrer un glyphe étranger au sprite
-                          généré (`pnpm icons:build`) ; celle-ci dit le geste. */}
+                      {/* `sort` — deux flèches haut/bas. Le jeu d'icônes n'a pas de poignée, et
+                          en dessiner une ferait entrer un glyphe étranger au sprite ; celle-ci
+                          dit le geste. */}
                       <Icon name="sort" size={12} strokeWidth={1.9} />
                     </button>
 

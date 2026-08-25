@@ -1,4 +1,4 @@
-//! Tunnel SSH vers un bastion. Voir `specs/06e-tunnel-ssh.md`.
+//! Tunnel SSH vers un bastion.
 //!
 //! **Interface étroite, volontairement.** `06e` retient `russh` en connaissance de cause : plus
 //! jeune que `ssh2`, et d'API mouvante. La contrepartie est qu'un changement d'implémentation

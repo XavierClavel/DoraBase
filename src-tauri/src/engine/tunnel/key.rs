@@ -1,4 +1,4 @@
-//! Chargement de la clé privée du bastion. Voir `specs/06e` § Hors périmètre.
+//! Chargement de la clé privée du bastion.
 
 use std::path::Path;
 use std::sync::Arc;

@@ -61,7 +61,7 @@ pub fn run() {
                         // webview, invisible depuis le terminal. Avec elle, un appel
                         // `invoke()` et sa réponse se lisent dans la sortie de
                         // `pnpm tauri dev` — la seule vérification possible du pont, puisque
-                        // Playwright ne pilote pas WKWebView. Voir `specs/08d`.
+                        // Playwright ne pilote pas WKWebView.
                         .target(tauri_plugin_log::Target::new(
                             tauri_plugin_log::TargetKind::Webview,
                         ))

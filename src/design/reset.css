@@ -112,7 +112,7 @@ body {
  * geste part de l'élément sous le curseur — une cellule — et remonte jusqu'au premier conteneur
  * défilant ; posée sur les éléments traversés, la propriété **coupe cette remontée**, et la grille ne
  * défilait plus du tout. Mesuré par le test de la molette, qui est passé au rouge sur-le-champ
- * (`DEFAUTS.md` n° 78).
+ *.
  */
 
 /*

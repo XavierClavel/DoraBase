@@ -603,7 +603,7 @@ test('esc ferme la sous-modale sans fermer A2', async ({ page }) => {
 
 // Sans aucun projet, `A2` ne peut rien enregistrer : elle déclare une base *dans un projet
 // existant*, et le handoff ne maquette pas le parcours d'un utilisateur qui n'en a aucun.
-// Trou n°4, consigné au § « À trancher » de `specs/README.md`.
+// Ce que le handoff ne maquettait pas : le parcours d'un utilisateur sans aucun projet.
 // **Ce test a disparu avec la sentinelle** (`24c`). Il vérifiait que sans projet, `A2` proposait
 // « + Nouveau projet… » et attendait un nom avant d'activer « Enregistrer ». Cet écran ne crée plus de
 // projet : la garantie a déménagé dans `NewProject.test.tsx`, où le nom vide désactive « Continuer » en

@@ -1,4 +1,4 @@
-//! L'erreur de moteur. Voir `specs/06a-contrat-couche-moteur.md`.
+//! L'erreur de moteur.
 
 use serde::Serialize;
 use ts_rs::TS;

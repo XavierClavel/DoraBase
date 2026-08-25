@@ -106,7 +106,7 @@ test('cliquer enregistre, puis ferme la modale', async () => {
   // c'est le piège du select contrôlé, corrigé dans `NewConnection`.
   expect(espion.requetes[0]?.project).toBe('Atelier Nord')
   // « Ouvrir » veut dire aller vers `A4`, qui n'existe pas avant `09` : ce scope enregistre et
-  // ferme. Voir `specs/08e` § Hors périmètre.
+  // ferme.
   await waitFor(() => expect(fermer).toHaveBeenCalledOnce())
 })
 

@@ -1,7 +1,7 @@
-//! Requête de lignes et fenêtre de résultat. Voir `specs/06a-contrat-couche-moteur.md`.
+//! Requête de lignes et fenêtre de résultat.
 //!
 //! C'est ici que la contrainte transverse du projet devient un **type** plutôt qu'une
-//! recommandation : `specs/README.md` pose qu'aucun jeu de résultats complet ne traverse
+//! recommandation : `AGENTS.md` pose qu'aucun jeu de résultats complet ne traverse
 //! l'IPC. Une recommandation se contourne ; `RowLimit` étant une énumération fermée,
 //! « demander tout » n'est pas exprimable.
 

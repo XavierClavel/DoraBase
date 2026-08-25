@@ -186,7 +186,7 @@ impl SecretRef {
 }
 
 /// Un bastion SSH. Le **chemin** de la clé privée est de la configuration, pas un
-/// secret — voir `specs/05c` § Hors périmètre.
+/// secret.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "config.ts")]
@@ -286,7 +286,7 @@ pub struct ConnectionSettings {
     pub ca_certificate: Option<String>,
     /// Réglage **saisi** dans `A2`. L'état effectif d'une base ouverte compose ce
     /// réglage, la préférence globale de `A10` et l'environnement courant : c'est une
-    /// règle, pas une donnée, et elle appartient à `11`. Voir `specs/05a`.
+    /// règle, pas une donnée, et elle appartient à l'édition inline.
     pub read_only: bool,
     pub reconnect_on_startup: bool,
     pub tunnel: Option<Tunnel>,

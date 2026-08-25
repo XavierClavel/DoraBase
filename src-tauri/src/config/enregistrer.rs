@@ -1,4 +1,4 @@
-//! L'enregistrement d'une base dans un projet. Voir `specs/08e-enregistrer-et-ouvrir.md`.
+//! L'enregistrement d'une base dans un projet.
 //!
 //! **Deux écritures sur deux supports distincts**, dont l'une peut réussir quand l'autre
 //! échoue. C'est tout le sujet de ce module, et la raison pour laquelle il est séparé de
@@ -2156,7 +2156,7 @@ mod tests_renommage {
 
     /// Un projet à **deux bases et trois secrets** : le décor décide de ce que le test peut voir.
     /// Avec une seule base et un seul secret, une migration qui s'arrête à mi-parcours serait
-    /// indiscernable d'une migration complète — la leçon de la règle 7 de `REPRISE.md`.
+    /// indiscernable d'une migration complète — un décor trop régulier ne mesure que lui-même.
     fn decor() -> Vec<Project> {
         vec![
             Project {
@@ -2166,7 +2166,7 @@ mod tests_renommage {
                 // **Trois connexions et trois secrets** depuis `23b` : `analytics` en dev et en prod
                 // sont deux connexions, là où c'était une base à deux variantes. Le décor porte
                 // toujours plus d'un secret, pour qu'une migration arrêtée à mi-parcours se distingue
-                // d'une migration complète — la règle 7 de `REPRISE.md`.
+                // d'une migration complète : le décor doit rendre les deux distinguables.
                 databases: vec![
                     Database {
                         name: "analytics".to_owned(),
