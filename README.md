@@ -26,41 +26,22 @@ empreinte SHA-256 :
 
 ### Installer
 
-**En une commande, sans aucun avertissement.** La quarantaine n'est pas posée par macOS mais
-par le programme qui télécharge — Safari, Chrome, le Finder. `curl` ne la pose pas :
+Ouvrir le `.dmg`, glisser **DoraBase** dans **Applications**, double-cliquer. C'est tout :
+l'application est signée par un Developer ID Apple et **notariée**, donc macOS ne demande rien
+et n'avertit de rien.
+
+Vérifier, si le cœur vous en dit — c'est ce que la CI vérifie à chaque publication :
 
 ```bash
-curl -fL -o /tmp/DoraBase.dmg \
-  https://github.com/g3wis/DoraBase/releases/latest/download/DoraBase-0.1.2-universal.dmg
-hdiutil attach -quiet /tmp/DoraBase.dmg
-cp -R /Volumes/DoraBase/DoraBase.app /Applications/
-hdiutil detach -quiet /Volumes/DoraBase && open /Applications/DoraBase.app
+spctl --assess --type execute --verbose=4 /Applications/DoraBase.app
+# /Applications/DoraBase.app: accepted
+# source=Notarized Developer ID
 ```
 
-(Le nom du fichier porte le numéro de version : prenez-le sur la page de la release.)
-
-**Ou par le navigateur** : ouvrir le `.dmg`, glisser **DoraBase** dans **Applications**. macOS
-refuse alors l'application au premier lancement — « Apple n'a pas pu confirmer que DoraBase ne
-contenait pas de logiciel malveillant » — et une commande lève ce refus définitivement :
+L'empreinte du `.dmg` est publiée à côté de lui :
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/DoraBase.app
-```
-
-Le vieux réflexe **clic droit ▸ Ouvrir** ne suffit plus depuis macOS 15 : Apple a retiré ce
-contournement, ce qui force le détour par *Réglages Système ▸ Confidentialité et sécurité ▸
-Ouvrir quand même*.
-
-**Pourquoi ce refus.** L'application est signée en *ad hoc* — assez pour se lancer, pas pour que
-macOS sache qui l'a produite. Une signature reconnue demande un **Developer ID** Apple et une
-notarisation : un abonnement annuel, pas une ligne de code, et il n'a pas été pris. Le README le
-dit plutôt que de laisser croire à une application cassée.
-
-Vérifier l'empreinte avant d'ouvrir, si vous le souhaitez :
-
-```bash
-shasum -a 256 /tmp/DoraBase.dmg
-curl -fsSL https://github.com/g3wis/DoraBase/releases/latest/download/DoraBase-0.1.2-universal.dmg.sha256
+shasum -a 256 ~/Téléchargements/DoraBase-*.dmg
 ```
 
 ### Essayer un commit, sans attendre une version
