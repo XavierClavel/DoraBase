@@ -11,6 +11,22 @@ import { expect, test } from '@playwright/test'
 // base déclinée en plusieurs environnements — et le garder aurait nommé une chose qui n'existe plus.
 // L'écart mesuré valait 249 pixels, tous dans ce libellé, et le diff l'a confirmé avant régénération.
 //
+// **Trois références régénérées le 25 août 2026** — `a2-nouvelle-connexion`, `a2-tunnel` et
+// `a3-echec`, et **elles seules** : `a1-accueil` et `a1-etape-projet` sont inchangées au pixel, parce
+// que `A1` n'a ni centre de barre de titre ni sidebar. Les trois autres se capturent **par-dessus la
+// démo** (seul décor où les deux étapes s'enchaînent), donc elles montrent l'écran de travail derrière
+// la modale — et c'est lui qui a changé, pour trois causes visibles dans le diff et vérifiées avant
+// régénération :
+//
+//   1. la barre de titre perd son centre et sa liste « ENV » (`25b`) — rien n'est sélectionné dans la
+//      démo au chargement, donc le centre est vide, et la barre ne bouge pas d'un pixel ;
+//   2. la colonne de gauche passe de 212 à 228 px (`25a`), ce qui déplace les deux actions du pied ;
+//   3. les lignes projet perdent leur badge d'environnement et comptent « n connexions » et non
+//      « n bases » (`25a`, `23b`).
+//
+// 977 pixels d'écart sur 1,1 million pour `A2`, 504 pour `A3`, tous dans ces trois zones. Une capture
+// qu'on rafraîchit sans le dire cesse d'être une référence.
+//
 // **La géométrie, elle, a été vérifiée au chiffre avant de toucher aux références** : même abscisse de
 // texte, même corps, valeur centrée dans un champ de 30 px, boîtes de 32 et 19 px inchangées — ce que
 // les mesures de `a2-nouvelle-connexion` et `a4-barre-de-titre` affirment indépendamment. Une capture

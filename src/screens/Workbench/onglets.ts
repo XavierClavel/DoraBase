@@ -194,15 +194,29 @@ export function ongletActif(etat: EtatOnglets): Onglet | null {
  * « Halles » — deux projets distincts dont l'un emporterait les onglets de l'autre.
  */
 export function viseeParLId(
-  cible: { kind: 'database' | 'project'; project: string; database?: string },
+  cible: {
+    kind: 'database' | 'project'
+    project: string
+    database?: string
+    /**
+     * L'environnement de la connexion visée, **obligatoire pour une cible `database`**.
+     *
+     * `idOnglet` le compose depuis toujours ; cette fonction ne le lisait pas. Retirer `analytics` en
+     * production fermait donc aussi les onglets d'`analytics` en dev, et faussait le compte de
+     * modifications que la confirmation de `08j` promet exact. Le défaut ne se voyait pas tant que
+     * l'arbre ne montrait qu'un environnement à la fois ; le palier de `25a` le rend franc.
+     */
+    environment?: string
+  },
   id: string,
 ): boolean {
   // `??` plutôt qu'un `!` : `split` rend toujours au moins un élément, mais l'affirmer au
   // compilateur pour une ligne n'apprend rien à personne — la valeur par défaut est vraie.
   const [coordonnees = ''] = id.split('::')
-  const [projet, base] = coordonnees.split('/')
+  const [projet, base, environnement] = coordonnees.split('/')
   if (projet !== cible.project) return false
-  return cible.kind === 'project' || base === cible.database
+  if (cible.kind === 'project') return true
+  return base === cible.database && environnement === cible.environment
 }
 
 /**

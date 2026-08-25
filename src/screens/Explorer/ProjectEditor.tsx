@@ -167,14 +167,6 @@ export function ProjectEditor({
           projet={projet.name}
           libelle={aRetirer.label}
           connexions={connexionsDe(aRetirer.id)}
-          // L'actif ne suit que si c'est lui qui part — la règle de `23c`, dite ici **avant** le
-          // geste. Le premier restant, dans l'ordre du sélecteur.
-          nouvelActif={
-            projet.activeEnvironment === aRetirer.id
-              ? (projet.environments.find((declaration) => declaration.id !== aRetirer.id)?.label ??
-                null)
-              : null
-          }
           onClose={() => setARetirer(null)}
           onDelete={async () => {
             const issue = await onRetirer({
@@ -232,7 +224,6 @@ export function ProjectEditor({
             <ul className={styles.liste}>
               {projet.environments.map((declaration, index) => {
                 const connexions = connexionsDe(declaration.id)
-                const actif = projet.activeEnvironment === declaration.id
                 return (
                   <li
                     key={declaration.id}
@@ -348,13 +339,16 @@ export function ProjectEditor({
                     />
 
                     {/* **Le compte, affiché avant même de cliquer** (`23e`) : c'est ce qui rend
-                        l'avertissement de `23f` prévisible. « Actif » se dit aussi, parce que retirer
-                        l'actif change le contenu de l'arbre. */}
+                        l'avertissement de `23f` prévisible.
+
+                        **La marque « · actif » a disparu avec `25a`** : un projet n'a plus
+                        d'environnement actif, ils sont tous des paliers de l'arbre. Elle disait
+                        « retirer celui-ci change le contenu de l'arbre » ; c'est désormais vrai de
+                        tous, et le compte le dit déjà mieux. */}
                     <span className={styles.compte}>
                       {connexions.length === 0
                         ? 'aucune connexion'
                         : `${connexions.length} connexion${connexions.length > 1 ? 's' : ''}`}
-                      {actif && <span className={styles.actifMarque}> · actif</span>}
                     </span>
 
                     {/* **Pas un `<label>`** : `Toggle` rend un `<button role="switch">`, auquel un

@@ -60,7 +60,7 @@
    * s'ouvre en `position: absolute` sous la pastille, donc *hors* de la barre de 44 px : un
    * ancêtre qui découpe le rend invisible, et le menu de `08g` paraissait ne rien faire.
    * Signalé à l'usage le 10 août 2026. Le rétrécissement est désormais porté par le **texte**
-   * qui doit rétrécir (`ProjectPill`), ce qui est de toute façon plus juste : ce n'est pas au
+   * qui doit rétrécir (`SelectionIndicator`), ce qui est de toute façon plus juste : ce n'est pas au
    * conteneur de décider ce qu'on sacrifie. */
   min-width: 0;
 }

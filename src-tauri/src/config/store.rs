@@ -23,7 +23,15 @@ use super::model::{
 ///
 /// **v3, par `05d`** : `tunnel` porte `{ localPort, proxy: { kind, … } }` au lieu de quatre champs
 /// SSH à plat.
-pub const VERSION_COURANTE: u32 = 4;
+///
+/// **v4, par `06j`** : le proxy Cloud SQL cesse de porter un compte de service.
+///
+/// **v5, par `25c`** : `activeEnvironment` quitte le projet — l'arbre fait de chaque environnement
+/// un nœud, et plus personne ne lit de choix persisté. Le cran ne transforme **rien** : `serde`
+/// ignore les champs qu'il ne connaît pas, donc un fichier v4 se relit tel quel et se réécrit sans
+/// le champ. La version monte quand même, parce que sans elle une ancienne application relirait ce
+/// fichier sans erreur et y rétablirait un environnement actif arbitraire.
+pub const VERSION_COURANTE: u32 = 5;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ConfigFile {
@@ -282,9 +290,12 @@ fn migrer(cible: &Path, brut: &str, mut valeur: serde_json::Value, depuis: u32) 
     // ensuite par le même bras que si elle venait du disque.
     // v2 → v3 : `05d`, déjà appliqué ci-dessus ; il ne reste qu'à lire la forme courante.
     // v3 → v4 : `06j`, de même.
+    // v4 → v5 : `25c` **ne transforme rien** — `activeEnvironment` disparaît du modèle, et `serde`
+    // ignore un champ qu'il ne connaît pas. Relire suffit ; le champ ne sera simplement pas réécrit.
     let migre = match depuis {
         0 | 1 => migration_v1_vers_v2(&brut_migre),
-        2 | 3 => serde_json::from_str::<ConfigFile>(&brut_migre)
+        // `2..=4` et non `2 | 3 | 4` : clippy refuse l'énumération d'entiers contigus.
+        2..=4 => serde_json::from_str::<ConfigFile>(&brut_migre)
             .map(|fichier| (fichier.projects, fichier.preferences)),
         _ => {
             return LoadOutcome::Unreadable {
@@ -417,6 +428,10 @@ mod v1 {
     #[serde(rename_all = "camelCase")]
     pub struct Projet {
         pub name: String,
+        /// **Lu, jamais réécrit** — et c'est pour cela qu'il est encore ici alors que le modèle ne
+        /// le porte plus (`25c`). Il sert à *déduire les environnements déclarés* : un projet dont la
+        /// seule trace d'un environnement était d'y être actif perdrait cette déclaration si on
+        /// cessait de le lire.
         pub active_environment: String,
         pub databases: Vec<Base>,
         #[serde(default)]
@@ -528,7 +543,6 @@ fn migration_v1_vers_v2(brut: &str) -> Result<(Vec<Project>, Preferences), serde
 
             Project {
                 name: projet.name,
-                active_environment: EnvironmentId::brut(projet.active_environment),
                 environments,
                 databases,
                 queries: projet.queries,
@@ -826,7 +840,6 @@ mod tests {
     fn projet_nomme(nom: &str) -> Project {
         Project {
             name: nom.into(),
-            active_environment: EnvironmentId::brut("prod"),
             environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
             queries: Vec::new(),
             // `analytics` en dev **et** en prod : deux connexions depuis `23b`.
@@ -883,22 +896,6 @@ mod tests {
         let chemin = dir.path().join("sous/dossier/config.json");
         save(&chemin, &[], &Preferences::default()).unwrap();
         assert!(chemin.exists());
-    }
-
-    #[test]
-    fn l_environnement_actif_survit_a_un_aller_retour() {
-        let dir = tempfile::tempdir().unwrap();
-        let chemin = dir.path().join("config.json");
-        let mut projet = projet_nomme("Atelier Nord");
-        projet.active_environment = EnvironmentId::brut("prod");
-
-        save(&chemin, &[projet], &Preferences::default()).unwrap();
-        let relu = match load(&chemin) {
-            LoadOutcome::Loaded { projects, .. } => projects,
-            autre => panic!("attendu Loaded, obtenu {autre:?}"),
-        };
-
-        assert_eq!(relu[0].active_environment, EnvironmentId::brut("prod"));
     }
 
     // --- Tâche 2 : atomicité ---
@@ -1368,6 +1365,152 @@ mod tests {
         assert_eq!(valeur["ssh"]["credentialsFilePath"], "/a/garder/aussi");
     }
 
+    // --- `25c` : migration v4 → v5, l'environnement actif quitte le modèle ---
+
+    /// Un fichier de version 4 tel que l'application **écrivait** réellement, avec son
+    /// `activeEnvironment`.
+    ///
+    /// Littéral, pour la même raison que `V2_AVEC_TUNNEL_PLAT` et `V3_AVEC_COMPTE_DE_SERVICE` :
+    /// le champ n'existe plus dans le code, donc rien ne peut le produire. Deux connexions dans
+    /// deux environnements, dont un environnement déclaré **sans** connexion — c'est celui-là qui
+    /// tomberait si le cran faisait autre chose que relire.
+    const V4_AVEC_ENVIRONNEMENT_ACTIF: &str = r#"{
+      "version": 4,
+      "projects": [{
+        "name": "Atelier Nord",
+        "activeEnvironment": "vitrine",
+        "environments": [
+          { "id": "atelier", "label": "atelier", "color": "green", "production": false },
+          { "id": "vitrine", "label": "vitrine", "color": "red", "production": true },
+          { "id": "coulisses", "label": "coulisses", "color": "slate", "production": false }
+        ],
+        "databases": [{
+          "name": "catalogue",
+          "engine": "postgresql",
+          "environment": "atelier",
+          "connection": {
+            "host": "localhost",
+            "port": 5432,
+            "defaultDatabase": "catalogue",
+            "username": "lecteur",
+            "password": null,
+            "sslMode": "prefer",
+            "readOnly": true,
+            "reconnectOnStartup": false,
+            "tunnel": null
+          },
+          "consoles": [{ "name": "Exploration", "sql": "select 1" }]
+        }, {
+          "name": "catalogue",
+          "engine": "postgresql",
+          "environment": "vitrine",
+          "connection": {
+            "host": "localhost",
+            "port": 5432,
+            "defaultDatabase": "catalogue",
+            "username": "lecteur",
+            "password": null,
+            "sslMode": "require",
+            "readOnly": true,
+            "reconnectOnStartup": false,
+            "tunnel": null
+          },
+          "consoles": []
+        }]
+      }]
+    }"#;
+
+    #[test]
+    fn un_fichier_v4_se_lit_et_garde_ses_environnements_et_ses_connexions() {
+        let dir = tempfile::tempdir().unwrap();
+        let chemin = dir.path().join("config.json");
+        fs::write(&chemin, V4_AVEC_ENVIRONNEMENT_ACTIF).unwrap();
+
+        let issue = load(&chemin);
+        let LoadOutcome::Loaded { projects, .. } = issue else {
+            panic!("un fichier v4 doit se lire après migration, obtenu {issue:?}");
+        };
+
+        // **Les trois environnements déclarés survivent, dans leur ordre.** Le cran ne transforme
+        // rien : c'est ce que ce test tient. Un cran qui « déduirait » les environnements des
+        // connexions perdrait « coulisses », qui n'en a aucune.
+        let ids: Vec<_> = projects[0]
+            .environments
+            .iter()
+            .map(|declaration| declaration.id.as_str().to_owned())
+            .collect();
+        assert_eq!(ids, vec!["atelier", "vitrine", "coulisses"]);
+        assert!(
+            projects[0]
+                .environnement(&EnvironmentId::brut("vitrine"))
+                .expect("vitrine")
+                .production,
+            "le drapeau de production traverse la relecture"
+        );
+
+        // Les deux connexions homonymes restent deux connexions, avec leur console.
+        assert_eq!(projects[0].databases.len(), 2);
+        assert_eq!(
+            projects[0].databases[0].connection.ssl_mode,
+            SslMode::Prefer
+        );
+        assert_eq!(
+            projects[0].databases[1].connection.ssl_mode,
+            SslMode::Require
+        );
+        assert_eq!(projects[0].databases[0].consoles[0].name, "Exploration");
+        assert!(projects[0].valider().is_ok());
+    }
+
+    #[test]
+    fn le_fichier_reecrit_apres_une_v4_ne_porte_plus_l_environnement_actif() {
+        // Ce que la montée de version achète : le champ ne revient pas par la réécriture.
+        let dir = tempfile::tempdir().unwrap();
+        let chemin = dir.path().join("config.json");
+        fs::write(&chemin, V4_AVEC_ENVIRONNEMENT_ACTIF).unwrap();
+
+        let LoadOutcome::Loaded {
+            projects,
+            preferences,
+        } = load(&chemin)
+        else {
+            panic!("un fichier v4 doit se lire");
+        };
+        save(&chemin, &projects, &preferences).unwrap();
+
+        let reecrit = fs::read_to_string(&chemin).unwrap();
+        assert!(!reecrit.contains("activeEnvironment"));
+        let valeur: serde_json::Value = serde_json::from_str(&reecrit).unwrap();
+        assert_eq!(valeur["version"], serde_json::json!(5));
+    }
+
+    #[test]
+    fn la_migration_de_l_environnement_actif_laisse_une_sauvegarde() {
+        // Un retrait de champ est une perte d'information, même minime : la sauvegarde est ce qui
+        // la rend réparable, et c'est l'objet du test, pas un effet de bord.
+        let dir = tempfile::tempdir().unwrap();
+        let chemin = dir.path().join("config.json");
+        fs::write(&chemin, V4_AVEC_ENVIRONNEMENT_ACTIF).unwrap();
+
+        let _ = load(&chemin);
+
+        let sauvegardes: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entree| {
+                entree
+                    .file_name()
+                    .to_string_lossy()
+                    .contains("config.json.avant-v4")
+            })
+            .collect();
+        assert_eq!(sauvegardes.len(), 1, "une seule sauvegarde attendue");
+        let sauvegarde = fs::read_to_string(sauvegardes[0].path()).unwrap();
+        assert_eq!(sauvegarde, V4_AVEC_ENVIRONNEMENT_ACTIF);
+        // Et le champ y est **encore**.
+        assert!(sauvegarde.contains("activeEnvironment"));
+    }
+
     #[test]
     fn un_fichier_v2_traverse_les_deux_crans_du_proxy() {
         // Les deux crans du proxy se composent : un fichier v2 passe par le hissement **puis**
@@ -1536,7 +1679,6 @@ mod tests {
         });
         let projet = Project {
             name: "acme".into(),
-            active_environment: EnvironmentId::brut("dev"),
             environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
             queries: Vec::new(),
             databases: vec![Database {
@@ -1576,7 +1718,6 @@ mod tests {
         variante_avec_reference.password = Some(SecretRef::new("ref-abc123"));
         let projet = Project {
             name: "Atelier Nord".into(),
-            active_environment: EnvironmentId::brut("dev"),
             environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
             queries: Vec::new(),
             databases: vec![Database {
@@ -1823,13 +1964,21 @@ mod tests_migration_v2 {
     }
 
     #[test]
-    fn un_projet_sans_base_garde_son_environnement_actif() {
+    fn un_projet_sans_base_garde_l_environnement_ou_il_etait_actif() {
         let projets = migrer_le_decor();
         let outils = &projets[1];
-        // Aucune variante d'où déduire quoi que ce soit : c'est l'environnement actif qui sauve le
-        // projet de l'invalidité — un projet sans environnement est refusé (`23a`).
+        // Aucune variante d'où déduire quoi que ce soit : c'est la lecture de `activeEnvironment`
+        // qui sauve le projet de l'invalidité — un projet sans environnement est refusé (`23a`).
+        //
+        // **Ce que `25c` ne change pas.** Le champ a quitté le modèle, mais la migration continue de
+        // le *lire* pour en déduire une déclaration : sans cela, ce projet-là repartirait sans aucun
+        // environnement, et donc invalide.
         assert_eq!(outils.environments.len(), 1);
-        assert_eq!(outils.active_environment, EnvironmentId::brut("dev"));
+        assert_eq!(
+            outils.environments[0].id,
+            EnvironmentId::brut("dev"),
+            "l'environnement où le projet était actif reste déclaré"
+        );
         assert!(outils.valider().is_ok());
     }
 

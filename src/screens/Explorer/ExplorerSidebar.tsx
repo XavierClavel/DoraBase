@@ -11,7 +11,7 @@ import {
   SidebarFooterRow,
 } from '../../ui/SidebarFooter/SidebarFooter'
 import { SidebarSectionTitle } from '../../ui/SidebarSectionTitle/SidebarSectionTitle'
-import { TreeRow } from '../../ui/TreeRow/TreeRow'
+import { INDENT, TreeRow } from '../../ui/TreeRow/TreeRow'
 import { aplatir, type Charge, type Deplies, type Noeud } from './arbre'
 import { type CibleDeSuppression, DeleteConnectionDialog } from './DeleteConnectionDialog'
 import styles from './ExplorerSidebar.module.css'
@@ -21,11 +21,7 @@ export type ExplorerSidebarProps = {
   projects: readonly Project[]
   deplies: Deplies
   charge: Charge
-  etatDe: (
-    project: string,
-    database: string,
-    environment: Project['activeEnvironment'],
-  ) => ConnectionState
+  etatDe: (project: string, database: string, environment: EnvironmentId) => ConnectionState
   selectedId?: string | null
   onToggle: (noeud: Noeud) => void
   onSelect: (noeud: Noeud) => void
@@ -119,7 +115,7 @@ export type ExplorerSidebarProps = {
 const APERCU_COLONNES = 7
 
 /**
- * La sidebar de `A4` : filtre, arbre à quatre niveaux, pied.
+ * La sidebar de `A4` : filtre, arbre à cinq niveaux, pied.
  *
  * L'arbre est **aplati par `arbre.ts`**, fonction pure et testée sans DOM. Ce composant ne fait
  * que rendre la liste de nœuds et router les clics — `TreeRow` de `04` étant purement
@@ -238,7 +234,7 @@ export function ExplorerSidebar({
         {/* `role="tree"` et `treeitem` : l'arbre est aplati dans le DOM, donc `aria-level` porte la
           profondeur qu'une imbrication aurait donnée gratuitement. Sans lui, un lecteur d'écran
           annoncerait une liste plate de vingt éléments sans hiérarchie. */}
-        <div role="tree" aria-label="Projets et bases" className={styles.tree}>
+        <div role="tree" aria-label="Projets, environnements et connexions" className={styles.tree}>
           {visibles.length === 0 && filtre !== '' && (
             <p className={styles.vide}>Aucune ligne affichée ne correspond à « {filtre} ».</p>
           )}
@@ -247,7 +243,14 @@ export function ExplorerSidebar({
               // Une ligne de message n'est pas un `treeitem` : ce n'est pas un nœud de l'arbre
               // mais un état de son chargement, et l'annoncer comme tel ferait compter un
               // enfant qui n'existe pas.
-              <p key={noeud.id} className={styles.message} data-depth={noeud.depth}>
+              // L'indentation vient d'`INDENT`, la table exportée par `TreeRow` : le CSS en
+              // tenait une copie, qu'un palier ajouté aurait laissée en retard (`25a`).
+              <p
+                key={noeud.id}
+                className={styles.message}
+                style={{ paddingLeft: INDENT[noeud.depth] }}
+                data-depth={noeud.depth}
+              >
                 {noeud.label}
               </p>
             ) : (
@@ -297,7 +300,7 @@ export function ExplorerSidebar({
                       }
                     : undefined
                 }
-                icon={noeud.icon as never}
+                icon={noeud.icon}
                 iconColor={noeud.iconColor}
                 chevron={noeud.chevron}
                 meta={compteDe(noeud, modifications) ?? noeud.meta}

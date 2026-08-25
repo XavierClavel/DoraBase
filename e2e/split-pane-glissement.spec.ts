@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test'
+import { deplierUnEnvironnement } from './pourLesTests'
 
 // La sélection de texte du navigateur : jsdom n'en a pas, donc c'est ici que ça se mesure.
 // Signalé à l'usage le 11 août 2026 — glisser la poignée surlignait les lignes de la grille.
 test('glisser la poignée ne sélectionne aucun texte', async ({ page }) => {
   await page.goto('/?demo')
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()

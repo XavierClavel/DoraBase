@@ -1,12 +1,17 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import type { EnvironmentDeclaration } from '../../domain/config'
-import { type Charge, idBase, idProjet, idSchema } from '../../screens/Explorer/arbre'
+import {
+  type Charge,
+  idBase,
+  idEnvironnement,
+  idProjet,
+  idSchema,
+} from '../../screens/Explorer/arbre'
 import { BreadcrumbBar, type TypeObjet } from '../../screens/Explorer/BreadcrumbBar'
 import { DetailPanel } from '../../screens/Explorer/DetailPanel'
 import { ExplorerSidebar } from '../../screens/Explorer/ExplorerSidebar'
 import { ObjectTable } from '../../screens/Explorer/ObjectTable'
-import { EnvironmentPicker } from '../../shell/EnvironmentPicker/EnvironmentPicker'
-import { ProjectPill } from '../../shell/ProjectPill/ProjectPill'
+import { SelectionIndicator } from '../../shell/SelectionIndicator/SelectionIndicator'
 import { TitleBar } from '../../shell/TitleBar/TitleBar'
 import { Badge } from '../../ui/Badge/Badge'
 import { Button } from '../../ui/Button/Button'
@@ -1245,56 +1250,70 @@ function DataTableGallery() {
 // --- Barre de titre de A4 (`09c`) --------------------------------------------------
 
 function TitleBarGallery() {
-  // Un identifiant d'environnement est une chaîne libre depuis `23a` : le typer par une union de
-  // trois valeurs reconstruirait le trio en dur, ici même.
-  const [env, setEnv] = useState('prod')
-
   return (
     <Section title="Barre de titre (A4)">
       <Note>
-        **Le sélecteur d’environnement est à droite, et il n’a plus qu’un encadré** — deux écarts au
-        handoff, demandés à l’écran le 19 août 2026. Le mockup le pose contre la pastille projet,
-        dans une seconde boîte blanche séparée de 8 px : il se déplaçait alors avec la longueur du
-        fil d’Ariane, et un commutateur qui bouge quand on change de schéma est un commutateur qu’on
-        cherche. Ses deux filets emboîtés, eux, se lisaient comme deux contrôles pour un seul
-        réglage.
+        **Le centre n’est plus qu’un indicateur** (`25b`) : plus de sélecteur d’environnement, plus
+        de menu de pastille, et plus d’encadré. Les deux boîtes blanches du mockup entouraient des
+        contrôles ; la zone n’en est plus un, et un encadré sur fond de barre est une affordance —
+        l’argument que `24` a déjà retenu contre un `Chip` inerte. L’environnement se choisit
+        désormais dans l’arbre, où il est un palier (`25a`).
       </Note>
       <Note>
-        Le point d’état est celui de la base **ouverte** : un projet n’a pas d’état de connexion,
-        ses bases en ont. Sans base ouverte, **aucun point** plutôt qu’un point gris inventé.
+        Le point d’état est celui de la connexion **ouverte** : un projet n’a pas d’état de
+        connexion, ses connexions en ont. Sans connexion ouverte, **aucun point** plutôt qu’un point
+        gris inventé.
       </Note>
-      <Sub title="A4 — projet, fil d’Ariane, lecture seule, environnement">
+      <Sub title="A4 — projet, environnement, fil d’Ariane, lecture seule">
         <div data-testid="titlebar-a4">
           <TitleBar
             showConsole
-            center=<ProjectPill
+            center={
+              <SelectionIndicator
+                projectName="Atelier Nord"
+                environment={{ label: 'coulisses', color: 'amber', production: false }}
+                breadcrumb="analytics · public"
+                connection={{
+                  kind: 'connected',
+                  serverVersion: 'PostgreSQL 17.6',
+                  tunnelLocalPort: null,
+                }}
+                readOnly
+              />
+            }
+          />
+        </div>
+      </Sub>
+      <Sub title="Un environnement marqué production — le badge suit le drapeau, pas le libellé">
+        <TitleBar
+          center={
+            <SelectionIndicator
               projectName="Atelier Nord"
+              environment={{ label: 'vitrine', color: 'red', production: true }}
               breadcrumb="analytics · public"
               connection={{
                 kind: 'connected',
                 serverVersion: 'PostgreSQL 17.6',
                 tunnelLocalPort: null,
               }}
-              readOnly
             />
-            right={
-              <EnvironmentPicker
-                environments={ENVIRONNEMENTS_DE_GALERIE}
-                value={env}
-                onValueChange={setEnv}
-              />
-            }
-          />
+          }
+        />
+      </Sub>
+      <Sub title="Un projet seul — la sélection ne désigne pas d’environnement">
+        <TitleBar center={<SelectionIndicator projectName="Atelier Nord" />} />
+      </Sub>
+      <Sub title="Rien de sélectionné — le centre est vide, et la barre ne bouge pas">
+        <div data-testid="titlebar-vide">
+          <TitleBar showConsole />
         </div>
       </Sub>
-      <Sub title="Sans base ouverte — ni point, ni fil d’Ariane">
-        <TitleBar center={<ProjectPill projectName="Atelier Nord" />} />
-      </Sub>
-      <Sub title="Base hors ligne">
+      <Sub title="Connexion hors ligne">
         <TitleBar
           center={
-            <ProjectPill
+            <SelectionIndicator
               projectName="Atelier Nord"
+              environment={{ label: 'bac à sable', color: 'green', production: false }}
               breadcrumb="shop · public"
               connection={{ kind: 'offline', reason: 'hôte injoignable' }}
             />
@@ -1327,52 +1346,72 @@ const REGLAGES_DE_GALERIE = {
   tunnel: null,
 }
 
+/**
+ * **Quatre environnements, et le seul marqué production ne s'appelle pas « prod »** (`23g`, `25a`).
+ *
+ * C'est ce qui met un trio en dur en évidence à l'œil, dans le décor même : un écran qui relirait
+ * `prod` / `staging` / `dev` afficherait ici quatre lignes sans badge, ou un badge sur la mauvaise.
+ * Les identifiants sont volontairement décorrélés des libellés — `23a` fige l'un et laisse renommer
+ * l'autre, et un décor où les deux coïncident ne prouve rien.
+ */
 const ENVIRONNEMENTS_DE_GALERIE: EnvironmentDeclaration[] = [
-  { id: 'dev', label: 'dev', color: 'green', production: false },
-  { id: 'staging', label: 'staging', color: 'amber', production: false },
-  { id: 'prod', label: 'prod', color: 'red', production: true },
+  { id: 'atelier', label: 'atelier', color: 'green', production: false },
+  { id: 'coulisses', label: 'coulisses', color: 'amber', production: false },
+  { id: 'bac-a-sable', label: 'bac à sable', color: 'violet', production: false },
+  { id: 'vitrine', label: 'vitrine', color: 'red', production: true },
 ]
 
 const PROJETS_DEMO = [
   {
     name: 'Atelier Nord',
-    activeEnvironment: 'prod',
     environments: ENVIRONNEMENTS_DE_GALERIE,
     queries: [],
     databases: [
+      // **`analytics` est déclarée deux fois, dans deux environnements** (`25a`). C'est le décor qui
+      // met les collisions d'identité de nœud en évidence : tant que `idBase` ne portait pas
+      // l'environnement, ces deux lignes partageaient leur dépliage, leur sélection, leur clé de
+      // rendu et leur entrée dans `charge.schemas` — la structure d'un serveur s'affichait sous la
+      // ligne de l'autre. Elles sont ici côte à côte, à un palier près, pour que ça se voie.
       {
         name: 'analytics',
         engine: 'postgresql' as const,
-        environment: 'prod',
+        environment: 'vitrine',
         connection: REGLAGES_DE_GALERIE,
         consoles: [],
       },
       {
         name: 'shop',
         engine: 'mysql' as const,
-        environment: 'prod',
+        environment: 'vitrine',
         connection: REGLAGES_DE_GALERIE,
         consoles: [],
       },
       {
         name: 'cache',
         engine: 'redis' as const,
-        environment: 'prod',
+        environment: 'vitrine',
         connection: REGLAGES_DE_GALERIE,
         consoles: [],
+      },
+      {
+        name: 'analytics',
+        engine: 'postgresql' as const,
+        environment: 'atelier',
+        connection: REGLAGES_DE_GALERIE,
+        // Une console, pour que le palier 3 montre autre chose qu'un schéma.
+        consoles: [{ name: 'Comptes du jour', sql: 'select count(*) from commandes' }],
       },
     ],
   },
   {
     name: 'Atelier Sud',
-    activeEnvironment: 'dev',
     environments: ENVIRONNEMENTS_DE_GALERIE,
     queries: [],
     databases: [
       {
         name: 'tracking',
         engine: 'mongodb' as const,
-        environment: 'dev',
+        environment: 'atelier',
         connection: REGLAGES_DE_GALERIE,
         consoles: [],
       },
@@ -1380,8 +1419,9 @@ const PROJETS_DEMO = [
   },
 ]
 
-const ID_BASE = idBase('Atelier Nord', 'analytics')
-const ID_SCHEMA = idSchema('Atelier Nord', 'analytics', 'public')
+const ID_ENV = idEnvironnement('Atelier Nord', 'vitrine')
+const ID_BASE = idBase('Atelier Nord', 'vitrine', 'analytics')
+const ID_SCHEMA = idSchema('Atelier Nord', 'vitrine', 'analytics', 'public')
 
 const CHARGE_DEMO: Charge = {
   schemas: {
@@ -1424,18 +1464,21 @@ const CHARGE_DEMO: Charge = {
       },
     ],
   },
-  enCours: new Set([idBase('Atelier Nord', 'shop')]),
-  echecs: { [idBase('Atelier Nord', 'cache')]: 'hôte injoignable' },
+  enCours: new Set([idBase('Atelier Nord', 'vitrine', 'shop')]),
+  echecs: { [idBase('Atelier Nord', 'vitrine', 'cache')]: 'hôte injoignable' },
 }
 
 function ExplorerSidebarGallery() {
   const [deplies, setDeplies] = useState<Set<string>>(
     new Set([
       idProjet('Atelier Nord'),
+      // **Le palier d'environnement doit être déplié**, sinon l'arbre s'ouvre sur quatre lignes
+      // d'environnement et le décor perd ses trois états de chargement.
+      ID_ENV,
       ID_BASE,
       ID_SCHEMA,
-      idBase('Atelier Nord', 'shop'),
-      idBase('Atelier Nord', 'cache'),
+      idBase('Atelier Nord', 'vitrine', 'shop'),
+      idBase('Atelier Nord', 'vitrine', 'cache'),
     ]),
   )
   const [choisi, setChoisi] = useState<string | null>(ID_SCHEMA)
@@ -1450,14 +1493,17 @@ function ExplorerSidebarGallery() {
         Un dépliage qui échoue le dit **sur sa ligne** et ne vide pas l’arbre — voir `cache`
         ci-dessous, hors ligne, tandis que `analytics` reste dépliée.
       </Note>
-      <Sub title="Quatre niveaux, trois états de chargement">
+      <Sub title="Cinq niveaux, trois états de chargement, deux connexions homonymes">
         <div data-testid="sidebar-a4" style={{ display: 'flex', height: 420 }}>
           <ExplorerSidebar
             projects={PROJETS_DEMO}
             deplies={deplies}
             charge={CHARGE_DEMO}
-            etatDe={(_p, base) =>
-              base === 'analytics'
+            // **L'état discrimine sur le nom *et* l'environnement** : avec deux `analytics`, ne
+            // regarder que le nom leur donnerait le même état — et le décor cesserait de montrer que
+            // deux connexions homonymes sont deux connexions.
+            etatDe={(_p, base, environnement) =>
+              base === 'analytics' && environnement === 'vitrine'
                 ? { kind: 'connected', serverVersion: 'PostgreSQL 17.6', tunnelLocalPort: null }
                 : base === 'cache'
                   ? { kind: 'offline', reason: 'hôte injoignable' }

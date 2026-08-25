@@ -1,6 +1,33 @@
 import type { Page } from '@playwright/test'
 
 /**
+ * Déplie un projet, puis l'un de ses environnements, pour rendre ses connexions visibles.
+ *
+ * **L'arbre a cinq paliers depuis `25a`** : projet → environnement → connexion → console|schéma →
+ * objet. Tous les environnements déclarés du projet sont listés, chacun dépliable indépendamment ; il
+ * n'y a plus d'« environnement actif » dont l'arbre montrerait les seules connexions. Toute chaîne de
+ * dépliage gagne donc un clic, et trente specs le recopieraient — d'où ce helper, à l'image
+ * d'`ouvrirUneConsole` : le jour où un sixième palier arrive, il n'arrive qu'ici.
+ *
+ * Les valeurs par défaut sont celles du décor de `/?demo` : le projet « Atelier Nord », dont
+ * l'environnement `prod` porte les deux connexions (`analytics` et `evenements`).
+ *
+ * **Le motif de l'environnement est ancré**, et ce n'est pas une précaution : le décor déclare
+ * `preprod` à côté de `prod`, et `/prod/` désigne les deux — Playwright refuse alors de cliquer, la
+ * résolution étant stricte. Le nom accessible d'une ligne d'environnement commence par son libellé,
+ * suivi de son compte de connexions et de son badge (« prod 2 connexions PROD »), donc `^prod\b`
+ * n'en désigne qu'une.
+ */
+export async function deplierUnEnvironnement(
+  page: Page,
+  environnement = 'prod',
+  projet = 'Atelier Nord',
+): Promise<void> {
+  await page.getByRole('treeitem', { name: new RegExp(projet) }).click()
+  await page.getByRole('treeitem', { name: new RegExp(`^${environnement}\\b`) }).click()
+}
+
+/**
  * Ouvre une console sur une connexion, depuis le menu « … » de sa ligne.
  *
  * **C'est le seul chemin depuis le 20 août 2026.** Le pied de la sidebar portait un bouton

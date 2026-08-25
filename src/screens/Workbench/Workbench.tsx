@@ -9,8 +9,7 @@ import type {
   TableSummary,
   Value,
 } from '../../domain/engine'
-import { EnvironmentPicker } from '../../shell/EnvironmentPicker/EnvironmentPicker'
-import { ProjectPill } from '../../shell/ProjectPill/ProjectPill'
+import { SelectionIndicator } from '../../shell/SelectionIndicator/SelectionIndicator'
 import { TitleBar } from '../../shell/TitleBar/TitleBar'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
 import { ConsoleView } from '../Console/ConsoleView'
@@ -55,7 +54,6 @@ import {
   reordonner,
   viseeParLId,
 } from './onglets'
-import { ProjectMenu } from './ProjectMenu'
 import { PASSERELLE_TAURI, type PasserelleArbre, useArbre } from './useArbre'
 import { PASSERELLE_DETAIL, type PasserelleDetail, useDetailTable } from './useDetailTable'
 import styles from './Workbench.module.css'
@@ -82,13 +80,6 @@ type WorkbenchProps = {
   onNewProject?: () => void
   /** Ouvre `A2` en mode édition sur cette base (`08g`). */
   onEditDatabase?: (project: string, database: Database) => void
-  /**
-   * Change l'environnement actif du projet (`23g`).
-   *
-   * Absent, le sélecteur reste **affiché mais sans effet** — ce qui n'arrive qu'en galerie, où aucune
-   * commande ne répond. Dans l'application, l'absence serait le défaut n° 36.
-   */
-  onEnvironmentChange?: (project: string, environment: EnvironmentId) => void
   /**
    * Les projets à jour, après un geste de la modale d'édition (`23e`).
    *
@@ -181,7 +172,6 @@ export function Workbench({
   onNewDatabase,
   onNewProject,
   onEditDatabase,
-  onEnvironmentChange,
   onRenameProject,
   onProjets,
   gestesEnvironnement,
@@ -257,14 +247,48 @@ export function Workbench({
   // Le contexte du **centre** : le schéma de l'onglet actif, sinon celui que la sidebar désigne.
   // Distinct de la barre de titre, qui suit la base ouverte — `09e` a posé la distinction, et
   // elle ne devient visible qu'ici, avec plusieurs onglets.
+  // **Le contexte porte l'environnement**, et il le portait déjà sans le garder : les deux branches
+  // le reçoivent — `table.key` depuis `12a`, le nœud d'arbre depuis `23b` — et toutes deux le
+  // jetaient. L'écran le relisait alors sur `projetActif.activeEnvironment`, un réglage global du
+  // projet, ce qui suffisait tant que l'arbre ne montrait qu'un environnement à la fois. Depuis
+  // `25a` il en montre tous : c'est la sélection qui dit lequel, et rien d'autre.
   const contexte = table
-    ? { project: table.key.project, database: table.key.database, schema: table.schema }
-    : selection?.schema && selection.project && selection.database
-      ? { project: selection.project, database: selection.database, schema: selection.schema }
+    ? {
+        project: table.key.project,
+        database: table.key.database,
+        environment: table.key.environment,
+        schema: table.schema,
+      }
+    : selection?.schema && selection.project && selection.database && selection.environment
+      ? {
+          project: selection.project,
+          database: selection.database,
+          environment: selection.environment,
+          schema: selection.schema,
+        }
       : null
 
-  const projetActif = projects.find((p) => p.name === contexte?.project) ?? projects[0] ?? null
-  const environnement: EnvironmentId = projetActif?.activeEnvironment ?? 'dev'
+  /**
+   * Ce que la barre de titre **indique** (`25b`) : le projet et l'environnement de la sélection.
+   *
+   * Plus large que `contexte`, qui exige un schéma : sélectionner un projet, un environnement ou une
+   * connexion doit déjà s'afficher. Plus étroit que l'ancien `projetActif`, qui retombait sur
+   * `projects[0]` — cette retombée faisait annoncer un projet que personne n'avait désigné, et c'est
+   * exactement ce que « rien de sélectionné, indicateur vide » supprime.
+   */
+  const indication: { project: string; environment: EnvironmentId | null } | null = table
+    ? { project: table.key.project, environment: table.key.environment }
+    : consoleActive
+      ? { project: consoleActive.key.project, environment: consoleActive.key.environment }
+      : selection?.project
+        ? { project: selection.project, environment: selection.environment ?? null }
+        : null
+
+  const projetIndique = projects.find((p) => p.name === indication?.project) ?? null
+  /** La déclaration de l'environnement indiqué, seule source du drapeau `production` (`23g`). */
+  const environnementIndique =
+    projetIndique?.environments.find((declaration) => declaration.id === indication?.environment) ??
+    null
 
   /**
    * Le dialecte que la base parle (`13a`).
@@ -274,17 +298,23 @@ export function Workbench({
    * de la base sur laquelle on est, sans poser la question.
    */
   const dialecteDe = useCallback(
-    (nomProjet: string, nomBase: string): Dialecte => {
+    (nomProjet: string, nomBase: string, environnement: EnvironmentId): Dialecte => {
+      // **L'environnement fait partie de l'identité de la connexion** (`23b`) : chercher par le seul
+      // nom rendait le moteur de la première homonyme — le dialecte de la console d'`analytics` en dev
+      // pour la console d'`analytics` en prod. `useArbre.baseDeclaree` filtrait déjà correctement ;
+      // cette fonction était en retard.
       const moteur = projects
         .find((p) => p.name === nomProjet)
-        ?.databases.find((d) => d.name === nomBase)?.engine
+        ?.databases.find((d) => d.name === nomBase && d.environment === environnement)?.engine
       return moteur === 'mongodb' ? 'mongo' : 'sql'
     },
     [projects],
   )
 
   const objets: readonly TableSummary[] = contexte
-    ? (charge.objets[idSchema(contexte.project, contexte.database, contexte.schema)] ?? [])
+    ? (charge.objets[
+        idSchema(contexte.project, contexte.environment, contexte.database, contexte.schema)
+      ] ?? [])
     : []
 
   const visibles = useMemo(
@@ -297,7 +327,11 @@ export function Workbench({
   )
 
   const cle: DatabaseKey | null = contexte
-    ? { project: contexte.project, database: contexte.database, environment: environnement }
+    ? {
+        project: contexte.project,
+        database: contexte.database,
+        environment: contexte.environment,
+      }
     : null
 
   // Le détail sert deux endroits : le panneau droit de `A4` (l'objet sélectionné) et la section
@@ -431,7 +465,12 @@ export function Workbench({
          retrouver la console dans l'arbre pour la cliquer, créer coûterait deux gestes au lieu d'un.
          Personne ne crée une console pour ne pas l'ouvrir. */
       setEtatOnglets((etat) =>
-        ouvrirConsole(etat, { project, database, environment }, dialecteDe(project, database), nom),
+        ouvrirConsole(
+          etat,
+          { project, database, environment },
+          dialecteDe(project, database, environment),
+          nom,
+        ),
       )
       const id = idDeConsolePersistee({ project, database, environment }, nom)
       setConsolesOuvertes((precedent) => ({
@@ -516,6 +555,10 @@ export function Workbench({
   const [textes, setTextes] = useState<Readonly<Record<string, string>>>({})
   const application = useApplication(cle, table, attente, detail?.columns ?? [], {
     passerelle: passerelleApply ?? PASSERELLE_APPLY,
+    // **Le drapeau de la déclaration, non l'identifiant** (`23g`) : la confirmation d'écriture doit
+    // s'ouvrir pour un environnement nommé « live » et marqué production, et rester fermée pour un
+    // « prod » que l'utilisateur n'a pas marqué.
+    production: environnementIndique?.production ?? false,
     // **Après le succès, la grille est relue et le modèle vidé.** Les valeurs écrites peuvent
     // différer de celles saisies — un `trigger`, une valeur par défaut, une troncature — et
     // afficher la saisie donnerait un écran qui ne reflète plus la base. Vider le modèle fait
@@ -569,7 +612,7 @@ export function Workbench({
         key: {
           project: contexte.project,
           database: contexte.database,
-          environment: environnement,
+          environment: contexte.environment,
         },
         schema: contexte.schema,
         table: objet.name,
@@ -756,40 +799,31 @@ export function Workbench({
       <TitleBar
         showConsole
         onOpenPreferences={onOpenPreferences}
+        // **Rien du tout quand rien n'est sélectionné** (`25b`), et aucune empreinte réservée : un
+        // `.center` vide a une hauteur de zéro sans rien déplacer — la barre garde ses 40 px, le
+        // wordmark et les actions ne bougent pas. C'est déjà ce que `A1` montre dans le handoff.
         center={
-          <>
-            {/* La pastille ouvre le menu des projets et bases (`08g`) : son chevron l'annonçait
-                depuis `09c`, et son `onOpenProjects` n'était appelé par personne. */}
-            <ProjectMenu
-              projects={projects}
-              actif={projetActif}
-              onEdit={(projet, base) => onEditDatabase?.(projet, base)}
-              onAddDatabase={onNewDatabase}
-              // Le second point d'entrée de `23e` : la pastille est là où l'on regarde le projet
-              // courant, l'arbre là où l'on regarde ses projets.
-              {...(onRenameProject === undefined ? {} : { onEditProject: ouvrirLEditionDe })}
-            >
-              <ProjectPill
-                pendingChanges={attente.length}
-                projectName={projetActif?.name ?? '—'}
-                breadcrumb={contexte ? `${contexte.database} · ${contexte.schema}` : undefined}
-                connection={
-                  contexte
-                    ? etatDeBase(contexte.project, contexte.database, environnement)
-                    : undefined
-                }
-              />
-            </ProjectMenu>
-          </>
-        }
-        right={
-          projetActif ? (
-            <EnvironmentPicker
-              environments={projetActif.environments}
-              value={environnement}
-              onValueChange={(suivant) => onEnvironmentChange?.(projetActif.name, suivant)}
+          indication === null ? undefined : (
+            <SelectionIndicator
+              pendingChanges={attente.length}
+              projectName={indication.project}
+              environment={
+                environnementIndique === null
+                  ? undefined
+                  : {
+                      label: environnementIndique.label,
+                      color: environnementIndique.color,
+                      production: environnementIndique.production,
+                    }
+              }
+              breadcrumb={contexte ? `${contexte.database} · ${contexte.schema}` : undefined}
+              connection={
+                contexte
+                  ? etatDeBase(contexte.project, contexte.database, contexte.environment)
+                  : undefined
+              }
             />
-          ) : undefined
+          )
         }
       />
       {/* Le bandeau du mode édition, **sous la barre de titre** et au-dessus du corps : c'est là que
@@ -805,10 +839,7 @@ export function Workbench({
           // marqué production doit porter l'encart rouge, et un environnement nommé « prod » que
           // l'utilisateur n'a pas marqué ne doit pas. Comparer une chaîne rendrait la garantie fausse
           // au premier renommage.
-          production={
-            projetActif?.environments.find((declaration) => declaration.id === environnement)
-              ?.production ?? false
-          }
+          production={environnementIndique?.production ?? false}
           enCours={execution.enCours}
           onClose={execution.annulerLaConfirmation}
           onConfirmer={execution.executer}
@@ -835,8 +866,12 @@ export function Workbench({
       <div className={styles.body}>
         <SplitPane
           storageKey="workbench:sidebar"
-          defaultSize={212}
-          min={180}
+          // **228 et 196, contre 212 et 180** (`25a`). Le palier d'environnement pousse les objets à
+          // 68 px d'indentation : à 180 px de colonne, un nom de table disposait de cinq caractères —
+          // formellement correct, illisible. Les 16 px ajoutés au plancher et au défaut rendent au
+          // palier le plus profond le budget de libellé qu'il avait avant le palier.
+          defaultSize={228}
+          min={196}
           max={360}
           start={
             <ExplorerSidebar
@@ -927,14 +962,24 @@ export function Workbench({
                 // clic suffit, parce qu'une feuille n'a pas d'autre geste — pas de dépliage à
                 // distinguer. Dans la liste du centre, où sélectionner remplit le panneau de
                 // détail, il faut au contraire un double-clic.
-                if (noeud.kind === 'object' && noeud.project && noeud.database && noeud.schema) {
+                // **Aucun repli sur un environnement d'écran** : ces gardes portaient
+                // `noeud.environment ?? environnement`, donc un nœud sans environnement ouvrait la
+                // connexion d'un environnement arbitraire — sur le mauvais serveur, sans le dire.
+                // Tout nœud d'objet en porte un ; l'exiger le prouve au compilateur.
+                if (
+                  noeud.kind === 'object' &&
+                  noeud.project &&
+                  noeud.database &&
+                  noeud.schema &&
+                  noeud.environment
+                ) {
                   setEtatOnglets((etat) =>
                     ouvrir(etat, {
                       sorte: 'table',
                       key: {
                         project: noeud.project as string,
                         database: noeud.database as string,
-                        environment: noeud.environment ?? environnement,
+                        environment: noeud.environment as EnvironmentId,
                       },
                       schema: noeud.schema as string,
                       table: noeud.label,
@@ -951,12 +996,13 @@ export function Workbench({
                   noeud.kind === 'console' &&
                   noeud.project &&
                   noeud.database &&
+                  noeud.environment &&
                   noeud.console !== undefined
                 ) {
                   const identite = {
                     project: noeud.project,
                     database: noeud.database,
-                    environment: noeud.environment ?? environnement,
+                    environment: noeud.environment,
                     nom: noeud.console,
                   }
                   const texte =
@@ -976,7 +1022,7 @@ export function Workbench({
                         database: identite.database,
                         environment: identite.environment,
                       },
-                      dialecteDe(identite.project, identite.database),
+                      dialecteDe(identite.project, identite.database, identite.environment),
                       identite.nom,
                     )
                     const id = suivant.actif as string
@@ -1080,7 +1126,7 @@ export function Workbench({
                                   const suivant = ouvrirConsole(
                                     etat,
                                     cle,
-                                    dialecteDe(cle.project, cle.database),
+                                    dialecteDe(cle.project, cle.database, cle.environment),
                                   )
                                   // Le DDL entre dans la console **qui vient d'être ouverte**, pas
                                   // dans celle qui était active : écraser le texte d'une console où
@@ -1101,9 +1147,11 @@ export function Workbench({
                       <PendingPanel
                         attente={attente}
                         table={`${table.schema}.${table.table}`}
-                        // `DatabaseKey.environment` est une chaîne côté IPC ; l'encart de production
-                        // veut l'environnement **déclaré** du projet, qui est typé.
-                        environment={environnement}
+                        // **La déclaration, non l'identifiant** : l'encart rouge suit le drapeau
+                        // `production` (`23g`), et le comparer à la chaîne « prod » le rendait faux
+                        // pour un environnement nommé autrement — et faussement vrai pour un « prod »
+                        // que l'utilisateur n'avait pas marqué.
+                        production={environnementIndique?.production ?? false}
                         sql={sqlPrevu.sql}
                         erreurSql={sqlPrevu.erreur}
                         onRetirer={(cleLigne, column) =>

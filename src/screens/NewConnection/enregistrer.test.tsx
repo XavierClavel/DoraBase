@@ -12,7 +12,6 @@ const PROJETS = [{ id: 'Atelier Nord', name: 'Atelier Nord', environments: TRIO_
 const APRES: Project[] = [
   {
     name: 'Atelier Nord',
-    activeEnvironment: 'dev',
     environments: TRIO_DE_TEST,
     databases: [],
     queries: [],

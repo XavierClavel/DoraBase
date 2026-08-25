@@ -520,6 +520,31 @@ le schéma déduit, et la console dont le langage n'est pas du SQL.
 | [`24b`](24b-stepper-informatif.md) | Le stepper informatif | livrée |
 | [`24c`](24c-enchainer-vers-la-connexion.md) | Enchaîner vers la première connexion | livrée |
 | [`24d`](24d-deux-gestes.md) | Deux gestes : « Nouveau projet » et « Nouvelle connexion » | livrée |
+| [`25a`](25a-l-environnement-un-noeud-de-l-arbre.md) | L'environnement, un nœud de l'arbre | à faire |
+| [`25b`](25b-la-barre-de-titre-n-est-plus-qu-un-indicateur.md) | La barre de titre n'est plus qu'un indicateur | à faire |
+| [`25c`](25c-l-environnement-actif-quitte-le-modele.md) | L'environnement actif quitte le modèle | à faire |
+
+**`25` défait `23g`.** `23g` avait rendu le sélecteur de la barre de titre *actif* : il écrivait
+l'environnement du projet, et l'arbre se rechargeait sur les connexions de cet environnement. À
+l'usage, cela demandait de basculer un réglage global pour regarder une connexion voisine, et faisait
+de l'environnement une propriété du **projet** là où `23b` en avait fait une propriété de la
+**connexion**. Les environnements deviennent donc un palier de l'arbre, et la barre de titre cesse
+d'être un tableau de bord pour n'être plus qu'un indicateur.
+
+L'ordre est contraint : `25a` et `25b` avant `25c`, sans quoi rien ne compile — le champ ne peut
+partir qu'une fois qu'aucun écran ne le lit. Ces trois specs ont été conçues avec trois agents, deux
+de recensement et un de conception ; c'est le relevé du mockup par le troisième qui a fourni la valeur
+du cinquième palier d'indentation que `09d` déclarait introuvable.
+
+**Ce que `25` invalide ailleurs.** `09c` § « Deux boîtes, pas une » et trois de ses critères
+(« quatre arrêts » au clavier, le sélecteur dans sa seconde boîte, le menu du chevron) ; `09d`
+« Quatre niveaux exactement : `A4` n'en a pas cinq, et en ajouter un demanderait une valeur que le
+handoff ne donne pas » ; `05a` § « l'environnement actif vit sur le projet » et son corollaire sur
+« une base absente de l'environnement courant » — le problème s'évapore ; `05b` § « L'environnement
+actif est persisté » ; `23c` § « L'environnement actif suit ». Enfin `08g` perd un de ses deux
+chemins : sa modale s'ouvrait depuis le chevron de la pastille et depuis le « … » de l'arbre ; il ne
+reste que le second, et les quatre tests e2e du premier ont été **reroutés** sur lui plutôt que
+supprimés — l'écran, lui, existe toujours.
 
 **`24` renverse `08f`.** Le projet se créait au passage, depuis le sélecteur de `A2` : le geste
 principal était « je déclare une connexion ». Il devient « je déclare un projet, puis on me propose sa

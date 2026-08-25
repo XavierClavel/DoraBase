@@ -21,22 +21,18 @@ type TitleBarProps = {
    */
   dimmed?: boolean
   /**
-   * Le centre de la barre : pastille projet et sélecteur d'environnement (`A4` → `A9`).
+   * Le centre de la barre : l'indicateur de sélection (`A4` → `A9`).
    *
-   * Passé en contenu plutôt qu'en propriétés : `A1` n'en a aucun, `A4` en a deux, et les écrans
-   * suivants ajouteront un fil d'Ariane plus long. Une liste de propriétés grandirait à chaque
-   * écran là où un contenu s'assemble chez l'appelant.
+   * Passé en contenu plutôt qu'en propriétés : `A1` n'en a aucun, les écrans de travail en ont un, et
+   * son contenu a déjà changé deux fois. Une liste de propriétés grandirait à chaque écran là où un
+   * contenu s'assemble chez l'appelant.
+   *
+   * **La prop `right` a disparu avec `25b`.** Elle n'avait qu'un appelant, le sélecteur
+   * d'environnement, posé là le 19 août 2026 pour qu'il cesse de se déplacer avec la longueur du fil
+   * d'Ariane. Le sélecteur parti, une prop sans appelant n'est qu'un emplacement que le prochain
+   * écran remplira sans savoir pourquoi il existe.
    */
   center?: ReactNode
-  /**
-   * Ce qui se pose **à droite**, avant les icônes d'action : le sélecteur d'environnement (`A4` → `A9`).
-   *
-   * Il était dans `center`, collé à la pastille projet, comme le mockup le montre. Aligné à droite, il
-   * cesse de se déplacer avec la longueur du fil d'Ariane — un sélecteur qui bouge quand on change de
-   * schéma est un sélecteur qu'on cherche. Demandé à l'écran le 19 août 2026 ; écart au handoff
-   * assumé.
-   */
-  right?: ReactNode
   /**
    * Ouvre les préférences (`15a`). Absent, l'engrenage reste **désactivé avec sa raison** — la règle
    * de `09f` : un bouton cliquable et inerte se lit comme une panne (défaut n° 36).
@@ -62,7 +58,6 @@ export function TitleBar({
   showConsole = false,
   dimmed = false,
   center,
-  right,
   onOpenPreferences,
 }: TitleBarProps) {
   return (
@@ -78,7 +73,6 @@ export function TitleBar({
           collerait au logo et se déplacerait avec la longueur du fil d'Ariane. */}
       <div className={styles.center}>{center}</div>
       <div className={styles.actions}>
-        {right}
         {showConsole && (
           <button type="button" className={styles.action} aria-label="Console">
             <Icon name="term" size={15} strokeWidth={1.8} />

@@ -13,7 +13,6 @@ function projetRendu(nom: string): Project {
   ]
   return {
     name: nom,
-    activeEnvironment: 'atelier',
     environments,
     databases: [],
     queries: [],

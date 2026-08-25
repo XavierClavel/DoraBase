@@ -1,6 +1,8 @@
+import type { IconName } from '../../design/icons/names'
 import type { EnvironmentId, Project } from '../../domain/config'
 import type { ConnectionState, SchemaInfo, TableSummary } from '../../domain/engine'
 import { formatRowCount } from '../../ui/format'
+import { COULEURS_D_ENVIRONNEMENT } from '../NewConnection/environments'
 
 /**
  * L'aplatissement de l'arbre de `A4`, en fonction **pure**.
@@ -16,7 +18,7 @@ export type Deplies = ReadonlySet<string>
 
 /** Les objets déjà chargés, par identité de nœud parent. */
 export type Charge = {
-  /** Les schémas d'une base, par clé de base. */
+  /** Les schémas d'une connexion, par identité de nœud de connexion. */
   schemas: Readonly<Record<string, SchemaInfo[]>>
   /** Les objets d'un schéma, par identité de nœud de schéma. */
   objets: Readonly<Record<string, TableSummary[]>>
@@ -26,29 +28,44 @@ export type Charge = {
   echecs: Readonly<Record<string, string>>
 }
 
-export type NoeudKind = 'project' | 'database' | 'console' | 'schema' | 'object' | 'message'
+export type NoeudKind =
+  | 'project'
+  | 'environment'
+  | 'database'
+  | 'console'
+  | 'schema'
+  | 'object'
+  | 'message'
 
 export type Noeud = {
   /** Identité stable, employée pour le dépliage, la sélection et la clé de rendu. */
   id: string
   kind: NoeudKind
-  depth: 0 | 1 | 2 | 3
+  depth: 0 | 1 | 2 | 3 | 4
   label: string
   /** Chevron : absent pour une feuille, `closed` ou `open` pour un nœud dépliable. */
   chevron?: 'open' | 'closed'
-  icon?: string
+  /**
+   * Le glyphe de la ligne, **typé sur le sprite** et non sur `string`.
+   *
+   * Il valait `string`, et `ExplorerSidebar` le passait à `TreeRow` avec un `as never` pour forcer le
+   * passage. Le compilateur ne pouvait donc rien dire — et il avait quelque chose à dire : les lignes
+   * de schéma demandaient `'folder'`, un nom que le sprite ne porte pas (c'est `'schema'`), donc
+   * elles n'affichaient **aucune** icône. Constaté à l'écran en ajoutant le palier d'environnement.
+   */
+  icon?: IconName
   iconColor?: string
   meta?: string
   metaVariant?: 'mono' | 'caps'
-  /** Le badge d'environnement d'un projet, ou l'état d'une base. */
+  /** Le badge `PROD` d'un environnement, ou l'état d'une connexion. */
   badge?: { text: string; tone: 'danger' | 'warn' | 'success' | 'muted' }
   /** Nom accessible complet, quand le libellé seul ne suffit pas. */
   announce?: string
   /** Une ligne de message — chargement, échec, vide — non sélectionnable. */
   message?: boolean
   /**
-   * Le nombre de connexions que ce nœud représente : les bases d'un projet, les environnements
-   * d'une base. Sert à la confirmation de retrait de `08j`, qui compte ce qui part.
+   * Le nombre de connexions que ce nœud représente : celles du projet, celles de l'environnement.
+   * Sert à la confirmation de retrait de `08j`, qui compte ce qui part.
    */
   connexions?: number
   /** Les coordonnées, pour que l'écran sache quoi demander au dépliage. */
@@ -65,25 +82,52 @@ export type Noeud = {
 export function idProjet(project: string): string {
   return `p:${project}`
 }
-export function idBase(project: string, database: string): string {
-  return `d:${project}/${database}`
-}
-export function idSchema(project: string, database: string, schema: string): string {
-  return `s:${project}/${database}/${schema}`
-}
-export function idObjet(project: string, database: string, schema: string, objet: string): string {
-  return `o:${project}/${database}/${schema}/${objet}`
+/**
+ * L'identité d'un environnement déclaré (`25a`).
+ *
+ * Le préfixe compte autant que le chemin : `enfantsDe` en dérive la profondeur des lignes de message,
+ * et les cinq lettres — `p`, `e`, `d`, `s`, `o`, plus `c` pour les consoles — sont donc réservées.
+ */
+export function idEnvironnement(project: string, environment: EnvironmentId): string {
+  return `e:${project}/${environment}`
 }
 /**
- * L'identité d'une console.
+ * L'identité d'une connexion, **environnement compris** (`25a`).
  *
- * **L'environnement n'y figure pas**, alors qu'il fait partie de l'identité d'une console dans le
- * modèle : `idBase` ne le porte pas davantage, parce que l'arbre ne montre jamais que les connexions
- * de l'environnement actif (`23g`). Deux connexions homonymes de deux environnements ne sont donc
- * jamais listées ensemble, et leurs identités de nœud ne peuvent pas se heurter.
+ * Il en était absent, et la justification était explicite : l'arbre ne montrait que les connexions de
+ * l'environnement actif, donc deux connexions homonymes de deux environnements n'étaient jamais
+ * listées ensemble. Le palier d'environnement annule cette prémisse. Sans l'identifiant dans la clé,
+ * deux `analytics` — l'une en dev, l'autre en production — partageraient leur dépliage, leur
+ * sélection, leur clé de rendu React, et surtout leur entrée dans `charge.schemas` : la structure d'un
+ * serveur s'afficherait sous la ligne d'un autre.
  */
-export function idConsole(project: string, database: string, console: string): string {
-  return `c:${project}/${database}/${console}`
+export function idBase(project: string, environment: EnvironmentId, database: string): string {
+  return `d:${project}/${environment}/${database}`
+}
+export function idSchema(
+  project: string,
+  environment: EnvironmentId,
+  database: string,
+  schema: string,
+): string {
+  return `s:${project}/${environment}/${database}/${schema}`
+}
+export function idObjet(
+  project: string,
+  environment: EnvironmentId,
+  database: string,
+  schema: string,
+  objet: string,
+): string {
+  return `o:${project}/${environment}/${database}/${schema}/${objet}`
+}
+export function idConsole(
+  project: string,
+  environment: EnvironmentId,
+  database: string,
+  console: string,
+): string {
+  return `c:${project}/${environment}/${database}/${console}`
 }
 
 /**
@@ -114,11 +158,12 @@ export function aplatir(
       chevron: projetDeplie ? 'open' : 'closed',
       icon: 'bag',
       iconColor: 'var(--accent-deep)',
-      badge: badgeEnvironnement(projet.activeEnvironment),
       // Un projet replié annonce son contenu : c'est ce que le mockup montre pour les voisins.
-      meta: projetDeplie
-        ? undefined
-        : `${projet.databases.length} base${projet.databases.length > 1 ? 's' : ''}`,
+      //
+      // **« n connexions » et non « n bases »** : depuis `23b` la connexion est l'unité — une base ne
+      // porte plus de variantes. « n environnements » ne dirait pas si l'un d'eux contient quoi que
+      // ce soit, et un projet à environnements vides mérite de le dire.
+      meta: projetDeplie ? undefined : compteDeConnexions(projet.databases.length),
       metaVariant: 'caps',
       project: projet.name,
       // Combien de connexions déclarées : la confirmation de retrait (`08j`) les compte, et un menu
@@ -129,79 +174,117 @@ export function aplatir(
     if (!projetDeplie) continue
 
     /*
-     * **Les connexions de l'environnement actif, et elles seules** (`23g`).
+     * **Les environnements déclarés du projet, tous, dans leur ordre déclaré** (`25a`).
      *
-     * L'arbre listait toutes les bases du projet, chacune montrant les réglages de l'environnement
-     * courant : une base était un objet, l'environnement un point de vue. Depuis `23b`, une connexion
-     * *appartient* à un environnement — les lister toutes afficherait côte à côte deux entrées
-     * homonymes dont une seule est joignable, et cliquer la mauvaise ouvrirait le mauvais serveur.
-     *
-     * Basculer d'environnement change donc la **liste** des bases, non l'hôte d'une même base.
+     * L'arbre ne montrait que les connexions de l'environnement *actif* du projet, et un sélecteur de
+     * la barre de titre changeait lequel. Cela demandait de basculer un réglage global pour regarder
+     * une connexion voisine, et faisait de l'environnement une propriété du projet là où `23b` en
+     * avait fait une propriété de la connexion. C'est désormais un palier, et chaque environnement se
+     * déplie indépendamment des autres.
      */
-    const connexions = projet.databases.filter(
-      (base) => base.environment === projet.activeEnvironment,
-    )
-
-    for (const base of connexions) {
-      const idB = idBase(projet.name, base.name)
-      const baseDepliee = deplies.has(idB)
-      const etat = etats(projet.name, base.name, base.environment)
+    for (const declaration of projet.environments) {
+      const idE = idEnvironnement(projet.name, declaration.id)
+      const environnementDeplie = deplies.has(idE)
+      const connexions = projet.databases.filter((base) => base.environment === declaration.id)
 
       noeuds.push({
-        id: idB,
-        kind: 'database',
+        id: idE,
+        kind: 'environment',
         depth: 1,
-        label: base.name,
-        chevron: baseDepliee ? 'open' : 'closed',
-        icon: 'db',
-        iconColor: `var(--engine-${abregeMoteur(base.engine)})`,
-        badge: badgeEtat(etat),
-        // L'état est **dans le nom accessible**, pas seulement dans une couleur : un point vert
-        // et un point rouge sont indiscernables pour une part des utilisateurs.
-        announce: `${base.name} · ${resumeEtat(etat)}`,
+        label: declaration.label,
+        chevron: environnementDeplie ? 'open' : 'closed',
+        // **Une icône teintée, pas un disque plein.** Le disque de 7 px du sélecteur y était la
+        // vignette de valeur d'un champ ; ici, tous les paliers portent une icône de 13 px en tête de
+        // ligne, et un disque casserait la colonne que l'indentation aligne. Il n'aurait de surcroît
+        // que la couleur pour dire ce qu'il dit, ce que `09d` refuse pour ses états de connexion.
+        //
+        // **`pin` et non `srv`.** `srv` — deux baies empilées — disait mieux ce qu'est un
+        // environnement, mais à 13 px il ne se distinguait pas du `db` de la connexion juste en
+        // dessous : deux paliers voisins portaient le même glyphe à bandes horizontales, constaté à
+        // l'écran. La goutte de `pin` n'a de voisin nulle part dans l'arbre, et « un lieu où vivent
+        // des connexions » se lit sans légende. Une icône qui dit juste et qu'on confond n'apprend
+        // rien.
+        icon: 'pin',
+        iconColor: COULEURS_D_ENVIRONNEMENT[declaration.color],
+        meta: environnementDeplie ? undefined : compteDeConnexions(connexions.length),
+        metaVariant: 'caps',
+        // **Le drapeau, jamais le libellé** (`23g`) — et jamais la couleur déclarée non plus : un
+        // environnement marqué production que l'utilisateur a coloré en vert porterait un badge vert,
+        // et le badge d'alerte cesserait d'alerter. La couleur voyage par `iconColor`, le drapeau par
+        // ce badge : deux canaux pour deux informations, plutôt qu'un pixel pour les deux.
+        badge: declaration.production ? { text: 'PROD', tone: 'danger' } : undefined,
         project: projet.name,
-        database: base.name,
-        environment: base.environment,
-        // **Une connexion, une déclaration** (`23b`). Ce compte valait « les environnements où cette
-        // base est déclarée », du temps où une base portait des variantes : le retrait en effaçait
-        // plusieurs. Il en efface exactement une désormais, et le dire ainsi évite de reposer la
-        // question à l'écran de confirmation.
+        environment: declaration.id,
+        connexions: connexions.length,
       })
 
-      if (!baseDepliee) continue
+      if (!environnementDeplie) continue
 
-      /*
-       * **Les consoles viennent avant les schémas, et sans chargement.**
-       *
-       * Elles sont déjà dans la configuration — aucun aller-retour vers le serveur ne les produit —
-       * donc elles s'affichent dès le dépliage, y compris pendant que l'introspection travaille ou
-       * après son échec. C'est voulu : une console est un texte qu'on a écrit, et le rendre
-       * dépendant d'une connexion qui répond en ferait perdre l'accès au pire moment.
-       *
-       * En tête plutôt qu'en pied : ce sont les nœuds dont le nombre est connu et petit, là où les
-       * schémas peuvent en aligner des dizaines. Les mettre après les aurait noyées.
-       */
-      for (const console of base.consoles) {
+      // **Un environnement vide le dit** (`23g`) : un nœud déplié sans enfant se lit comme un
+      // chargement en cours — le doute du défaut de `06d`. Ici rien ne charge, la liste vient de la
+      // configuration, donc le vide est un fait et non une attente.
+      if (connexions.length === 0) {
+        noeuds.push(message(`${idE}:vide`, 2, `Aucune connexion déclarée en ${declaration.label}`))
+        continue
+      }
+
+      for (const base of connexions) {
+        const idB = idBase(projet.name, base.environment, base.name)
+        const baseDepliee = deplies.has(idB)
+        const etat = etats(projet.name, base.name, base.environment)
+
         noeuds.push({
-          id: idConsole(projet.name, base.name, console.name),
-          kind: 'console',
+          id: idB,
+          kind: 'database',
           depth: 2,
-          label: console.name,
-          icon: 'term',
-          iconColor: 'var(--ink-3)',
+          label: base.name,
+          chevron: baseDepliee ? 'open' : 'closed',
+          icon: 'db',
+          iconColor: `var(--engine-${abregeMoteur(base.engine)})`,
+          badge: badgeEtat(etat),
+          // L'état est **dans le nom accessible**, pas seulement dans une couleur : un point vert
+          // et un point rouge sont indiscernables pour une part des utilisateurs.
+          announce: `${base.name} · ${resumeEtat(etat)}`,
           project: projet.name,
           database: base.name,
           environment: base.environment,
-          console: console.name,
         })
-      }
 
-      const enfants = enfantsDe(idB, charge, () =>
-        (charge.schemas[idB] ?? []).flatMap((schema) =>
-          noeudsDeSchema(projet.name, base.name, projet.activeEnvironment, schema, deplies, charge),
-        ),
-      )
-      noeuds.push(...enfants)
+        if (!baseDepliee) continue
+
+        /*
+         * **Les consoles viennent avant les schémas, et sans chargement.**
+         *
+         * Elles sont déjà dans la configuration — aucun aller-retour vers le serveur ne les produit —
+         * donc elles s'affichent dès le dépliage, y compris pendant que l'introspection travaille ou
+         * après son échec. C'est voulu : une console est un texte qu'on a écrit, et le rendre
+         * dépendant d'une connexion qui répond en ferait perdre l'accès au pire moment.
+         *
+         * En tête plutôt qu'en pied : ce sont les nœuds dont le nombre est connu et petit, là où les
+         * schémas peuvent en aligner des dizaines. Les mettre après les aurait noyées.
+         */
+        for (const console of base.consoles) {
+          noeuds.push({
+            id: idConsole(projet.name, base.environment, base.name, console.name),
+            kind: 'console',
+            depth: 3,
+            label: console.name,
+            icon: 'term',
+            iconColor: 'var(--ink-3)',
+            project: projet.name,
+            database: base.name,
+            environment: base.environment,
+            console: console.name,
+          })
+        }
+
+        const enfants = enfantsDe(idB, charge, () =>
+          (charge.schemas[idB] ?? []).flatMap((schema) =>
+            noeudsDeSchema(projet.name, base.name, base.environment, schema, deplies, charge),
+          ),
+        )
+        noeuds.push(...enfants)
+      }
     }
   }
 
@@ -216,16 +299,16 @@ function noeudsDeSchema(
   deplies: Deplies,
   charge: Charge,
 ): Noeud[] {
-  const id = idSchema(project, database, schema.name)
+  const id = idSchema(project, environment, database, schema.name)
   const deplie = deplies.has(id)
 
   const tete: Noeud = {
     id,
     kind: 'schema',
-    depth: 2,
+    depth: 3,
     label: schema.name,
     chevron: deplie ? 'open' : 'closed',
-    icon: 'folder',
+    icon: 'schema',
     project,
     database,
     environment,
@@ -238,9 +321,9 @@ function noeudsDeSchema(
     tete,
     ...enfantsDe(id, charge, () =>
       (charge.objets[id] ?? []).map((objet) => ({
-        id: idObjet(project, database, schema.name, objet.name),
+        id: idObjet(project, environment, database, schema.name, objet.name),
         kind: 'object' as const,
-        depth: 3 as const,
+        depth: 4 as const,
         label: objet.name,
         icon: objet.kind === 'view' ? 'view' : 'table',
         iconColor: objet.kind === 'view' ? 'var(--violet)' : 'var(--success)',
@@ -266,7 +349,9 @@ function noeudsDeSchema(
  * plutôt qu'une bannière ou un état global.
  */
 function enfantsDe(id: string, charge: Charge, contenu: () => Noeud[]): Noeud[] {
-  const profondeur = (id.startsWith('d:') ? 2 : 3) as 2 | 3
+  // La profondeur du message se lit dans le **préfixe** de l'identité du parent : `d:` est une
+  // connexion au palier 2, donc ses messages sont au palier 3 ; `s:` est un schéma au palier 3.
+  const profondeur = (id.startsWith('d:') ? 3 : 4) as 3 | 4
 
   if (charge.echecs[id]) {
     return [message(`${id}:echec`, profondeur, charge.echecs[id] as string)]
@@ -281,18 +366,17 @@ function enfantsDe(id: string, charge: Charge, contenu: () => Noeud[]): Noeud[] 
   return enfants.length > 0 ? enfants : [message(`${id}:vide`, profondeur, 'Aucun objet')]
 }
 
-function message(id: string, depth: 2 | 3, label: string): Noeud {
+function message(id: string, depth: 2 | 3 | 4, label: string): Noeud {
   return { id, kind: 'message', depth, label, message: true }
 }
 
-function badgeEnvironnement(environment: EnvironmentId): Noeud['badge'] {
-  if (environment === 'prod') return { text: 'PROD', tone: 'danger' }
-  if (environment === 'staging') return { text: 'STAGING', tone: 'warn' }
-  return { text: 'DEV', tone: 'muted' }
+/** « 3 connexions », « 1 connexion », « 0 connexion » — le zéro prend le singulier, en français. */
+function compteDeConnexions(compte: number): string {
+  return `${compte} connexion${compte > 1 ? 's' : ''}`
 }
 
 /**
- * Le badge d'état d'une base.
+ * Le badge d'état d'une connexion.
  *
  * `never` n'a **aucun badge** : une base qu'on n'a pas ouverte n'est pas dans un état
  * remarquable, et lui coller une marque la ferait paraître en défaut.

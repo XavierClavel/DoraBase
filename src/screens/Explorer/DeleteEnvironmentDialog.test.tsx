@@ -9,15 +9,10 @@ const ISSUE: DeleteEnvironmentResult = {
   projects: [],
   deletedConnections: ['catalogue', 'reservations'],
   leftoverSecrets: [],
-  newActiveEnvironment: null,
 }
 
 function monter(
-  options: {
-    connexions?: string[]
-    nouvelActif?: string | null
-    onDelete?: () => Promise<DeleteEnvironmentResult>
-  } = {},
+  options: { connexions?: string[]; onDelete?: () => Promise<DeleteEnvironmentResult> } = {},
 ) {
   const onClose = vi.fn()
   render(
@@ -27,7 +22,6 @@ function monter(
         projet="Atelier Nord"
         libelle="vitrine"
         connexions={options.connexions ?? ['catalogue', 'reservations']}
-        nouvelActif={options.nouvelActif ?? null}
         onClose={onClose}
         onDelete={options.onDelete ?? (async () => ISSUE)}
       />
@@ -64,14 +58,14 @@ test('le singulier est respecté quand il n’y a qu’une connexion', () => {
   expect(modale).not.toHaveTextContent('1 connexions')
 })
 
-test('le remplaçant de l’actif est annoncé quand il y en a un', () => {
-  monter({ nouvelActif: 'coulisses' })
-  const modale = screen.getByRole('dialog', { name: /Retirer vitrine/ })
-  expect(modale).toHaveTextContent('C’est l’environnement actif')
-  expect(modale).toHaveTextContent('coulisses')
-})
-
-test('rien n’est annoncé quand l’actif ne bouge pas', () => {
+/*
+ * **La modale ne parle plus d'environnement actif** (`25a`, `25c`).
+ *
+ * Elle annonçait le remplaçant de l'actif quand l'environnement retiré l'était. `activeEnvironment`
+ * ayant quitté le modèle — l'environnement se choisit dans l'arbre, où il est un palier — il n'y a
+ * plus d'actif à remplacer, et le dire nommerait un état qui n'existe pas.
+ */
+test('la modale ne nomme aucun environnement actif', () => {
   monter()
   expect(screen.getByRole('dialog', { name: /Retirer vitrine/ })).not.toHaveTextContent(
     'environnement actif',

@@ -175,11 +175,6 @@
   color: var(--ink-meta);
 }
 
-.actifMarque {
-  font-weight: var(--weight-bold);
-  color: var(--ink-2);
-}
-
 .production {
   display: flex;
   align-items: center;
