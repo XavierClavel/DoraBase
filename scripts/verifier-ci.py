@@ -143,7 +143,7 @@ def verifier_publication() -> None:
 
     workflow = charger(PUBLICATION)
     jobs = workflow.get("jobs", {})
-    etapes = etapes_de(jobs, "macos", 26, "publication.yml")
+    etapes = etapes_de(jobs, "macos", 27, "publication.yml")
 
     sur = declencheurs(workflow)
     # **Le déclencheur, et rien d'autre que lui.** `on: push` sans filtre publierait une release
@@ -171,6 +171,7 @@ def verifier_publication() -> None:
         ("universal-apple-darwin", "le bundle publié ne serait plus universel"),
         ("verifier-version.py", "rien ne vérifierait que le tag et les fichiers s'accordent"),
         ("codesign --verify", "rien ne vérifierait la signature, dont dépend le lancement"),
+        ("notarytool submit", "l'image ne serait plus notariée — Tauri ne notarie que l'app"),
         ("stapler validate", "rien ne vérifierait l'agrafage du ticket de notarisation"),
         ("source=Notarized Developer ID",
          "rien ne vérifierait le verdict que le système rend vraiment au lancement"),
