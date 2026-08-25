@@ -234,6 +234,33 @@ jobs:
       # que le décor ne sort pas du décor — voir l'en-tête du script.
       - run: ./scripts/verifier-aucun-decor-de-version.sh
 
+      # **Tauri notarie l'application, pas l'image.** Constaté à la 0.1.4 : l'app revient
+      # « Accepted » et agrafée, et `stapler validate` sur le `.dmg` répond « does not have a
+      # ticket stapled to it ». Or c'est l'image que l'utilisateur télécharge, donc elle que
+      # macOS met en quarantaine et évalue à l'ouverture : sans ticket, l'avertissement
+      # reparaîtrait sur l'image après avoir disparu de l'application.
+      #
+      # Tauri l'a bien **signée** avec l'identité — il ne manque que la soumission. L'agrafage
+      # modifie le fichier, donc cette étape passe avant celle qui le copie et calcule son
+      # empreinte.
+      - name: notarier l'image
+        if: env.NOTARISE == 'oui'
+        env:
+          CLEF_ID: ${{ secrets.APPLE_API_KEY }}
+          EMETTEUR: ${{ secrets.APPLE_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          dmg=$(ls src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg)
+          # Le verdict est lu dans la sortie plutôt que déduit du code de retour : `notarytool
+          # submit --wait` rend la main quand le traitement s'achève, ce qui n'est pas la même
+          # chose que l'avoir accepté.
+          sortie=$(xcrun notarytool submit "$dmg" \
+            --key "$APPLE_API_KEY_PATH" --key-id "$CLEF_ID" --issuer "$EMETTEUR" \
+            --wait --timeout 30m 2>&1)
+          echo "$sortie"
+          grep -qE 'status: Accepted' <<<"$sortie"
+          xcrun stapler staple "$dmg"
+
       - name: le bundle est bien universel
         run: |
           set -euo pipefail
