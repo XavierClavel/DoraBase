@@ -49,6 +49,47 @@
   padding: 0 8px;
 }
 
+/*
+ * **La première animation du produit**, et donc une convention autant qu'un effet.
+ *
+ * Elle dit une **attente**, pas un succès : elle tourne pendant la requête et s'arrête à la réponse,
+ * qu'elle réussisse ou échoue — l'erreur a ses propres endroits pour s'afficher. Elle porte sur le
+ * **contrôle actionné** et non sur la zone rechargée : c'est là que le regard est au moment du clic.
+ *
+ * 900 ms et `linear` : assez lent pour qu'on lise une rotation plutôt qu'un scintillement, assez
+ * régulier pour ne pas suggérer une progression que rien ne mesure.
+ */
+@keyframes tourne {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+.tourne {
+  animation: tourne 900ms linear infinite;
+}
+
+/*
+ * **Le mouvement part, l'information reste.**
+ *
+ * Ignorer ce réglage est un défaut d'accessibilité, pas un choix esthétique : pour une part des
+ * utilisateurs, une rotation continue provoque un vrai malaise. L'état demeure lisible sans elle —
+ * le bouton est désactivé et porte `aria-busy`, tous deux posés par le composant et non par cette
+ * feuille.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .tourne {
+    animation: none;
+  }
+}
+
+/* Un bouton en cours **reste lisible** : c'est un état d'attente, pas une interdiction. L'atténuer
+ * comme un contrôle indisponible ferait croire à une panne. */
+.carre:disabled {
+  cursor: default;
+  color: var(--ink-4);
+}
+
 .carre[aria-disabled="true"] {
   color: var(--ink-3);
   cursor: default;

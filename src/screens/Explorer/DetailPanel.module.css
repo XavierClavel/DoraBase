@@ -30,7 +30,10 @@
   width: 100%;
   min-width: 0;
   flex: none;
-  border-left: 1px solid var(--divider);
+  /* **Plus de `border-left` ici** (25 août 2026) : le handoff le pose sur la *colonne*, et ce panneau
+     n'en est que le contenu — il commence sous l'en-tête, si bien que le filet démarrait 34 px trop
+     bas. `ColonneDroite` le porte désormais ; la galerie, qui montre ce panneau seul, le pose sur son
+     propre cadre. */
   background: var(--paper);
   overflow: hidden;
 }

@@ -678,3 +678,93 @@ test('un onglet garde sa largeur quand il passe en édition', async ({ page }) =
   // Et la largeur minimale de l'onglet tient, elle aussi.
   expect(avant).toBeGreaterThanOrEqual(98)
 })
+
+test('la ligne sous la bande d’onglets ne se casse pas à la colonne de droite', async ({
+  page,
+}) => {
+  await ouvrirUneTable(page)
+
+  const mesures = await page.evaluate(() => {
+    // La bande d'onglets et l'en-tête de la colonne de droite forment **une seule ligne
+    // horizontale** à l'écran ; leurs deux filets doivent donc tomber au même pixel.
+    const bande = document.querySelector('[role=tablist]')?.parentElement?.parentElement
+    const colonne = document.querySelector('[data-testid=colonne-droite]')
+    const entete = colonne?.firstElementChild
+    if (!bande || !colonne || !entete) return null
+    const styleBande = getComputedStyle(bande)
+    const styleEntete = getComputedStyle(entete)
+    return {
+      bande: bande.getBoundingClientRect().bottom,
+      entete: entete.getBoundingClientRect().bottom,
+      colonneHaut: colonne.getBoundingClientRect().y,
+      bandeHaut: bande.getBoundingClientRect().y,
+      // **La colonne ne dessine aucun filet** : c'est la poignée du `SplitPane` qui sépare, et tout
+      // filet ajouté ici viendrait s'y coller pour faire un trait de 2 px.
+      colonneOmbre: getComputedStyle(colonne).boxShadow,
+      colonneBord: getComputedStyle(colonne).borderLeftWidth,
+      traitBande: `${styleBande.borderBottomWidth} ${styleBande.borderBottomColor}`,
+      traitEntete: `${styleEntete.borderBottomWidth} ${styleEntete.borderBottomColor}`,
+    }
+  })
+
+  // **Un pixel d'écart, et la ligne se voit cassée.** L'en-tête était en `border-box` — 34 px filet
+  // compris — là où la bande rend 35 px pour 34 déclarés, la convention du handoff (`TabStrip`).
+  expect(mesures?.entete).toBe(mesures?.bande)
+
+  // **Le filet vertical part du haut de la colonne**, comme dans le handoff, qui le pose sur la
+  // colonne entière et non sur son contenu. Porté par le panneau de détail, il démarrait sous
+  // l'en-tête et laissait une marche à la jonction.
+  expect(mesures?.colonneHaut).toBe(mesures?.bandeHaut)
+  expect(mesures?.colonneOmbre).toBe('none')
+  expect(mesures?.colonneBord).toBe('0px')
+
+  // **Même épaisseur et même teinte**, parce que c'est une seule ligne. Le handoff pose `.08` à
+  // droite et `.1` à gauche — deux blocs dessinés séparément — et la jonction se voyait :
+  // un trait plus clair se lit comme un trait plus fin. Écart assumé, `DEFAUTS.md` n° 128.
+  expect(mesures?.traitEntete).toBe(mesures?.traitBande)
+  expect(mesures?.traitBande).toBe('1px rgba(35, 32, 28, 0.1)')
+})
+
+test('les deux jonctions verticales sont un seul trait, identique à gauche et à droite', async ({
+  page,
+}) => {
+  await ouvrirUneTable(page)
+
+  const jonctions = await page.evaluate(() => {
+    const poignees = [...document.querySelectorAll('[role=separator]')]
+    // Ce qui borde chaque poignée : si un voisin dessine son propre filet, il se colle à celui de la
+    // poignée et le trait fait 2 px — l'écart que l'écran a signalé.
+    return poignees.map((poignee) => {
+      const r = poignee.getBoundingClientRect()
+      const s = getComputedStyle(poignee)
+      const gauche = document.elementFromPoint(r.x - 2, r.y + 200)
+      const droite = document.elementFromPoint(r.right + 2, r.y + 200)
+      const filetDe = (el: Element | null) => {
+        if (!el) return 'aucun'
+        const st = getComputedStyle(el)
+        return `${st.borderLeftWidth}/${st.borderRightWidth}/${st.boxShadow === 'none' ? 'sans ombre' : st.boxShadow}`
+      }
+      return {
+        largeur: r.width,
+        haut: r.y,
+        bas: r.bottom,
+        fond: s.backgroundColor,
+        voisinGauche: filetDe(gauche?.closest('[class*=root]') ?? gauche),
+        voisinDroite: filetDe(droite?.closest('[class*=root]') ?? droite),
+      }
+    })
+  })
+
+  // Les deux poignées : 1 px, même teinte, toute la hauteur.
+  expect(jonctions).toHaveLength(2)
+  for (const jonction of jonctions) {
+    expect(jonction.largeur).toBe(1)
+    expect(jonction.fond).toBe('rgba(35, 32, 28, 0.1)')
+  }
+  // **Et surtout : les deux sont identiques**, ce que « iso avec la bordure de la sidebar de gauche »
+  // demande. Un trait dessiné deux fois d'un côté et une fois de l'autre est le défaut n° 129.
+  expect(jonctions[0]?.largeur).toBe(jonctions[1]?.largeur)
+  expect(jonctions[0]?.fond).toBe(jonctions[1]?.fond)
+  expect(jonctions[0]?.haut).toBe(jonctions[1]?.haut)
+  expect(jonctions[0]?.bas).toBe(jonctions[1]?.bas)
+})

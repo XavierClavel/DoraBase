@@ -9,7 +9,13 @@ import {
   openDatabase,
 } from '../../data/commandes'
 import type { EnvironmentId, Project } from '../../domain/config'
-import type { ConnectionState, ConnectionStateEntry } from '../../domain/engine'
+import type {
+  ConnectionState,
+  ConnectionStateEntry,
+  DatabaseKey,
+  SchemaInfo,
+  TableSummary,
+} from '../../domain/engine'
 import type { Charge, Noeud } from '../Explorer/arbre'
 
 /**
@@ -50,6 +56,21 @@ const CHARGE_VIDE: Charge = { schemas: {}, objets: {}, enCours: new Set(), echec
 export function useArbre(
   projects: readonly Project[],
   passerelle: PasserelleArbre = PASSERELLE_TAURI,
+  /**
+   * Appelé quand une connexion vient de s'ouvrir **et** que ses schémas sont connus.
+   *
+   * L'arbre ne préchauffe rien lui-même : il sait *quand*, pas *quoi en faire*. Le cache des
+   * structures vit dans l'écran de travail, qui le partage avec le panneau de détail — le lui faire
+   * porter ici mêlerait deux durées de vie sans rapport.
+   */
+  onOuverture?: (cle: DatabaseKey, schemas: readonly SchemaInfo[]) => void,
+  /**
+   * Appelé quand un schéma vient d'être déplié **et** que ses objets sont connus.
+   *
+   * Les objets sont passés parce que l'arbre vient de les lister pour les afficher : les faire
+   * redemander par le préchauffage paierait deux fois la même requête.
+   */
+  onSchemaDeplie?: (cle: DatabaseKey, schema: string, objets: readonly TableSummary[]) => void,
 ) {
   const [deplies, setDeplies] = useState<ReadonlySet<string>>(new Set())
   const [charge, setCharge] = useState<Charge>(CHARGE_VIDE)
@@ -104,6 +125,9 @@ export function useArbre(
           schemas: { ...precedent.schemas, [id]: schemas },
         }))
         marquer(id, false)
+        // **Après l'affichage, jamais avant** : la cascade de préchauffage est un service en fond, et
+        // l'arbre doit avoir ses schémas à l'écran sans l'attendre.
+        onOuverture?.(cle, schemas)
       } catch (cause) {
         // L'échec vit **sur la ligne du nœud** : une base injoignable ne doit pas vider l'arbre
         // ni bloquer les autres. C'est la décision « l'arbre se lit sans réseau », appliquée à
@@ -113,7 +137,7 @@ export function useArbre(
         setEtats(await passerelle.connectionStates().catch(() => []))
       }
     },
-    [projects, passerelle, marquer],
+    [projects, passerelle, marquer, onOuverture],
   )
 
   const chargerSchema = useCallback(
@@ -128,11 +152,14 @@ export function useArbre(
         const objets = await passerelle.listObjects(cle, schema)
         setCharge((precedent) => ({ ...precedent, objets: { ...precedent.objets, [id]: objets } }))
         marquer(id, false)
+        // **Après l'affichage**, comme à l'ouverture d'une connexion : le dépliage ne doit pas
+        // attendre le préchauffage, il le déclenche.
+        onSchemaDeplie?.(cle, schema, objets)
       } catch (cause) {
         marquer(id, false, message(cause))
       }
     },
-    [passerelle, marquer],
+    [passerelle, marquer, onSchemaDeplie],
   )
 
   /** Déplie ou replie un nœud, et charge ce que le dépliage rend visible. */

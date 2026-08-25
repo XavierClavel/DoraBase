@@ -9,6 +9,7 @@ import { REGLAGES, TRIO_DE_TEST } from '../NewConnection/pourLesTests'
 import type { PasserelleLignes } from '../TableView/useLignes'
 import type { PasserelleArbre } from './useArbre'
 import type { PasserelleDetail } from './useDetailTable'
+import type { PasserelleStructures } from './useStructures'
 import { Workbench } from './Workbench'
 
 const variante = {
@@ -263,6 +264,19 @@ function surConsoles(
 
 function monter(over: Partial<Parameters<typeof Workbench>[0]> = {}) {
   const { passerelle, detail, lignes } = passerelles()
+  /**
+   * Le pont du préchauffage des structures, **dérivé de celui du panneau**.
+   *
+   * Dans l'application il n'y a qu'une commande, `describe_table` : deux décors qui rendraient des
+   * structures différentes créeraient une divergence que la réalité n'a pas — et c'est ce qui est
+   * arrivé, le préchauffage remplissant le cache avec la table générique alors qu'un test avait
+   * surchargé le détail pour renommer sa clé primaire. Le compteur reste distinct, lui, pour qu'un
+   * test puisse dire ce que la file a demandé.
+   */
+  const structures: PasserelleStructures = over.passerelleStructures ?? {
+    listObjects: vi.fn(async () => [objet('orders'), objet('order_items')]),
+    describeTable: vi.fn((over.passerelleDetail ?? detail).describeTable),
+  }
 
   function Pilote() {
     const [projets, setProjets] = useState<readonly Project[]>(over.projects ?? PROJETS)
@@ -272,6 +286,7 @@ function monter(over: Partial<Parameters<typeof Workbench>[0]> = {}) {
         passerelle={passerelle}
         passerelleDetail={detail}
         passerelleLignes={lignes}
+        passerelleStructures={structures}
         // Les quatre gestes de console appliqués à l'état, sauf si le test fournit les siens —
         // un espion qui veut seulement constater l'appel n'a pas besoin que le décor bouge.
         onCreateConsole={async (project, database, environment, nom) => {
@@ -309,7 +324,7 @@ function monter(over: Partial<Parameters<typeof Workbench>[0]> = {}) {
       <Pilote />
     </>,
   )
-  return { passerelle, detail, lignes }
+  return { passerelle, detail, lignes, structures }
 }
 
 describe('Workbench', () => {
@@ -1470,5 +1485,80 @@ describe('renommer une connexion (`26`)', () => {
     await waitFor(() =>
       expect(document.querySelector('.cm-content')?.textContent).toContain('select 42'),
     )
+  })
+})
+
+/**
+ * Le cache des structures, vu de l'écran.
+ *
+ * L'ordonnancement de la file est testé dans `useStructures.test.tsx`, où une passerelle lente se
+ * fabrique. Ce qui se mesure **ici** est ce que le cache change pour l'utilisateur : ouvrir une table
+ * préchauffée ne redemande rien.
+ */
+describe('les structures en mémoire', () => {
+  it('le préchauffage part quand la connexion s’ouvre, sur les schémas listés', async () => {
+    const utilisateur = userEvent.setup()
+    const { structures, passerelle } = monter()
+    await ouvrirLesEnvironnements(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /analytics/ }))
+
+    await waitFor(() => expect(passerelle.listSchemas).toHaveBeenCalled())
+    // La cascade prend la suite de `list_schemas`, sans qu'aucun schéma soit déplié.
+    await waitFor(() => expect(structures.listObjects).toHaveBeenCalled())
+    await waitFor(() => expect(structures.describeTable).toHaveBeenCalled())
+  })
+
+  it('ouvrir une table préchauffée ne redemande pas sa structure', async () => {
+    const utilisateur = userEvent.setup()
+    const { detail, structures } = monter()
+    await ouvrirLesEnvironnements(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /analytics/ }))
+    // Le préchauffage a fini : les deux tables du décor sont en mémoire.
+    await waitFor(() => expect(structures.describeTable).toHaveBeenCalledTimes(2))
+    const avant = vi.mocked(detail.describeTable).mock.calls.length
+
+    await utilisateur.click(await screen.findByRole('treeitem', { name: 'public' }))
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
+    expect(await screen.findByRole('tab', { name: /orders/ })).toBeInTheDocument()
+
+    // **Aucun aller-retour de plus**, et c'est toute la promesse du cache : le panneau lit la
+    // mémoire. Le compte est celui du préchauffage, qui passe par la même commande.
+    expect(vi.mocked(detail.describeTable).mock.calls.length).toBe(avant)
+  })
+
+  it('déplier un schéma préchauffe ses tables, sans relister ce que l’arbre a déjà lu', async () => {
+    const utilisateur = userEvent.setup()
+    const { structures, passerelle } = monter()
+    await ouvrirLesEnvironnements(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /analytics/ }))
+    await waitFor(() => expect(structures.describeTable).toHaveBeenCalled())
+    const listesAvant = vi.mocked(structures.listObjects).mock.calls.length
+
+    await utilisateur.click(await screen.findByRole('treeitem', { name: 'public' }))
+
+    // L'arbre a listé les objets pour les afficher (`passerelle.listObjects`) ; le préchauffage les
+    // reçoit et n'en redemande pas (`structures.listObjects` ne bouge pas). Sans ce passage de
+    // relais, le dépliage paierait deux fois la même requête.
+    await waitFor(() => expect(passerelle.listObjects).toHaveBeenCalled())
+    expect(vi.mocked(structures.listObjects).mock.calls.length).toBe(listesAvant)
+  })
+
+  it('« Rafraîchir l’arborescence » vide les structures : la suivante est redemandée', async () => {
+    const utilisateur = userEvent.setup()
+    const { structures } = monter()
+    await ouvrirLesEnvironnements(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /analytics/ }))
+    await waitFor(() => expect(structures.describeTable).toHaveBeenCalledTimes(2))
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Actions de Atelier Nord' }))
+    await utilisateur.click(screen.getByRole('button', { name: /Rafraîchir l’arborescence/ }))
+
+    // **Le geste replie tout** : `rafraichir` vide le cache d'arbre *et* les dépliages, donc il faut
+    // refaire le chemin. Sans le vidage des structures, la cascade suivante n'aurait rien redemandé —
+    // « rafraîchir » aurait laissé les structures d'hier en mémoire, la moitié de l'écran à jour et
+    // l'autre non.
+    await ouvrirLesEnvironnements(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /analytics/ }))
+    await waitFor(() => expect(structures.describeTable).toHaveBeenCalledTimes(4))
   })
 })
