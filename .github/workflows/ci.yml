@@ -102,6 +102,11 @@ jobs:
 
       - run: pnpm tauri build
 
+      # La version affichée vient du build et elle est **figée sous Playwright** : sans quoi
+      # chaque publication périmerait les captures de fidélité. La contrepartie est de vérifier
+      # que le décor ne sort pas du décor — voir l'en-tête du script.
+      - run: ./scripts/verifier-aucun-decor-de-version.sh
+
       # **La seule vérification automatisable d'`06h`.** Que le binaire du proxy soit
       # *embarqué* se prouve ici ; qu'il soit *trouvé* par l'app lancée depuis le Finder
       # demande un œil humain. Sans cette étape, un `externalBin`

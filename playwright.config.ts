@@ -28,6 +28,10 @@ export default defineConfig({
     command: `pnpm dev --port ${port} --strictPort`,
     port,
     reuseExistingServer: false,
+    // La barre d'état affiche la version, donc **chaque capture pleine page la contient**. Figée
+    // pour le décor, les références survivent aux publications au lieu de rougir à chaque
+    // relèvement. La raison longue est dans `vite.config.ts`, au `define`.
+    env: { DORABASE_VERSION_DECOR: '9.9.9' },
   },
   use: { baseURL: `http://localhost:${port}`, viewport: { width: 1360, height: 814 } },
   expect: { toHaveScreenshot: { maxDiffPixelRatio: 0 } },

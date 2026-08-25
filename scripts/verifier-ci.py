@@ -93,8 +93,8 @@ def verifier_ci() -> None:
     workflow = charger(CI)
     jobs = workflow.get("jobs", {})
 
-    build = etapes_de(jobs, "build", 23, "ci.yml")
-    etapes_de(jobs, "engine", 8, "ci.yml")
+    build = etapes_de(jobs, "build", 25, "ci.yml")
+    etapes_de(jobs, "engine", 11, "ci.yml")
 
     # Le job macOS doit **construire** : c'est la raison de son existence, et c'est ce qui avait
     # disparu.
@@ -126,7 +126,7 @@ def verifier_publication() -> None:
 
     workflow = charger(PUBLICATION)
     jobs = workflow.get("jobs", {})
-    etapes = etapes_de(jobs, "macos", 16, "publication.yml")
+    etapes = etapes_de(jobs, "macos", 23, "publication.yml")
 
     sur = declencheurs(workflow)
     # **Le déclencheur, et rien d'autre que lui.** `on: push` sans filtre publierait une release
@@ -155,6 +155,8 @@ def verifier_publication() -> None:
         ("verifier-version.py", "rien ne vérifierait que le tag et les fichiers s'accordent"),
         ("codesign --verify", "rien ne vérifierait la signature, dont dépend le lancement"),
         ("gh release create", "rien ne publierait le résultat"),
+        ("verifier-aucun-decor-de-version.sh",
+         "la version de décor pourrait partir dans le bundle livré"),
     ):
         if fragment not in commandes:
             print(f"publication.yml : « {fragment} » a disparu — {raison}", file=sys.stderr)
