@@ -1,0 +1,205 @@
+name: Publication
+
+# Un tag `vX.Y.Z` poussé sur `main` construit le bundle macOS et l'attache à une release
+# GitHub, d'où il est téléchargeable. Rien d'autre ne déclenche ce workflow : une publication
+# est un geste, pas un effet de bord d'un push.
+#
+# Le geste complet, côté humain, est dans `scripts/version.sh` et dans le README.
+on:
+  push:
+    tags:
+      # Motif **ancré** sur les trois nombres : `v0.1.0-essai` ou `v1.2` ne publient pas. Le
+      # format de version est fermé (voir `scripts/verifier-version.py`) ; un tag qui sort du
+      # format produirait un nom de bundle que rien n'a décidé.
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+# La seule permission dont le job a besoin, et il en a besoin : créer la release et y attacher
+# le `.dmg`. Le reste du jeton reste en lecture.
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    # Une stalle ne doit pas se déguiser en travail — même raison que le job `engine` de
+    # `ci.yml`. Une construction universelle compile la crate deux fois : quarante minutes
+    # laissent de la marge, une heure trente n'en serait plus.
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # `git log v(précédent)..v(courant)` a besoin de l'historique et des tags ; un
+          # checkout superficiel n'en a ni l'un ni l'autre, et les notes de version seraient
+          # vides sans que rien ne le dise.
+          fetch-depth: 0
+
+      # **Le tag et les fichiers doivent dire le même numéro.** Un tag `v0.3.0` posé sur un
+      # arbre resté en `0.2.0` publierait un `.dmg` nommé `0.2.0` sous une release `0.3.0` :
+      # à partir de là, personne ne peut plus dire ce qu'il a installé. Vérifié **avant** de
+      # compiler, pour échouer en dix secondes plutôt qu'en trente minutes.
+      - name: le tag correspond à la version des fichiers
+        run: |
+          set -euo pipefail
+          version=${GITHUB_REF_NAME#v}
+          python3 scripts/verifier-version.py "$version"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+
+      - run: rustup show
+        working-directory: src-tauri
+
+      # Les deux cibles du bundle universel. `aarch64` est déjà celle du runner ; `x86_64` est
+      # une construction croisée, et c'est elle qui rend le `.dmg` installable sur les Mac
+      # Intel encore sous Ventura — le plancher que le projet s'est donné.
+      - run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+        working-directory: src-tauri
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          # Clé distincte de celle de `ci.yml` : ce job compile en `release` et pour deux
+          # cibles. Partager la clé ferait invalider un cache par l'autre à chaque tour.
+          key: publication
+
+      - run: pnpm install --frozen-lockfile
+
+      # **Les deux architectures du proxy**, et non celle de la machine : Tauri fusionne les
+      # deux sidecars par `lipo` pour la cible universelle, et il échoue si l'un manque.
+      # Comme dans `ci.yml`, c'est une dépendance de compilation et non une étape de
+      # packaging (défaut n° 111).
+      - run: pnpm proxy:embarquer:tous
+
+      # ── Ce qui doit être vrai avant de publier un binaire ──────────────────────────────
+      #
+      # Le tag est censé être posé sur un `main` déjà vert, et `scripts/version.sh` refuse de
+      # le poser ailleurs. Mais « censé » n'est pas une vérification : ces quatre étapes-là
+      # sont celles qui tiennent en quelques minutes, et elles rendent vraie la phrase « rien
+      # n'est publié qui n'ait été vérifié ». Playwright et les tests sur base réelle restent
+      # dans `ci.yml` : ils demandent un serveur et quatre décors, et ce job n'a pas à les
+      # remonter pour la seconde fois.
+      - run: ./scripts/verifier-aucun-sabotage.sh
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: cargo test
+        working-directory: src-tauri
+
+      # ── Le bundle ──────────────────────────────────────────────────────────────────────
+      #
+      # `--target universal-apple-darwin` : un seul `.dmg` pour les deux architectures. Deux
+      # fichiers séparés obligeraient l'utilisateur à savoir quel Mac il a — une question à
+      # laquelle un explorateur de bases de données n'a pas à faire répondre.
+      - run: pnpm tauri build --target universal-apple-darwin
+
+      - name: le bundle est bien universel
+        run: |
+          set -euo pipefail
+          app=src-tauri/target/universal-apple-darwin/release/bundle/macos/DoraBase.app
+          # `lipo -archs` liste les architectures présentes. Sans cette étape, une cible mal
+          # nommée produirait un bundle mono-architecture au chemin attendu, et le `.dmg`
+          # publié s'appellerait « universal » sans l'être.
+          for binaire in "$app/Contents/MacOS/DoraBase" "$app/Contents/MacOS/cloud-sql-proxy"; do
+            archs=$(lipo -archs "$binaire")
+            echo "$binaire : $archs"
+            grep -q arm64 <<<"$archs"
+            grep -q x86_64 <<<"$archs"
+          done
+
+      # Même vérification que dans `ci.yml`, et pour la même raison : c'est la seule preuve
+      # automatisable que le proxy est *embarqué*. Elle est refaite ici parce que c'est **ce
+      # bundle-ci** qui part chez l'utilisateur, et qu'il est construit par un autre chemin
+      # (cible universelle) que celui que `ci.yml` exerce.
+      - name: le proxy Cloud SQL est bien dans le bundle
+        run: |
+          set -euo pipefail
+          app=src-tauri/target/universal-apple-darwin/release/bundle/macos/DoraBase.app
+          test -x "$app/Contents/MacOS/cloud-sql-proxy"
+          test -f "$app/Contents/Resources/licences/cloud-sql-proxy/LICENSE"
+          test -f "$app/Contents/Resources/licences/cloud-sql-proxy/VERSION"
+          attendue=$(sed -n 's/^version *= *//p' src-tauri/cloud-sql-proxy.lock | head -1)
+          "$app/Contents/MacOS/cloud-sql-proxy" --version | grep -F "$attendue"
+
+      # **La signature, même ad hoc, décide si l'application se lance ailleurs.** `lipo`
+      # invalide les signatures des tranches qu'il fusionne : sans une signature reprise
+      # après coup, macOS refuse le bundle sur une autre machine que celle qui l'a construit
+      # — et un exécutable embarqué non signé le fait refuser à coup sûr.
+      # `signingIdentity: "-"` dans `tauri.conf.json` demande cette signature ad hoc à Tauri,
+      # qui la pose **avant** de fabriquer le `.dmg`. Cette étape ne signe rien : elle
+      # constate. Un `--verify` qui échoue veut dire que le `.dmg` déjà fabriqué est
+      # inutilisable, et qu'il ne faut pas le publier.
+      #
+      # Ce n'est pas une notarisation. Voir le README : l'utilisateur a un geste à faire au
+      # premier lancement, et il n'y a pas de Developer ID pour l'en dispenser.
+      - name: le bundle est signé (ad hoc) et cohérent
+        run: |
+          set -euo pipefail
+          app=src-tauri/target/universal-apple-darwin/release/bundle/macos/DoraBase.app
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=2 "$app" 2>&1 | grep -E 'Signature=adhoc|Authority='
+
+      # Le nom que l'utilisateur verra dans ses téléchargements. Tauri nomme
+      # `DoraBase_X.Y.Z_universal.dmg` ; le tiret et la casse du produit se lisent mieux, et
+      # surtout le nom devient **prévisible** — c'est lui que le README annonce.
+      - name: nommer le disque
+        run: |
+          set -euo pipefail
+          mkdir -p publication
+          dmg=$(ls src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg)
+          # Un seul `.dmg` attendu. Deux voudraient dire qu'un ancien traîne dans le cache,
+          # et `ls` en choisirait un au hasard — donc peut-être la version d'avant.
+          test "$(wc -l <<<"$dmg")" -eq 1
+          cp "$dmg" "publication/DoraBase-$VERSION-universal.dmg"
+          shasum -a 256 "publication/DoraBase-$VERSION-universal.dmg" \
+            | sed "s|publication/||" > "publication/DoraBase-$VERSION-universal.dmg.sha256"
+          ls -lh publication/
+
+      # ── La release ─────────────────────────────────────────────────────────────────────
+
+      - name: notes de version
+        run: |
+          set -euo pipefail
+          precedent=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' \
+            "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          {
+            echo "## Installation"
+            echo
+            echo "1. Téléchargez \`DoraBase-$VERSION-universal.dmg\` ci-dessous."
+            echo "2. Ouvrez-le, glissez **DoraBase** dans **Applications**."
+            echo "3. **Au premier lancement seulement**, macOS refuse l'application : elle"
+            echo "   n'est pas notariée. Ouvrez *Réglages Système ▸ Confidentialité et"
+            echo "   sécurité*, puis **Ouvrir quand même**. Ou, en une commande :"
+            echo
+            echo '   ```'
+            echo '   xattr -dr com.apple.quarantine /Applications/DoraBase.app'
+            echo '   ```'
+            echo
+            echo "macOS 13 Ventura ou plus récent. Bundle universel : Apple Silicon et Intel."
+            echo
+            echo "## Changements"
+            echo
+            if [[ -n $precedent ]]; then
+              git log --no-merges --pretty='- %s' "$precedent..$GITHUB_REF_NAME"
+              echo
+              echo "[Comparer $precedent…$GITHUB_REF_NAME](https://github.com/${GITHUB_REPOSITORY}/compare/$precedent...$GITHUB_REF_NAME)"
+            else
+              echo "- première version publiée"
+            fi
+          } > publication/notes.md
+          cat publication/notes.md
+
+      - name: créer la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" \
+            --title "DoraBase $VERSION" \
+            --notes-file publication/notes.md \
+            --latest \
+            "publication/DoraBase-$VERSION-universal.dmg" \
+            "publication/DoraBase-$VERSION-universal.dmg.sha256"

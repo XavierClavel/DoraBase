@@ -40,6 +40,12 @@ jobs:
       # justement le problème. Voir l'en-tête du script.
       - run: ./scripts/verifier-aucun-sabotage.sh
 
+      # Les trois fichiers qui portent le numéro de version doivent dire la même chose. Rien
+      # dans l'outillage ne les relie : `package.json` (que `tauri.conf.json` lit),
+      # `Cargo.toml` et `Cargo.lock`. Relevés à la main dans deux sur trois, ils laissent la CI
+      # verte et publient un `.dmg` dont le nom contredit son `Info.plist`.
+      - run: python3 scripts/verifier-version.py
+
       - run: pnpm typecheck
       - run: pnpm lint
 
@@ -112,6 +118,27 @@ jobs:
           # aurait laissée : c'est tout l'objet du verrou.
           attendue=$(sed -n 's/^version *= *//p' src-tauri/cloud-sql-proxy.lock | head -1)
           "$app/Contents/MacOS/cloud-sql-proxy" --version | grep -F "$attendue"
+
+      # **Le build de chaque commit, téléchargeable.** Jusqu'ici `tauri build` prouvait que le
+      # bundle se construit, puis le jetait — or la question « est-ce que ça se lance ? » ne se
+      # tranche qu'en lançant, et Playwright ne pilote pas WKWebView (voir AGENTS.md). Sans cet
+      # artefact, essayer un commit demandait de le compiler soi-même.
+      #
+      # Ce n'est **pas** une publication : mono-architecture (celle du runner), nommé par le
+      # commit, gardé sept jours, et réservé aux comptes qui ont accès au dépôt. Les versions
+      # publiées sortent de `publication.yml`, sur tag, en bundle universel.
+      #
+      # Le `.dmg` seul, et non le `.app` : `upload-artifact` réempaquette dans un zip qui ne
+      # garde ni les bits d'exécution ni les liens symboliques du bundle — un `.app` ainsi
+      # transporté ne se lance pas. Le `.dmg` est une image opaque, il traverse intact.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DoraBase-${{ github.sha }}-dmg
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+          retention-days: 7
+          # Un artefact vide serait un piège : on le télécharge, il ne contient rien, et on
+          # cherche la cause du côté du bundle.
+          if-no-files-found: error
 
   # Second job, sur Linux, dédié aux tests qui exigent une vraie base.
   #
