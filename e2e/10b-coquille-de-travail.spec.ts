@@ -14,6 +14,10 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('la coquille a les dimensions du mockup', async ({ page }) => {
+  // **Un clic avant de mesurer, et c'est la coquille elle-même qui le demande** : sans sélection, le
+  // corps ne montre ni bande d'onglets ni colonne de droite — donc ni la seconde poignée, ni la
+  // hauteur de bande que ce test vérifie. Cliquer le projet suffit à donner un sujet à l'écran.
+  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
   const mesures = await page.evaluate(() => {
     const barre = document.querySelector('[data-tauri-drag-region]')
     // Le panneau de gauche du `SplitPane` extérieur : c'est lui qui porte la largeur, la
@@ -210,4 +214,26 @@ test('fermer le dernier onglet laisse l’écran de travail debout', async ({ pa
   await expect(page.getByRole('tab')).toHaveCount(0)
   await expect(page.getByRole('tree')).toBeVisible()
   await expect(page.getByRole('table')).toBeVisible()
+})
+
+// **L'état vide du corps, mesuré là où il se voit.** jsdom dit que le texte est présent ; il ne dit
+// pas que le corps n'a plus qu'une seule poignée, ni que le message occupe la place que le centre et
+// la colonne de droite se partageaient.
+test('sans sélection, le corps n’a qu’une poignée et montre le message', async ({ page }) => {
+  await expect(page.getByText('Sélectionner une entité pour commencer')).toBeVisible()
+  await expect(page.getByRole('tablist')).toHaveCount(0)
+  await expect(page.locator('[role=separator]')).toHaveCount(1)
+
+  const mesures = await page.evaluate(() => {
+    const separateur = document.querySelector('[role=separator]')
+    const zone = separateur?.nextElementSibling?.getBoundingClientRect()
+    return { zone: Math.round(zone?.width ?? 0), fenetre: window.innerWidth }
+  })
+  // Tout ce qui reste après la sidebar et sa poignée : la zone vide n'est pas un panneau parmi
+  // d'autres, elle est le corps entier.
+  expect(mesures.zone).toBe(mesures.fenetre - 228 - 1)
+
+  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await expect(page.getByText('Sélectionner une entité pour commencer')).toHaveCount(0)
+  await expect(page.locator('[role=separator]')).toHaveCount(2)
 })

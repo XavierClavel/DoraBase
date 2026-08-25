@@ -328,11 +328,25 @@ function monter(over: Partial<Parameters<typeof Workbench>[0]> = {}) {
 }
 
 describe('Workbench', () => {
-  it('assemble la coquille : barre de titre, arbre, centre, panneau droit', () => {
+  // **Rien de sélectionné au montage, donc rien à montrer** : le centre et la colonne de droite
+  // laissent la place au logo décoloré et à sa phrase. L'arbre, lui, est ce qui reste — c'est là
+  // qu'on sélectionne.
+  it('au montage, rien n’est sélectionné : ni bande d’onglets ni panneau droit', () => {
     monter()
     expect(
       screen.getByRole('tree', { name: 'Projets, environnements et connexions' }),
     ).toBeInTheDocument()
+    expect(screen.getByText('Sélectionner une entité pour commencer')).toBeInTheDocument()
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Détail de l’objet')).not.toBeInTheDocument()
+  })
+
+  it('assemble la coquille dès qu’une ligne est sélectionnée : arbre, centre, panneau droit', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    // Cliquer le projet suffit : la sélection porte un projet, donc l'écran a un sujet.
+    await utilisateur.click(screen.getByRole('treeitem', { name: /Atelier Nord/ }))
+    expect(screen.queryByText('Sélectionner une entité pour commencer')).not.toBeInTheDocument()
     expect(screen.getByRole('tablist')).toBeInTheDocument()
     expect(screen.getByLabelText('Détail de l’objet')).toBeInTheDocument()
   })
