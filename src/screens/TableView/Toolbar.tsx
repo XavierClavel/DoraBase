@@ -34,6 +34,13 @@ type ToolbarProps = {
   /** Le SQL réellement exécuté, rendu par `RowWindow`. `null` tant qu'aucune lecture n'a abouti. */
   sql: string | null
   onRefresh: () => void
+  /**
+   * Une relecture est en cours : le bouton tourne et devient inerte.
+   *
+   * **Les deux vont ensemble.** Un bouton qui tourne mais reste cliquable lance trois relectures dont
+   * deux pour rien ; un bouton désactivé sans mouvement ne dit pas qu'il travaille.
+   */
+  enCours?: boolean
 }
 
 /**
@@ -54,6 +61,7 @@ export function Toolbar({
   onToggleColonne,
   sql,
   onRefresh,
+  enCours = false,
 }: ToolbarProps) {
   const rang = PALIERS.indexOf(limite)
   const visibles = columns.length - masquees.size
@@ -63,8 +71,23 @@ export function Toolbar({
     // le dit. Il donne aussi un nom à la barre — sans quoi « Rafraîchir » ici et « Rafraîchir »
     // dans le pied de la sidebar s'annonceraient à l'identique.
     <div className={styles.root} role="toolbar" aria-label="Outils de la table">
-      <button type="button" className={styles.carre} onClick={onRefresh} aria-label="Rafraîchir">
-        <Icon name="refresh" size={14} strokeWidth={1.9} />
+      {/* **`aria-busy` autant que l'animation** : la rotation ne dit rien à un lecteur d'écran, et
+          `prefers-reduced-motion` la retire entièrement. L'état, lui, doit rester lisible dans les
+          deux cas. */}
+      <button
+        type="button"
+        className={styles.carre}
+        onClick={onRefresh}
+        disabled={enCours}
+        aria-busy={enCours}
+        aria-label="Rafraîchir"
+      >
+        <Icon
+          name="refresh"
+          size={14}
+          strokeWidth={1.9}
+          className={enCours ? styles.tourne : undefined}
+        />
       </button>
 
       {/* **Le stepper ne peut pas produire une valeur hors des quatre paliers.** `RowLimit` est

@@ -23,7 +23,7 @@ const colonne = (name: string): ColumnInfo => ({
 
 const COLONNES = [colonne('status'), colonne('total_cents'), colonne('created_at')]
 
-function monter() {
+function monter(over: Partial<Parameters<typeof TableView>[0]> = {}) {
   const readRows = vi.fn(async (_cle: DatabaseKey, requete: RowQuery) => ({
     offset: 0,
     rows: [
@@ -48,6 +48,7 @@ function monter() {
         table="orders"
         columns={COLONNES}
         passerelle={{ readRows } satisfies PasserelleLignes}
+        {...over}
       />
     </>,
   )
@@ -61,6 +62,16 @@ function limiteDe(requete: RowQuery): number {
 function derniereRequete(readRows: ReturnType<typeof monter>['readRows']): RowQuery {
   const appels = vi.mocked(readRows).mock.calls
   return appels[appels.length - 1]?.[1] as RowQuery
+}
+
+/** Une fenêtre sans ligne, pour les tests qui ne portent pas sur les données. */
+const FENETRE_VIDE = {
+  columns: COLONNES,
+  rows: [],
+  offset: 0,
+  total: null,
+  sql: 'select * from public.orders limit 500 offset 0',
+  durationMs: 3,
 }
 
 describe('toolbar', () => {
@@ -152,5 +163,75 @@ describe('toolbar', () => {
     monter()
     const bouton = await screen.findByRole('button', { name: 'Exporter' })
     expect(bouton).toHaveAttribute('aria-disabled', 'true')
+  })
+})
+
+describe('rafraîchir relit tout ce que l’écran montre', () => {
+  it('la structure part avec les lignes', async () => {
+    const utilisateur = userEvent.setup()
+    const relireLaStructure = vi.fn()
+    const { readRows } = monter({ onRelireLaStructure: relireLaStructure })
+    await waitFor(() => expect(readRows).toHaveBeenCalledTimes(1))
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Rafraîchir' }))
+
+    // **Les deux, pas l'un.** La structure restait celle du premier chargement, indéfiniment : deux
+    // boutons auraient demandé à l'utilisateur de savoir ce qui est périmé, ce qu'il ne peut pas
+    // savoir.
+    await waitFor(() => expect(readRows).toHaveBeenCalledTimes(2))
+    expect(relireLaStructure).toHaveBeenCalledTimes(1)
+  })
+
+  it('le bouton tourne et devient inerte pendant la relecture de la structure', () => {
+    // La structure charge encore alors que les lignes ont répondu : c'est exactement le cas où
+    // s'arrêter à la première réponse ferait croire l'écran à jour.
+    render(
+      <>
+        <Sprite />
+        <TableView
+          cle={CLE}
+          schema="public"
+          table="orders"
+          columns={COLONNES}
+          passerelle={{ readRows: vi.fn(async () => ({ ...FENETRE_VIDE })) } as PasserelleLignes}
+          structureEnCours
+        />
+      </>,
+    )
+
+    const bouton = screen.getByRole('button', { name: 'Rafraîchir' })
+    expect(bouton).toBeDisabled()
+    expect(bouton).toHaveAttribute('aria-busy', 'true')
+    // L'animation est portée par une classe sur l'icône ; la rotation elle-même se mesure en e2e,
+    // jsdom ne calculant aucune animation.
+    expect(bouton.querySelector('svg')?.getAttribute('class')).toMatch(/tourne/)
+  })
+
+  it('un triple clic n’émet qu’une relecture', async () => {
+    const utilisateur = userEvent.setup()
+    // Une lecture qui ne répond jamais : le bouton reste en attente, donc inerte.
+    const readRows = vi.fn(() => new Promise<never>(() => {}))
+    render(
+      <>
+        <Sprite />
+        <TableView
+          cle={CLE}
+          schema="public"
+          table="orders"
+          columns={COLONNES}
+          passerelle={{ readRows } as unknown as PasserelleLignes}
+        />
+      </>,
+    )
+    await waitFor(() => expect(readRows).toHaveBeenCalledTimes(1))
+
+    const bouton = screen.getByRole('button', { name: 'Rafraîchir' })
+    await utilisateur.click(bouton)
+    await utilisateur.click(bouton)
+    await utilisateur.click(bouton)
+
+    // Le premier clic n'a pas pu partir non plus : la première lecture n'a jamais répondu, donc le
+    // bouton était déjà inerte. C'est le comportement voulu — trois clics, aucune relecture en trop.
+    expect(readRows).toHaveBeenCalledTimes(1)
   })
 })

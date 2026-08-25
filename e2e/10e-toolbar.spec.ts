@@ -70,3 +70,57 @@ test('un filtre actif produit un chip d’accent, distinct du chip de tri', asyn
   const fondTri = await tri.evaluate((e) => getComputedStyle(e).backgroundColor)
   expect(fondFiltre).not.toBe(fondTri)
 })
+
+// L'animation du bouton « Rafraîchir », mesurée dans la galerie : la démo répond
+// instantanément, donc l'état d'attente n'y est jamais observable, et jsdom ne calcule aucune
+// animation. C'est le seul endroit où cette garantie tient.
+test.describe('l’attente du rafraîchissement', () => {
+  const animation = (page: import('@playwright/test').Page, testid: string) =>
+    page.evaluate((id) => {
+      const bouton = document
+        .querySelector(`[data-testid=${id}]`)
+        ?.querySelector('button[aria-label=Rafraîchir]')
+      const icone = bouton?.querySelector('svg')
+      if (!bouton || !icone) return null
+      const style = getComputedStyle(icone)
+      return {
+        nom: style.animationName,
+        duree: style.animationDuration,
+        inerte: (bouton as HTMLButtonElement).disabled,
+        occupe: bouton.getAttribute('aria-busy'),
+      }
+    }, testid)
+
+  test('le bouton tourne et devient inerte pendant la relecture', async ({ page }) => {
+    await page.goto('/?gallery')
+    await page.waitForSelector('[data-testid=toolbar-en-cours]')
+
+    const enCours = await animation(page, 'toolbar-en-cours')
+    expect(enCours?.nom).not.toBe('none')
+    expect(enCours?.duree).toBe('0.9s')
+    // **Les deux vont ensemble** : un bouton qui tourne mais reste cliquable lance trois relectures
+    // dont deux pour rien.
+    expect(enCours?.inerte).toBe(true)
+    expect(enCours?.occupe).toBe('true')
+
+    // Au repos, rien ne tourne — sans quoi la mesure ci-dessus ne dirait rien.
+    const repos = await animation(page, 'toolbar-repos')
+    expect(repos?.nom).toBe('none')
+    expect(repos?.inerte).toBe(false)
+  })
+
+  test('sous prefers-reduced-motion, le mouvement part et l’information reste', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.goto('/?gallery')
+    await page.waitForSelector('[data-testid=toolbar-en-cours]')
+
+    const enCours = await animation(page, 'toolbar-en-cours')
+    // Ignorer ce réglage est un défaut d'accessibilité, pas un choix esthétique.
+    expect(enCours?.nom).toBe('none')
+    // L'état demeure lisible sans elle : c'est ce qui rend le retrait acceptable.
+    expect(enCours?.inerte).toBe(true)
+    expect(enCours?.occupe).toBe('true')
+  })
+})

@@ -41,7 +41,10 @@ export function ColonneDroite({ vue, onVueChange, navigation, children }: Colonn
     // accessible. En faire un second ici imbriquerait deux repères « complementary », dont l'externe
     // n'ajouterait qu'un nom générique. Le cadre est une mise en page ; ce qu'il contient est le
     // contenu.
-    <div className={styles.root}>
+    // `data-testid` : la colonne porte le filet vertical de la jonction et son en-tête doit tomber au
+    // même pixel que la bande d'onglets. Une heuristique de test — « le premier div bordé à droite de
+    // 1000 px » — désignait tantôt cette colonne, tantôt le panneau de ligne à l'intérieur.
+    <div className={styles.root} data-testid="colonne-droite">
       <header className={styles.header}>
         {vue !== undefined && (
           // `<fieldset>` et non `<div role="group">` : c'est la convention du projet pour un groupe

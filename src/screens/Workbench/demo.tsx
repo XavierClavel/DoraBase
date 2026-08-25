@@ -14,6 +14,7 @@ import { jetonsDe, PREFERENCES_PAR_DEFAUT, themeApplique } from '../Preferences/
 import type { PasserelleLignes } from '../TableView/useLignes'
 import type { PasserelleArbre } from './useArbre'
 import type { PasserelleDetail } from './useDetailTable'
+import type { PasserelleStructures } from './useStructures'
 import { Workbench } from './Workbench'
 
 /**
@@ -530,6 +531,18 @@ const PASSERELLE_DETAIL: PasserelleDetail = {
 }
 
 /**
+ * Le pont du préchauffage des structures, **construit sur les deux autres**.
+ *
+ * Dans l'application, `describe_table` et `list_objects` sont les mêmes commandes que celles du
+ * panneau et de l'arbre : un décor qui les dédoublerait pourrait rendre des structures différentes
+ * selon le chemin, une divergence que la réalité n'a pas.
+ */
+const PASSERELLE_STRUCTURES: PasserelleStructures = {
+  listObjects: PASSERELLE.listObjects,
+  describeTable: PASSERELLE_DETAIL.describeTable,
+}
+
+/**
  * Cinq cents lignes — le palier par défaut de `RowLimit`, et ce que la barre d'état de `A5`
  * affiche dans le mockup. La table prétendue en compte 1,9 million : la fenêtre est justement
  * ce qui les sépare.
@@ -787,6 +800,7 @@ export function WorkbenchDemo() {
         passerelle={PASSERELLE}
         passerelleDetail={PASSERELLE_DETAIL}
         passerelleLignes={PASSERELLE_LIGNES}
+        passerelleStructures={PASSERELLE_STRUCTURES}
         rowAsInsert={rowAsInsert}
         // La démo rend un SQL **de la forme exacte** que le moteur produit (`11c`) : le pont ne
         // répond pas en Chromium, et un texte d'une autre forme ne prouverait rien de la coloration

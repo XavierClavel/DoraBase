@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import type { EnvironmentDeclaration } from '../../domain/config'
+import type { ColumnInfo, RowLimit } from '../../domain/engine'
 import {
   type Charge,
   idBase,
@@ -11,6 +12,7 @@ import { BreadcrumbBar, type TypeObjet } from '../../screens/Explorer/Breadcrumb
 import { DetailPanel } from '../../screens/Explorer/DetailPanel'
 import { ExplorerSidebar } from '../../screens/Explorer/ExplorerSidebar'
 import { ObjectTable } from '../../screens/Explorer/ObjectTable'
+import { Toolbar } from '../../screens/TableView/Toolbar'
 import { SelectionIndicator } from '../../shell/SelectionIndicator/SelectionIndicator'
 import { TitleBar } from '../../shell/TitleBar/TitleBar'
 import { Badge } from '../../ui/Badge/Badge'
@@ -1605,6 +1607,72 @@ const LIGNES_DEMO: LigneDemo[] = Array.from({ length: 100_000 }, (_, i) => ({
   statut: ['paid', 'pending', 'refunded', 'cancelled'][i % 4] ?? 'paid',
 }))
 
+/**
+ * La toolbar de `A5` (`10e`), et son **état d'attente**.
+ *
+ * C'est le seul endroit du dépôt où l'animation du bouton « Rafraîchir » se mesure : dans la démo
+ * tout répond instantanément, et jsdom ne calcule aucune animation. La galerie la montre à l'arrêt et
+ * en cours, côte à côte.
+ */
+function ToolbarGallery() {
+  const [limite, setLimite] = useState<RowLimit>('fiveHundred')
+  const colonne = (name: string, typeName: string): ColumnInfo => ({
+    position: 1,
+    name,
+    typeName,
+    category: 'text',
+    nullable: true,
+    default: null,
+    identity: null,
+    key: null,
+    frequency: null,
+    comment: null,
+  })
+  const colonnes = [colonne('id', 'int8'), colonne('palier', 'text')]
+
+  return (
+    <Section title="Toolbar (10e, 29)">
+      <Note>
+        Le bouton « Rafraîchir » relit **les lignes et la structure**. Pendant la relecture il
+        tourne et devient inerte ; sous `prefers-reduced-motion`, il ne fait que devenir inerte.
+      </Note>
+      <Sub title="Au repos">
+        <div data-testid="toolbar-repos">
+          <Toolbar
+            limite={limite}
+            onLimiteChange={setLimite}
+            filters={[]}
+            onRemoveFilter={() => {}}
+            sort={[]}
+            columns={colonnes}
+            masquees={new Set()}
+            onToggleColonne={() => {}}
+            sql="select * from atelier.paliers limit 500 offset 0"
+            onRefresh={() => {}}
+          />
+        </div>
+      </Sub>
+      <Sub title="Relecture en cours">
+        <div data-testid="toolbar-en-cours">
+          <Toolbar
+            limite={limite}
+            onLimiteChange={setLimite}
+            filters={[]}
+            onRemoveFilter={() => {}}
+            sort={[]}
+            columns={colonnes}
+            masquees={new Set()}
+            onToggleColonne={() => {}}
+            sql={null}
+            onRefresh={() => {}}
+            enCours
+          />
+        </div>
+      </Sub>
+    </Section>
+  )
+}
+
 function VirtualGridGallery() {
   const [choisie, setChoisie] = useState<string | null>(null)
 
@@ -1930,7 +1998,18 @@ function DetailPanelGallery() {
             feuille de style ; dans l'écran de travail il est le panneau d'un `SplitPane` réglable, et
             une largeur fixe le faisait sortir de la fenêtre. La mesure du handoff reste vérifiée
             ici — c'est la galerie qui la donne, comme elle donne déjà sa hauteur. */}
-        <div data-testid="detail-a4" style={{ display: 'flex', height: 520, width: 300 }}>
+        {/* Le filet gauche est celui de la **colonne** dans l'écran de travail (`ColonneDroite`) ; ici
+            le panneau est montré seul, donc le décor le pose — sans quoi la galerie afficherait un
+            panneau sans son bord, ce que l'écran ne fait jamais. */}
+        <div
+          data-testid="detail-a4"
+          style={{
+            display: 'flex',
+            height: 520,
+            width: 300,
+            borderLeft: '1px solid var(--divider)',
+          }}
+        >
           <DetailPanel
             detail={DETAIL_DEMO}
             schema="public"
@@ -1940,7 +2019,7 @@ function DetailPanelGallery() {
         </div>
       </Sub>
       <Sub title="Sans sélection">
-        <div style={{ display: 'flex', height: 120 }}>
+        <div style={{ display: 'flex', height: 120, borderLeft: '1px solid var(--divider)' }}>
           <DetailPanel detail={null} schema="public" />
         </div>
       </Sub>
@@ -1968,6 +2047,7 @@ export function Gallery() {
       <ExplorerSidebarGallery />
       <CentreGallery />
       <VirtualGridGallery />
+      <ToolbarGallery />
       <PopoverGallery />
       <StepperGallery />
       <DetailPanelGallery />
