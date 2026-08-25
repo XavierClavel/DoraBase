@@ -32,7 +32,13 @@ export default defineConfig({
   // `getVersion()` échouerait sous Playwright, qui exécute l'app dans Chromium sans
   // runtime Tauri, et rendrait les captures de référence non déterministes.
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    // **Et sous Playwright, elle est figée.** La version s'affiche dans la barre d'état, donc dans
+    // chaque capture de fidélité pleine page : sans cela, `scripts/version.sh` rendrait rouges
+    // toutes les références à chaque publication. Constaté à la 0.1.1 — douze pixels, le dernier
+    // chiffre, et deux écrans rouges sur `main`. Le décor vaut `9.9.9` : la largeur d'un vrai
+    // numéro, puisque la fidélité mesure une mise en page, et manifestement pas un vrai numéro.
+    // Posé par `playwright.config.ts` seul ; un build ordinaire porte la vraie version.
+    __APP_VERSION__: JSON.stringify(process.env.DORABASE_VERSION_DECOR ?? pkg.version),
     // L'architecture de la machine qui **construit**, affichée en pied des préférences (`15a`).
     // `navigator.userAgent` ne la donne pas de façon fiable dans un WKWebView, et une valeur écrite
     // à la main cesserait d'être vraie sur l'autre plateforme.

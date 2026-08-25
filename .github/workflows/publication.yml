@@ -114,6 +114,11 @@ jobs:
       # laquelle un explorateur de bases de données n'a pas à faire répondre.
       - run: pnpm tauri build --target universal-apple-darwin
 
+      # La version affichée vient du build et elle est **figée sous Playwright** : sans quoi
+      # chaque publication périmerait les captures de fidélité. La contrepartie est de vérifier
+      # que le décor ne sort pas du décor — voir l'en-tête du script.
+      - run: ./scripts/verifier-aucun-decor-de-version.sh
+
       - name: le bundle est bien universel
         run: |
           set -euo pipefail

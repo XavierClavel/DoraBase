@@ -422,17 +422,29 @@ anecdotes.
    chiffre comme un ordre de grandeur, puis regarder les deux images côte à côte — c'est ce qui
    dit si le rendu est faux ou si c'est la référence.
 
-5. **Un composant vérifié pièce par pièce n'est pas un écran livré.** Un écran entier
+5. **Ce qu'un écran affiche de son propre build, une capture de fidélité le fige.** La barre
+   d'état porte `DoraBase <version>`, donc chaque capture pleine page contient le numéro : la
+   première publication a rendu rouges deux références, douze pixels, le dernier chiffre. Un
+   flux de publication et des captures pleine page sont incompatibles tant que la valeur n'est
+   pas **figée pour le décor** — `DORABASE_VERSION_DECOR=9.9.9`, posée par
+   `playwright.config.ts`, lue par `vite.config.ts`. Et figer une valeur oblige à vérifier
+   qu'elle ne fuit pas : `scripts/verifier-aucun-decor-de-version.sh` refuse un `dist/` qui la
+   porte — **et** un `dist/` où le libellé aurait disparu, sans quoi il serait vert le jour où
+   l'affichage cesse. L'architecture, `__APP_ARCH__`, est dans le même libellé et n'a pas
+   encore mordu : la CI et ce poste sont tous deux en `arm64`. Une référence capturée sur un
+   Mac Intel divergerait.
+
+6. **Un composant vérifié pièce par pièce n'est pas un écran livré.** Un écran entier
    fidèle et testé n'avait jamais été vu **dans l'application** : tous ses tests visaient
    la galerie, qui donne la même image. Même motif pour trois couches complètes que
    personne ne franchissait. **Au moins un test doit partir de `/`.**
 
-6. **jsdom ne calcule aucune mise en page.** Toute exigence de hauteur, largeur, position
+7. **jsdom ne calcule aucune mise en page.** Toute exigence de hauteur, largeur, position
    ou superposition est structurellement hors de portée de Vitest et va dans `e2e/`. Et
    il faut mesurer la valeur **calculée**, pas le rectangle : celui-ci inclut les bordures
    et masque un écart derrière un arrondi.
 
-7. **Un niveau de test manque toujours : celui qui n'appartient à aucun écran.**
+8. **Un niveau de test manque toujours : celui qui n'appartient à aucun écran.**
    `e2e/geometrie-reelle.spec.ts` existe pour ça, à la taille de fenêtre réelle : rien ne
    franchit le bord droit **et** la racine ne défile pas horizontalement (les deux
    ensemble, un enfant coupé par un ancêtre en `overflow: hidden` échappant à la
@@ -440,7 +452,7 @@ anecdotes.
    dans leurs boutons. Chaque composant peut être juste dans sa vitrine et faux dès qu'un
    voisin décide sa largeur.
 
-8. **Les outils qui vérifient doivent eux-mêmes pouvoir échouer.** `cmd | tail` fait
+9. **Les outils qui vérifient doivent eux-mêmes pouvoir échouer.** `cmd | tail` fait
    porter le statut de sortie par `tail`, et « TOUT VERT » s'est affiché avec trois
    vérifications rouges — d'où `scripts/verifier-tout.sh`, qui ne tronque rien. Un garde
    écrit contre une famille de fichiers ne couvre pas celle qu'elle engendre. Un
@@ -448,23 +460,23 @@ anecdotes.
    `git checkout -- fichier` restaure depuis l'**index** : un sabotage qui y a été ajouté
    est réinstallé par la « restauration » censée l'enlever.
 
-9. **« ÉCHEC à l'étape X » ne dit pas que X a échoué pour la raison qu'on croit.** Lire
-   `gh run view --log-failed`, pas seulement le nom de l'étape — la vraie cause est
-   souvent en amont *dans* la même commande. Et tout échec de CI n'est pas un défaut du
-   code : une panne de GitHub Actions se relance, elle ne se corrige pas.
+10. **« ÉCHEC à l'étape X » ne dit pas que X a échoué pour la raison qu'on croit.** Lire
+    `gh run view --log-failed`, pas seulement le nom de l'étape — la vraie cause est
+    souvent en amont *dans* la même commande. Et tout échec de CI n'est pas un défaut du
+    code : une panne de GitHub Actions se relance, elle ne se corrige pas.
 
-10. **Quand un scope ajoute une dépendance à un fichier absent du dépôt, la question n'est
+11. **Quand un scope ajoute une dépendance à un fichier absent du dépôt, la question n'est
     pas « le script qui le fabrique est-il appelé ? » mais « que voit un clone neuf ? ».**
     Un `externalBin` déclaré fait exiger le fichier par **toute** compilation — `cargo
     build`, `cargo test`, `clippy` —, pas seulement par le bundle. Rien ne l'avait vu parce
     que le binaire était présent sur la machine de développement depuis l'écriture du scope.
 
-11. **Ce qu'un double de test émet doit venir d'une observation de l'original** — et une
+12. **Ce qu'un double de test émet doit venir d'une observation de l'original** — et une
     observation faite avec `2>&1` ne dit rien de la séparation des flux. Un faux binaire
     en shell peut couvrir tout le pilotage d'un sous-processus et se tromper sur le seul
     point qui compte.
 
-12. **Une lecture sèche après une action asynchrone date la mesure du mauvais instant.**
+13. **Une lecture sèche après une action asynchrone date la mesure du mauvais instant.**
     `page.evaluate`, `getAttribute`, `boundingBox` ne réessaient pas : ils rendent l'état de
     l'appel, pas celui qui résulte du clic ou du défilement qui précède. Le rendu suivant arrive
     plus tard, et sur un runner chargé il arrive **après**. Le test échoue alors sur une exigence
