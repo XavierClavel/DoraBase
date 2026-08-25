@@ -10,7 +10,6 @@ import { useConfiguration } from '../data/useConfiguration'
 import { Sprite } from '../design/icons/Sprite'
 import type { Database, Preferences, Project } from '../domain/config'
 import {
-  changerLEnvironnementActif,
   renommerLeProjet,
   retirerLaConnexion,
   retirerLeProjet,
@@ -266,11 +265,6 @@ export function App() {
                     })
               setProjects(issue.projects)
               return issue
-            }}
-            onEnvironmentChange={async (project, environment) => {
-              // L'arbre se recharge sur les connexions de cet environnement (`23b`), donc on remplace
-              // la liste des projets plutôt que de la modifier localement.
-              setProjects(await changerLEnvironnementActif({ project, environment }))
             }}
             // Les cinq gestes de `23c` rendent la liste entière : la reposer ici évite un second
             // aller-retour, et supprime la fenêtre pendant laquelle l'arbre montrerait l'ancien état.

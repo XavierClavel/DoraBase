@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test'
+import { deplierUnEnvironnement } from './pourLesTests'
 
 // Les teintes de colonne, la hauteur du champ de filtre et le popover ancré sont des propriétés
 // de mise en page : hors de portée de Vitest. `10d` les nomme.
 test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()

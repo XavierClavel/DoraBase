@@ -8,7 +8,6 @@ import type {
   RenameProjectRequest,
   RenameProjectResult,
   SaveDatabaseRequest,
-  SetActiveEnvironmentRequest,
   UpdateVariantRequest,
 } from '../../domain/config'
 import type { ConnectionDraft } from './ConnectionDraft'
@@ -62,22 +61,6 @@ export async function renommerLeProjet(
   request: RenameProjectRequest,
 ): Promise<RenameProjectResult> {
   return invoke<RenameProjectResult>('rename_project', { request })
-}
-
-/**
- * Change l'environnement actif d'un projet, et le persiste (`23g`).
- *
- * **Le sélecteur de la barre de titre ne faisait rien** : son `onValueChange` était vide, faute de
- * commande pour l'écrire. Un contrôle qui répond à l'œil et n'agit pas est exactement ce que le défaut
- * n° 36 décrit.
- *
- * Rend les projets à jour : l'arbre se recharge sur les connexions de l'environnement choisi (`23b`),
- * donc l'écran a besoin de la liste, pas d'un accusé de réception.
- */
-export async function changerLEnvironnementActif(
-  request: SetActiveEnvironmentRequest,
-): Promise<Project[]> {
-  return invoke<Project[]>('set_active_environment', { request })
 }
 
 /**

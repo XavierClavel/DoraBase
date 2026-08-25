@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test'
+import { deplierUnEnvironnement } from './pourLesTests'
 
 // La largeur du panneau, la coloration et le repli du SQL : de la mise en page. `11c` les nomme.
 test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()

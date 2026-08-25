@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test'
+import { deplierUnEnvironnement } from './pourLesTests'
 
 // `A10` de bout en bout : ce qu'un réglage change **réellement à l'écran**. Des géométries et des
 // couleurs calculées, donc hors de portée de jsdom — qui ne calcule aucune mise en page.
 test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /^analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()
@@ -62,15 +63,20 @@ test('la grille reste utilisable à la densité la plus compacte', async ({ page
   expect(mesures.chevauchement).toBe(false)
 })
 
-test('l’accent teinte la pastille du projet, pas seulement le réglage', async ({ page }) => {
-  // « Sert aussi à teinter la connexion active », dit le mockup — c'est une conséquence à vérifier,
-  // pas une note d'intention.
-  const pointDe = () =>
-    page.evaluate(() => {
-      const pastille = document.querySelector('[class*="ProjectPill"] [class*="dot"]')
-      return pastille ? getComputedStyle(pastille).backgroundColor : null
-    })
-
+/**
+ * **Le relevé du point de la barre de titre est retiré, et il ne mesurait rien** (`25b`).
+ *
+ * Il visait `[class*="ProjectPill"]`, du nom du composant devenu `SelectionIndicator`. Mais les
+ * classes des modules CSS sont **hachées** en développement (`_root_jt7rl_23`) : ce sélecteur n'a
+ * jamais rien désigné, d'où le `void pointDe` qui le neutralisait sans le dire. Le renommer
+ * n'y changerait rien.
+ *
+ * Et la propriété qu'il visait est fausse : le point de l'indicateur porte l'état de la connexion
+ * (`--success`, `--gold`, `--danger`) et son sac à dos porte `--accent-deep`, qu'aucune préférence ne
+ * change — seul `--accent` suit le réglage (`preferences.ts`). Ce que le mockup promet — « sert aussi à
+ * teinter la connexion active » — se vérifie donc sur l'onglet actif, et c'est ce que ce test fait.
+ */
+test('l’accent change le jeton, et l’onglet de la connexion active suit', async ({ page }) => {
   await ouvrirLesPreferences(page)
   await page.getByRole('radio', { name: 'sauge' }).check()
   await page.getByRole('button', { name: 'Terminé' }).click()
@@ -85,7 +91,6 @@ test('l’accent teinte la pastille du projet, pas seulement le réglage', async
     return onglet ? getComputedStyle(onglet).getPropertyValue('--accent').trim() : null
   })
   expect(liseré?.toUpperCase()).toBe('#2E9E6B')
-  void pointDe
 })
 
 test('« Nuit » pose l’attribut de thème, « Système » ne pose rien', async ({ page }) => {

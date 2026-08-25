@@ -533,13 +533,6 @@ pub fn creer_projet(
 
     let candidat = Project {
         name: nom.to_owned(),
-        // **Le premier déclaré**, et non un choix de l'écran. La règle de `08f` tient : proposer de
-        // choisir l'environnement actif demanderait de comprendre la notion avant d'avoir déclaré la
-        // moindre base, et la première connexion enregistrée le fixera de toute façon.
-        active_environment: environments
-            .first()
-            .map(|declaration| declaration.id.clone())
-            .unwrap_or_else(|| EnvironmentId::brut("dev")),
         environments,
         databases: Vec::new(),
         queries: Vec::new(),
@@ -1125,7 +1118,6 @@ mod tests {
     fn projets() -> Vec<Project> {
         vec![Project {
             name: "Atelier Nord".into(),
-            active_environment: EnvironmentId::brut("dev"),
             environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
             queries: Vec::new(),
             databases: Vec::new(),
@@ -1185,8 +1177,6 @@ mod tests {
             .map(|declaration| declaration.id.as_str())
             .collect();
         assert_eq!(identifiants, vec!["atelier", "vitrine"]);
-        // L'actif désigne quelque chose : avec les identifiants vides, il valait `""`.
-        assert_eq!(suivants[0].active_environment.as_str(), "atelier");
     }
 
     #[test]
@@ -1228,12 +1218,6 @@ mod tests {
             .map(|declaration| declaration.label.as_str())
             .collect();
         assert_eq!(libelles, vec!["recette", "live", "bac"]);
-        // L'actif est le **premier déclaré** : la règle de `08f`, qui évite de faire choisir une
-        // notion avant d'avoir déclaré la moindre base.
-        assert_eq!(
-            suivants[0].active_environment,
-            EnvironmentId::brut("recette")
-        );
         assert!(suivants[0].databases.is_empty());
     }
 
@@ -1248,7 +1232,6 @@ mod tests {
             .map(|declaration| declaration.id.as_str().to_owned())
             .collect();
         assert_eq!(ids, vec!["dev", "staging", "prod"]);
-        assert_eq!(suivants[0].active_environment, EnvironmentId::brut("dev"));
     }
 
     #[test]
@@ -1893,7 +1876,6 @@ mod tests_parcours {
 
         let mut projects = vec![Project {
             name: "Atelier".into(),
-            active_environment: EnvironmentId::brut("dev"),
             environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
             queries: Vec::new(),
             databases: vec![crate::config::model::Database {
@@ -1967,7 +1949,6 @@ mod tests_renommage {
         vec![
             Project {
                 name: "Halle".into(),
-                active_environment: EnvironmentId::brut("prod"),
                 environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
                 queries: Vec::new(),
                 // **Trois connexions et trois secrets** depuis `23b` : `analytics` en dev et en prod
@@ -2001,7 +1982,6 @@ mod tests_renommage {
             // Un **voisin**, pour que « le projet renommé » se distingue de « le premier projet ».
             Project {
                 name: "Outils".into(),
-                active_environment: EnvironmentId::brut("dev"),
                 environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
                 queries: Vec::new(),
                 databases: Vec::new(),
@@ -2715,7 +2695,6 @@ mod tests_consoles {
     fn projets() -> Vec<Project> {
         vec![Project {
             name: "Halle".into(),
-            active_environment: EnvironmentId::brut("prod"),
             environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
             databases: vec![
                 connexion("analytics", "dev"),
@@ -2890,7 +2869,6 @@ mod tests_consoles {
     fn sans_connexion_les_requetes_attendent() {
         let mut projets = vec![Project {
             name: "Neuf".into(),
-            active_environment: EnvironmentId::brut("dev"),
             environments: crate::config::model::EnvironmentDeclaration::trio_par_defaut(),
             databases: Vec::new(),
             queries: vec![crate::config::model::SavedQuery {

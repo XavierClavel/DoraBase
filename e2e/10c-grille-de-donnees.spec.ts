@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test'
+import { deplierUnEnvironnement } from './pourLesTests'
 
 // Ce que jsdom ne peut pas voir : la hauteur réelle des lignes, la gouttière, et surtout le
 // fait que cinq cents lignes ne montent qu'une poignée de nœuds. `10c` les nomme.
 test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()

@@ -177,11 +177,7 @@ deletedConnections: Array<string>,
 /**
  * Les mots de passe restés dans le trousseau. **Dits, jamais tus.**
  */
-leftoverSecrets: Array<string>, 
-/**
- * L'environnement devenu actif, quand c'est l'actif qui est parti. `null` sinon.
- */
-newActiveEnvironment: EnvironmentId | null, };
+leftoverSecrets: Array<string>, };
 
 /**
  * Ce que `08j` envoie pour retirer un projet entier.
@@ -308,15 +304,14 @@ guards: Guards, };
  */
 export type Project = { name: string, 
 /**
- * Global au projet, et persisté (`05b`) : le handoff le traite comme une propriété
- * du projet, pas comme une préférence d'affichage.
- */
-activeEnvironment: EnvironmentId, 
-/**
  * Les environnements que **ce projet** déclare (`23a`).
  *
- * Non vide, et l'environnement actif en fait partie : les deux invariants sont vérifiés par
- * `valider`. Un projet neuf reçoit `EnvironmentDeclaration::trio_par_defaut`.
+ * Non vide, et sans identifiant en double : les deux invariants sont vérifiés par `valider`.
+ * Un projet neuf reçoit `EnvironmentDeclaration::trio_par_defaut`.
+ *
+ * **Le projet ne porte plus d'environnement actif** (`25c`) : depuis que l'arbre fait de chaque
+ * environnement un nœud dépliable (`25a`), aucun écran ne lit plus de choix persisté. Ce qui en
+ * tient lieu aujourd'hui — l'ensemble des nœuds dépliés — vit en mémoire.
  */
 environments: Array<EnvironmentDeclaration>, databases: Array<Database>, 
 /**
@@ -453,11 +448,6 @@ export type SecretMechanism = "keychain" | "encryptedFile";
  * divulguer ici de toute façon, une référence n'est pas un secret.
  */
 export type SecretRef = string & { readonly __secretRef: unique symbol };
-
-/**
- * Ce que `23g` envoie pour changer l'environnement actif d'un projet.
- */
-export type SetActiveEnvironmentRequest = { project: string, environment: EnvironmentId, };
 
 export type SslMode = "disable" | "allow" | "prefer" | "require" | "verify-ca" | "verify-full";
 

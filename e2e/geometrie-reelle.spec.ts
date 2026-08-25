@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { deplierUnEnvironnement } from './pourLesTests'
 
 // Ce que **l'application réelle** a montré, et que les tests de fidélité n'avaient pas vu.
 //
@@ -19,7 +20,7 @@ test.use({ viewport: { width: 1360, height: 814 } })
 
 async function ouvrirUneTable(page: import('@playwright/test').Page) {
   await page.goto('/?demo')
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /^analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()
@@ -325,7 +326,7 @@ test('la barre de fil d’Ariane contient son contrôle segmenté, même à l’
 }) => {
   await page.setViewportSize({ width: 960, height: 700 })
   await page.goto('/?demo')
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /^analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await page.waitForSelector('nav[aria-label]')
@@ -401,7 +402,9 @@ test('le séparateur est un trait d’un pixel, et une barre au survol', async (
     const panneau = document.querySelector('[role=separator]')?.previousElementSibling
     return panneau ? Math.round(panneau.getBoundingClientRect().width) : null
   })
-  expect(apres).toBe(212)
+  // La taille par défaut du `SplitPane` de l'écran de travail, passée de 212 à 228 px avec le palier
+  // d'environnement (`25a`).
+  expect(apres).toBe(228)
 })
 
 test('les libellés des actions du panneau tiennent dans leur bouton', async ({ page }) => {
@@ -410,7 +413,7 @@ test('les libellés des actions du panneau tiennent dans leur bouton', async ({ 
   // version de ce test ouvrait une table, ne trouvait donc aucun de ces boutons, et **passait sur un
   // ensemble vide** — un sabotage l'a laissé vert, ce qui est la seule façon de s'en apercevoir.
   await page.goto('/?demo')
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /^analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await page.waitForSelector('nav[aria-label]')
@@ -599,7 +602,7 @@ test('un libellé long cède par l’ellipse, sans revenir à la ligne', async (
 test('un onglet au nom très court garde sa largeur, et son fond la remplit', async ({ page }) => {
   await page.goto('/?demo')
   await page.waitForSelector('[role=tree]')
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: /Top coupons/ }).click()
   await page.waitForSelector('.cm-content')
@@ -650,7 +653,7 @@ test('un onglet au nom très court garde sa largeur, et son fond la remplit', as
 test('un onglet garde sa largeur quand il passe en édition', async ({ page }) => {
   await page.goto('/?demo')
   await page.waitForSelector('[role=tree]')
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: /CA par jour/ }).click()
   await page.waitForSelector('.cm-content')

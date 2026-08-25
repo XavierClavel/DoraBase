@@ -303,7 +303,7 @@ pub enum ModelError {
         environment: EnvironmentId,
     },
     /// Une connexion déclare un environnement que son projet ne déclare pas : elle serait invisible
-    /// dans l'arbre, qui liste par environnement actif.
+    /// dans l'arbre, qui liste les connexions sous le nœud de leur environnement.
     EnvironnementInconnu {
         project: String,
         database: String,
@@ -317,11 +317,6 @@ pub enum ModelError {
     /// Un projet sans environnement ne peut plus rien déclarer : une connexion appartient à un
     /// environnement (`23b`).
     AucunEnvironnement { project: String },
-    /// L'environnement actif doit exister, sans quoi l'arbre serait vide sans dire pourquoi.
-    ActifInconnu {
-        project: String,
-        environment: EnvironmentId,
-    },
 }
 
 impl std::fmt::Display for ModelError {
@@ -354,14 +349,6 @@ impl std::fmt::Display for ModelError {
             Self::AucunEnvironnement { project } => write!(
                 f,
                 "le projet « {project} » doit déclarer au moins un environnement"
-            ),
-            Self::ActifInconnu {
-                project,
-                environment,
-            } => write!(
-                f,
-                "le projet « {project} » a pour environnement actif « {environment} », qu'il ne \
-                 déclare pas"
             ),
         }
     }
@@ -412,13 +399,14 @@ pub struct Database {
 #[ts(export_to = "config.ts")]
 pub struct Project {
     pub name: String,
-    /// Global au projet, et persisté (`05b`) : le handoff le traite comme une propriété
-    /// du projet, pas comme une préférence d'affichage.
-    pub active_environment: EnvironmentId,
     /// Les environnements que **ce projet** déclare (`23a`).
     ///
-    /// Non vide, et l'environnement actif en fait partie : les deux invariants sont vérifiés par
-    /// `valider`. Un projet neuf reçoit `EnvironmentDeclaration::trio_par_defaut`.
+    /// Non vide, et sans identifiant en double : les deux invariants sont vérifiés par `valider`.
+    /// Un projet neuf reçoit `EnvironmentDeclaration::trio_par_defaut`.
+    ///
+    /// **Le projet ne porte plus d'environnement actif** (`25c`) : depuis que l'arbre fait de chaque
+    /// environnement un nœud dépliable (`25a`), aucun écran ne lit plus de choix persisté. Ce qui en
+    /// tient lieu aujourd'hui — l'ensemble des nœuds dépliés — vit en mémoire.
     pub environments: Vec<EnvironmentDeclaration>,
     pub databases: Vec<Database>,
     /// Les requêtes enregistrées de `12f`, **en transit** : elles deviennent des consoles.
@@ -445,8 +433,8 @@ impl Project {
     /// # Pourquoi une fonction et non un constructeur
     ///
     /// `Database` employait un `new` privatisant son champ, ce qui rendait l'invariant inviolable.
-    /// Cela ne marche que pour un invariant **local**. Ici les trois portent sur des relations entre
-    /// champs — l'actif doit être déclaré, chaque connexion doit viser un environnement déclaré — et
+    /// Cela ne marche que pour un invariant **local**. Ici ils portent sur des relations entre
+    /// champs — chaque connexion doit viser un environnement déclaré — et
     /// un constructeur ne les protégerait qu'à la construction : les commandes de `23c` modifient un
     /// projet existant, et c'est après leur passage qu'il faut vérifier. La validation est donc
     /// explicite, appelée par les commandes avant d'écrire.
@@ -467,13 +455,6 @@ impl Project {
                     environment: declaration.id.clone(),
                 });
             }
-        }
-
-        if !self.declare(&self.active_environment) {
-            return Err(ModelError::ActifInconnu {
-                project: self.name.clone(),
-                environment: self.active_environment.clone(),
-            });
         }
 
         for (index, base) in self.databases.iter().enumerate() {
@@ -734,10 +715,6 @@ mod tests {
     fn projet(environnements: Vec<EnvironmentDeclaration>, bases: Vec<Database>) -> Project {
         Project {
             name: "Atelier Nord".into(),
-            active_environment: environnements
-                .first()
-                .map(|declaration| declaration.id.clone())
-                .unwrap_or_else(|| EnvironmentId::brut("dev")),
             environments: environnements,
             databases: bases,
             queries: Vec::new(),
@@ -811,16 +788,6 @@ mod tests {
         assert!(matches!(
             projet(trio, Vec::new()).valider(),
             Err(ModelError::IdentifiantEnDouble { .. })
-        ));
-    }
-
-    #[test]
-    fn un_environnement_actif_non_declare_est_refuse() {
-        let mut candidat = projet(EnvironmentDeclaration::trio_par_defaut(), Vec::new());
-        candidat.active_environment = EnvironmentId::brut("preprod");
-        assert!(matches!(
-            candidat.valider(),
-            Err(ModelError::ActifInconnu { .. })
         ));
     }
 

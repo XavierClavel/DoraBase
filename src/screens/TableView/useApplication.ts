@@ -30,8 +30,12 @@ export type Application = {
 /**
  * L'application des modifications en attente (`11d`).
  *
- * **La confirmation dépend de l'environnement déclaré, pas d'une devinette sur le nom de l'hôte** :
- * un serveur nommé `db-prod-replica` peut être une copie de travail, et l'inverse existe.
+ * **La confirmation dépend du drapeau `production` de la déclaration**, pas d'une devinette sur le
+ * nom de l'hôte — un serveur nommé `db-prod-replica` peut être une copie de travail — et pas non plus
+ * de l'identifiant d'environnement. Cette ligne comparait `cle.environment` à la chaîne `'prod'` :
+ * un environnement nommé « live » et marqué production n'ouvrait donc **pas** la confirmation, et un
+ * « prod » que l'utilisateur n'avait pas marqué l'ouvrait. C'est exactement la garantie que `23g`
+ * refuse d'accrocher à une chaîne de caractères, parce qu'elle devient fausse au premier renommage.
  *
  * **Le plan est construit par la même fonction que la prévisualisation** (`planDe`) : deux
  * traductions divergeraient, et l'écart tomberait sur les cas rares — une valeur attendue nulle, une
@@ -42,16 +46,15 @@ export function useApplication(
   cible: { schema: string; table: string } | null,
   attente: EnAttente,
   colonnes: readonly ColumnInfo[],
-  options: { passerelle: PasserelleApply; surSucces: () => void },
+  options: { passerelle: PasserelleApply; surSucces: () => void; production?: boolean },
 ): Application {
   const [confirmation, setConfirmation] = useState(false)
   const [enCours, setEnCours] = useState(false)
   const [refus, setRefus] = useState<string | null>(null)
   const [patchInverse, setPatchInverse] = useState<string | null>(null)
 
-  const { passerelle, surSucces } = options
+  const { passerelle, surSucces, production = false } = options
   const cleColonne = colonnes.find((colonne) => colonne.key === 'primary')?.name ?? ''
-  const production = cle?.environment === 'prod'
 
   const appliquer = useCallback(() => {
     if (cle === null || cible === null || attente.length === 0) return

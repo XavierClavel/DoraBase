@@ -21,7 +21,7 @@ pub use commands::{
     CreateProjectRequest, DeleteDatabaseRequest, DeleteEnvironmentRequest, DeleteEnvironmentResult,
     DeleteProjectRequest, DeleteResult, RecolorEnvironmentRequest, RenameEnvironmentRequest,
     RenameProjectRequest, RenameProjectResult, ReorderEnvironmentsRequest, SaveDatabaseRequest,
-    SetActiveEnvironmentRequest, UpdateVariantRequest,
+    UpdateVariantRequest,
 };
 pub use enregistrer::{enregistrer, reference_de, NouvelleBase, SaveError};
 pub use model::{
@@ -29,5 +29,5 @@ pub use model::{
     EnvironmentDeclaration, EnvironmentId, Guards, ModelError, Preferences, Project, Proxy,
     ProxyCloudSql, ProxySsh, SavedQuery, SecretRef, SslMode, Theme, Tunnel,
 };
-pub use query::{active_variant, databases_available, validate};
+pub use query::{databases_available, validate};
 pub use store::{load, save, ConfigStore, LoadOutcome, StoreError, VERSION_COURANTE};

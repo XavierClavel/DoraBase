@@ -1,0 +1,127 @@
+/*
+ * L'indicateur de sélection de la barre de titre (`25b`).
+ *
+ *   rangée      24px · gap 7px · aucun cadre, aucun fond
+ *   point       6px, --success quand connectée
+ *   sac à dos   12px, --accent-deep, trait 2
+ *   nom         700 11.5px Nunito
+ *   pastille    7px, couleur déclarée de l'environnement
+ *   env         700 10.5px Nunito, encre pleine, **pas de capitales**
+ *   fil         500 11px JetBrains Mono, --ink-meta (.45)
+ *
+ * **Le cadre a disparu, et c'est le troisième écart au handoff sur cette barre** — après le
+ * sélecteur passé à droite (19 août 2026) et les feux non ternis sous modale. Le mockup dessine deux
+ * boîtes blanches bordées de 24 px : l'une était la pastille projet, l'autre le sélecteur
+ * d'environnement. Les deux étaient des contrôles. La zone n'en est plus un, et un encadré sur fond
+ * de barre est une affordance : c'est l'argument que `24` a déjà retenu contre un `Chip` inerte.
+ *
+ * Corollaire agréable : sans élément focalisable au centre, `data-tauri-drag-region="deep"` rend tout
+ * ce sous-arbre glissable — le script de Tauri ne s'arrête que sur les éléments focalisables. La barre
+ * gagne en surface de préhension sans qu'on l'ait demandé.
+ */
+
+.root {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  box-sizing: border-box;
+  height: 24px;
+  white-space: nowrap;
+  /* **C'est l'indicateur qui rétrécit, pas la barre qui découpe.** `.center` portait un
+   * `overflow: hidden` ; il découpait aussi le menu projet, qui s'ouvrait sous la barre (défaut du
+   * 10 août 2026). Le menu est parti, mais la règle reste juste : ce n'est pas au conteneur de
+   * décider ce qu'on sacrifie. `min-width: 0` autorise le rétrécissement, et le nom puis le fil
+   * d'Ariane cèdent leurs caractères. */
+  min-width: 0;
+}
+
+.dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-5);
+}
+
+/* Les quatre états. La couleur **renforce** le libellé accessible, elle ne le remplace pas. */
+.dot[data-state="connected"] {
+  background: var(--success);
+}
+
+.dot[data-state="connecting"] {
+  background: var(--warn);
+}
+
+/* Des modifications attendent : l'ambre du mockup de `A6`, qui prime sur l'état de connexion. */
+.dot[data-state="pending"] {
+  background: var(--gold);
+}
+
+.dot[data-state="offline"] {
+  background: var(--danger);
+}
+
+.bag {
+  flex: none;
+  color: var(--accent-deep);
+}
+
+.name {
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+  /* Le nom est ce qui cède en premier quand la barre manque de place : abrégé, jamais débordé. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* La seule reprise littérale de l'ancien sélecteur : son point de 7 px. La couleur arrive en style
+ * en ligne, depuis la déclaration ; celle-ci n'est qu'un repli, pour qu'un point sans couleur reste
+ * visible plutôt qu'invisible. */
+.envDot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-4);
+}
+
+/* Le libellé de l'environnement. **Aucun `text-transform`** : il est renommable depuis `23a`, donc
+ * c'est une chaîne de l'utilisateur. « Pré-production » ne doit pas devenir « PRÉ-PRODUCTION ».
+ * L'ancien sélecteur ne le capitalisait pas davantage — seule son étiquette « ENV » l'était, et elle
+ * disparaît : sans commutateur, il n'y a plus rien à étiqueter. */
+.env {
+  flex: none;
+  font-family: var(--font-ui);
+  font-size: var(--text-caps);
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+}
+
+/* Le fil d'Ariane est en mono : un nom de schéma est une valeur technique, et c'est la règle du
+ * produit depuis `08b` — ce que l'utilisateur transcrit littéralement est en mono. */
+.breadcrumb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  color: var(--ink-meta);
+}
+
+/* Visible pour un lecteur d'écran, absent à l'œil.
+ *
+ * `clip-path` et non `display: none` : celui-ci le retirerait de l'arbre d'accessibilité, ce
+ * qui est exactement l'inverse du but. Même dispositif que la légende de `RadioGroup` (`08a`).
+ */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

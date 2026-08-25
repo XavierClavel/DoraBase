@@ -34,7 +34,8 @@ pnpm tauri dev
 | 2 | ~~« Parcourir… » du panneau tunnel~~ | **Fait le 10 août** : le sélecteur natif s'ouvre et le chemin arrive dans le champ | `08c` |
 | ~~2b~~ | ~~Basculer « Type » sur « Cloud SQL », cliquer « Parcourir… »~~ | **Sans objet depuis le 24 août 2026** : `06j` a retiré le champ « Compte de service », son bouton et son sélecteur. Il n'y a plus de second appel au sélecteur natif, donc plus rien à observer ici — le seul restant est celui de la clé SSH, vérifié depuis le 10 août (ligne 2) | `06j` |
 | 3 | ~~Enregistrer une base, quitter, relancer~~ | **Fait le 10 août** : le projet et sa base survivent au redémarrage | `09b` |
-| 4 | Cliquer la pastille projet de la barre de titre | **Défaut trouvé le 10 août** : la fenêtre ne bougeait pas, mais le menu ne paraissait pas — un `overflow: hidden` de la barre le découpait (`DEFAUTS.md` n° 35). Corrigé ; **à reprendre** pour confirmer que le menu s'ouvre dans l'application | `09c` |
+| ~~4~~ | ~~Cliquer la pastille projet de la barre de titre~~ | **Sans objet depuis le 25 août 2026** : `25b` a retiré la pastille et son menu. Le centre de la barre est un indicateur passif, et le menu des projets vit dans le « … » de la ligne d'arbre — déjà couvert en e2e, qui pilote un vrai navigateur. Le défaut n° 35 qu'il s'agissait de reconfirmer portait sur un `overflow: hidden` que ce chantier a laissé en place, avec son commentaire, parce que la règle reste juste | `25b` |
+| 4b | Cliquer un environnement dans l'arbre, puis une connexion, sous WKWebView | Le palier d'environnement est **nouveau** (`25a`) et l'arbre y gagne un niveau. À observer : que la colonne à 228 px reste lisible au palier des tables, et que la poignée du `SplitPane` descende bien jusqu'à 196 px sans tasser les noms. C'est la seule chose que Chromium sans tête ne dit pas — il mesure, il ne juge pas | `25a` |
 | 5 | ~~« Copier la ligne en INSERT », puis coller~~ | **Fait le 10 août** : le SQL arrive dans le presse-papiers | `10f` |
 | 6 | ~~`⌘E`, modifier une cellule, `⌘Z`~~ | **Fait le 10 août** : la bascule et l'annulation répondent sous WKWebView, malgré les raccourcis système. Deux défauts d'affichage relevés au passage (`DEFAUTS.md` n° 36 et 37), corrigés | `11b` |
 
@@ -157,9 +158,60 @@ cela est détaillé dans `DEFAUTS.md` n° 104.
 - Le renommage sur place n'est **pas branché sur les autres nœuds de l'arbre**, faute d'objet : à
   revoir si un jour une connexion doit pouvoir se renommer sans passer par sa modale.
 
+## 2 ter. Le chantier du 25 août 2026 — les environnements passent dans l'arbre
+
+Demandé à l'écran : « les env de chaque projet seront désormais visibles dans l'arborescence de la
+sidebar ; dans la topbar, plus de sélecteur, uniquement un indicateur de projet + env sélectionné
+actuellement (si rien de sélectionné, design vide) ». Trois specs — `25a`, `25b`, `25c` — et
+**`25` défait `23g`**.
+
+**Ce que `23g` avait fait, et pourquoi c'était à refaire.** Le sélecteur de la barre de titre écrivait
+l'environnement *actif du projet*, et l'arbre se rechargeait sur ses connexions. Regarder une
+connexion voisine demandait donc de basculer un réglage global, et l'environnement redevenait une
+propriété du **projet** là où `23b` en avait fait une propriété de la **connexion**. L'environnement
+est désormais un palier de l'arbre : projet → environnement → connexion → console|schéma → objet.
+
+**Trois choses valent d'être sues avant d'y toucher :**
+
+1. **Le cinquième palier d'indentation vaut 68 px, et `09d` déclarait cette valeur introuvable** —
+   « aucune formule ne la produit », « une valeur que le handoff ne donne pas ». Elle s'y trouve
+   pourtant : les écarts d'**abscisse d'icône** du mockup valent 14, 14, **0**, donc le « +16 » du
+   dernier palier est exactement `chevron (11) + gap (5)`, la gouttière qu'une feuille n'occupe pas.
+   Deux cadences, `+14` entre nœuds dépliables et `+16` vers une feuille. Le pas schéma → objet est
+   un `+16`. Les quatre premières valeurs n'ont pas bougé.
+2. **La colonne s'élargit, et c'est le budget de libellé qui le commande.** 252 → 268 px de contenu
+   en galerie, plancher du `SplitPane` 180 → 196, défaut 212 → 228. Les 252 px du handoff mesuraient
+   une colonne dont l'arbre avait quatre paliers ; c'est ce budget, non le chiffre, qui était la
+   propriété.
+3. **Les identités de nœud portent l'environnement**, et c'est le point le plus risqué du chantier.
+   `idBase`, `idSchema`, `idObjet` et `idConsole` ne le portaient pas, et `idConsole` le justifiait
+   ainsi : « l'arbre ne montre jamais que les connexions de l'environnement actif ». Cette prémisse
+   tombe. Six défauts consignés (`DEFAUTS.md` n° 114 à 119) tenaient tous à des garanties adossées à
+   ce que l'écran *montrait* — dont deux qui lisaient franchement le mauvais serveur.
+
+**`activeEnvironment` a quitté le modèle** (`25c`) : champ, invariant, commande
+`set_active_environment`, `new_active_environment`, `query::active_variant` — et le format de
+configuration monte en **version 5**. Le cran v4 → v5 ne transforme rien : `serde` ignore les champs
+inconnus, donc le bras `2..=4` de `migrer` suffit. Ce qui reste, et qu'il ne faut pas retirer : `mod v1`
+garde son `active_environment`, parce que la migration v1 → v2 s'en sert pour *déduire les
+environnements déclarés* — un projet dont la seule trace d'un environnement était d'y être actif
+perdrait sa déclaration.
+
+**Ce que le chantier a laissé de côté, exprès** : le menu « … » sur une ligne d'environnement. La
+demande portait sur la *visibilité* ; éditer un environnement reste l'affaire de `23e`, atteignable
+par le « … » du projet. Un nœud sans menu n'est pas une anomalie — les schémas et les objets n'en ont
+pas.
+
+**Conçu avec quatre agents** : deux de recensement (les lecteurs d'`activeEnvironment`, l'arbre et ses
+paliers), un de conception UI, un pour le Rust — plus deux pour les tests. Le relevé du mockup par
+l'agent de conception a fourni la valeur d'indentation que `09d` déclarait introuvable, et s'est
+trompé sur l'icône du palier (défaut n° 119) : les deux décisions se prenaient sur les mêmes sources,
+mais seule la seconde demandait de **regarder deux lignes ensemble**, ce qu'aucune table de valeurs ne
+montre.
+
 ## 3. Où en est le travail
 
-**86 specs écrites, toutes implémentées sauf `19a`, `20` et `21`** — voir le tableau ci-dessous et le
+**89 specs écrites, toutes implémentées sauf `19a`, `20` et `21`** — voir le tableau ci-dessous et le
 § 11 pour ce qui bloque ces trois. Les dix écrans du handoff sont assemblés **et
 atteignables depuis l'application** : `A1` (accueil), `A2`/`A3` (nouvelle connexion et son échec),
 `A4` (explorateur), `A5` (visualiseur), `A6` (édition inline), `A7` (console SQL), `A8` (console
@@ -736,10 +788,12 @@ Chromium. L'expérience à tenter est au § 0, ligne 8.
 
 ## 11. La suite
 
-**Les 86 specs de l'index sont écrites, et toutes celles qui demandaient du code sont livrées** — les
+**Les 89 specs de l'index sont écrites, et toutes celles qui demandaient du code sont livrées** — les
 trois exceptions étant `19a` (conclusion négative) et `20`/`21` (aucun décor de test).
 `23` et `24` sont closes : les environnements se déclarent par projet, une connexion appartient à
-l'un d'eux, et les deux gestes de création comme les cinq gestes d'environnement répondent.
+l'un d'eux, et les deux gestes de création comme les cinq gestes d'environnement répondent. `25`
+les reprend en partie : le sélecteur de `23g` a laissé place à un palier d'arbre, et l'environnement
+actif a quitté le modèle (§ 2 ter).
 
 **Le support Cloud SQL est livré** (demandé le 19 août 2026, terminé le 20) : `05d` le modèle et la
 migration v2 → v3, `06g` le pilotage de `cloud-sql-proxy`, `08k` le panneau de `A2` à deux visages.

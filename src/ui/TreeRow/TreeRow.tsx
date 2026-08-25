@@ -6,13 +6,27 @@ import { cx } from '../cx'
 import styles from './TreeRow.module.css'
 
 /**
- * Indentation par palier, relevée littéralement dans le mockup A5 : les écarts valent
- * 14, 14 puis **16**. Aucune formule ne les reproduit — `8 + depth * 14` donnerait 50 au
- * dernier palier au lieu de 52. Table, donc, et non calcul.
+ * Indentation par palier, relevée dans le mockup A5 : 8, 22, 36, 52 — écarts 14, 14 puis **16**.
+ *
+ * `8 + depth * 14` ne la reproduit pas, et cette table a longtemps porté la mention « aucune
+ * formule ne les reproduit ». C'était vrai de cette formule-là. Mais le mockup obéit bien à une
+ * règle, lisible sur l'**abscisse des icônes** plutôt que sur le padding : 24, 38, 52, 52 — écarts
+ * 14, 14, **0**. Le « +16 » du dernier palier vaut exactement `chevron (11) + gap (5)` : ce n'est pas
+ * un supplément d'indentation, c'est la reprise de la gouttière qu'une feuille sans chevron
+ * n'occupe pas. D'où deux cadences : **+14** d'un nœud dépliable au suivant, **+16** vers une feuille.
+ *
+ * Le cinquième palier de `25a` va d'un schéma (qui a un chevron) à un objet (qui n'en a pas) : c'est
+ * un pas de **+16**, soit 68. Les quatre premières valeurs ne bougent pas — elles sont mesurées
+ * contre le mockup, et `e2e/a4-sidebar.spec.ts` les vérifie.
+ *
+ * **Exportée**, parce que les lignes de message de l'arbre doivent s'aligner sur les mêmes paliers.
+ * `ExplorerSidebar.module.css` en tenait une copie en CSS, et un palier de retard entre les deux
+ * tables se lit comme un message mal aligné — ce que personne ne pense à vérifier en ajoutant un
+ * palier.
  */
-const INDENT = ['8px', '22px', '36px', '52px'] as const
+export const INDENT = ['8px', '22px', '36px', '52px', '68px'] as const
 
-export type TreeDepth = 0 | 1 | 2 | 3
+export type TreeDepth = 0 | 1 | 2 | 3 | 4
 
 type TreeRowProps = {
   depth: TreeDepth

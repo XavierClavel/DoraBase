@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test'
+import { deplierUnEnvironnement } from './pourLesTests'
 
 // La mise en page de `A9` : trois zones empilées à gauche, la colonne du DDL à droite. Des
 // géométries, donc hors de portée de jsdom — qui ne calcule aucune mise en page.
 test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).click()
   await page.getByRole('treeitem', { name: 'public' }).click()
   await page.getByRole('treeitem', { name: /^orders 1\.9/ }).click()

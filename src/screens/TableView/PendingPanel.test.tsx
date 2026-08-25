@@ -159,13 +159,16 @@ test('un refus de prévisualisation s’affiche à la place du bloc', () => {
   expect(screen.getByRole('alert')).toHaveTextContent('pas de clé primaire')
 })
 
-test('l’encart de production n’existe que pour une variante prod', () => {
-  monter({ environment: 'dev' })
+// **L'encart suit le drapeau, jamais le libellé** (`23g`) : la prop est un booléen, et non plus un
+// identifiant d'environnement comparé à la chaîne `'prod'`. Un environnement nommé « live » et marqué
+// production n'avait pas l'encart, et un « prod » que personne n'avait marqué l'avait.
+test('l’encart de production n’existe pas quand le drapeau est baissé', () => {
+  monter({ production: false })
   expect(screen.queryByText(/production/)).not.toBeInTheDocument()
 })
 
 test('en production, l’encart dit ce qui existe, pas ce qui est promis', () => {
-  monter({ environment: 'prod' })
+  monter({ production: true })
   const encart = screen.getByText(/Cette base est en/)
   expect(encart).toHaveTextContent('production')
   // **Au présent depuis `11d`, qui livre la confirmation** — l'annoncer au futur quand elle existe
@@ -190,7 +193,7 @@ test('après une écriture, le panneau montre de quoi défaire et non des cartes
 })
 
 test('l’encart de production disparaît après l’écriture', () => {
-  monter({ attente: [], patchInverse: 'BEGIN;\nCOMMIT;', environment: 'prod' })
+  monter({ attente: [], patchInverse: 'BEGIN;\nCOMMIT;', production: true })
   // Annoncer « DoraBase demande une confirmation avant d'écrire » **après** avoir écrit se lirait
   // comme un avertissement resté en place par erreur.
   expect(screen.queryByText(/demande une confirmation/)).not.toBeInTheDocument()

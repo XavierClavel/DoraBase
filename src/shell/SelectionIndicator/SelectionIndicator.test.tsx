@@ -1,0 +1,277 @@
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { Sprite } from '../../design/icons/Sprite'
+import type { ConnectionState } from '../../domain/engine'
+import { libelleDeConnexion, SelectionIndicator } from './SelectionIndicator'
+
+/**
+ * L'indicateur de sélection de la barre de titre (`25b`).
+ *
+ * **Ce fichier hérite de deux tests supprimés** — `ProjectPill` et `EnvironmentPicker` — et de leurs
+ * garanties qui survivent au passage : les quatre états du point, le texte masqué visuellement, le
+ * badge « ÉDITION » qui chasse « LECTURE SEULE », la couleur d'environnement lue de la déclaration,
+ * et `libelleDeConnexion`. Ce qui portait sur le clic, le menu et le combobox est parti avec eux :
+ * il n'y a plus de contrôle ici.
+ */
+
+const CONNECTEE: ConnectionState = {
+  kind: 'connected',
+  serverVersion: 'PostgreSQL 17.6',
+  tunnelLocalPort: null,
+}
+
+/** Un environnement de production **qui ne s'appelle pas « prod »** : le drapeau seul décide. */
+const ATELIER = { label: 'Atelier', color: 'green', production: true } as const
+
+function monter(props: Partial<Parameters<typeof SelectionIndicator>[0]> = {}) {
+  return render(
+    <>
+      <Sprite />
+      <SelectionIndicator projectName="Atelier Nord" {...props} />
+    </>,
+  )
+}
+
+/**
+ * La racine de l'indicateur.
+ *
+ * **Elle ne porte aucun rôle**, et c'est délibéré : `status` est une région live, et `role="group"`
+ * est destiné par ARIA à un ensemble de *contrôles* — il n'y en a plus ici. Reste du texte, lu dans
+ * l'ordre du document. Faute de rôle, les tests l'atteignent par son contenu.
+ */
+const racine = () => screen.getByText('Atelier Nord').parentElement as HTMLElement
+
+// --- Un indicateur, plus un contrôle ---
+
+/*
+ * **Rien de focalisable au centre** (`25b`).
+ *
+ * `ProjectPill` était un `<button>` ouvrant le menu des projets, et le sélecteur d'environnement un
+ * `combobox`. Les deux sont partis : le projet s'édite depuis le « … » de l'arbre, l'environnement
+ * s'y choisit comme palier. Un contrôle inerte se lirait comme un contrôle en panne — c'est
+ * l'arbitrage que `24` a déjà rendu contre un `Chip` inerte.
+ */
+test('l’indicateur ne porte aucun élément focalisable', async () => {
+  monter({ environment: ATELIER, breadcrumb: 'catalogue · public', connection: CONNECTEE })
+
+  expect(screen.queryByRole('button')).toBeNull()
+  expect(screen.queryByRole('combobox')).toBeNull()
+  expect(screen.queryByRole('link')).toBeNull()
+
+  // Et rien ne prend le focus au `Tab` : c'est ce qui rend la barre entièrement glissable.
+  await userEvent.tab()
+  expect(racine().contains(document.activeElement)).toBe(false)
+})
+
+/*
+ * **Surtout pas `role="status"`.**
+ *
+ * `status` est une région live implicite. La sélection changeant à chaque flèche dans l'arbre, un
+ * lecteur d'écran énoncerait tout l'indicateur par-dessus l'annonce de la ligne en cours de
+ * parcours : le pire endroit du produit pour une région live.
+ */
+test('l’indicateur n’est pas une région live', () => {
+  monter({ connection: CONNECTEE })
+  expect(screen.queryByRole('status')).toBeNull()
+  expect(screen.queryByRole('alert')).toBeNull()
+  expect(racine()).not.toHaveAttribute('aria-live')
+})
+
+test('le nom du projet est visible', () => {
+  monter()
+  expect(screen.getByText('Atelier Nord')).toBeInTheDocument()
+})
+
+// --- L'environnement ---
+
+/*
+ * **Le libellé s'affiche tel qu'il est déclaré.**
+ *
+ * Depuis `23a` il est renommable : c'est une chaîne de l'utilisateur, et « Pré-production » ne doit
+ * pas devenir « PRÉ-PRODUCTION ». Le CSS ne portant pas dans jsdom, ce qui est testable ici est le
+ * **texte rendu** — une capitalisation faite en JavaScript se verrait.
+ */
+test('le libellé d’environnement n’est pas capitalisé', () => {
+  monter({ environment: { label: 'Pré-production', color: 'amber', production: false } })
+  expect(screen.getByText('Pré-production')).toBeInTheDocument()
+  expect(screen.queryByText('PRÉ-PRODUCTION')).toBeNull()
+})
+
+// L'étiquette « ENV » du sélecteur disparaît avec lui : sans commutateur, il n'y a rien à étiqueter.
+test('aucune étiquette « ENV » ne subsiste', () => {
+  monter({ environment: ATELIER })
+  expect(racine().textContent?.toLowerCase()).not.toContain('env ')
+})
+
+// **La couleur vient de la déclaration, non d'un attribut lu par le CSS** (`23a`) : une table de
+// teintes par identifiant redeviendrait le trio en dur que `23a` a fait disparaître.
+test('la pastille prend la couleur déclarée de l’environnement', () => {
+  const { container, unmount } = monter({ environment: ATELIER })
+  expect((container.querySelector('span[style]') as HTMLElement).style.background).toContain(
+    '--success',
+  )
+  unmount()
+
+  const rouge = monter({ environment: { label: 'vitrine', color: 'red', production: false } })
+  expect((rouge.container.querySelector('span[style]') as HTMLElement).style.background).toContain(
+    '--danger',
+  )
+})
+
+test('la pastille de couleur est décorative', () => {
+  const { container } = monter({ environment: ATELIER })
+  expect(container.querySelector('span[style]')).toHaveAttribute('aria-hidden', 'true')
+})
+
+/*
+ * **Le badge suit le drapeau, jamais le libellé ni la couleur** (`23g`).
+ *
+ * `PROD` est un ajout de `25b`, assumé : le sélecteur parti, plus rien dans la barre ne dit « vous
+ * écrivez en production » à l'instant où `11d` applique ses garde-fous.
+ */
+test('un environnement marqué production porte PROD, quel que soit son libellé', () => {
+  monter({ environment: ATELIER })
+  expect(screen.getByText('PROD')).toBeInTheDocument()
+})
+
+test('un environnement nommé « prod » mais non marqué ne porte pas le badge', () => {
+  monter({ environment: { label: 'prod', color: 'red', production: false } })
+  expect(screen.queryByText('PROD')).toBeNull()
+})
+
+/*
+ * **`PROD` est un sigle**, et la pastille de couleur est `aria-hidden` : sans texte masqué
+ * visuellement, rien n'annoncerait en clair qu'on regarde une production. `09d` interdit que la
+ * couleur porte seule.
+ */
+test('le fait « production » est annoncé en clair, pas seulement par le sigle', () => {
+  monter({ environment: ATELIER })
+  expect(racine()).toHaveTextContent('environnement de production')
+})
+
+test('hors production, rien n’est annoncé', () => {
+  monter({ environment: { label: 'Atelier', color: 'green', production: false } })
+  expect(racine()).not.toHaveTextContent('environnement de production')
+})
+
+test('sans environnement, aucune pastille ni badge', () => {
+  const { container } = monter()
+  expect(container.querySelector('span[style]')).toBeNull()
+  expect(screen.queryByText('PROD')).toBeNull()
+})
+
+// --- Le fil d'Ariane ---
+
+test('le fil d’Ariane est rendu quand il y en a un', () => {
+  monter({ breadcrumb: 'catalogue · public' })
+  expect(screen.getByText('catalogue · public')).toBeInTheDocument()
+})
+
+test('sans connexion ouverte, aucun fil d’Ariane', () => {
+  monter()
+  expect(screen.queryByText(/·/)).not.toBeInTheDocument()
+})
+
+// --- Le point d'état ---
+
+// Un projet n'a pas d'état de connexion — ses connexions en ont. Sans connexion ouverte, **aucun
+// point** plutôt qu'un point gris inventé.
+test('sans connexion ouverte, aucun point d’état', () => {
+  const { container } = monter()
+  expect(container.querySelector('[data-state]')).toBeNull()
+})
+
+// L'état entre dans le nom du groupe, par du texte masqué visuellement. `aria-label` sur le point
+// lui-même serait ignoré : un `<span>` sans rôle ne le porte pas — même piège qu'en `08c`.
+test('l’état de connexion est annoncé, en texte et non en couleur', () => {
+  monter({ connection: CONNECTEE })
+  expect(racine()).toHaveTextContent('connectée · PostgreSQL 17.6')
+})
+
+test('le point lui-même est décoratif', () => {
+  const { container } = monter({ connection: CONNECTEE })
+  expect(container.querySelector('[data-state]')).toHaveAttribute('aria-hidden', 'true')
+})
+
+test('les quatre états portent leur nature dans un attribut, pas dans une classe', () => {
+  const etats: ConnectionState[] = [
+    { kind: 'never' },
+    { kind: 'connecting' },
+    CONNECTEE,
+    { kind: 'offline', reason: 'hôte injoignable' },
+  ]
+  for (const etat of etats) {
+    const { container, unmount } = monter({ connection: etat })
+    expect(container.querySelector(`[data-state="${etat.kind}"]`)).not.toBeNull()
+    unmount()
+  }
+})
+
+/*
+ * **Le point change de sens quand quelque chose attend**, et c'est le mockup qui le dit : `A5` le
+ * montre vert (connexion ouverte), `A6` ambre — la même connexion. Le badge lève l'ambiguïté sans
+ * dépendre de la couleur.
+ */
+test('des modifications en attente font passer le point à l’ambre', () => {
+  const { container } = monter({ connection: CONNECTEE, pendingChanges: 2 })
+  expect(container.querySelector('[data-state="pending"]')).not.toBeNull()
+})
+
+test('le compte de modifications est annoncé, avec son pluriel', () => {
+  const { unmount } = monter({ connection: CONNECTEE, pendingChanges: 2 })
+  expect(racine()).toHaveTextContent('2 modifications en attente')
+  unmount()
+
+  monter({ connection: CONNECTEE, pendingChanges: 1 })
+  expect(racine()).toHaveTextContent('1 modification en attente')
+})
+
+// --- Les deux badges qui ne cohabitent pas ---
+
+test('le badge de lecture seule suit le réglage', () => {
+  monter({ readOnly: true })
+  expect(screen.getByText('Lecture seule')).toBeInTheDocument()
+})
+
+test('sans lecture seule, aucun badge', () => {
+  monter()
+  expect(screen.queryByText('Lecture seule')).toBeNull()
+})
+
+// **« Lecture seule » disparaît en édition** : les deux badges côte à côte se contrediraient. Le
+// mockup d'`A6` met « ÉDITION » là où `A5` met « LECTURE SEULE ».
+test('« ÉDITION » chasse « LECTURE SEULE », jamais les deux ensemble', () => {
+  monter({ readOnly: true, pendingChanges: 3 })
+  expect(screen.getByText('Édition')).toBeInTheDocument()
+  expect(screen.queryByText('Lecture seule')).toBeNull()
+})
+
+// --- Les libellés d'état ---
+
+test('les quatre libellés sont distincts et disent la nature de l’état', () => {
+  const libelles = [
+    libelleDeConnexion({ kind: 'never' }),
+    libelleDeConnexion({ kind: 'connecting' }),
+    libelleDeConnexion(CONNECTEE),
+    libelleDeConnexion({ kind: 'offline', reason: 'hôte injoignable' }),
+  ]
+  expect(new Set(libelles).size).toBe(4)
+  // « jamais connectée » n'est pas « hors ligne » : les confondre décrirait en panne une base
+  // qu'on n'a simplement pas ouverte.
+  expect(libelles[0]).not.toContain('hors ligne')
+  expect(libelles[3]).toContain('hors ligne')
+})
+
+test('le libellé d’un échec porte la raison du moteur', () => {
+  // `06b`–`06e` produisent des messages qui disent la manœuvre ; les réécrire créerait deux
+  // vérités, dont une périmée.
+  expect(libelleDeConnexion({ kind: 'offline', reason: 'hôte injoignable' })).toContain(
+    'hôte injoignable',
+  )
+})
+
+test('le libellé d’une connexion ouverte nomme la version du serveur', () => {
+  // C'est ce qui distingue cette formulation du `resumeEtat` de l'arbre : une ligne d'arbre n'a pas
+  // la place de la version, la barre de titre l'a.
+  expect(libelleDeConnexion(CONNECTEE)).toContain('PostgreSQL 17.6')
+})

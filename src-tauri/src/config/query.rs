@@ -1,19 +1,7 @@
 //! Fonctions pures sur le modèle de configuration : résoudre, filtrer, valider.
 //! Aucune I/O, aucun état — tout est testable sans système de fichiers.
 
-use super::model::{ConnectionSettings, Database, EnvironmentId, ModelError, Project};
-
-/// Les réglages de `database`, si elle appartient à l'environnement actif de `project`.
-///
-/// Rend `None` quand la connexion appartient à un autre environnement — état réel du domaine depuis
-/// `23b` : l'arbre ne montre que les connexions de l'environnement actif, et demander les réglages
-/// d'une connexion d'ailleurs est une question sans réponse.
-pub fn active_variant<'a>(
-    project: &Project,
-    database: &'a Database,
-) -> Option<&'a ConnectionSettings> {
-    (database.environment == project.active_environment).then_some(&database.connection)
-}
+use super::model::{Database, EnvironmentId, ModelError, Project};
 
 /// Les connexions du projet déclarées dans `environment` — ce que l'arbre liste (`23g`).
 ///
@@ -30,7 +18,7 @@ pub fn databases_available<'a>(
 /// Vérifie la cohérence d'un projet entier.
 ///
 /// **Délègue à `Project::valider`** (`23a`) : les invariants portent tous sur des relations entre
-/// champs — l'environnement actif doit être déclaré, chaque connexion doit viser un environnement
+/// champs — chaque connexion doit viser un environnement
 /// déclaré, deux connexions ne peuvent pas partager nom **et** environnement. Les tenir à deux
 /// endroits les ferait diverger ; cette fonction reste comme point d'entrée nommé côté `query`.
 pub fn validate(project: &Project) -> Result<(), ModelError> {
@@ -40,7 +28,7 @@ pub fn validate(project: &Project) -> Result<(), ModelError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::model::{Engine, EnvironmentDeclaration, SslMode};
+    use crate::config::model::{ConnectionSettings, Engine, EnvironmentDeclaration, SslMode};
 
     fn reglages() -> ConnectionSettings {
         ConnectionSettings {
@@ -68,11 +56,10 @@ mod tests {
     }
 
     /// `analytics` en dev **et** en prod — deux connexions depuis `23b`, non deux variantes —
-    /// et `shop` en dev seulement. Environnement actif : prod.
+    /// et `shop` en dev seulement.
     fn projet_de_test() -> Project {
         Project {
             name: "Atelier Nord".into(),
-            active_environment: EnvironmentId::brut("prod"),
             environments: EnvironmentDeclaration::trio_par_defaut(),
             queries: Vec::new(),
             databases: vec![
@@ -81,23 +68,6 @@ mod tests {
                 connexion("shop", "dev"),
             ],
         }
-    }
-
-    #[test]
-    fn les_reglages_actifs_ne_repondent_que_pour_l_environnement_actif() {
-        let projet = projet_de_test();
-        // La connexion de prod répond ; celle de dev, non — c'est la même base, ce sont deux
-        // connexions.
-        assert!(active_variant(&projet, &projet.databases[1]).is_some());
-        assert!(active_variant(&projet, &projet.databases[0]).is_none());
-    }
-
-    #[test]
-    fn changer_l_environnement_du_projet_change_les_connexions_qui_repondent() {
-        let mut projet = projet_de_test();
-        assert!(active_variant(&projet, &projet.databases[0]).is_none());
-        projet.active_environment = EnvironmentId::brut("dev");
-        assert!(active_variant(&projet, &projet.databases[0]).is_some());
     }
 
     #[test]
@@ -124,7 +94,6 @@ mod tests {
         // C'est l'état créé par « Nouveau projet » en `A1`, avant toute connexion déclarée.
         let projet = Project {
             name: "Neuf".into(),
-            active_environment: EnvironmentId::brut("dev"),
             environments: EnvironmentDeclaration::trio_par_defaut(),
             queries: Vec::new(),
             databases: vec![],
@@ -168,20 +137,11 @@ mod tests {
     fn une_connexion_visant_un_environnement_non_declare_est_refusee() {
         let mut projet = projet_de_test();
         projet.databases.push(connexion("journal", "preprod"));
-        // Elle serait invisible dans l'arbre, qui liste par environnement actif.
+        // Elle serait invisible dans l'arbre, qui liste les connexions sous le nœud de leur
+        // environnement.
         assert!(matches!(
             validate(&projet),
             Err(ModelError::EnvironnementInconnu { .. })
-        ));
-    }
-
-    #[test]
-    fn un_environnement_actif_non_declare_est_refuse() {
-        let mut projet = projet_de_test();
-        projet.active_environment = EnvironmentId::brut("preprod");
-        assert!(matches!(
-            validate(&projet),
-            Err(ModelError::ActifInconnu { .. })
         ));
     }
 

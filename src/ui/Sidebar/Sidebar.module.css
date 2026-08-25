@@ -1,11 +1,17 @@
-/* Deux largeurs relevées sur le handoff : 212 px pour A5 → A9, 252 px pour A4 — dont l'arbre a
- * un niveau de plus (projet → base → schéma → table) pour la même profondeur d'indentation. */
+/* Deux largeurs : 212 px pour A5 → A9, relevée sur le handoff, et 268 px pour A4.
+ *
+ * **268 et non les 252 du handoff, et c'est un écart assumé** (`25a`). Les 252 px mesuraient une
+ * colonne dont l'arbre avait quatre paliers. Avec le palier d'environnement il en a cinq, et le
+ * palier le plus profond — celui des tables, le plus lu et aux noms les plus longs — passait de
+ * 123 px de libellé disponible à 107. Les 16 px rendus lui restituent exactement le budget que le
+ * mockup donnait à son palier le plus profond. C'est ce budget, et non le chiffre, que les 252 px
+ * servaient : le mockup n'a pas l'arbre à cinq paliers dont il mesurait la colonne. */
 .standard {
   width: 212px;
 }
 
 .wide {
-  width: 252px;
+  width: 268px;
 }
 
 .root {

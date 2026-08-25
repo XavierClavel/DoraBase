@@ -9,20 +9,30 @@ test.beforeEach(async ({ page }) => {
   await page.evaluate(() => document.fonts.ready)
 })
 
-test('la colonne fait 252 px, contre 212 pour A5 → A9', async ({ page }) => {
+test('la colonne fait 268 px de contenu, contre 228 pour A5 → A9', async ({ page }) => {
   const largeur = await page.evaluate(() => {
     const colonne = document.querySelector('[data-testid=sidebar-a4]')
       ?.firstElementChild as HTMLElement | null
     return colonne ? Math.round(colonne.getBoundingClientRect().width) : null
   })
-  // 253 et non 252 : le mockup déclare `width:252px` **avec** un `border-right` de 1 px, et sans
-  // `box-sizing` la bordure s'ajoute — c'est donc 253 qu'il rend, et 253 qu'il faut reproduire.
-  // Quarante pixels de plus que `A5` → `A9`, parce que l'arbre de `A4` a un niveau de plus pour
-  // la même profondeur d'indentation.
-  expect(largeur).toBe(253)
+  // Le compte, refait : la variante `wide` déclare `width: 268px` et `.root` est en `content-box`,
+  // donc le `border-right` de 1 px s'**ajoute** — 268 + 1 = **269** rendus. C'est la même
+  // arithmétique qu'avant, sur un autre chiffre de contenu.
+  //
+  // **268 px de contenu et non les 252 du handoff, et c'est le cinquième palier qui les demande**
+  // (`25a`). Les 252 px mesuraient une colonne dont l'arbre avait quatre paliers ; avec
+  // l'environnement il en a cinq, et l'indentation du plus profond passe de 52 à 68 px. Ces 16 px
+  // sont pris sur le libellé : à 252, un objet du palier 4 ne disposait plus que de 107 px de nom là
+  // où le mockup en donnait 123 à son palier le plus profond. Les rendre à la colonne rend
+  // exactement ce budget — et c'est ce budget, non le chiffre, que les 252 px servaient.
+  //
+  // Quarante pixels de plus que les 228 px que le `SplitPane` des écrans de travail donne par
+  // défaut, et pour la raison d'avant : l'arbre de `A4` a un palier de plus pour la même profondeur
+  // d'indentation.
+  expect(largeur).toBe(269)
 })
 
-test('les quatre niveaux suivent la table d’indentation de TreeRow', async ({ page }) => {
+test('les cinq niveaux suivent la table d’indentation de TreeRow', async ({ page }) => {
   const indentations = await page.evaluate(() => {
     const sidebar = document.querySelector('[data-testid=sidebar-a4]')
     const parNiveau = new Map<string, string>()
@@ -35,13 +45,17 @@ test('les quatre niveaux suivent la table d’indentation de TreeRow', async ({ 
     return [...parNiveau.entries()].sort()
   })
 
-  // La table littérale de `TreeRow` : 8, 22, 36, 52 — gaps 14, 14, **16**. Aucune formule ne la
-  // produit, et `04` l'avait déjà établi.
+  // La table littérale de `TreeRow` : 8, 22, 36, 52, 68 — écarts 14, 14, **16**, **16**. Le mockup a
+  // deux cadences, lisibles sur l'abscisse des icônes plutôt que sur le remplissage : `+14` d'un nœud
+  // dépliable au suivant, `+16` vers une feuille, ces 16 px valant `chevron (11) + gap (5)`. Le pas
+  // 3 → 4 va d'un schéma à un objet, donc `+16` (`25a`). **Les quatre premières valeurs ne bougent
+  // pas** : elles sont mesurées contre le mockup, et `04` les avait déjà établies.
   expect(indentations).toEqual([
     ['1', '8px'],
     ['2', '22px'],
     ['3', '36px'],
     ['4', '52px'],
+    ['5', '68px'],
   ])
 })
 
@@ -110,4 +124,106 @@ test('le pied reste visible quand l’arbre déborde', async ({ page }) => {
     return p.bottom <= c.bottom + 1 && p.top >= c.top
   })
   expect(visible).toBe(true)
+})
+
+/**
+ * Le palier d'environnement, et ce qu'il rend possible de casser (`25a`).
+ *
+ * Le décor déclare quatre environnements et **deux connexions homonymes** : `analytics` en
+ * « vitrine » et `analytics` en « atelier ». C'est la seule forme de décor qui met une collision
+ * d'identité de nœud en évidence, et elle est ici volontaire.
+ */
+const sidebar = (page: import('@playwright/test').Page) => page.locator('[data-testid=sidebar-a4]')
+
+/** La ligne d'un environnement, désignée par son libellé — le nom accessible commence par lui. */
+const environnement = (page: import('@playwright/test').Page, libelle: string) =>
+  sidebar(page).getByRole('treeitem', { name: new RegExp(`^${libelle}\\b`) })
+
+/**
+ * **Le test le plus important du lot.**
+ *
+ * `idBase` ne portait pas l'environnement, et sa justification était explicite : « l'arbre ne montre
+ * jamais que les connexions de l'environnement actif ». Le palier annule cette prémisse. Sans
+ * l'identifiant dans la clé, les deux `analytics` partagent leur dépliage, leur sélection, leur clé
+ * de rendu React et — le plus grave — leur entrée dans `charge.schemas` : la structure d'un serveur
+ * s'affiche sous la ligne d'un autre, ce qu'aucun message d'erreur ne signale.
+ *
+ * Les deux lignes se distinguent par leur **état**, que `TreeRow` met dans le nom accessible depuis
+ * `09d` : le décor ne connecte que celle de « vitrine ». C'est plus lisible qu'un index de position,
+ * et cela ne dépend pas de l'ordre de déclaration des environnements.
+ */
+test('deux connexions homonymes de deux environnements se déplient indépendamment', async ({
+  page,
+}) => {
+  const enVitrine = sidebar(page).getByRole('treeitem', { name: /^analytics · connectée/ })
+  const enAtelier = sidebar(page).getByRole('treeitem', { name: /^analytics · non connectée/ })
+
+  // Au départ : « vitrine » est dépliée jusqu'au schéma `public`, « atelier » est repliée.
+  await expect(enVitrine).toHaveAttribute('aria-expanded', 'true')
+  await expect(enAtelier).toHaveCount(0)
+
+  await environnement(page, 'atelier').click()
+  // La seconde `analytics` paraît, **repliée** : le dépliage de sa jumelle ne la concerne pas.
+  await expect(enAtelier).toHaveAttribute('aria-expanded', 'false')
+  await expect(enVitrine).toHaveAttribute('aria-expanded', 'true')
+
+  await enAtelier.click()
+
+  // Les deux sont dépliées, et l'une n'affiche pas la structure de l'autre : `charge.schemas` ne
+  // porte de schémas que pour la connexion de « vitrine », donc celle d'« atelier » n'a que sa
+  // console et la ligne « Aucun objet ».
+  await expect(enAtelier).toHaveAttribute('aria-expanded', 'true')
+  await expect(enVitrine).toHaveAttribute('aria-expanded', 'true')
+  await expect(sidebar(page).getByRole('treeitem', { name: /^public/ })).toHaveCount(1)
+  await expect(sidebar(page).getByRole('treeitem', { name: /^introspection/ })).toHaveCount(1)
+  await expect(sidebar(page).getByRole('treeitem', { name: /Comptes du jour/ })).toHaveCount(1)
+  await expect(sidebar(page).getByText('Aucun objet')).toHaveCount(1)
+
+  // Et la sélection ne se partage pas non plus : cliquer l'une ne marque pas l'autre.
+  await expect(enAtelier).toHaveAttribute('aria-selected', 'true')
+  await expect(enVitrine).toHaveAttribute('aria-selected', 'false')
+})
+
+// Un nœud déplié sans enfant se lit comme un chargement en cours — le doute du défaut de `06d`. Ici
+// rien ne charge : la liste vient de la configuration, donc le vide est un fait, et il se dit.
+test('un environnement sans connexion le dit, aligné au palier 2', async ({ page }) => {
+  await environnement(page, 'coulisses').click()
+
+  const message = sidebar(page).getByText('Aucune connexion déclarée en coulisses')
+  await expect(message).toBeVisible()
+
+  const alignement = await page.evaluate(() => {
+    const ligne = [...document.querySelectorAll('[data-testid=sidebar-a4] p')].find((p) =>
+      p.textContent?.includes('Aucune connexion déclarée en coulisses'),
+    )
+    if (!ligne) return null
+    // L'indentation vient d'`INDENT`, la table exportée par `TreeRow`, et non d'une copie en CSS :
+    // un palier de retard entre les deux tables se lit comme un message mal aligné (`25a`).
+    return {
+      remplissage: getComputedStyle(ligne).paddingLeft,
+      palier: ligne.getAttribute('data-depth'),
+    }
+  })
+  // Enfant d'un environnement (palier 1), donc palier 2 : `INDENT[2]`, soit 36 px — la même valeur
+  // qu'une ligne de connexion, puisque c'est la place qu'une connexion y aurait occupée.
+  expect(alignement).toEqual({ remplissage: '36px', palier: '2' })
+})
+
+/**
+ * Le badge suit le **drapeau**, jamais le libellé (`23g`), ni la couleur déclarée.
+ *
+ * Le décor nomme son environnement de production « vitrine » précisément pour attraper un écran qui
+ * relirait un trio `prod` / `staging` / `dev` en dur : un tel écran ne badgerait rien ici, et se
+ * trahirait. La couleur, elle, voyage par l'icône — un environnement marqué production et coloré en
+ * vert doit porter un badge rouge, sans quoi le badge d'alerte cesse d'alerter.
+ */
+test('le badge PROD est sur « vitrine », et sur elle seule', async ({ page }) => {
+  await expect(environnement(page, 'vitrine')).toHaveAccessibleName(/PROD/)
+
+  for (const libelle of ['atelier', 'coulisses', 'bac à sable']) {
+    await expect(environnement(page, libelle)).not.toHaveAccessibleName(/PROD/)
+  }
+  // Le compte, plutôt que trois assertions négatives seulement : un badge qui paraîtrait sur une
+  // ligne de connexion ou de projet passerait entre les mailles.
+  await expect(sidebar(page).getByRole('treeitem', { name: /PROD/ })).toHaveCount(1)
 })

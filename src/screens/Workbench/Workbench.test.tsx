@@ -28,11 +28,11 @@ const variante = {
 const PROJETS: Project[] = [
   {
     name: 'Atelier Nord',
-    activeEnvironment: 'prod',
     environments: TRIO_DE_TEST,
     queries: [],
     databases: [
-      // **Dans l'environnement actif** (`23g`) : l'arbre ne liste que les connexions de celui-ci.
+      // **Les deux connexions sont dans `prod`** : le décor mesure les onglets, la grille et les
+      // consoles, pas le palier d'environnement — `arbre.test.ts` s'en charge.
       {
         name: 'analytics',
         engine: 'postgresql',
@@ -151,8 +151,24 @@ function passerelles() {
   return { passerelle, detail, lignes }
 }
 
-async function ouvrirLArbreJusquAuSchema(utilisateur: ReturnType<typeof userEvent.setup>) {
+/**
+ * Déplie le projet, puis **tous ses environnements** (`25a`).
+ *
+ * Tous, et non celui du décor : l'environnement est désormais un palier, et deux décors de ce fichier
+ * placent leurs connexions dans deux environnements différents — `PROJETS` en `prod`, `PROJETS_DEV`
+ * en `dev`. Les déplier tous rend le harnais indifférent à ce choix, et un environnement sans
+ * connexion ne produit qu'une ligne de message.
+ */
+async function ouvrirLesEnvironnements(utilisateur: ReturnType<typeof userEvent.setup>) {
   await utilisateur.click(screen.getByRole('treeitem', { name: /Atelier Nord/ }))
+  const environnements = screen
+    .getAllByRole('treeitem')
+    .filter((ligne) => ligne.getAttribute('aria-level') === '2')
+  for (const ligne of environnements) await utilisateur.click(ligne)
+}
+
+async function ouvrirLArbreJusquAuSchema(utilisateur: ReturnType<typeof userEvent.setup>) {
+  await ouvrirLesEnvironnements(utilisateur)
   await utilisateur.click(await screen.findByRole('treeitem', { name: /analytics/ }))
   await utilisateur.click(await screen.findByRole('treeitem', { name: 'public' }))
 }
@@ -205,10 +221,9 @@ function avecConsole(nom: string, sql: string): Project[] {
 
 const PROJETS_DEV: Project[] = PROJETS.map((projet) => ({
   ...projet,
-  activeEnvironment: 'dev' as const,
   queries: [],
-  // La **variante** suit l'environnement actif : sans elle, la base n'est joignable dans aucun
-  // environnement et l'arbre ne déplie rien — l'écran de test n'irait même pas jusqu'à la grille.
+  // Les connexions **déménagent en `dev`** : l'arbre les liste sous ce palier, et le drapeau
+  // `production` de `dev` étant baissé, l'écriture n'ouvre pas de confirmation.
   databases: projet.databases.map((base) => ({
     ...base,
     environment: 'dev',
@@ -300,7 +315,9 @@ function monter(over: Partial<Parameters<typeof Workbench>[0]> = {}) {
 describe('Workbench', () => {
   it('assemble la coquille : barre de titre, arbre, centre, panneau droit', () => {
     monter()
-    expect(screen.getByRole('tree', { name: 'Projets et bases' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('tree', { name: 'Projets, environnements et connexions' }),
+    ).toBeInTheDocument()
     expect(screen.getByRole('tablist')).toBeInTheDocument()
     expect(screen.getByLabelText('Détail de l’objet')).toBeInTheDocument()
   })
@@ -367,7 +384,9 @@ describe('Workbench', () => {
     expect(screen.queryByRole('grid')).not.toBeInTheDocument()
     // La liste des objets revient, et l'écran de travail est toujours là.
     expect(screen.getByRole('table')).toBeInTheDocument()
-    expect(screen.getByRole('tree', { name: 'Projets et bases' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('tree', { name: 'Projets, environnements et connexions' }),
+    ).toBeInTheDocument()
   })
 
   it('la sidebar liste les colonnes de la table ouverte, pas avant', async () => {
@@ -484,7 +503,7 @@ describe('Workbench', () => {
       </>,
     )
 
-    await utilisateur.click(screen.getByRole('treeitem', { name: /Atelier Nord/ }))
+    await ouvrirLesEnvironnements(utilisateur)
     await utilisateur.click(await screen.findByRole('treeitem', { name: /analytics/ }))
 
     expect(await screen.findByText(/hôte injoignable/)).toBeInTheDocument()
@@ -1277,8 +1296,9 @@ describe('mode édition', () => {
     expect(screen.getByRole('status', { name: 'État de la table' })).toHaveTextContent(
       '1 modification en attente',
     )
-    // 3. le badge de la pastille projet
-    expect(screen.getByRole('button', { name: /Édition/ })).toBeInTheDocument()
+    // 3. le badge de l'indicateur de la barre de titre — **du texte, plus un bouton** : la pastille
+    //    projet était un `<button>`, l'indicateur de `25b` n'a rien de focalisable.
+    expect(screen.getByText('Édition')).toBeInTheDocument()
     // 4. la pastille de l'arbre, à la place du compte de lignes
     const ligne = screen.getByRole('treeitem', { name: /^orders/ })
     expect(ligne).toHaveTextContent('1')
@@ -1297,7 +1317,7 @@ describe('mode édition', () => {
     await waitFor(() =>
       expect(screen.queryByText(/modification.* en attente sur/)).not.toBeInTheDocument(),
     )
-    expect(screen.queryByRole('button', { name: /Édition/ })).not.toBeInTheDocument()
+    expect(screen.queryByText('Édition')).not.toBeInTheDocument()
   })
 
   it('« Tout annuler » vide le modèle', async () => {

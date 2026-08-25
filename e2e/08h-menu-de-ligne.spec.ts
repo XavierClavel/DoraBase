@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { deplierUnEnvironnement } from './pourLesTests'
 
 // La gouttière réservée, la révélation au survol et la visibilité réelle du panneau : de la mise en
 // page, donc hors de portée de Vitest. `08h` les nomme.
@@ -117,7 +118,7 @@ test('le « … » reste visible quand la souris passe du bouton à son panneau'
 
 test('« Modifier… » sur une base ouvre la modale de modification, préremplie', async ({ page }) => {
   // La base n'existe dans le DOM qu'une fois son projet déplié.
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await deplierUnEnvironnement(page)
   await page.getByRole('treeitem', { name: /analytics/ }).hover()
   await page.getByRole('button', { name: 'Actions de analytics' }).click()
   await page.getByRole('button', { name: 'Modifier…' }).click()

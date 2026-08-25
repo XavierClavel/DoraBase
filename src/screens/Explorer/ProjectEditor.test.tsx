@@ -19,7 +19,6 @@ import { ProjectEditor } from './ProjectEditor'
 function projet(): Project {
   return {
     name: 'Atelier Nord',
-    activeEnvironment: 'atelier',
     environments: [
       { id: 'atelier', label: 'atelier', color: 'green', production: false },
       { id: 'vitrine', label: 'vitrine', color: 'red', production: true },
@@ -59,7 +58,6 @@ const RIEN: DeleteEnvironmentResult = {
   projects: [],
   deletedConnections: [],
   leftoverSecrets: [],
-  newActiveEnvironment: null,
 }
 
 /**
@@ -122,8 +120,20 @@ test('les trois environnements sont là, avec leur nombre de connexions', () => 
   expect(ligneDe('vitrine')).toHaveTextContent('2 connexions')
   expect(ligneDe('atelier')).toHaveTextContent('1 connexion')
   expect(ligneDe('coulisses')).toHaveTextContent('aucune connexion')
-  // L'actif se dit : le retirer changerait le contenu de l'arbre.
-  expect(ligneDe('atelier')).toHaveTextContent('actif')
+})
+
+/*
+ * **Aucune ligne ne se dit « actif »** (`25a`, `25c`).
+ *
+ * L'éditeur marquait l'environnement actif du projet, parce que le retirer changeait le contenu de
+ * l'arbre. L'arbre montre désormais tous les environnements déclarés — chacun un palier — donc
+ * aucun n'est privilégié, et `activeEnvironment` a quitté le modèle.
+ */
+test('aucun environnement n’est marqué actif', () => {
+  monter()
+  for (const libelle of ['atelier', 'vitrine', 'coulisses']) {
+    expect(ligneDe(libelle)).not.toHaveTextContent('actif')
+  }
 })
 
 test('le libellé part au relâchement du champ, débarrassé de ses espaces', async () => {
@@ -273,16 +283,14 @@ test('un environnement qui porte des connexions demande confirmation, et les nom
   expect(appels.retirer).toEqual([])
 })
 
-test('retirer l’environnement actif annonce son remplaçant', async () => {
+// La confirmation ne parle plus de remplaçant : il n'y a plus d'actif à remplacer.
+test('la confirmation de retrait ne nomme aucun remplaçant', async () => {
   const utilisateur = userEvent.setup()
   monter()
   await utilisateur.click(screen.getByRole('button', { name: 'Retirer atelier' }))
 
   const confirmation = screen.getByRole('dialog', { name: /Retirer atelier/ })
-  // **Le premier restant**, dans l'ordre du sélecteur — dit avant, sinon l'arbre changerait de
-  // contenu au retour de la modale sans explication.
-  expect(confirmation).toHaveTextContent('C’est l’environnement actif')
-  expect(confirmation).toHaveTextContent('vitrine')
+  expect(confirmation).not.toHaveTextContent('environnement actif')
 })
 
 test('le dernier environnement ne se retire pas, et le bouton dit pourquoi', () => {

@@ -11,7 +11,6 @@ import {
 import type { EnvironmentId, Project } from '../../domain/config'
 import type { ConnectionState, ConnectionStateEntry } from '../../domain/engine'
 import type { Charge, Noeud } from '../Explorer/arbre'
-import { idBase } from '../Explorer/arbre'
 
 /**
  * Les commandes dont l'arbre a besoin, **injectables**.
@@ -78,7 +77,13 @@ export function useArbre(
     async (noeud: Noeud) => {
       const { project, database, environment } = noeud
       if (!project || !database || !environment) return
-      const id = idBase(project, database)
+      // **La clé de cache est l'identité du nœud, non une identité reconstruite.** Cette ligne
+      // appelait `idBase(project, database)` — sans environnement — alors que la clé de connexion
+      // juste en dessous en portait un. Les deux identités divergeaient : la connexion distinguait
+      // `analytics` en dev de `analytics` en prod, le cache d'arbre non, et les schémas de l'une
+      // s'affichaient sous la ligne de l'autre. `chargerSchema` lisait déjà `noeud.id` ; c'est la
+      // seule écriture qui ne peut pas se désynchroniser de ce que l'arbre a rendu.
+      const id = noeud.id
       const cle = databaseKey(project, database, environment)
       // **La connexion est identifiée par son nom *et* son environnement** (`23b`) : deux connexions
       // homonymes coexistent, et n'en chercher qu'une par le nom ouvrirait la première venue — celle
