@@ -5,7 +5,7 @@ import { defineConfig } from '@playwright/test'
 // `reuseExistingServer`, une exécution de Playwright servait alors **l'application d'une autre
 // branche** sans rien dire : trois références de `a1.spec.ts` ont été capturées ainsi, et le
 // fichier `a2-nouvelle-connexion.spec.ts` a été déclaré « rouge depuis toujours » pour cette
-// seule raison. Voir `DEFAUTS.md`.
+// seule raison.
 //
 // D'où les deux moitiés de la parade : un port par worktree, choisi par l'appelant, et un
 // serveur qu'on démarre toujours soi-même, en `--strictPort` pour qu'un port déjà pris fasse

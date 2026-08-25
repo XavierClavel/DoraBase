@@ -1,8 +1,8 @@
-//! Les commandes IPC de la configuration. Voir `specs/05b-persistance-disque.md`.
+//! Les commandes IPC de la configuration.
 //!
 //! Ces commandes sont **définies par l'app**, donc hors du système d'ACL de Tauri : aucune
-//! entrée à ajouter dans `capabilities/default.json` (acquis établi au plan `01`, consigné
-//! dans `specs/README.md`). Seule la résolution du chemin passe par `core:path:default`,
+//! entrée à ajouter dans `capabilities/default.json` — les capacités ne gouvernent que les
+//! appels venant de la webview. Seule la résolution du chemin passe par `core:path:default`,
 //! déjà accordé.
 
 use std::sync::Mutex;

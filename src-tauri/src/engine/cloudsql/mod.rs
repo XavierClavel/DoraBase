@@ -1,4 +1,4 @@
-//! Le Cloud SQL Auth Proxy, lancé en sous-processus. Voir `specs/06g-proxy-cloud-sql.md`.
+//! Le Cloud SQL Auth Proxy, lancé en sous-processus.
 //!
 //! **Interface étroite, comme `tunnel/`.** Le reste du code ne connaît que `ouvrir`,
 //! `port_local`, `etat`, `qualifier` et `fermer` — jamais un `Child`. C'est ce qui

@@ -663,7 +663,7 @@ function TokenBoard() {
 
 // Les trois familles d'onglet du handoff. Le filet supérieur suit la famille (accent pour
 // les données, violet pour les consoles), l'icône suit le type d'objet — deux valeurs
-// distinctes, voir `specs/03-coquille-panneaux-onglets.md`.
+// distinctes.
 const GALLERY_TABS: Tab[] = [
   {
     id: 'public',

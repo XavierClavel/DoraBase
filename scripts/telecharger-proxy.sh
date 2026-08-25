@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Télécharge le binaire `cloud-sql-proxy` que le bundle embarque, à la version épinglée dans
-# `src-tauri/cloud-sql-proxy.lock`, et vérifie son empreinte. Voir `specs/06h-binaire-embarque.md`.
+# `src-tauri/cloud-sql-proxy.lock`, et vérifie son empreinte.
 #
 # Pourquoi un script et non un binaire commis : 40 Mo par architecture, une fois par
 # relèvement de version, alourdiraient le dépôt de façon permanente pour un fichier

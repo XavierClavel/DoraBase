@@ -15,6 +15,6 @@ import spriteSvg from './sprite.svg?raw'
 // silencieux. Un double montage réel (erreur d'appel) produirait deux `<symbol>` de même
 // identifiant, qui résolvent sans conséquence visible au premier — rien à défendre ici.
 export function Sprite() {
-  // biome-ignore lint/security/noDangerouslySetInnerHtml: sprite généré localement (icons:build), pas de contenu utilisateur
+  // biome-ignore lint/security/noDangerouslySetInnerHtml: sprite versionné dans le dépôt, pas de contenu utilisateur
   return <div style={{ display: 'none' }} dangerouslySetInnerHTML={{ __html: spriteSvg }} />
 }

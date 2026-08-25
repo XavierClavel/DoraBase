@@ -1053,7 +1053,7 @@ describe('mode édition', () => {
     const utilisateur = userEvent.setup()
     const previsualise = vi.fn(async () => 'BEGIN;\nCOMMIT;')
     // **Le décor courant nomme sa clé `id`**, ce qui rend « deviner » et « lire l'introspection »
-    // indistinguables — la règle 7 de `REPRISE.md`. Ici la clé s'appelle `uuid` : une table dont la
+    // indistinguables — un décor trop régulier ne mesure que lui-même. Ici la clé s'appelle `uuid` : une table dont la
     // clé porte un autre nom n'est pas plus rare qu'une autre, et un `WHERE "id" = …` frapperait une
     // colonne qui n'existe pas.
     const premiere = DETAIL.columns[0]

@@ -59,7 +59,7 @@ export function useLignes(
 
   // `tour` ne sert qu'à relancer cet effet : le lire dedans n'aurait aucun sens, mais il **doit**
   // figurer dans les dépendances, sans quoi « Rafraîchir » ne rafraîchirait rien. Le suppresseur
-  // est la dernière ligne de commentaire avant le nœud — `DEFAUTS.md`, règle 6.
+  // est la dernière ligne de commentaire avant le nœud.
   // biome-ignore lint/correctness/useExhaustiveDependencies: voir ci-dessus
   useEffect(() => {
     if (!project || !database || !environment || !query) {

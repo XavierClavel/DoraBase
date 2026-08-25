@@ -70,7 +70,7 @@ export function useDetailTable(
   // `relecture` ne sert qu'à relancer cet effet : le lire dedans n'aurait aucun sens, mais il
   // **doit** figurer dans les dépendances, sans quoi « Rafraîchir » ne relirait pas la structure. Le
   // même motif qu'en `useLignes`, avec le même suppresseur — dernière ligne de commentaire avant le
-  // nœud (`DEFAUTS.md`, règle 6).
+  // nœud.
   // biome-ignore lint/correctness/useExhaustiveDependencies: voir ci-dessus
   useEffect(() => {
     if (!project || !database || !environment || !schema || !table) {

@@ -1,4 +1,4 @@
-//! Les commandes IPC de la couche moteur. Voir `specs/08d-tester-la-connexion.md`.
+//! Les commandes IPC de la couche moteur.
 //!
 //! Comme celles de `05b`, elles sont **définies par l'app** et donc hors du système d'ACL de
 //! Tauri : aucune entrée à ajouter dans `capabilities/default.json`.
@@ -6,8 +6,8 @@
 //! **Ce module porte le premier passage réel du pont JavaScript → Rust du projet.** Rien ne
 //! l'avait exercé depuis `01` : l'enregistrement des commandes était garanti par la
 //! compilation, l'aller-retour non. D'où les journaux d'entrée et de sortie ci-dessous, qui
-//! rendent le passage **observable** — voir `specs/08d` § « Le pont IPC, et comment on saura
-//! qu'il marche ».
+//! rendent le passage **observable** : c'est le seul point du projet qu'aucun test
+//! automatisé ne couvre, Playwright ne pilotant pas WKWebView.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;

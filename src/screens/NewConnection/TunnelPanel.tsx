@@ -38,7 +38,7 @@ type TunnelPanelProps = {
  * Les deux sortes de proxy : `05d` les modélise, `06g` ouvre la seconde.
  *
  * Cloud SQL **n'est pas dans le handoff** : ce libellé, comme le champ de son visage, est
- * inventé ici. Voir `specs/README.md` § À trancher.
+ * inventé ici : Cloud SQL n'était pas maquetté, et attend un passage de design.
  */
 const TYPES = [
   { value: 'ssh', label: 'SSH' },

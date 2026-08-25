@@ -1,4 +1,4 @@
-//! Choix du port local du tunnel. Voir `specs/06e` § « Le port local automatique ».
+//! Choix du port local du tunnel, automatique par défaut.
 
 use std::net::{Ipv4Addr, SocketAddr};
 

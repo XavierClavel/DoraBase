@@ -1,7 +1,7 @@
-//! Ce qui est commun aux deux sortes de proxy. Voir `specs/06g` § « Un aiguillage unique ».
+//! Ce qui est commun aux deux sortes de proxy : un aiguillage unique.
 //!
-//! **Extrait de `tunnel/mod.rs` par `06g`.** `06e` avait déjà nommé `Surveillance` pour la
-//! rendre testable (voir `REPRISE.md` § 6) ; `06g` a le même besoin, avec une mécanique de
+//! **Extrait de `tunnel/mod.rs`.** Le tunnel SSH avait déjà nommé `Surveillance` pour la
+//! rendre testable ; le proxy Cloud SQL a le même besoin, avec une mécanique de
 //! détection différente — la sortie d'un processus au lieu de la chute d'une session SSH.
 //! Le patron est partagé, l'implémentation non.
 
@@ -218,8 +218,8 @@ mod tests {
     /// **Vérifie le site d'appel réel, pas un littéral retapé.** `SshTunnel::qualifier` passe
     /// `tunnel::SUJET` — sans cette constante partagée, un test pourrait continuer de passer
     /// même si le site d'appel se mettait à passer un sujet vide, et un bastion tombé dirait
-    /// « est tombé » sans dire quoi. Voir `REPRISE.md` § 6 : un test qui réécrit la valeur
-    /// qu'il devrait constater teste sa propre copie.
+    /// « est tombé » sans dire quoi. Un test qui réécrit la valeur qu'il devrait
+    /// constater teste sa propre copie.
     #[test]
     fn le_sujet_du_tunnel_ssh_nomme_bien_ssh() {
         let qualifiee = qualifier_avec(

@@ -1,5 +1,5 @@
 /*
- * Barre de titre, `design/handoff/DoraBase.dc.html` l. 117-128 : hauteur 40, gap 12,
+ * Barre de titre, relevée sur le mockup de handoff : hauteur 40, gap 12,
  * padding `0 12`, fond `linear-gradient(#FFFDF8, #F5F0E6)`, filet bas `--divider` (.1,
  * pas `--border` : même correction que la barre d'état).
  *
@@ -7,7 +7,7 @@
  * n'existant plus sous `titleBarStyle: Overlay` — voir spec 01.
  *
  * Wordmark en `--text-wordmark` (14px, corrigé à la valeur du mockup — la table du
- * handoff annonçait 13px, écart déjà consigné dans specs/07-a1-accueil.md).
+ * handoff annonçait 13px, écart assumé).
  *
  * L'icône de préférences est seule à droite : pas d'icône console sur cet écran.
  */

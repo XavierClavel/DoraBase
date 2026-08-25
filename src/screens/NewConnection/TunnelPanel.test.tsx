@@ -59,7 +59,7 @@ test('le sélecteur de type propose les deux sortes', async () => {
   monter()
   await deplier()
   // `05d` donne deux sortes à `Proxy`, `06g` sait ouvrir la seconde : le sélecteur devient un
-  // vrai choix. Cloud SQL n'est pas dans le handoff — voir `specs/README.md` § À trancher.
+  // vrai choix. Cloud SQL n'était pas dans le handoff : ces libellés sont inventés.
   expect(await optionsDeLaListe('Type')).toEqual(['SSH', 'Cloud SQL'])
 })
 

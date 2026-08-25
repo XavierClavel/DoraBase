@@ -1,4 +1,4 @@
-// Rasterise design/handoff/icon-dorabase.svg en PNG 1024×1024 pour `pnpm tauri icon`.
+// Rasterise src-tauri/icons/icon-dorabase.svg en PNG 1024×1024 pour `pnpm tauri icon`.
 //
 // On utilise Chromium (déjà installé via Playwright pour les tests e2e) plutôt
 // qu'une dépendance système (librsvg, imagemagick...) : la régénération de
@@ -30,7 +30,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const projectRoot = resolve(__dirname, '..')
 
 const SIZE = 1024
-const svgPath = resolve(projectRoot, process.argv[2] ?? 'design/handoff/icon-dorabase.svg')
+const svgPath = resolve(projectRoot, process.argv[2] ?? 'src-tauri/icons/icon-dorabase.svg')
 const outPath = resolve(projectRoot, process.argv[3] ?? 'node_modules/.tmp/icon-dorabase-1024.png')
 
 await mkdir(dirname(outPath), { recursive: true })

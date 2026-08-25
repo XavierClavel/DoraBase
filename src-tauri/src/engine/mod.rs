@@ -1,5 +1,4 @@
 //! La couche moteur : ce que tout adaptateur doit savoir faire.
-//! Voir `specs/06a-contrat-couche-moteur.md`.
 //!
 //! # Pourquoi une énumération et pas `dyn`
 //!
