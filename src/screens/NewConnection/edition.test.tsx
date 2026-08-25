@@ -121,8 +121,10 @@ describe('modifier une connexion (08g)', () => {
     monter()
     const nom = screen.getByLabelText('Nom de la base')
     expect(nom).toBeDisabled()
-    // Un contrôle désactivé sans explication passe pour un bug — la leçon de `09f`.
-    expect(nom).toHaveAttribute('title', expect.stringContaining('identifient la base'))
+    // Un contrôle désactivé sans explication passe pour un bug — la leçon de `09f`. Et depuis `26`,
+    // l'infobulle du nom **nomme le geste** au lieu de dire « supprimez et redéclarez » : le
+    // renommage existe, dans le menu « … » de la ligne d'arbre.
+    expect(nom).toHaveAttribute('title', expect.stringContaining('Renommer…'))
     expect(screen.getByRole('combobox', { name: 'Projet' })).toBeDisabled()
     expect(screen.getByRole('radio', { name: /prod/ })).toBeDisabled()
   })

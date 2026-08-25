@@ -1,4 +1,5 @@
 import { Icon } from '../../design/icons/Icon'
+import type { EntreeDeMenu } from '../../ui/MenuContextuel/MenuContextuel'
 import { Popover } from '../../ui/Popover/Popover'
 import styles from './RowMenu.module.css'
 
@@ -9,14 +10,11 @@ type RowMenuProps = {
    * Ce que le menu propose. Une entrée sans `onClick` est **désactivée et dit pourquoi** : c'est la
    * règle de `09f`, et le défaut n° 36 est ce qui arrive quand on l'oublie — un bouton cliquable et
    * inerte se lit comme une panne, là où un bouton désactivé qui porte sa raison s'explique.
+   *
+   * **Le type est celui de `MenuContextuel`** depuis `26` : les mêmes entrées servent au « … » et au
+   * clic droit sur la ligne, et deux formes voisines auraient fini par diverger d'une action.
    */
-  entrees: readonly {
-    libelle: string
-    icone: 'pencil' | 'trash' | 'refresh' | 'term'
-    onClick?: () => void
-    /** La raison de l'absence, en infobulle. Requise quand `onClick` manque. */
-    raison?: string
-  }[]
+  entrees: readonly EntreeDeMenu[]
 }
 
 /**
@@ -34,6 +32,11 @@ export function RowMenu({ cible, entrees }: RowMenuProps) {
     <Popover
       title="Actions"
       align="end"
+      /* **Sortir de la ligne ferme le menu** (`26`). Ce n'était pas qu'un confort : le panneau vit
+         dans la gouttière `.actions`, que `TreeRow` repasse en `visibility: hidden` hors survol. Le
+         menu ne se fermait donc pas en quittant la ligne, il *disparaissait* — et le survol suivant le
+         faisait réapparaître sans clic. */
+      fermerEnSortant
       content={(fermer) => (
         <div className={styles.root}>
           {entrees.map((entree) => (
@@ -48,7 +51,9 @@ export function RowMenu({ cible, entrees }: RowMenuProps) {
                 entree.onClick?.()
               }}
             >
-              <Icon name={entree.icone} size={12} strokeWidth={1.9} className={styles.icone} />
+              {entree.icone && (
+                <Icon name={entree.icone} size={12} strokeWidth={1.9} className={styles.icone} />
+              )}
               {entree.libelle}
             </button>
           ))}

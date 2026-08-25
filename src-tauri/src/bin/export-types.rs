@@ -18,9 +18,9 @@
 use dorabase_lib::config::{
     ConfigLoad, Console, ConsoleRequest, CreateEnvironmentRequest, CreateProjectRequest,
     DeleteDatabaseRequest, DeleteEnvironmentRequest, DeleteEnvironmentResult, DeleteProjectRequest,
-    DeleteResult, Project, RecolorEnvironmentRequest, RenameEnvironmentRequest,
-    RenameProjectRequest, RenameProjectResult, ReorderEnvironmentsRequest, SaveDatabaseRequest,
-    SavedQuery, UpdateVariantRequest,
+    DeleteResult, Project, RecolorEnvironmentRequest, RenameDatabaseRequest,
+    RenameEnvironmentRequest, RenameProjectRequest, RenameResult, ReorderEnvironmentsRequest,
+    SaveDatabaseRequest, SavedQuery, UpdateVariantRequest,
 };
 use dorabase_lib::engine::commands::{
     ConnectionRequest, ConnectionStateEntry, ConnectionTest, DatabaseKey,
@@ -57,13 +57,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     SaveDatabaseRequest::export_all(&config)?;
     CreateProjectRequest::export_all(&config)?;
     RenameProjectRequest::export_all(&config)?;
+    RenameDatabaseRequest::export_all(&config)?;
     SavedQuery::export_all(&config)?;
     Console::export_all(&config)?;
     ConsoleRequest::export_all(&config)?;
     DeleteDatabaseRequest::export_all(&config)?;
     DeleteProjectRequest::export_all(&config)?;
     DeleteResult::export_all(&config)?;
-    RenameProjectResult::export_all(&config)?;
+    RenameResult::export_all(&config)?;
     UpdateVariantRequest::export_all(&config)?;
     // Les cinq gestes de `23c`. **Nommés un par un** : `export_all` entraîne les dépendances d'un
     // type, jamais ses voisins — un type de requête oublié ici ne manque pas à la compilation, il

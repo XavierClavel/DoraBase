@@ -1,0 +1,40 @@
+/*
+ * Le rapport d'un renommage de connexion (`26`). Le handoff ne le maquette pas : il emprunte la
+ * coquille de `08a` et la facture des blocs de `DeleteConnectionDialog` (`08j`), à qui il ressemble
+ * par nature — dire ce qu'un geste a laissé derrière lui.
+ */
+
+.corps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  /* Le corps de `Modal` n'a délibérément aucun remplissage (`08a`) : chaque contenu pose le sien.
+   * `--space-7` est celui de l'en-tête et du pied, pour que le texte s'aligne sur le titre. */
+  padding: var(--space-7);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.corps p {
+  margin: 0;
+}
+
+/* Le refus : rien n'a eu lieu, et c'est la seule mauvaise nouvelle de cette modale. */
+.refus {
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-field);
+  background: var(--danger-bg);
+  font-weight: var(--weight-semibold);
+  color: var(--danger-ink);
+}
+
+/* Une réserve n'est **pas** un échec : le renommage a eu lieu. L'ambre le dit, là où le rouge
+ * ferait croire que le geste a échoué. */
+.reserve {
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-field);
+  background: var(--warn-bg-2);
+}

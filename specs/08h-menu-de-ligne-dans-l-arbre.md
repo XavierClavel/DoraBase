@@ -29,6 +29,9 @@ son point d'entrée), `10a` (`Popover`).
   (copier le nom, ouvrir dans un onglet) n'est pas de la configuration, et relève de `A5`/`A10`.
 - **Un menu contextuel au clic droit.** Le handoff ne le maquette pas, et un « … » visible enseigne
   son existence là où un clic droit se devine. À reconsidérer en `A10`.
+  **Reconsidéré et adopté en `27`** (25 août 2026), réclamé au premier usage : le « … » reste — il
+  enseigne — et le clic droit s'y ajoute sur les mêmes actions. L'argument pédagogique ne disait rien
+  contre la seconde voie.
 
 ## Approche
 
@@ -38,6 +41,11 @@ Réserver la place et n'y peindre le bouton qu'au survol : la ligne ne se réorg
 curseur, et le méta de droite (compte de lignes, badge d'environnement) ne se déplace pas d'un
 pixel quand la souris passe. Un bouton qui pousse ses voisins au survol fait bouger la cible qu'on
 visait — le pire moment pour déplacer quelque chose.
+
+**Conséquence imprévue de cette réservation, corrigée en `27`** : le panneau du menu étant un
+descendant de la gouttière masquée, un menu ouvert *disparaissait* en quittant la ligne au lieu de se
+fermer, et le survol suivant le repeignait sans clic (`DEFAUTS.md` n° 122). La règle ci-dessous reste
+juste ; c'est sa rencontre avec l'état du `Popover` qui ne l'était pas.
 
 **La gouttière est réservée sur toutes les lignes de l'arbre**, pas seulement sur celles qui portent
 un menu. Ne la réserver que sur les lignes projet et base décalerait leurs badges par rapport aux

@@ -45,11 +45,14 @@ import {
   type Dialecte,
   type EtatOnglets,
   fermer,
+  idApresRenommage,
   idDeConsolePersistee,
   idOnglet,
   ongletActif,
   ouvrir,
   ouvrirConsole,
+  reindexerParConnexion,
+  renommerLaConnexion,
   renommerLaConsole,
   reordonner,
   viseeParLId,
@@ -103,6 +106,18 @@ type WorkbenchProps = {
   onRenameProject?: (
     project: string,
     nom: string,
+  ) => Promise<{ missingSecrets: string[]; leftoverSecrets: string[] }>
+  /**
+   * Renomme une connexion (`26`). Absent, l'entrée « Renommer… » de l'arbre est désactivée.
+   *
+   * **Rejette avec le refus du cœur** — un nom déjà pris dans cet environnement — et la sidebar
+   * l'affiche : c'est elle qui porte le geste, donc elle qui doit porter son refus.
+   */
+  onRenameDatabase?: (
+    project: string,
+    database: string,
+    environment: EnvironmentId,
+    nouveau: string,
   ) => Promise<{ missingSecrets: string[]; leftoverSecrets: string[] }>
   /** Le pont vers `preview_updates` (`11c`). Injectable : il ne répond pas hors de la webview. */
   passerellePreview?: PasserellePreview
@@ -173,6 +188,7 @@ export function Workbench({
   onNewProject,
   onEditDatabase,
   onRenameProject,
+  onRenameDatabase,
   onProjets,
   gestesEnvironnement,
   onDelete,
@@ -431,6 +447,70 @@ export function Workbench({
       })
     },
     [onRenameConsole],
+  )
+
+  /**
+   * Renomme une connexion, et fait suivre tout ce qui portait son nom (`26`).
+   *
+   * **L'écran de travail est le seul à pouvoir le faire.** La sidebar porte le geste, mais elle ne
+   * connaît pas les onglets ; le cœur déplace le secret et ferme la connexion, mais il ne sait rien
+   * de ce qui est ouvert. Quatre tables indexées par identité d'onglet vivent ici, et en oublier une
+   * casse quelque chose de visible : le texte d'une console, ses modifications en attente, son mode
+   * édition, et l'association qui dit où écrire.
+   *
+   * **Le refus n'est pas capturé** : il remonte à la sidebar, qui a ouvert le champ de saisie et sait
+   * l'afficher. Le capturer ici renommerait sans rien renommer, en silence.
+   */
+  const renommerUneConnexion = useCallback(
+    async (
+      project: string,
+      database: string,
+      environment: EnvironmentId,
+      nouveau: string,
+    ): Promise<{ missingSecrets: string[]; leftoverSecrets: string[] }> => {
+      if (onRenameDatabase === undefined) {
+        return { missingSecrets: [], leftoverSecrets: [] }
+      }
+      const issue = await onRenameDatabase(project, database, environment, nouveau)
+      const key = { project, database, environment }
+
+      setEtatOnglets((etat) => renommerLaConnexion(etat, key, nouveau))
+      setTextes((precedent) => reindexerParConnexion(precedent, key, nouveau))
+      setAttentes((precedent) => reindexerParConnexion(precedent, key, nouveau))
+      setOngletsEnEdition(
+        (precedent) => new Set([...precedent].map((id) => idApresRenommage(id, key, nouveau))),
+      )
+      // **La sélection de l'arbre est relâchée** si elle visait cette connexion ou l'un de ses
+      // descendants. Les identités de l'arbre portent le nom de la base (`d:projet/env/base`) :
+      // celles-là n'existent plus. Les réécrire aurait gardé le surlignage, mais aussi les schémas
+      // déjà chargés — sur une connexion que le cœur vient de **fermer**. Une ligne repliée et une
+      // sélection relâchée disent la vérité ; un arbre qui montre le contenu d'une connexion fermée,
+      // non.
+      setSelection((precedent) =>
+        precedent !== null &&
+        precedent.project === project &&
+        precedent.database === database &&
+        precedent.environment === environment
+          ? null
+          : precedent,
+      )
+      // **La valeur bouge autant que la clé** : elle porte le nom de la connexion, et c'est elle que
+      // la frappe suivante enverra à `save_console`.
+      setConsolesOuvertes((precedent) =>
+        Object.fromEntries(
+          Object.entries(precedent).map(([id, ouverte]) => [
+            idApresRenommage(id, key, nouveau),
+            ouverte.project === project &&
+            ouverte.database === database &&
+            ouverte.environment === environment
+              ? { ...ouverte, database: nouveau }
+              : ouverte,
+          ]),
+        ),
+      )
+      return issue
+    },
+    [onRenameDatabase],
   )
 
   /**
@@ -901,6 +981,7 @@ export function Workbench({
                   ?.databases.find((declaration) => declaration.name === nomBase)
                 if (base) onEditDatabase?.(nomProjet, base)
               }}
+              onRenameDatabase={onRenameDatabase === undefined ? undefined : renommerUneConnexion}
               onEditProject={onRenameProject === undefined ? undefined : ouvrirLEditionDe}
               consoles={
                 onCreateConsole === undefined

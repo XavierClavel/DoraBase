@@ -29,6 +29,7 @@ pub fn run() {
             config::commands::reorder_environments,
             config::commands::delete_environment,
             config::commands::rename_project,
+            config::commands::rename_database,
             config::commands::create_console,
             config::commands::save_console,
             config::commands::delete_console,
