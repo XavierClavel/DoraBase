@@ -16,7 +16,9 @@ Lancé par `scripts/verifier-tout.sh`.
 import sys
 from pathlib import Path
 
-CI = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "ci.yml"
+WORKFLOWS = Path(__file__).resolve().parent.parent / ".github" / "workflows"
+CI = WORKFLOWS / "ci.yml"
+PUBLICATION = WORKFLOWS / "publication.yml"
 
 
 def noms_de_jobs_dupliques(chemin: Path) -> list[str]:
@@ -44,42 +46,126 @@ def noms_de_jobs_dupliques(chemin: Path) -> list[str]:
     return [nom for nom, compte in vues.items() if compte > 1]
 
 
-def main() -> int:
+def charger(chemin: Path) -> dict:
+    """Le workflow, après avoir refusé les doublons de jobs."""
     import yaml
 
-    doublons = noms_de_jobs_dupliques(CI)
+    doublons = noms_de_jobs_dupliques(chemin)
     if doublons:
-        print(f"jobs déclarés deux fois dans ci.yml : {', '.join(doublons)}", file=sys.stderr)
+        print(f"jobs déclarés deux fois dans {chemin.name} : {', '.join(doublons)}",
+              file=sys.stderr)
         print("un doublon YAML ne fait pas échouer l'analyseur : le dernier gagne, en silence",
               file=sys.stderr)
-        return 1
+        raise SystemExit(1)
+    return yaml.safe_load(chemin.read_text(encoding="utf-8"))
 
-    workflow = yaml.safe_load(CI.read_text(encoding="utf-8"))
+
+def declencheurs(workflow: dict) -> dict:
+    """La section `on:` — sous la clef `True` quand PyYAML a cru lire un booléen.
+
+    YAML 1.1 fait de `on` un synonyme de vrai. `workflow["on"]` rend donc `KeyError` sur un
+    fichier parfaitement valide, et un garde écrit sans le savoir passe en croyant vérifier.
+    """
+    return workflow.get("on") or workflow.get(True) or {}
+
+
+def etapes_de(jobs: dict, nom: str, minimum: int, fichier: str) -> list:
+    """Les étapes d'un job, en refusant qu'il ait disparu ou maigri.
+
+    **Le compte d'étapes est le cœur du garde** : c'est lui qui aurait attrapé la panne du
+    19 juillet 2026, le job `build` étant passé de vingt-et-une étapes à zéro sans que rien ne
+    le dise. Un minimum, et non une égalité — sinon toute étape ajoutée fait échouer la CI qui
+    l'ajoute, et le chiffre finit par être relevé sans être lu. Le relever *en même temps*
+    qu'on ajoute une étape reste le geste attendu.
+    """
+    if nom not in jobs:
+        print(f"le job « {nom} » a disparu de {fichier}", file=sys.stderr)
+        raise SystemExit(1)
+    etapes = jobs[nom].get("steps") or []
+    if len(etapes) < minimum:
+        print(f"le job « {nom} » de {fichier} n'a que {len(etapes)} étapes, "
+              f"au moins {minimum} attendues", file=sys.stderr)
+        raise SystemExit(1)
+    return etapes
+
+
+def verifier_ci() -> None:
+    workflow = charger(CI)
     jobs = workflow.get("jobs", {})
 
-    # Les deux jobs attendus, et **le nombre d'étapes de chacun** : c'est ce chiffre qui aurait
-    # attrapé la panne, le job `build` étant passé de vingt-et-une étapes à zéro.
-    attendus = {"build": 15, "engine": 8}
-    for nom, minimum in attendus.items():
-        if nom not in jobs:
-            print(f"le job « {nom} » a disparu de ci.yml", file=sys.stderr)
-            return 1
-        etapes = jobs[nom].get("steps") or []
-        if len(etapes) < minimum:
-            print(
-                f"le job « {nom} » n'a que {len(etapes)} étapes, au moins {minimum} attendues",
-                file=sys.stderr,
-            )
-            return 1
+    build = etapes_de(jobs, "build", 23, "ci.yml")
+    etapes_de(jobs, "engine", 8, "ci.yml")
 
     # Le job macOS doit **construire** : c'est la raison de son existence, et c'est ce qui avait
     # disparu.
-    commandes = " ".join(str(e.get("run", "")) for e in jobs["build"]["steps"])
+    commandes = " ".join(str(e.get("run", "")) for e in build)
     if "tauri build" not in commandes:
         print("le job « build » ne construit plus le .app", file=sys.stderr)
-        return 1
+        raise SystemExit(1)
+
+    # Et il doit **rendre** ce qu'il construit. Un bundle jeté à la fin du job ne prouve que sa
+    # compilation ; c'est l'artefact qui permet d'essayer un commit sans le recompiler.
+    utilise = " ".join(str(e.get("uses", "")) for e in build)
+    if "actions/upload-artifact" not in utilise:
+        print("le job « build » ne publie plus le .dmg en artefact", file=sys.stderr)
+        raise SystemExit(1)
 
     print(f"ci.yml cohérent — {len(jobs)} jobs, aucun doublon")
+
+
+def verifier_publication() -> None:
+    """Le workflow de publication, dont chaque erreur ne se voit qu'une fois le tag poussé.
+
+    C'est ce qui justifie de le vérifier ici plutôt que « à l'usage » : il ne tourne que sur un
+    tag, un tag ne se rejoue pas, et une release ratée est publique.
+    """
+    if not PUBLICATION.exists():
+        print("publication.yml a disparu : plus rien ne construit les versions publiées",
+              file=sys.stderr)
+        raise SystemExit(1)
+
+    workflow = charger(PUBLICATION)
+    jobs = workflow.get("jobs", {})
+    etapes = etapes_de(jobs, "macos", 16, "publication.yml")
+
+    sur = declencheurs(workflow)
+    # **Le déclencheur, et rien d'autre que lui.** `on: push` sans filtre publierait une release
+    # à chaque commit ; un motif de tag non ancré (`v*`) accepterait `v1.2` ou `v0.1.0-essai`,
+    # dont le nom de bundle n'a été décidé par personne.
+    tags = (sur.get("push") or {}).get("tags")
+    if tags != ["v[0-9]+.[0-9]+.[0-9]+"]:
+        print(f"publication.yml : le motif de tag est {tags!r}", file=sys.stderr)
+        print("  attendu : ['v[0-9]+.[0-9]+.[0-9]+'] — ancré sur les trois nombres",
+              file=sys.stderr)
+        raise SystemExit(1)
+    if (sur.get("push") or {}).get("branches") or "pull_request" in sur:
+        print("publication.yml : un déclencheur autre qu'un tag publierait sans qu'on le demande",
+              file=sys.stderr)
+        raise SystemExit(1)
+
+    # Sans `contents: write`, tout le job réussit et **seule la dernière étape** échoue : trente
+    # minutes de construction pour découvrir qu'on ne peut pas créer la release.
+    if (workflow.get("permissions") or {}).get("contents") != "write":
+        print("publication.yml : il manque `permissions: contents: write`", file=sys.stderr)
+        raise SystemExit(1)
+
+    commandes = " ".join(str(e.get("run", "")) for e in etapes)
+    for fragment, raison in (
+        ("universal-apple-darwin", "le bundle publié ne serait plus universel"),
+        ("verifier-version.py", "rien ne vérifierait que le tag et les fichiers s'accordent"),
+        ("codesign --verify", "rien ne vérifierait la signature, dont dépend le lancement"),
+        ("gh release create", "rien ne publierait le résultat"),
+    ):
+        if fragment not in commandes:
+            print(f"publication.yml : « {fragment} » a disparu — {raison}", file=sys.stderr)
+            raise SystemExit(1)
+
+    print(f"publication.yml cohérent — {len(jobs)} job, tag ancré, release publiée")
+
+
+def main() -> int:
+    verifier_ci()
+    verifier_publication()
     return 0
 
 

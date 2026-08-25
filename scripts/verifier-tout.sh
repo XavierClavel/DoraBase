@@ -34,7 +34,11 @@ etape "aucun sabotage résiduel" ./scripts/verifier-aucun-sabotage.sh
 # échouer l'analyseur : le dernier gagne, en silence. Une édition automatisée a un jour dupliqué le
 # job `engine`, et le premier avait avalé les étapes du job `build` — la construction macOS ne
 # tournait plus, et rien ne le disait.
-etape "ci.yml cohérent" python3 scripts/verifier-ci.py
+etape "ci.yml et publication.yml cohérents" python3 scripts/verifier-ci.py
+# Les trois fichiers qui portent le numéro de version — `package.json`, `Cargo.toml`,
+# `Cargo.lock` — ne se parlent pas. Relever deux sur trois laisse tout vert et publie un `.dmg`
+# dont le nom contredit son `Info.plist`. `scripts/version.sh` est le geste qui les relève.
+etape "version cohérente" python3 scripts/verifier-version.py
 etape "rust : format" cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check
 
 if [[ -n "${DORABASE_TEST_PG:-}" && -z "${DORABASE_TEST_SSH_HOST:-}" ]]; then
