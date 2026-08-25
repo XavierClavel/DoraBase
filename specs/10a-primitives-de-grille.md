@@ -91,4 +91,8 @@ fait en basculant son alignement, et c'est la galerie qui le montre.
   revient au déclencheur dans les trois cas.
 - Un popover ancré à 20 px du bord droit reste entièrement visible.
 - Les deux primitives sont dans la galerie, cas vides compris.
+- **La galerie porte les deux débordements**, pas un seul : des colonnes plus larges que le cadre
+  *et* des colonnes plus étroites. Le second manquait, et la bande d'en-tête s'arrêtait après la
+  dernière colonne sans que rien ne le dise (`DEFAUTS.md` n° 125). Le fond et le filet de l'en-tête
+  sont donc sur la **ligne**, comme ceux de la ligne de filtres, et non sur ses cellules.
 - Aucune couleur littérale hors `tokens.json`.

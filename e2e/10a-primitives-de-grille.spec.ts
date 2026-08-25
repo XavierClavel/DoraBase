@@ -122,3 +122,38 @@ test('le popover reste visible même ancré au bord droit', async ({ page }) => 
     expect((droite?.x ?? 0) + (droite?.width ?? 0)).toBeLessThanOrEqual(fenetre)
   }).toPass({ timeout: 2000 })
 })
+
+test('la bande d’en-tête court jusqu’au bord, même avec peu de colonnes', async ({ page }) => {
+  // **Le décor est le test.** Deux colonnes de 40 et 70 px dans un cadre de 340 : sans un décor où
+  // les colonnes sont plus étroites que la grille, le défaut est invisible — c'est pourquoi la
+  // galerie porte ce second cas depuis le 25 août 2026.
+  // **Amenée dans la fenêtre d'abord** : la galerie est longue, cette grille vit à 3800 px du haut,
+  // et `elementFromPoint` ne répond que sur ce qui est réellement à l'écran — il rendait `null`,
+  // ce qui se lisait comme « rien n'est peint ».
+  await page.locator('[data-testid=virtual-grid-etroite]').scrollIntoViewIfNeeded()
+
+  const mesure = await page.evaluate(() => {
+    const racine = document.querySelector('[data-testid=virtual-grid-etroite]')
+    const ligne = racine?.querySelector('[role=row][aria-rowindex="1"]')
+    const grille = racine?.querySelector('[role=grid]')
+    if (!ligne || !grille) return null
+    const boite = ligne.getBoundingClientRect()
+    // Le point à peindre : **au-delà de la dernière colonne**, quatre pixels avant le bord droit.
+    const x = grille.getBoundingClientRect().right - 4
+    const y = boite.top + boite.height / 2
+    const sous = document.elementFromPoint(x, y)
+    return {
+      largeurLigne: Math.round(boite.width),
+      largeurGrille: Math.round(grille.getBoundingClientRect().width),
+      // La couleur **peinte à cet endroit**, remontée jusqu'à l'élément qui la porte : c'est ce que
+      // l'œil voit, là où une mesure de boîte ne dirait que « quelque chose est là ».
+      fond: sous ? getComputedStyle(sous).backgroundColor : null,
+      estDansLEntete: sous ? ligne.contains(sous) || sous === ligne : false,
+    }
+  })
+
+  expect(mesure?.largeurLigne).toBe(mesure?.largeurGrille)
+  expect(mesure?.estDansLEntete).toBe(true)
+  // Opaque : c'est `--bar` qui doit être peint là, et non le fond de la page par transparence.
+  expect(mesure?.fond).not.toBe('rgba(0, 0, 0, 0)')
+})
