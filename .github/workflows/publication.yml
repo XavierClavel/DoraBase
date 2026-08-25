@@ -191,15 +191,27 @@ jobs:
           {
             echo "## Installation"
             echo
-            echo "1. Téléchargez \`DoraBase-$VERSION-universal.dmg\` ci-dessous."
-            echo "2. Ouvrez-le, glissez **DoraBase** dans **Applications**."
-            echo "3. **Au premier lancement seulement**, macOS refuse l'application : elle"
-            echo "   n'est pas notariée. Ouvrez *Réglages Système ▸ Confidentialité et"
-            echo "   sécurité*, puis **Ouvrir quand même**. Ou, en une commande :"
+            echo "**En une commande, sans avertissement.** La quarantaine est posée par le"
+            echo "programme qui télécharge — navigateur ou Finder ; \`curl\` ne la pose pas."
             echo
-            echo '   ```'
-            echo '   xattr -dr com.apple.quarantine /Applications/DoraBase.app'
-            echo '   ```'
+            echo '```bash'
+            echo "curl -fL -o /tmp/DoraBase.dmg \\"
+            echo "  https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/DoraBase-$VERSION-universal.dmg"
+            echo "hdiutil attach -quiet /tmp/DoraBase.dmg"
+            echo "cp -R /Volumes/DoraBase/DoraBase.app /Applications/"
+            echo "hdiutil detach -quiet /Volumes/DoraBase && open /Applications/DoraBase.app"
+            echo '```'
+            echo
+            echo "**Ou par le navigateur** : téléchargez \`DoraBase-$VERSION-universal.dmg\`"
+            echo "ci-dessous, glissez **DoraBase** dans **Applications**. macOS le refusera au"
+            echo "premier lancement — il n'est pas notarié — et une commande lève ce refus :"
+            echo
+            echo '```bash'
+            echo 'xattr -dr com.apple.quarantine /Applications/DoraBase.app'
+            echo '```'
+            echo
+            echo "(Le clic droit ▸ *Ouvrir* ne suffit plus depuis macOS 15 ; à défaut de la"
+            echo "commande, il faut passer par *Réglages Système ▸ Confidentialité et sécurité*.)"
             echo
             echo "macOS 13 Ventura ou plus récent. Bundle universel : Apple Silicon et Intel."
             echo
@@ -208,7 +220,12 @@ jobs:
             if [[ -n $precedent ]]; then
               git log --no-merges --pretty='- %s' "$precedent..$GITHUB_REF_NAME"
               echo
-              echo "[Comparer $precedent…$GITHUB_REF_NAME](https://github.com/${GITHUB_REPOSITORY}/compare/$precedent...$GITHUB_REF_NAME)"
+              # **Accolades obligatoires.** `$precedent…` : bash range les octets non-ASCII de
+              # l'ellipse *dans le nom de variable*, cherche « precedent… », ne le trouve pas, et
+              # `set -u` fait échouer l'étape. La v0.1.0 y avait échappé — sans tag précédent, elle
+              # passait par la branche « première version publiée ». Le défaut n'existait donc que
+              # de la **deuxième** publication, là où plus personne ne relit le script.
+              echo "[Comparer ${precedent}…${GITHUB_REF_NAME}](https://github.com/${GITHUB_REPOSITORY}/compare/${precedent}...${GITHUB_REF_NAME})"
             else
               echo "- première version publiée"
             fi
