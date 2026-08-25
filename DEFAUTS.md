@@ -1445,3 +1445,103 @@ mise en page sans écrire la mesure qui le tient revient à changer du CSS en es
    l'écran**. La galerie étant longue, la grille vivait à 3800 px du haut et la fonction rendait
    `null` — ce qui se lit comme « rien n'est peint », le symptôme même qu'on cherchait. Il faut
    amener l'élément dans la fenêtre avant de sonder.
+
+126. **Un faux échec e2e, produit en éditant le code pendant que la suite tournait.** Playwright a
+   rapporté un test de `15a` rouge, avec dans le journal du serveur cinq
+   « Should have a queue. You are likely calling Hooks conditionally » — le message que React émet
+   quand le nombre de hooks d'un composant change entre deux rendus.
+
+   Rien n'appelait de hook conditionnellement. Le serveur de développement avait rechargé à chaud les
+   fichiers modifiés **sous la page en cours de test** : le HMR remplace un composant dont l'état est
+   monté, et cette erreur en est la conséquence normale. Relancée sans rien toucher, la suite passait
+   les 242 tests.
+
+   **Ce n'est pas un défaut du produit, et c'est justement pourquoi il est ici** : le message ressemble
+   à un vrai bug de hooks, et la piste coûte une heure à qui ne sait pas d'où il vient. La règle
+   pratique : pendant une suite Playwright, on ne modifie pas le source. Un échec constaté dans ces
+   conditions doit être **reproduit sur un dépôt immobile** avant d'être diagnostiqué.
+
+   L'occasion de noter la limite du dispositif : `verifier-tout.sh` lance `pnpm dev` en
+   `--strictPort` pour ne pas servir la branche du voisin (`DEFAUTS.md`, le piège des worktrees), mais
+   rien ne le protège de l'éditeur qui écrit dans le même arbre pendant qu'il mesure.
+
+127. **Une ligne horizontale cassée d'un pixel, à la jonction du centre et de la colonne de droite.**
+   Signalé à l'écran, capture zoomée à l'appui. La bande d'onglets et l'en-tête de la colonne de
+   droite forment une seule ligne pour l'œil ; leurs filets tombaient à 76 et 75.
+
+   La cause est **deux conventions opposées dans la même ligne**. `TabStrip` rend 35 px pour 34
+   déclarés, et c'est une décision de fidélité *documentée* : le handoff ne pose aucun `box-sizing`,
+   ses cotes désignent donc le contenu et le filet s'ajoute par-dessus. L'en-tête de la colonne, lui,
+   était en `border-box` — 34 px filet compris. Chacun était défendable seul ; côte à côte, ils
+   cassaient la ligne.
+
+   **Le mockup tranche sans ambiguïté**, et il fallait aller le lire :
+   `height:34px` sans `box-sizing`, `border-bottom:1px solid rgba(35,32,28,.08)`. La couleur `.08`
+   était déjà juste — c'est la hauteur qui mentait.
+
+   **Deuxième défaut dans la même zone** : le filet vertical de la colonne était porté par le panneau
+   de détail, un enfant qui commence *sous* l'en-tête. Il démarrait donc 34 px trop bas, d'où la
+   marche visible sur la capture. Le handoff le pose sur la colonne entière
+   (`width:300px;flex:none;border-left:1px solid rgba(35,32,28,.1)`) : un filet de colonne n'appartient
+   pas à son contenu.
+
+   **Ce que la correction a appris au passage** : déplacer ce filet sur la colonne l'a fait déborder
+   d'un pixel, `width: 100%` et un filet en `content-box` faisant 1 px de trop. Deux mesures de
+   géométrie de ce dépôt — « rien ne déborde de la boîte qui le contient » et « la racine ne défile pas
+   horizontalement » — sont devenues rouges dans la seconde qui a suivi. C'est exactement leur raison
+   d'être : elles ne décrivent aucun écran en particulier, donc elles gardent tous les écrans.
+
+   La leçon de méthode : une mesure au crop ne dit pas si l'écart vaut 1 px ou 3, et un écart de 1 px
+   se corrige dans le mauvais sens une fois sur deux. Ici la mesure a nommé les deux coupables, et le
+   handoff a dit lequel avait tort.
+
+128. **La même ligne, deux teintes : un trait plus clair se lit comme un trait plus fin.** Signalé à
+   l'écran juste après la correction du n° 127 — l'alignement était bon, les « épaisseurs » non.
+   Mesure : à gauche de la jonction `1px rgba(35,32,28,.10)`, à droite `1px rgba(35,32,28,.08)`. Même
+   épaisseur réelle, deux teintes, sur une ligne que l'œil lit comme une seule.
+
+   **Le handoff contient cette discontinuité**, et c'est ce qui rend le cas intéressant : la bande
+   d'onglets y porte `.1`, l'en-tête de la colonne de droite `.08`, vérifié dans le fichier. Le rendu
+   était donc fidèle au pixel. Mais la maquette **juxtapose deux blocs** ; elle ne décrit pas leur
+   jonction, et 0,02 d'alpha sur un filet de 1 px ne se voit pas à l'échelle 1 dans un navigateur —
+   il se voit dans l'application, sur un écran dense, une fois les deux blocs collés.
+
+   Corrigé vers `--divider` (`.1`) des deux côtés : **une ligne unique a une teinte unique.** C'est le
+   même arbitrage que l'icône du palier d'environnement (n° 119) — le mockup avait raison sur le fond
+   et tort sur ce qui se voit quand deux éléments deviennent voisins. L'écart est documenté dans la
+   feuille de style, avec sa raison, et un test le fige.
+
+   **Ce que ça dit de la méthode** : « fidèle au handoff » n'est pas la fin de la discussion quand la
+   composition met côte à côte des blocs que la maquette montrait séparés. Les deux corrections
+   d'affilée sur la même jonction (n° 127 puis celui-ci) viennent de là — et aucune des deux n'était
+   visible sur une capture de fidélité, qui compare l'écran à lui-même.
+
+129. **Le trait de séparation était dessiné deux fois, des deux côtés de l'écran.** Signalé à l'écran
+   dans la foulée du n° 128 : « les épaisseurs de trait ne sont pas encore bonnes », avec la consigne
+   d'être **iso avec la bordure de la sidebar de gauche**.
+
+   La mesure a nommé le coupable, et il n'était pas là où je regardais. La poignée du `SplitPane`
+   (`10b`) **est** le séparateur : 1 px de `--divider`, sur toute la hauteur. Or la sidebar portait en
+   plus son `border-right` et la colonne de droite le liseré que le n° 127 venait d'y poser. Chaque
+   jonction faisait donc **2 px** — deux couches de la même teinte, collées — là où les filets
+   horizontaux de l'écran en font 1.
+
+   **Ma correction du n° 127 avait aggravé ce qu'elle réparait.** Le panneau de détail portait un
+   `border-left` qui démarrait sous l'en-tête : 2 px en bas, 1 px en haut, d'où la marche visible. En
+   remontant ce filet sur la colonne, j'ai uniformisé le trait… à 2 px partout. Le défaut a changé de
+   forme sans disparaître, et c'est la deuxième capture qui l'a dit.
+
+   Corrigé en **retirant** les deux doublons : plus de filet sur la colonne, et `border-right: none`
+   sur la sidebar en variante `fill` — celle qui vit dans un `SplitPane`. `.root` garde le sien pour
+   les usages sans poignée (la galerie, `A1`). Les deux jonctions sont désormais le même composant,
+   donc iso par construction et non par coïncidence de valeurs.
+
+   **Ce que ça dit de la méthode** : j'ai cherché quel filet *ajouter* alors qu'il fallait chercher
+   qui dessinait déjà. Une mesure de ce qui est peint à la jonction — les voisins immédiats de la
+   poignée, pas seulement l'élément suspect — aurait montré le doublon au premier tour. Le test le
+   fige ainsi : il interroge `elementFromPoint` de part et d'autre de chaque poignée et vérifie
+   qu'aucun voisin ne dessine de filet.
+
+   Trois conséquences visibles, toutes voulues, dont deux qui ont demandé de régénérer les captures de
+   fidélité : le contenu de la sidebar récupère le pixel que sa bordure prenait, et le texte de la
+   colonne de droite descend d'un pixel avec son en-tête.

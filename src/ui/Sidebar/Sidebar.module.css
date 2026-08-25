@@ -48,6 +48,17 @@
    * absence de correction, puisque le commentaire affirmait le contraire de ce que faisait la page.
    * Trouvé par la mesure de `geometrie-reelle`, pas à la lecture. */
   box-sizing: border-box;
+  /*
+   * **Plus de filet droit en variante `fill`** (25 août 2026).
+   *
+   * `fill` est la sidebar d'un `SplitPane`, et la poignée de celui-ci dessine déjà le séparateur —
+   * 1 px de `--divider`, la même teinte. Les deux se collaient : le trait faisait 2 px là où les filets
+   * horizontaux de l'écran en font 1, et l'écart se voyait à la jonction (`DEFAUTS.md` n° 129).
+   *
+   * `.root` garde le sien : hors `SplitPane` — la galerie, `A1` — il n'y a aucune poignée pour le
+   * porter, et la sidebar doit bien finir quelque part.
+   */
+  border-right: none;
 }
 
 .body {

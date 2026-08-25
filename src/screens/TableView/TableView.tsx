@@ -86,6 +86,15 @@ type TableViewProps = {
    * panneau droit, que l'écran de travail monte, alors que la lecture vit ici.
    */
   rafraichissement?: number
+  /**
+   * Relit la structure de la table, en plus des lignes.
+   *
+   * Absent, le bouton ne relit que les lignes — c'est le cas de la galerie, qui n'a pas de cache de
+   * structures à invalider.
+   */
+  onRelireLaStructure?: () => void
+  /** La structure est en cours de relecture : l'animation du bouton en dépend autant que des lignes. */
+  structureEnCours?: boolean
   attente?: EnAttente
   onAttenteChange?: (attente: EnAttente) => void
 }
@@ -122,6 +131,8 @@ export function TableView({
   onRangChange,
   edition = false,
   rafraichissement = 0,
+  onRelireLaStructure,
+  structureEnCours = false,
   attente = [],
   onAttenteChange,
 }: TableViewProps) {
@@ -405,7 +416,13 @@ export function TableView({
           })
         }
         sql={fenetre?.sql ?? null}
-        onRefresh={relire}
+        onRefresh={() => {
+          relire()
+          onRelireLaStructure?.()
+        }}
+        // **Les deux relectures, pas une** : s'arrêter à la première ferait croire l'écran à jour
+        // alors que la moitié charge encore.
+        enCours={loading || structureEnCours}
       />
       <div className={styles.centre}>
         <div className={styles.grille}>

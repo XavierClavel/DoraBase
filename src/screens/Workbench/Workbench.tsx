@@ -59,6 +59,7 @@ import {
 } from './onglets'
 import { PASSERELLE_TAURI, type PasserelleArbre, useArbre } from './useArbre'
 import { PASSERELLE_DETAIL, type PasserelleDetail, useDetailTable } from './useDetailTable'
+import { PASSERELLE_STRUCTURES, type PasserelleStructures, useStructures } from './useStructures'
 import styles from './Workbench.module.css'
 import { type VueObjet, WorkbenchTabs } from './WorkbenchTabs'
 
@@ -75,6 +76,8 @@ type WorkbenchProps = {
   projects: readonly Project[]
   passerelle?: PasserelleArbre
   passerelleDetail?: PasserelleDetail
+  /** Le pont du préchauffage des structures. Injectable, comme les autres. */
+  passerelleStructures?: PasserelleStructures
   passerelleLignes?: PasserelleLignes
   /** Injectable comme les autres commandes : le pont ne répond pas hors de la webview (`08d`). */
   rowAsInsert?: typeof rowAsInsertTauri
@@ -182,6 +185,7 @@ export function Workbench({
   projects,
   passerelle = PASSERELLE_TAURI,
   passerelleDetail = PASSERELLE_DETAIL,
+  passerelleStructures = PASSERELLE_STRUCTURES,
   passerelleLignes,
   rowAsInsert = rowAsInsertTauri,
   onNewDatabase,
@@ -201,7 +205,30 @@ export function Workbench({
   passerelleExecution,
   edition = false,
 }: WorkbenchProps) {
-  const { deplies, charge, etatDeBase, basculer, rafraichir } = useArbre(projects, passerelle)
+  /**
+   * Le cache des structures, **au-dessus de l'arbre et du panneau** : les deux le lisent, et
+   * le préchauffage l'alimente. Le poser dans l'un des deux l'aurait rendu inaccessible à l'autre.
+   */
+  const structures = useStructures(passerelleStructures)
+  const { deplies, charge, etatDeBase, basculer, rafraichir } = useArbre(
+    projects,
+    passerelle,
+    structures.prechauffer,
+    // Le schéma qu'on vient de déplier passe **devant** le reste de la file : c'est le geste
+    // qui précède immédiatement l'ouverture d'une table.
+    structures.prechaufferLeSchema,
+  )
+
+  /**
+   * « Rafraîchir l'arborescence » vide **aussi** les structures.
+   *
+   * Sans cela, le geste rechargerait les schémas et les objets en laissant les structures d'hier en
+   * mémoire — la moitié de l'écran à jour, l'autre non, et rien pour le dire.
+   */
+  const rafraichirTout = useCallback(() => {
+    structures.vider()
+    rafraichir()
+  }, [structures, rafraichir])
   // Le projet dont on édite les environnements (`23e`). **Ici, et non dans la sidebar** : les deux
   // points d'entrée — le « … » de l'arbre et la pastille de la barre de titre — vivent tous deux dans
   // cet écran, et une modale montée dans la sidebar serait inatteignable depuis la pastille. C'est le
@@ -359,11 +386,31 @@ export function Workbench({
   // qu'on la regarde : le mockup d'`A8` la montre pendant qu'on écrit une commande.
   const objetDeLArbre = selection?.kind === 'object' ? selection.label : null
   const cible = table?.table ?? (objetChoisi !== '' ? objetChoisi : null) ?? objetDeLArbre
+  /**
+   * Le compteur de relecture de la structure, jumeau de celui des lignes.
+   *
+   * Deux compteurs et non un : le rafraîchissement d'après écriture (`11d`) relit les lignes et
+   * seulement elles — la structure n'a pas bougé, et la relire ferait un aller-retour par
+   * enregistrement.
+   */
+  const [relectureStructure, setRelectureStructure] = useState(0)
   const { detail, loading, error } = useDetailTable(
     cle,
     contexte?.schema ?? null,
     cible,
     passerelleDetail,
+    structures,
+    relectureStructure,
+  )
+
+  /** Oublie la structure d'une table, puis la redemande : ce que fait « Rafraîchir ». */
+  const relireLaStructure = useCallback(
+    (schema: string, nom: string) => {
+      if (!cle) return
+      structures.oublier(cle, schema, nom)
+      setRelectureStructure((precedent) => precedent + 1)
+    },
+    [cle, structures],
   )
 
   // **La vue est un état d'onglet, pas d'écran.** Deux tables ouvertes peuvent être regardées
@@ -474,6 +521,12 @@ export function Workbench({
       const issue = await onRenameDatabase(project, database, environment, nouveau)
       const key = { project, database, environment }
 
+      // **Les structures partent avec l'ancienne clé** : le cœur vient de fermer cette
+      // connexion, et ce qui reste en mémoire sous son ancien nom ne sera plus jamais lu — sauf par
+      // une connexion homonyme recréée plus tard, qui lirait la structure d'une autre base. La file
+      // de préchauffage en cours est annulée dans le même geste.
+      structures.oublierLaConnexion(key)
+
       setEtatOnglets((etat) => renommerLaConnexion(etat, key, nouveau))
       setTextes((precedent) => reindexerParConnexion(precedent, key, nouveau))
       setAttentes((precedent) => reindexerParConnexion(precedent, key, nouveau))
@@ -510,7 +563,7 @@ export function Workbench({
       )
       return issue
     },
-    [onRenameDatabase],
+    [onRenameDatabase, structures],
   )
 
   /**
@@ -827,6 +880,12 @@ export function Workbench({
           onRangChange={setRangChoisi}
           edition={enEdition}
           rafraichissement={rafraichissement}
+          // Le « Rafraîchir » de la toolbar relit **ce que l'écran montre** : les lignes, que
+          // la vue sait relire seule, et la structure, qui vit ici.
+          onRelireLaStructure={() => relireLaStructure(table.schema, table.table)}
+          // L'animation ne s'arrête que quand les **deux** ont répondu ; la vue connaît l'état de ses
+          // lignes, celui de la structure vient d'ici.
+          structureEnCours={loading}
           attente={attente}
           onAttenteChange={onAttenteChange}
           rowHeight={rowHeight}
@@ -1116,7 +1175,7 @@ export function Workbench({
               onToggle={basculer}
               onAddDatabase={onNewDatabase}
               onNewProject={onNewProject}
-              onRefresh={rafraichir}
+              onRefresh={rafraichirTout}
               // **La section suit l'objet lu, pas l'onglet ouvert.** Le mockup d'`A8` montre
               // « Schéma déduit » dans la sidebar *pendant* qu'une console est active : les champs
               // d'une collection sont ce qu'on regarde en écrivant une commande. La condition
