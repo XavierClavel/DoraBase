@@ -14,10 +14,13 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('la coquille a les dimensions du mockup', async ({ page }) => {
-  // **Un clic avant de mesurer, et c'est la coquille elle-même qui le demande** : sans sélection, le
-  // corps ne montre ni bande d'onglets ni colonne de droite — donc ni la seconde poignée, ni la
-  // hauteur de bande que ce test vérifie. Cliquer le projet suffit à donner un sujet à l'écran.
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  // **Descendre jusqu'au schéma avant de mesurer, et c'est la coquille elle-même qui le demande** :
+  // tant que la sélection s'arrête avant le schéma, le corps montre l'état vide — ses deux colonnes
+  // sont là, avec leur poignée, mais il n'y a pas de bande d'onglets dont mesurer la hauteur. Le
+  // schéma est le premier palier qui remplit le centre.
+  await deplierUnEnvironnement(page)
+  await page.getByRole('treeitem', { name: /analytics/ }).click()
+  await page.getByRole('treeitem', { name: 'public' }).click()
   const mesures = await page.evaluate(() => {
     const barre = document.querySelector('[data-tauri-drag-region]')
     // Le panneau de gauche du `SplitPane` extérieur : c'est lui qui porte la largeur, la
@@ -217,23 +220,57 @@ test('fermer le dernier onglet laisse l’écran de travail debout', async ({ pa
 })
 
 // **L'état vide du corps, mesuré là où il se voit.** jsdom dit que le texte est présent ; il ne dit
-// pas que le corps n'a plus qu'une seule poignée, ni que le message occupe la place que le centre et
-// la colonne de droite se partageaient.
-test('sans sélection, le corps n’a qu’une poignée et montre le message', async ({ page }) => {
+// pas que la colonne de droite garde ses 296 px, ni que la bande d'onglets a disparu du centre.
+test('sans sélection, les deux colonnes restent et le message occupe le centre', async ({
+  page,
+}) => {
   await expect(page.getByText('Sélectionner une entité pour commencer')).toBeVisible()
   await expect(page.getByRole('tablist')).toHaveCount(0)
-  await expect(page.locator('[role=separator]')).toHaveCount(1)
+  // Deux poignées, comme dans la coquille pleine : la largeur réglée survit à l'état vide.
+  await expect(page.locator('[role=separator]')).toHaveCount(2)
 
   const mesures = await page.evaluate(() => {
-    const separateur = document.querySelector('[role=separator]')
-    const zone = separateur?.nextElementSibling?.getBoundingClientRect()
-    return { zone: Math.round(zone?.width ?? 0), fenetre: window.innerWidth }
+    const separateurs = [...document.querySelectorAll('[role=separator]')]
+    const sidebar = separateurs[0]?.previousElementSibling?.getBoundingClientRect()
+    const colonne = separateurs[1]?.nextElementSibling?.getBoundingClientRect()
+    // Les deux logos : celui du centre à 72 px, celui de la colonne à 40. Tous deux décolorés.
+    const logos = [...document.querySelectorAll('svg')]
+      .filter((svg) => svg.querySelector('use')?.getAttribute('href') === '#logo')
+      .map((svg) => ({
+        largeur: Math.round(svg.getBoundingClientRect().width),
+        filtre: getComputedStyle(svg).filter,
+      }))
+    return {
+      sidebar: Math.round(sidebar?.width ?? 0),
+      colonne: Math.round(colonne?.width ?? 0),
+      logos,
+      fenetre: window.innerWidth,
+    }
   })
-  // Tout ce qui reste après la sidebar et sa poignée : la zone vide n'est pas un panneau parmi
-  // d'autres, elle est le corps entier.
-  expect(mesures.zone).toBe(mesures.fenetre - 228 - 1)
 
-  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  expect(mesures.sidebar).toBe(228)
+  expect(mesures.colonne).toBe(296)
+  // Le logo de la barre de titre est du lot : il n'est pas décoloré, et c'est ce qui distingue le
+  // décor de l'état vide du repère permanent de la fenêtre.
+  expect(
+    mesures.logos.filter((logo) => logo.filtre === 'grayscale(1)').map((l) => l.largeur),
+  ).toEqual([72, 40])
+
+  // Le schéma remplit le centre : la bande d'onglets revient, le message part.
+  await deplierUnEnvironnement(page)
+  await page.getByRole('treeitem', { name: /analytics/ }).click()
+  await page.getByRole('treeitem', { name: 'public' }).click()
   await expect(page.getByText('Sélectionner une entité pour commencer')).toHaveCount(0)
-  await expect(page.locator('[role=separator]')).toHaveCount(2)
+  await expect(page.getByRole('tablist')).toHaveCount(1)
+})
+
+// **Les trois paliers au-dessus du schéma ne remplissent pas le centre.** Ils n'ont ni liste
+// d'objets ni structure : seulement des enfants dans l'arbre.
+test('un projet, un environnement, une connexion : le centre reste vide', async ({ page }) => {
+  await page.getByRole('treeitem', { name: /Atelier Nord/ }).click()
+  await expect(page.getByText('Sélectionner une entité pour commencer')).toBeVisible()
+  await page.getByRole('treeitem', { name: /^prod\b/ }).click()
+  await expect(page.getByText('Sélectionner une entité pour commencer')).toBeVisible()
+  await page.getByRole('treeitem', { name: /analytics/ }).click()
+  await expect(page.getByText('Sélectionner une entité pour commencer')).toBeVisible()
 })

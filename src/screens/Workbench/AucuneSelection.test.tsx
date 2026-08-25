@@ -15,3 +15,10 @@ test('le logo est décoratif : il ne se lit pas à la voix', () => {
   expect(logo).toHaveAttribute('aria-hidden', 'true')
   expect(logo?.querySelector('use')).toHaveAttribute('href', '#logo')
 })
+
+test('la variante colonne n’écrit pas la phrase une seconde fois', () => {
+  render(<AucuneSelection variante="colonne" />)
+  // Deux fois la même instruction pour un seul geste, et un lecteur d'écran les lirait toutes les
+  // deux : le centre la porte, la colonne se contente du décor.
+  expect(screen.queryByText('Sélectionner une entité pour commencer')).not.toBeInTheDocument()
+})

@@ -329,13 +329,18 @@ export function Workbench({
         : null
 
   /**
-   * Rien n'est sélectionné : ni onglet ouvert, ni ligne d'arbre désignée.
+   * Il n'y a rien à montrer : aucun onglet ouvert, et aucun schéma en vue.
    *
-   * **Dérivé d'`indication`, et non d'un test à part** : les deux répondent à la même question, et
-   * deux formulations divergeraient au premier palier ajouté à l'arbre. Un onglet actif — table ou
-   * console — porte toujours un projet, donc `indication === null` implique qu'aucun n'est ouvert.
+   * **Dérivé de `contexte`, et non d'une liste de paliers.** Un test sur `selection.kind` aurait
+   * énuméré `project`, `environment`, `database` — et aurait oublié le palier suivant. `contexte`
+   * répond déjà à la question utile : « de quel schéma cet écran parle-t-il ? ». Il ne vaut quelque
+   * chose que sur un schéma sélectionné ou une table ouverte, c'est-à-dire exactement quand le centre
+   * a un contenu.
+   *
+   * **Les deux conditions, et non la seule** : une console a un onglet sans avoir de schéma, donc
+   * `contexte` y est nul alors que le centre est plein.
    */
-  const rienDeSelectionne = indication === null
+  const rienAMontrer = actif === null && contexte === null
 
   const projetIndique = projects.find((p) => p.name === indication?.project) ?? null
   /** La déclaration de l'environnement indiqué, seule source du drapeau `production` (`23g`). */
@@ -1215,11 +1220,27 @@ export function Workbench({
             // qu'elle portait sa propre colonne de DDL à droite, exactement là où le panneau de
             // détail se serait posé. Ce DDL étant maintenant dans la colonne commune, la structure
             // redevient un centre ordinaire, et sa largeur se règle avec la même poignée.
-            rienDeSelectionne ? (
-              // **Rien de sélectionné : rien à montrer.** Ni fil d'Ariane à « — · — », ni liste
-              // d'objets vide, ni cadre de détail d'un objet inexistant — voir `AucuneSelection`
-              // pour la raison. La sidebar reste, elle : c'est là qu'on sélectionne.
-              <AucuneSelection />
+            rienAMontrer ? (
+              // **Rien à montrer : ni fil d'Ariane à « — · — », ni liste d'objets vide, ni cadre de
+              // détail d'un objet inexistant** — voir `AucuneSelection` pour la raison. Les deux
+              // colonnes restent, vides : le partage garde la largeur réglée, et sa poignée avec
+              // elle. La sidebar de gauche reste aussi — c'est là qu'on sélectionne.
+              //
+              // **Le même `storageKey` que le partage ordinaire, et c'est le point** : la largeur
+              // survit à l'aller-retour entre un projet et une table, au lieu de retomber à 296 px.
+              //
+              // **Aucun cadre `ColonneDroite` ici.** Son en-tête existe pour le couple de vues et
+              // les flèches de ligne (`22`), dont aucun n'a de sens sans table ouverte : il ne
+              // resterait qu'une bande de 35 px et un filet qui ne prolonge rien.
+              <SplitPane
+                storageKey="workbench:detail"
+                defaultSize={296}
+                min={240}
+                max={420}
+                sized="end"
+                start={<AucuneSelection />}
+                end={<AucuneSelection variante="colonne" />}
+              />
             ) : consoleActive ? (
               centre
             ) : (
