@@ -1,4 +1,4 @@
-//! Le modèle de structure introspectée. Voir `specs/06a-contrat-couche-moteur.md`.
+//! Le modèle de structure introspectée.
 //!
 //! Chaque champ correspond à une colonne qu'un écran du handoff affiche. Tout champ dont
 //! aucun écran n'a besoin est absent, délibérément.
@@ -237,7 +237,7 @@ pub enum Identity {
 pub struct IndexInfo {
     pub name: String,
     /// La définition rendue par le moteur, affichée en mono par `A9`. Jamais reconstruite
-    /// à la main — voir `specs/06c`.
+    /// à la main.
     pub definition: String,
 }
 

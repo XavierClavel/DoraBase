@@ -1,12 +1,12 @@
 /*
- * Zone centrale de l'écran d'accueil, `design/handoff/DoraBase.dc.html` l. 141-151.
+ * Zone centrale de l'écran d'accueil, cotes relevées sur le mockup de handoff.
  *
  * `#F8F3E9` est un littéral local à ce dégradé : une seule occurrence dans tout le
  * mockup, pas une valeur de rôle partagée — pas de token. `--paper-bright` couvre
  * l'autre point d'arrêt, déjà tokenisé en écrivant `TitleBar`.
  *
  * Logo 72px `--radius-logo` (17, valeur du mockup — la table du handoff annonçait 20px,
- * écart déjà consigné dans specs/07-a1-accueil.md). Ombre : forme locale à une seule
+ * écart assumé). Ombre : forme locale à une seule
  * occurrence, couleur `--ink-4` référencée par `var()` — pas un littéral `rgba()`.
  *
  * Titre 27px `--text-hero`, interligne 1.15 : hors échelle `--leading-*`, une seule

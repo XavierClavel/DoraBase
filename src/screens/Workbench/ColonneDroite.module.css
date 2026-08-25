@@ -21,7 +21,7 @@
    * La poignée du `SplitPane` (`10b`) *est* le séparateur : 1 px de `--divider`, sur toute la hauteur
    * de la colonne. Tout filet ajouté par le panneau vient donc s'y coller et double le trait.
    *
-   * L'histoire de ce pixel, en trois temps (`DEFAUTS.md` n° 127 à 129) : le panneau de détail portait
+   * L'histoire de ce pixel, en trois temps : le panneau de détail portait
    * un `border-left` qui démarrait *sous* l'en-tête, d'où un trait de 2 px en bas et de 1 px en haut —
    * la marche signalée à l'écran. Le filet a d'abord été remonté sur la colonne, ce qui a uniformisé
    * le trait… à 2 px partout. Le doublon est maintenant retiré des deux côtés de l'écran : une seule
@@ -49,11 +49,11 @@
  * deux blocs y sont dessinés séparément ; mis bout à bout, ils forment **une seule ligne horizontale
  * à l'écran**, qui change de teinte en son milieu. À l'échelle 1 sur une maquette statique, 0,02
  * d'alpha ne se voit pas ; dans l'application, à la jonction du centre et de la colonne, si —
- * signalé deux fois à l'écran, capture zoomée à l'appui (`DEFAUTS.md` n° 128).
+ * signalé deux fois à l'écran, capture zoomée à l'appui.
  *
  * **Une ligne unique a une teinte unique.** C'est la règle qui l'emporte ici sur la reproduction d'un
  * détail que la maquette n'a pas voulu : elle juxtapose deux blocs, elle ne décrit pas leur jonction.
- * Le précédent est l'icône du palier d'environnement (`DEFAUTS.md` n° 119) — le mockup avait raison
+ * Le précédent est l'icône du palier d'environnement — le mockup avait raison
  * sur le fond, et tort sur ce qui se voit une fois les deux éléments côte à côte.
  *
  * Les autres en-têtes à `--divider-2` (le panneau de ligne, le panneau de détail) ne sont **pas**

@@ -1,4 +1,4 @@
-//! Le registre des connexions ouvertes. Voir `specs/09b-cablage-des-donnees.md`.
+//! Le registre des connexions ouvertes.
 //!
 //! **Pourquoi un registre.** `PostgresAdapter` détient un client et, éventuellement, un tunnel
 //! SSH : il ne peut pas traverser l'IPC, et le recréer à chaque commande rouvrirait un tunnel

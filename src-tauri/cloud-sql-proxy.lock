@@ -1,4 +1,5 @@
-# Le Cloud SQL Auth Proxy embarqué dans le bundle. Voir `specs/06h-binaire-embarque.md`.
+# Le Cloud SQL Auth Proxy embarqué dans le bundle : version épinglée et empreinte
+# vérifiée par `scripts/telecharger-proxy.sh`. Le binaire n'est jamais commis.
 #
 # **Source unique de vérité.** Le script `scripts/telecharger-proxy.sh` lit ce fichier pour
 # savoir quoi télécharger et quoi vérifier ; le code Rust l'inclut pour connaître la version

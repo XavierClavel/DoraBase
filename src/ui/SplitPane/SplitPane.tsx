@@ -64,7 +64,7 @@ function readStoredSize(storageKey: string, fallback: number, min: number, max: 
 }
 
 // Deux zones seulement, côte à côte. Une disposition à trois zones s'obtient en
-// imbriquant deux `SplitPane` — voir `specs/03-coquille-panneaux-onglets.md`, qui écarte
+// imbriquant deux `SplitPane` — la coquille écarte
 // délibérément un composant à N zones tant qu'aucun écran n'en réclame un.
 export function SplitPane({
   storageKey,

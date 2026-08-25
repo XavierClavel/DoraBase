@@ -99,8 +99,6 @@ regeneration_sans_effet() {
 
 etape "jetons de design à jour" regeneration_sans_effet tokens:build \
   src/design/tokens.css src/design/tokens.ts
-etape "icônes à jour" regeneration_sans_effet icons:build \
-  src/design/icons/sprite.svg src/design/icons/names.ts
 etape "projections TypeScript à jour" regeneration_sans_effet domain:build \
   src/domain/config.ts src/domain/engine.ts
 etape "typescript" pnpm typecheck

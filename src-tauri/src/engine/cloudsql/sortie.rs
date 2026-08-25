@@ -1,4 +1,4 @@
-//! Lecture des lignes écrites par `cloud-sql-proxy`. Voir `specs/06g` § « Attendre
+//! Lecture des lignes écrites par `cloud-sql-proxy` — comment on sait qu'il est prêt.
 //! “ready for new connections” ».
 //!
 //! **Sur quelle sortie.** Le proxy v2 écrit son journal courant — dont les deux lignes
@@ -13,8 +13,8 @@
 
 /// Le port sur lequel le proxy annonce écouter.
 ///
-/// **C'est ce port qui fait foi**, et non celui passé en `--port` : voir `specs/06g`
-/// § « Le port local ne peut pas réemployer celui de `06e` ».
+/// **C'est ce port qui fait foi**, et non celui passé en `--port` : le proxy choisit
+/// lui-même quand celui qu'on lui demande est pris.
 pub fn port_annonce(ligne: &str) -> Option<u16> {
     let apres = ligne.split("Listening on ").nth(1)?;
     // Le **dernier** deux-points, et non le premier : une adresse IPv6 en contient

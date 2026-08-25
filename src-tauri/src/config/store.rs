@@ -1,4 +1,4 @@
-//! Persistance de la configuration sur disque. Voir `specs/05b-persistance-disque.md`.
+//! Persistance de la configuration sur disque.
 //!
 //! La logique prend un **chemin** en paramètre : elle se teste donc avec un répertoire
 //! temporaire, et c'est la commande Tauri (`commands.rs`) qui résout le vrai chemin.

@@ -3,7 +3,7 @@
 DoraBase embarque le **Cloud SQL Auth Proxy** de Google
 (<https://github.com/GoogleCloudPlatform/cloud-sql-proxy>), un exécutable distinct lancé en
 sous-processus quand une connexion passe par Cloud SQL. Voir
-`specs/06h-binaire-embarque.md`.
+`AGENTS.md`.
 
 - **Licence** : Apache License 2.0 — texte intégral dans `LICENSE`, à côté de ce fichier.
 - **Version embarquée** : dans `VERSION`, écrit à la construction depuis

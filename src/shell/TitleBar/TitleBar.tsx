@@ -17,7 +17,7 @@ type TitleBarProps = {
    * `titleBarStyle: "Overlay"` les fait dessiner par macOS, hors d'atteinte du CSS, et le
    * système ne les ternit que sur perte de focus — qu'une modale interne ne provoque pas.
    * Les deux autres effets du mockup sont appliqués : `saturate(.6)` sur la barre et
-   * `opacity .55` sur le wordmark. Écart consigné au § « À trancher » de `specs/README.md`.
+   * `opacity .55` sur le wordmark. Écart consigné dans `AGENTS.md`.
    */
   dimmed?: boolean
   /**

@@ -31,7 +31,7 @@ type RadioGroupProps<T extends string> = {
 /**
  * Groupe de boutons exclusifs : sélecteur de moteur et variante d'environnement de `A2`.
  *
- * **Pourquoi pas `Chip`.** `REPRISE.md` § 9 laissait ouverte la forme du `Chip` interactif, à
+ * **Pourquoi pas `Chip`.** La forme du `Chip` interactif restait ouverte, à
  * trancher contre un écran réel. `A2` a répondu : son sélecteur de moteur n'a pas de croix de
  * suppression. Il n'y a donc pas de bouton dans un bouton à contourner.
  *

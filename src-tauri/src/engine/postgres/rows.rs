@@ -1,9 +1,9 @@
-//! Lecture paginée des lignes. Voir `specs/06d-lecture-paginee.md`.
+//! Lecture paginée des lignes.
 //!
 //! # La contrainte transverse, et ce qu'elle exige vraiment
 //!
-//! `specs/README.md` pose : « Aucun jeu de résultats complet ne traverse l'IPC. La
-//! récupération est **paginée, pas seulement le rendu**. »
+//! `AGENTS.md` pose : « Aucun jeu de résultats complet ne traverse l'IPC. La récupération
+//! est **paginée, pas seulement le rendu**. »
 //!
 //! Cette dernière phrase est celle qui coûte. Récupérer un million de lignes en Rust puis
 //! n'en envoyer que cinq cents respecterait la lettre et manquerait tout : l'empreinte

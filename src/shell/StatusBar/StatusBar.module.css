@@ -1,5 +1,5 @@
 /*
- * Barre d'état, `design/handoff/DoraBase.dc.html` ligne 153 : hauteur 26, `padding 0 12`
+ * Barre d'état, relevée sur le mockup de handoff : hauteur 26, `padding 0 12`
  * (hors échelle `--space-*`, métrique interne), gap 14 (`--space-7`), fond `--bar`.
  *
  * Le filet haut est `rgba(35,32,28,.1)` — c'est `--divider`, pas `--border` (.14) comme

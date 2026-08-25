@@ -47,9 +47,7 @@ jobs:
       # exiger un diff vide échoue si quelqu'un y a touché — ou si la source a bougé sans
       # que la sortie soit reconstruite.
       #   tokens : `tokens.css` et `tokens.ts` depuis `tokens.json`
-      #   icônes : `sprite.svg` et `names.ts` depuis le mockup du handoff
       - run: pnpm tokens:check
-      - run: pnpm icons:check
 
       #   domaine : `src/domain/config.ts`, projeté depuis les types Rust par ts-rs.
       #   `ts-rs` exporte pendant `cargo test`, et la sortie est reformatée par Biome —
@@ -100,7 +98,7 @@ jobs:
 
       # **La seule vérification automatisable d'`06h`.** Que le binaire du proxy soit
       # *embarqué* se prouve ici ; qu'il soit *trouvé* par l'app lancée depuis le Finder
-      # demande un œil humain (§ 0 de `REPRISE.md`). Sans cette étape, un `externalBin`
+      # demande un œil humain. Sans cette étape, un `externalBin`
       # retiré de `tauri.conf.json` laisserait la CI verte et casserait Cloud SQL chez
       # l'utilisateur — panne invisible en développement, où le `PATH` fournit le binaire.
       - name: le proxy Cloud SQL est bien dans le bundle
@@ -226,7 +224,7 @@ jobs:
       # PostgreSQL est ici le *service container* de GitHub, dont le nom est engendré : le
       # script le retrouve par son image. Une seule définition de décor pour les deux
       # environnements, plutôt qu'une variante CI qu'on ne peut pas essayer localement — le
-      # défaut qui a fait échouer le garde `default-run` (voir `REPRISE.md` § 6).
+      # défaut qui a fait échouer le garde `default-run`.
       - name: monter le bastion SSH
         run: ./scripts/bastion-test.sh demarrer "$RUNNER_TEMP/bastion"
 

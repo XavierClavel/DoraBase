@@ -58,7 +58,7 @@ caCertificate: string | null,
 /**
  * Réglage **saisi** dans `A2`. L'état effectif d'une base ouverte compose ce
  * réglage, la préférence globale de `A10` et l'environnement courant : c'est une
- * règle, pas une donnée, et elle appartient à `11`. Voir `specs/05a`.
+ * règle, pas une donnée, et elle appartient à l'édition inline.
  */
 readOnly: boolean, reconnectOnStartup: boolean, tunnel: Tunnel | null, };
 
@@ -371,7 +371,7 @@ instanceConnectionName: string, };
 
 /**
  * Un bastion SSH. Le **chemin** de la clé privée est de la configuration, pas un
- * secret — voir `specs/05c` § Hors périmètre.
+ * secret.
  */
 export type ProxySsh = { bastionHost: string, bastionPort: number, username: string, privateKeyPath: string, };
 

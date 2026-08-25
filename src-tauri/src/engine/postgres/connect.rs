@@ -1,4 +1,4 @@
-//! Construction de la configuration de connexion et ouverture. Voir `specs/06b`.
+//! Construction de la configuration de connexion et ouverture.
 
 use tokio_postgres::config::SslMode as PgSslMode;
 use tokio_postgres::{Client, Config, NoTls};

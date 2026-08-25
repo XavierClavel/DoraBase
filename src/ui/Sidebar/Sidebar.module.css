@@ -53,7 +53,7 @@
    *
    * `fill` est la sidebar d'un `SplitPane`, et la poignée de celui-ci dessine déjà le séparateur —
    * 1 px de `--divider`, la même teinte. Les deux se collaient : le trait faisait 2 px là où les filets
-   * horizontaux de l'écran en font 1, et l'écart se voyait à la jonction (`DEFAUTS.md` n° 129).
+   * horizontaux de l'écran en font 1, et l'écart se voyait à la jonction.
    *
    * `.root` garde le sien : hors `SplitPane` — la galerie, `A1` — il n'y a aucune poignée pour le
    * porter, et la sidebar doit bien finir quelque part.

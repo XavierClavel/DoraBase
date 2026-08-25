@@ -121,7 +121,7 @@ test('aucun conteneur défilant ne rebondit aux extrémités', async ({ page }) 
   })
   // **Une vérification de déclaration, et elle est assumée comme telle.** Le rebond élastique est un
   // comportement de WKWebView : Chromium ne le rend pas, donc il n'y a rien à mesurer géométriquement
-  // — c'est le même mur que la discrétion des barres de défilement (`DEFAUTS.md` n° 73), et il est dit
+  // — c'est le même mur que la discrétion des barres de défilement, et il est dit
   // plutôt que contourné par une fausse mesure. Ce que ce test attrape est réel malgré tout : le
   // prochain panneau défilant qui redéclare `overscroll-behavior` pour son compte, ou une régression
   // de la règle universelle de `reset.css`. Quatorze feuilles déclarent un débordement aujourd'hui ;
@@ -720,7 +720,7 @@ test('la ligne sous la bande d’onglets ne se casse pas à la colonne de droite
 
   // **Même épaisseur et même teinte**, parce que c'est une seule ligne. Le handoff pose `.08` à
   // droite et `.1` à gauche — deux blocs dessinés séparément — et la jonction se voyait :
-  // un trait plus clair se lit comme un trait plus fin. Écart assumé, `DEFAUTS.md` n° 128.
+  // un trait plus clair se lit comme un trait plus fin. Écart assumé.
   expect(mesures?.traitEntete).toBe(mesures?.traitBande)
   expect(mesures?.traitBande).toBe('1px rgba(35, 32, 28, 0.1)')
 })

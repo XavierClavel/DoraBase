@@ -1018,7 +1018,7 @@ export function Workbench({
               // `A4`.** Le handoff donne 252 px à `A4` et 212 aux écrans de travail ; dans une
               // coquille unique, ce ne peut pas être les deux — la colonne sauterait de 40 px à
               // l'ouverture d'un onglet. Le `SplitPane` la rend de toute façon réglable, ce
-              // qu'un mockup figé ne peut pas exprimer. Écart consigné dans `specs/README.md`.
+              // qu'un mockup figé ne peut pas exprimer. Écart consigné dans `AGENTS.md`.
               width="fill"
               projects={projects}
               deplies={deplies}

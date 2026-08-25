@@ -180,7 +180,7 @@ export type Identity = "always" | "byDefault";
 export type IndexInfo = { name: string, 
 /**
  * La définition rendue par le moteur, affichée en mono par `A9`. Jamais reconstruite
- * à la main — voir `specs/06c`.
+ * à la main.
  */
 definition: string, };
 

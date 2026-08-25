@@ -1,4 +1,4 @@
-//! Adaptateur PostgreSQL. Voir `specs/06b-connexion-postgresql.md`.
+//! Adaptateur PostgreSQL.
 //!
 //! Ce module ne couvre que **l'ouverture et le test** d'une connexion : l'introspection
 //! vient en `06c`, la lecture de lignes en `06d`, le tunnel en `06e`. Les opérations

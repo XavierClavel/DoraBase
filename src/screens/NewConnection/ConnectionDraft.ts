@@ -36,7 +36,7 @@ export type ConnectionDraft = {
   defaultDatabase: string
   username: string
   /** En clair, le temps de la saisie. `08e` le range dans le magasin et n'en garde qu'une
-   * référence — voir `specs/08e` § « Le mot de passe est un secret dès la saisie ». */
+   * référence : le mot de passe est un secret dès la saisie. */
   password: string
   sslMode: SslMode
   /**

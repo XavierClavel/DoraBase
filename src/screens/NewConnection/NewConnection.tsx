@@ -250,7 +250,7 @@ export function NewConnection({
   //
   // Il est aussi désactivé **sans aucun projet** : `A2` déclare une base *dans un projet
   // existant*, et le handoff ne maquette pas le parcours d'un utilisateur qui n'en a aucun.
-  // Voir le § « À trancher » de `specs/README.md`, trou n°4.
+  // Le handoff ne maquettait pas le parcours d'un utilisateur sans aucun projet.
   // **Il est de nouveau désactivé faute de projet**, et c'est le retour de la garde de `08e` : cet
   // écran ne sait plus créer de projet (`24c`), donc sans projet il n'a rien où enregistrer. Le cas
   // ne se produit plus dans l'application — `24d` renvoie vers l'étape 1 — mais la garde reste : un
@@ -378,7 +378,7 @@ export function NewConnection({
             {!engineImplemented && (
               // Un moteur sans adaptateur est **sélectionnable et le dit**. Le masquer ferait
               // croire que le produit ne le prévoit pas ; le laisser muet ferait croire que
-              // « Tester » est cassé. Voir `specs/08b` § Hors périmètre.
+              // « Tester » est cassé.
               <span className={styles.unsupported}>
                 {ENGINES[draft.engine].label} n’a pas encore d’adaptateur
               </span>
@@ -459,7 +459,7 @@ export function NewConnection({
  *
  * « Retester » après un échec est le mot du handoff (`A3` § pied). L'état d'attente n'est pas
  * maquetté : « Test en cours… » est le minimum défendable, sans animation inventée. La question
- * d'un indicateur de progression est consignée au § « À trancher » de `specs/README.md`.
+ * d'un indicateur de progression est consignée dans `AGENTS.md`.
  */
 function libelleDuBouton(phase: EtatDuTest['phase']): string {
   if (phase === 'en-cours') return 'Test en cours…'

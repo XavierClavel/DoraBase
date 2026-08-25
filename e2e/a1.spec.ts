@@ -49,7 +49,7 @@ test('A1 est conforme à la référence', async ({ page }) => {
 //
 // **Les trois feux ne sont pas dans la capture** : ils sont dessinés par macOS par-dessus la
 // fenêtre, hors du DOM et hors de portée de Playwright comme du CSS. Le mockup les grise ;
-// nous ne pouvons pas. Voir `specs/README.md` § « À trancher ».
+// nous ne pouvons pas — écart consigné dans `AGENTS.md`.
 // **Les trois captures suivantes ont changé de décor le 19 août 2026** (`24d`). Le bouton de `A1`
 // ouvrait `A2` ; il ouvre maintenant l'étape 1 du parcours de création. Par-dessus `A1`, c'est donc
 // l'étape 1 qui se capture — et c'est juste : c'est ce que ce bouton fait. `A2` et `A3`, eux, se

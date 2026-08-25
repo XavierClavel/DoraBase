@@ -1,5 +1,4 @@
 //! Avec quoi le proxy s'authentifie, et ce qu'on répond quand ça échoue.
-//! Voir `specs/06i-identifiants-gcloud.md`.
 //!
 //! Deux choses seulement, et elles sont de nature différente :
 //! - `Sources::observees` puis `controler` — le seul échec visible **avant** de lancer le

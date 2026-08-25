@@ -1,5 +1,7 @@
-/* Généré par pnpm icons:build — ne pas éditer */
-/* biome-ignore-all format: fichier généré, mise en forme produite par le générateur */
+/* Les noms d’icônes du sprite. **Source, éditée à la main** : ce fichier et `sprite.svg`
+   étaient extraits du mockup de handoff, retiré du dépôt le 25 août 2026. Une icône
+   ajoutée doit l’être dans les deux. */
+/* biome-ignore-all format: une entrée par ligne, pour que le diff nomme l’icône ajoutée */
 export type IconName =
   | 'asc'
   | 'bag'

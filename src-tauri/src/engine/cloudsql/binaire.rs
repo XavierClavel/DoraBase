@@ -1,5 +1,4 @@
-//! Trouver le binaire `cloud-sql-proxy`. Voir `specs/06g` § « Trouver le binaire », et
-//! `specs/06h-binaire-embarque.md` pour le binaire livré avec le bundle.
+//! Trouver le binaire `cloud-sql-proxy` — le sidecar embarqué d'abord, le `PATH` en repli.
 
 use std::path::{Path, PathBuf};
 
@@ -9,7 +8,7 @@ use crate::engine::EngineError;
 /// Tauri copie le binaire externe dans le bundle, en retirant le triplet du nom du fichier.
 const NOM: &str = "cloud-sql-proxy";
 
-/// Le verrou, inclus à la compilation. Voir `specs/06h-binaire-embarque.md`.
+/// Le verrou, inclus à la compilation.
 ///
 /// **Le même fichier que celui que lit le script de téléchargement.** Deux sources — une
 /// constante Rust et une ligne de script — divergeraient au premier relèvement de version,

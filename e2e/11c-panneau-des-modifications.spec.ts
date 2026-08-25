@@ -33,7 +33,7 @@ test('le panneau remplace le détail et occupe la place du mockup', async ({ pag
   // mémorisée (`SplitPane`, `storageKey`) : la faire sauter de 34 px à l'apparition des
   // modifications reprendrait le défaut écarté pour la sidebar en `10b`, où le handoff donne 252 px
   // à `A4` et 212 aux écrans de travail. Un mockup figé ne peut pas exprimer une colonne que
-  // l'utilisateur déplace. Écart consigné dans `specs/11c`.
+  // l'utilisateur déplace. Écart assumé.
   expect(mesures?.largeur).toBeGreaterThanOrEqual(290)
 })
 
