@@ -328,10 +328,9 @@ function monter(over: Partial<Parameters<typeof Workbench>[0]> = {}) {
 }
 
 describe('Workbench', () => {
-  // **Rien de sélectionné au montage, donc rien à montrer** : le centre et la colonne de droite
-  // laissent la place au logo décoloré et à sa phrase. L'arbre, lui, est ce qui reste — c'est là
-  // qu'on sélectionne.
-  it('au montage, rien n’est sélectionné : ni bande d’onglets ni panneau droit', () => {
+  // **Rien à montrer au montage** : le centre et la colonne de droite laissent la place au logo
+  // décoloré et à sa phrase. L'arbre, lui, est ce qui reste — c'est là qu'on sélectionne.
+  it('au montage, rien n’est sélectionné : ni bande d’onglets ni panneau de détail', () => {
     monter()
     expect(
       screen.getByRole('tree', { name: 'Projets, environnements et connexions' }),
@@ -341,11 +340,31 @@ describe('Workbench', () => {
     expect(screen.queryByLabelText('Détail de l’objet')).not.toBeInTheDocument()
   })
 
-  it('assemble la coquille dès qu’une ligne est sélectionnée : arbre, centre, panneau droit', async () => {
+  // **Les trois paliers au-dessus du schéma n'ont pas d'écran.** Ils n'ont ni liste d'objets ni
+  // structure, seulement des enfants dans l'arbre : les sélectionner ne remplit donc pas le centre.
+  // Le test descend palier par palier, parce que le défaut serait justement de traiter l'un des trois
+  // autrement que les deux autres.
+  it('un projet, un environnement, une connexion : le centre reste vide', async () => {
     const utilisateur = userEvent.setup()
     monter()
-    // Cliquer le projet suffit : la sélection porte un projet, donc l'écran a un sujet.
     await utilisateur.click(screen.getByRole('treeitem', { name: /Atelier Nord/ }))
+    expect(screen.getByText('Sélectionner une entité pour commencer')).toBeInTheDocument()
+
+    const environnements = screen
+      .getAllByRole('treeitem')
+      .filter((ligne) => ligne.getAttribute('aria-level') === '2')
+    for (const ligne of environnements) await utilisateur.click(ligne)
+    expect(screen.getByText('Sélectionner une entité pour commencer')).toBeInTheDocument()
+
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /analytics/ }))
+    expect(screen.getByText('Sélectionner une entité pour commencer')).toBeInTheDocument()
+  })
+
+  // **Le schéma est le premier palier qui a quelque chose à dire** : c'est `A4`, et il reste.
+  it('assemble la coquille dès qu’un schéma est sélectionné : arbre, centre, panneau droit', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await ouvrirLArbreJusquAuSchema(utilisateur)
     expect(screen.queryByText('Sélectionner une entité pour commencer')).not.toBeInTheDocument()
     expect(screen.getByRole('tablist')).toBeInTheDocument()
     expect(screen.getByLabelText('Détail de l’objet')).toBeInTheDocument()
