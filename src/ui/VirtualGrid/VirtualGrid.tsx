@@ -310,7 +310,7 @@ function EnTete<Row>({
   return (
     <div className={styles.head} role="rowgroup" style={{ width: largeur }}>
       <div
-        className={styles.row}
+        className={cx(styles.row, styles.headRow)}
         role="row"
         aria-rowindex={1}
         style={{ gridTemplateColumns: gabarit }}

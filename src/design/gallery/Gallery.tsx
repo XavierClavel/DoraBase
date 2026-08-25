@@ -1656,6 +1656,28 @@ function VirtualGridGallery() {
           />
         </div>
       </Sub>
+      {/* **Le cas inverse du précédent** : des colonnes qui ne remplissent pas le cadre. C'est celui
+          qui a montré, le 25 août 2026, que la bande d'en-tête s'arrêtait après la dernière colonne
+          — le fond était peint par piste de grille, et il n'y a pas de piste au-delà. Sans un décor
+          où les colonnes sont plus étroites que le cadre, aucun test ne pouvait le voir. */}
+      <Sub title="Moins de colonnes que de largeur">
+        <div
+          data-testid="virtual-grid-etroite"
+          style={{ border: '1px solid var(--divider)', width: 340 }}
+        >
+          <VirtualGrid
+            label="Lignes de public.paliers"
+            columns={[
+              { key: 'id', header: 'id', width: 40, cell: (l: LigneDemo) => String(l.id) },
+              { key: 'palier', header: 'palier', width: 70, cell: () => 'or' },
+            ]}
+            rows={LIGNES_DEMO.slice(0, 4)}
+            rowId={(l) => String(l.id)}
+            viewportHeight={104}
+            filterRow
+          />
+        </div>
+      </Sub>
       <Sub title="Vide">
         <div style={{ border: '1px solid var(--divider)', width: 340 }}>
           <VirtualGrid

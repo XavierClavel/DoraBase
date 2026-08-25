@@ -1417,3 +1417,31 @@ mise en page sans écrire la mesure qui le tient revient à changer du CSS en es
    composant qui porte ce champ, donc pour tous ses appelants. **Un champ de saisie ne devrait jamais
    hériter de ces réglages par défaut** : ils supposent de la prose, et une application de bases de
    données n'en contient presque pas.
+
+125. **La bande d'en-tête de la grille s'arrêtait après la dernière colonne.** Signalé à l'usage,
+   capture à l'appui, sur une table de six colonnes : le fond `--bar` des noms de colonnes couvrait
+   les colonnes et **rien au-delà**, laissant le fond de la page à droite sur toute la hauteur de la
+   bande. Le filet du bas s'arrêtait avec lui.
+
+   La cause est un choix de support : le fond et le filet étaient posés sur les cellules `.th`, donc
+   peints **par piste de grille** — et il n'y a pas de piste au-delà de la dernière colonne. Le
+   `min-width: 100%` de `.head` étendait bien la boîte, ce qui explique que le défaut n'ait laissé
+   aucune trace mesurable : la boîte était de la bonne largeur, elle ne peignait rien.
+
+   **La ligne de filtres, juste en dessous, faisait déjà bien** — son fond est sur la ligne
+   (`.filterRow`), pas sur ses cellules. Les deux bandes du même en-tête se contredisaient donc à
+   l'écran depuis `10d`, et c'est ce contraste qui rend le défaut visible sur la capture.
+
+   **Pourquoi aucun test ne pouvait le voir** : le décor de galerie de `10a` a été construit avec
+   « assez de colonnes pour déborder des 340 px du cadre » — délibérément, pour attraper les défauts
+   de défilement horizontal du 10 août. Le cas inverse, des colonnes plus étroites que la grille,
+   n'existait nulle part. Une grille ne se teste pas seulement en débordement.
+
+   Corrigé en déplaçant fond et filet sur la ligne d'en-tête. Le décor manquant est ajouté à la
+   galerie, et le test interroge la couleur **peinte** à quatre pixels du bord droit, par
+   `elementFromPoint` : une mesure de boîte aurait été verte avant comme après.
+
+   Au passage, un piège d'`elementFromPoint` en e2e : il ne répond que sur ce qui est **réellement à
+   l'écran**. La galerie étant longue, la grille vivait à 3800 px du haut et la fonction rendait
+   `null` — ce qui se lit comme « rien n'est peint », le symptôme même qu'on cherchait. Il faut
+   amener l'élément dans la fenêtre avant de sonder.
