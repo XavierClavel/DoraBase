@@ -389,7 +389,7 @@ colonnes inventées. Il lui faut son propre écran, qui n'est pas conçu.
 
 ---
 
-## Vérifier : neuf règles tirées des défauts rencontrés
+## Vérifier : les règles tirées des défauts rencontrés
 
 Celles-là se sont **répétées**, et c'est ce qui en fait des règles plutôt que des
 anecdotes.
@@ -414,17 +414,25 @@ anecdotes.
    une table vide et une table jamais analysée, un chevauchement et une découpe par
    `overflow` — puis rendre les deux distinguables.
 
-4. **Un composant vérifié pièce par pièce n'est pas un écran livré.** Un écran entier
+4. **Une capture de fidélité fait partie du changement qui la périme.** Trois références de
+   `a1.spec.ts` sont restées trois commits en retard sur `AucuneSelection` : le fond derrière la
+   modale avait changé de quelques valeurs sur toute la zone de travail, et `main` est resté
+   rouge du 25 août au soir. Le diff de Playwright compte les pixels **au-dessus du seuil**, pas
+   les pixels différents : 200 000 valeurs décalées de 4/255 s'annoncent « 401 pixels ». Lire le
+   chiffre comme un ordre de grandeur, puis regarder les deux images côte à côte — c'est ce qui
+   dit si le rendu est faux ou si c'est la référence.
+
+5. **Un composant vérifié pièce par pièce n'est pas un écran livré.** Un écran entier
    fidèle et testé n'avait jamais été vu **dans l'application** : tous ses tests visaient
    la galerie, qui donne la même image. Même motif pour trois couches complètes que
    personne ne franchissait. **Au moins un test doit partir de `/`.**
 
-5. **jsdom ne calcule aucune mise en page.** Toute exigence de hauteur, largeur, position
+6. **jsdom ne calcule aucune mise en page.** Toute exigence de hauteur, largeur, position
    ou superposition est structurellement hors de portée de Vitest et va dans `e2e/`. Et
    il faut mesurer la valeur **calculée**, pas le rectangle : celui-ci inclut les bordures
    et masque un écart derrière un arrondi.
 
-6. **Un niveau de test manque toujours : celui qui n'appartient à aucun écran.**
+7. **Un niveau de test manque toujours : celui qui n'appartient à aucun écran.**
    `e2e/geometrie-reelle.spec.ts` existe pour ça, à la taille de fenêtre réelle : rien ne
    franchit le bord droit **et** la racine ne défile pas horizontalement (les deux
    ensemble, un enfant coupé par un ancêtre en `overflow: hidden` échappant à la
@@ -432,7 +440,7 @@ anecdotes.
    dans leurs boutons. Chaque composant peut être juste dans sa vitrine et faux dès qu'un
    voisin décide sa largeur.
 
-7. **Les outils qui vérifient doivent eux-mêmes pouvoir échouer.** `cmd | tail` fait
+8. **Les outils qui vérifient doivent eux-mêmes pouvoir échouer.** `cmd | tail` fait
    porter le statut de sortie par `tail`, et « TOUT VERT » s'est affiché avec trois
    vérifications rouges — d'où `scripts/verifier-tout.sh`, qui ne tronque rien. Un garde
    écrit contre une famille de fichiers ne couvre pas celle qu'elle engendre. Un
@@ -440,21 +448,32 @@ anecdotes.
    `git checkout -- fichier` restaure depuis l'**index** : un sabotage qui y a été ajouté
    est réinstallé par la « restauration » censée l'enlever.
 
-8. **« ÉCHEC à l'étape X » ne dit pas que X a échoué pour la raison qu'on croit.** Lire
+9. **« ÉCHEC à l'étape X » ne dit pas que X a échoué pour la raison qu'on croit.** Lire
    `gh run view --log-failed`, pas seulement le nom de l'étape — la vraie cause est
    souvent en amont *dans* la même commande. Et tout échec de CI n'est pas un défaut du
    code : une panne de GitHub Actions se relance, elle ne se corrige pas.
 
-9. **Quand un scope ajoute une dépendance à un fichier absent du dépôt, la question n'est
-   pas « le script qui le fabrique est-il appelé ? » mais « que voit un clone neuf ? ».**
-   Un `externalBin` déclaré fait exiger le fichier par **toute** compilation — `cargo
-   build`, `cargo test`, `clippy` —, pas seulement par le bundle. Rien ne l'avait vu parce
-   que le binaire était présent sur la machine de développement depuis l'écriture du scope.
+10. **Quand un scope ajoute une dépendance à un fichier absent du dépôt, la question n'est
+    pas « le script qui le fabrique est-il appelé ? » mais « que voit un clone neuf ? ».**
+    Un `externalBin` déclaré fait exiger le fichier par **toute** compilation — `cargo
+    build`, `cargo test`, `clippy` —, pas seulement par le bundle. Rien ne l'avait vu parce
+    que le binaire était présent sur la machine de développement depuis l'écriture du scope.
 
-10. **Ce qu'un double de test émet doit venir d'une observation de l'original** — et une
+11. **Ce qu'un double de test émet doit venir d'une observation de l'original** — et une
     observation faite avec `2>&1` ne dit rien de la séparation des flux. Un faux binaire
     en shell peut couvrir tout le pilotage d'un sous-processus et se tromper sur le seul
     point qui compte.
+
+12. **Une lecture sèche après une action asynchrone date la mesure du mauvais instant.**
+    `page.evaluate`, `getAttribute`, `boundingBox` ne réessaient pas : ils rendent l'état de
+    l'appel, pas celui qui résulte du clic ou du défilement qui précède. Le rendu suivant arrive
+    plus tard, et sur un runner chargé il arrive **après**. Le test échoue alors sur une exigence
+    qu'il ne mesurait pas — un panneau à zéro bouton, une grille restée à la ligne 3 — et la
+    reprise le rattrape, ce qui le fait passer pour instable plutôt que pour faux. Deux
+    occurrences le 25 août 2026, dans deux fichiers. Le remède est `expect(locator).toHaveCount`,
+    `expect.poll`, ou n'importe quelle attente qui réessaie ; et quand une mesure ne vaut
+    qu'après l'effet — l'en-tête qui « n'a pas bougé » —, la placer **après** l'attente qui
+    prouve l'effet.
 
 **Et la méthode qui a le plus payé** : mesurer le rendu dans un navigateur plutôt que lire
 des valeurs déclarées, et comparer deux captures **côte à côte**. Une mesure vérifie une

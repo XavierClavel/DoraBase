@@ -47,13 +47,22 @@ test('la barre de défilement a la course des cent mille lignes', async ({ page 
 test('l’en-tête reste en place quand la grille défile', async ({ page }) => {
   const avant = await grille_(page).locator('[role=columnheader]').first().boundingBox()
   await viewport(page).evaluate((element) => element.scrollTo({ top: 12_000 }))
-  const apres = await grille_(page).locator('[role=columnheader]').first().boundingBox()
 
+  // **Le défilement a bien changé les lignes montées** — sans quoi la mesure d'en-tête passerait
+  // sur une grille immobile. En `poll`, et non en lecture sèche : les lignes se remontent au rendu
+  // qui *suit* le `scrollTo`, et `getAttribute` ne réessaie pas. Sur un runner chargé, la lecture
+  // arrivait donc avant le remontage et rendait l'index d'avant le défilement — un échec qui ne
+  // disait rien de l'exigence mesurée, et que la reprise déguisait en test instable.
+  await expect
+    .poll(async () =>
+      Number(await grille_(page).locator('[role=row]').nth(2).getAttribute('aria-rowindex')),
+    )
+    .toBeGreaterThan(400)
+
+  // L'en-tête, mesuré **après** que le défilement a pris effet : c'est le seul moment où « il n'a
+  // pas bougé » veut dire quelque chose.
+  const apres = await grille_(page).locator('[role=columnheader]').first().boundingBox()
   expect(apres?.y).toBe(avant?.y)
-  // Et le défilement a bien changé les lignes montées — sans quoi le test ci-dessus passerait
-  // sur une grille immobile.
-  const premiere = await grille_(page).locator('[role=row]').nth(2).getAttribute('aria-rowindex')
-  expect(Number(premiere)).toBeGreaterThan(400)
 })
 
 test('le fond d’une ligne sélectionnée court sur toutes les colonnes, même hors écran', async ({

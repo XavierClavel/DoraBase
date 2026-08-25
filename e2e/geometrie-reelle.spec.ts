@@ -418,17 +418,16 @@ test('les libellés des actions du panneau tiennent dans leur bouton', async ({ 
   await page.getByRole('treeitem', { name: 'public' }).dblclick()
   await page.waitForSelector('nav[aria-label]')
   await page.getByRole('row').nth(1).click()
-  await page.evaluate(() => document.fonts.ready)
 
-  const boutons = await page.evaluate(
-    () =>
-      [...document.querySelectorAll('button')].filter((bouton) =>
-        /SELECT dans console/.test(bouton.textContent ?? ''),
-      ).length,
-  )
-  // Le garde-fou de l'ensemble vide : si ce bouton disparaît ou change de libellé, ce test doit le
-  // dire, pas se taire.
-  expect(boutons).toBe(1)
+  // **Le garde-fou de l'ensemble vide, mais qui attend.** Compter les boutons dans un
+  // `page.evaluate` synchrone mesure l'instant du clic, pas l'état qui en résulte : le panneau de
+  // détail paraît au rendu suivant, et sur un runner chargé ce rendu arrive après le comptage. Le
+  // test trouvait alors zéro bouton et échouait sur une exigence qu'il ne mesurait pas — passé pour
+  // « flaky » parce que la reprise le rattrapait, alors qu'il était simplement mal daté.
+  // `toHaveCount` réessaie jusqu'à son délai : même refus de l'ensemble vide, sans mesurer
+  // l'instant. Vérifié par sabotage — sans le clic qui sélectionne, il trouve zéro et échoue.
+  await expect(page.getByRole('button', { name: /SELECT dans console/ })).toHaveCount(1)
+  await page.evaluate(() => document.fonts.ready)
 
   const debordements = await page.evaluate(() =>
     [...document.querySelectorAll('button')]
