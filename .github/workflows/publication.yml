@@ -107,12 +107,82 @@ jobs:
       - run: cargo test
         working-directory: src-tauri
 
+      # ── Signature et notarisation Apple ────────────────────────────────────────────────
+      #
+      # **Tout ce bloc est conditionnel.** Sans les secrets — un clone, un fork, une bifurcation
+      # de travail —, la construction reste celle d'avant : signature ad hoc, application qui
+      # demande un geste au premier lancement. Un workflow qui exige un certificat pour
+      # s'exécuter rendrait le dépôt inconstructible pour tout le monde sauf son auteur.
+      #
+      # `NOTARISE` porte cette condition une seule fois : une expression répétée dans cinq `if`
+      # finit par différer dans l'un des cinq.
+      - name: signature Apple disponible ?
+        env:
+          IDENTITE: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          if [[ -n ${IDENTITE:-} ]]; then
+            echo "NOTARISE=oui" >> "$GITHUB_ENV"
+            echo "signature et notarisation Apple : activées"
+          else
+            echo "NOTARISE=non" >> "$GITHUB_ENV"
+            echo "::notice::pas de secret APPLE_SIGNING_IDENTITY — signature ad hoc, sans notarisation"
+          fi
+
+      # La clé App Store Connect est un **fichier** pour `notarytool`, alors qu'un secret est une
+      # chaîne : elle est donc écrite ici, en base64 inverse, hors de l'arbre de travail et en 600.
+      # `printf` et une redirection, jamais un `echo` dans un pipeline : le masquage des logs ne
+      # suit pas une valeur transformée.
+      - name: écrire la clé API Apple
+        if: env.NOTARISE == 'oui'
+        env:
+          P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$P8" | base64 -d > "$RUNNER_TEMP/AuthKey.p8"
+          chmod 600 "$RUNNER_TEMP/AuthKey.p8"
+          # Une clé tronquée ou mal encodée ne se voit qu'à l'échec de la soumission, vingt
+          # minutes plus tard. `openssl` la **lit en entier** : un contrôle sur la seule première
+          # ligne laissait passer une clé coupée, puisque l'en-tête tient dans les premiers
+          # octets — essayé, et le garde était vert sur une clé de quarante caractères.
+          openssl pkey -in "$RUNNER_TEMP/AuthKey.p8" -noout
+          echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+
+      # `tauri.conf.json` porte `"signingIdentity": "-"` — la signature ad hoc, qui est le bon
+      # défaut sans certificat. La retirer ici laisse `APPLE_SIGNING_IDENTITY` décider, sans
+      # dépendre d'une précédence entre la conf et l'environnement que rien ne documente. Le
+      # fichier du dépôt n'est pas touché : c'est une copie de travail du runner.
+      - name: laisser l'identité réelle signer
+        if: env.NOTARISE == 'oui'
+        run: |
+          set -euo pipefail
+          python3 - <<'FIN'
+          import json
+          from pathlib import Path
+          chemin = Path("src-tauri/tauri.conf.json")
+          conf = json.loads(chemin.read_text())
+          retiree = conf["bundle"]["macOS"].pop("signingIdentity", None)
+          assert retiree == "-", f"signingIdentity valait {retiree!r}, « - » attendu"
+          chemin.write_text(json.dumps(conf, indent=2, ensure_ascii=False) + "\n")
+          print("signingIdentity retirée de la copie de travail")
+          FIN
+
       # ── Le bundle ──────────────────────────────────────────────────────────────────────
       #
       # `--target universal-apple-darwin` : un seul `.dmg` pour les deux architectures. Deux
       # fichiers séparés obligeraient l'utilisateur à savoir quel Mac il a — une question à
       # laquelle un explorateur de bases de données n'a pas à faire répondre.
+      #
+      # Les variables `APPLE_*` sont lues par Tauri lui-même : présentes, il signe avec
+      # l'identité, soumet à `notarytool`, attend le verdict et agrafe le ticket ; absentes, il
+      # signe en ad hoc et l'annonce dans son log (« skipping app notarization »).
       - run: pnpm tauri build --target universal-apple-darwin
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
       # La version affichée vient du build et elle est **figée sous Playwright** : sans quoi
       # chaque publication périmerait les captures de fidélité. La contrepartie est de vérifier
@@ -158,12 +228,45 @@ jobs:
       #
       # Ce n'est pas une notarisation. Voir le README : l'utilisateur a un geste à faire au
       # premier lancement, et il n'y a pas de Developer ID pour l'en dispenser.
-      - name: le bundle est signé (ad hoc) et cohérent
+      - name: le bundle est signé, et notarié si on peut
         run: |
           set -euo pipefail
-          app=src-tauri/target/universal-apple-darwin/release/bundle/macos/DoraBase.app
+          racine=src-tauri/target/universal-apple-darwin/release/bundle
+          app=$racine/macos/DoraBase.app
+          dmg=$(ls "$racine"/dmg/*.dmg)
+
+          # Vrai dans les deux cas : la signature couvre tout le bundle, sidecar compris.
           codesign --verify --deep --strict --verbose=2 "$app"
-          codesign --display --verbose=2 "$app" 2>&1 | grep -E 'Signature=adhoc|Authority='
+
+          if [[ ${NOTARISE:-non} != oui ]]; then
+            codesign --display --verbose=2 "$app" 2>&1 | grep -F 'Signature=adhoc'
+            echo "::notice::signature ad hoc — l'utilisateur aura un geste à faire au premier lancement"
+            exit 0
+          fi
+
+          # **Trois faits distincts, et aucun n'implique les autres.**
+          #
+          #   `Authority=Developer ID Application` : signé par le bon certificat — un ad hoc
+          #     silencieusement retombé passerait `codesign --verify` sans problème ;
+          #   `stapler validate` : le ticket d'Apple est **agrafé** au bundle, donc Gatekeeper
+          #     l'accepte même hors ligne. Sans agrafage, l'application dépend d'un aller-retour
+          #     réseau chez l'utilisateur, et échoue derrière un pare-feu ;
+          #   `spctl --assess` : le verdict que rend réellement le système au lancement. C'est
+          #     celui-ci qui décide si la fenêtre « Apple n'a pas pu confirmer… » paraît.
+          codesign --display --verbose=4 "$app" 2>&1 | grep -F 'Authority=Developer ID Application'
+          xcrun stapler validate "$app"
+          spctl --assess --type execute --verbose=4 "$app" 2>&1 | grep -F 'source=Notarized Developer ID'
+
+          # **Et le `.dmg` autant que l'application.** C'est lui que l'utilisateur télécharge,
+          # donc lui que macOS met en quarantaine et évalue à l'ouverture. Une application
+          # notariée dans une image qui ne l'est pas ferait reparaître l'avertissement — sur
+          # l'image cette fois. Si cette ligne échoue, c'est que Tauri notarie l'app sans notarier
+          # l'image : il faudra une soumission explicite (`notarytool submit` + `stapler staple`)
+          # sur le `.dmg`, et non retirer la vérification.
+          xcrun stapler validate "$dmg"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg" 2>&1 \
+            | grep -F 'source=Notarized Developer ID'
+          echo "notarié et agrafé : application et image"
 
       # Le nom que l'utilisateur verra dans ses téléchargements. Tauri nomme
       # `DoraBase_X.Y.Z_universal.dmg` ; le tiret et la casse du produit se lisent mieux, et
