@@ -87,7 +87,7 @@
   height: 22px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-chip);
+  border-radius: var(--radius-control);
   background: none;
   color: var(--ink-4);
   /* `grab` et non `pointer` : ce bouton ne mène nulle part, il se saisit. */
@@ -201,7 +201,7 @@
   height: 22px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-chip);
+  border-radius: var(--radius-control);
   background: none;
   color: var(--ink-4);
   cursor: pointer;

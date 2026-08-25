@@ -3,6 +3,7 @@ import type { EnvironmentId, Project } from '../../domain/config'
 import type { ColumnInfo, ConnectionState } from '../../domain/engine'
 import { Badge } from '../../ui/Badge/Badge'
 import { ColumnRow } from '../../ui/ColumnRow/ColumnRow'
+import { type EntreeDeMenu, MenuContextuel } from '../../ui/MenuContextuel/MenuContextuel'
 import { Sidebar } from '../../ui/Sidebar/Sidebar'
 import { SidebarFilterBar } from '../../ui/SidebarFilterBar/SidebarFilterBar'
 import {
@@ -15,6 +16,7 @@ import { INDENT, TreeRow } from '../../ui/TreeRow/TreeRow'
 import { aplatir, type Charge, type Deplies, type Noeud } from './arbre'
 import { type CibleDeSuppression, DeleteConnectionDialog } from './DeleteConnectionDialog'
 import styles from './ExplorerSidebar.module.css'
+import { type RapportDeRenommage, RenameReportDialog } from './RenameReportDialog'
 import { RowMenu } from './RowMenu'
 
 export type ExplorerSidebarProps = {
@@ -59,6 +61,22 @@ export type ExplorerSidebarProps = {
    * Absent, l'entrée « Modifier… » est désactivée avec sa raison plutôt que cliquable et inerte.
    */
   onEditDatabase?: (project: string, database: string, environment: EnvironmentId) => void
+  /**
+   * Renomme une connexion depuis sa ligne (`26`).
+   *
+   * **Sur place, et non dans une modale** : le nom est le seul champ concerné, et l'ouverture d'un
+   * formulaire pour un mot à corriger est ce que le renommage de console a déjà refusé. Le geste rend
+   * ce qu'il y a à dire — un mot de passe introuvable, un résidu dans le Trousseau — et **rejette**
+   * avec le refus du cœur : un nom déjà pris dans cet environnement (`23b`).
+   *
+   * Absent, l'entrée « Renommer… » est désactivée avec sa raison plutôt que cliquable et inerte.
+   */
+  onRenameDatabase?: (
+    project: string,
+    database: string,
+    environment: EnvironmentId,
+    nouveau: string,
+  ) => Promise<{ missingSecrets: string[]; leftoverSecrets: string[] }>
   /**
    * Ouvre la modale d'édition d'un projet depuis son « … » (`23e`).
    *
@@ -135,6 +153,7 @@ export function ExplorerSidebar({
   onRefresh,
   consoles,
   onEditDatabase,
+  onRenameDatabase,
   onEditProject,
   onDelete,
   modificationsEnAttenteDe,
@@ -144,7 +163,11 @@ export function ExplorerSidebar({
 }: ExplorerSidebarProps) {
   const [filtre, setFiltre] = useState('')
   /**
-   * La console en cours de renommage, par identité de nœud.
+   * La ligne en cours de renommage, par identité de nœud — une console (`12f`) ou une connexion
+   * (`26`).
+   *
+   * **Un seul état pour les deux sortes** : une seule ligne se renomme à la fois, et deux états
+   * jumeaux auraient permis d'en éditer deux, dont une invisible.
    *
    * **Ici et non chez l'appelant** : c'est un état d'interface, qui meurt avec la ligne et n'intéresse
    * ni l'écran de travail ni le disque. Le remonter aurait fait voyager un identifiant de nœud à
@@ -152,6 +175,24 @@ export function ExplorerSidebar({
    */
   const [enRenommage, setEnRenommage] = useState<string | null>(null)
   const [aRetirer, setARetirer] = useState<CibleDeSuppression | null>(null)
+  /**
+   * Ce qu'un renommage a eu à dire (`26`) — un refus, ou une réserve sur le Trousseau.
+   *
+   * **`null` la plupart du temps, et c'est le point** : le succès sans réserve ne monte rien, la
+   * ligne renommée étant sa propre confirmation.
+   */
+  const [rapport, setRapport] = useState<RapportDeRenommage | null>(null)
+  /**
+   * Le menu ouvert au clic droit : **l'identité de la ligne visée, et l'endroit du pointeur**.
+   *
+   * L'identité plutôt que le nœud lui-même : `aplatir` reconstruit les nœuds à chaque rendu, et un
+   * objet mémorisé ici serait une copie périmée dès le premier dépliage. Les entrées sont donc
+   * recalculées au rendu, sur le nœud courant — et si la ligne a disparu entre-temps, le menu ne
+   * s'ouvre pas plutôt que d'agir sur ce qui n'est plus là.
+   */
+  const [menuAuPointeur, setMenuAuPointeur] = useState<{ id: string; x: number; y: number } | null>(
+    null,
+  )
   const demanderLeRetrait = onDelete === undefined ? undefined : setARetirer
 
   const noeuds = useMemo(
@@ -161,8 +202,91 @@ export function ExplorerSidebar({
 
   const visibles = useMemo(() => filtrer(noeuds, filtre), [noeuds, filtre])
 
+  /**
+   * Les actions d'une ligne, câblées sur cet écran.
+   *
+   * **Une seule construction pour les deux ouvertures** — le « … » et le clic droit : le menu est le
+   * même, seule la façon de le demander change. Deux listes d'entrées auraient divergé d'une action
+   * au premier ajout, et c'est le genre d'écart qu'on ne remarque qu'en montrant le produit.
+   */
+  const actionsDe = (noeud: Noeud): readonly EntreeDeMenu[] | undefined =>
+    entreesDe(
+      noeud,
+      onEditDatabase,
+      onRenameDatabase !== undefined,
+      onEditProject,
+      demanderLeRetrait,
+      onRefresh,
+      consoles,
+      setEnRenommage,
+    )
+
+  /** La ligne visée par le clic droit, si elle est toujours là, et ce que son menu propose. */
+  const viseeAuPointeur =
+    menuAuPointeur === null
+      ? null
+      : (() => {
+          const noeud = visibles.find((candidat) => candidat.id === menuAuPointeur.id)
+          const entrees = noeud ? actionsDe(noeud) : undefined
+          return noeud && entrees ? { noeud, entrees } : null
+        })()
+
+  /**
+   * Applique un renommage sur place, selon la sorte de ligne.
+   *
+   * **Une seule fonction pour les deux**, appelée par le champ d'édition : le composant de saisie ne
+   * connaît qu'un nouveau nom, et lui faire choisir la commande aurait demandé de lui apprendre le
+   * modèle d'arbre.
+   *
+   * Les coordonnées viennent du **nœud**, jamais d'une déduction sur son libellé : deux connexions
+   * homonymes vivent dans deux environnements (`23b`), et c'est le couple qui les distingue.
+   */
+  function renommer(noeud: Noeud, nouveau: string) {
+    if (noeud.project === undefined || noeud.environment === undefined) return
+
+    if (noeud.kind === 'console' && consoles !== undefined) {
+      if (noeud.database === undefined || noeud.console === undefined) return
+      consoles.onRenommer(noeud.project, noeud.database, noeud.environment, noeud.console, nouveau)
+      return
+    }
+
+    if (noeud.kind === 'database' && onRenameDatabase !== undefined) {
+      const project = noeud.project
+      const environment = noeud.environment
+      // Le refus et les réserves ne sont pas attendus par le champ, qui est déjà démonté : ils
+      // arrivent dans le rapport, seul endroit où un renommage sur place peut parler.
+      void onRenameDatabase(project, noeud.label, environment, nouveau).then(
+        (issue) => {
+          if (issue.missingSecrets.length > 0 || issue.leftoverSecrets.length > 0) {
+            setRapport({ nom: nouveau, ...issue })
+          }
+        },
+        (erreur: unknown) => {
+          setRapport({
+            nom: nouveau,
+            refus: String(erreur),
+            missingSecrets: [],
+            leftoverSecrets: [],
+          })
+        },
+      )
+    }
+  }
+
   return (
     <>
+      {rapport !== null && (
+        <RenameReportDialog rapport={rapport} onClose={() => setRapport(null)} />
+      )}
+      {viseeAuPointeur !== null && menuAuPointeur !== null && (
+        <MenuContextuel
+          x={menuAuPointeur.x}
+          y={menuAuPointeur.y}
+          label={`Actions de ${cibleDe(viseeAuPointeur.noeud)}`}
+          entrees={viseeAuPointeur.entrees}
+          onFermer={() => setMenuAuPointeur(null)}
+        />
+      )}
       {aRetirer !== null && onDelete !== undefined && (
         <DeleteConnectionDialog
           cible={aRetirer}
@@ -267,34 +391,22 @@ export function ExplorerSidebar({
                 depth={noeud.depth}
                 label={noeud.label}
                 /* **Le double-clic renomme**, comme dans un explorateur de fichiers — et seulement
-                   une console : c'est le seul nœud de l'arbre dont le nom nous appartienne. Celui
-                   d'une table ou d'un schéma vient du serveur, celui d'une connexion se change dans
-                   sa modale de configuration, qui porte bien d'autres champs. */
+                   une console. Celui d'une table ou d'un schéma vient du serveur ; celui d'une
+                   connexion nous appartient depuis `26`, mais son clic simple **déplie** : un
+                   double-clic replierait puis déplierait, et le champ de saisie apparaîtrait sur une
+                   ligne en train de bouger. Elle se renomme donc par son menu « … », et par là
+                   seulement. */
                 onDoubleClick={
                   noeud.kind === 'console' && consoles !== undefined
                     ? () => setEnRenommage(noeud.id)
                     : undefined
                 }
                 edition={
-                  enRenommage === noeud.id && consoles !== undefined
+                  enRenommage === noeud.id
                     ? {
                         onValider: (nouveau) => {
                           setEnRenommage(null)
-                          if (
-                            noeud.project === undefined ||
-                            noeud.database === undefined ||
-                            noeud.environment === undefined ||
-                            noeud.console === undefined
-                          ) {
-                            return
-                          }
-                          consoles.onRenommer(
-                            noeud.project,
-                            noeud.database,
-                            noeud.environment,
-                            noeud.console,
-                            nouveau,
-                          )
+                          renommer(noeud, nouveau)
                         },
                         onAnnuler: () => setEnRenommage(null),
                       }
@@ -315,15 +427,24 @@ export function ExplorerSidebar({
                     </Badge>
                   ) : undefined
                 }
-                actions={menuDe(
-                  noeud,
-                  onEditDatabase,
-                  onEditProject,
-                  demanderLeRetrait,
-                  onRefresh,
-                  consoles,
-                  setEnRenommage,
-                )}
+                actions={renderActions(noeud, actionsDe(noeud))}
+                /* **Le clic droit ouvre le même menu, au pointeur.** `08h` l'avait écarté — « le
+                   handoff ne le maquette pas, et un “…” visible enseigne son existence là où un clic
+                   droit se devine » — puis l'usage l'a réclamé : le « … » reste, il enseigne, et le
+                   clic droit est le geste qu'on a dans les doigts. Les deux mènent aux mêmes actions.
+
+                   `preventDefault` ici plutôt que de compter sur `useClicDroitDesactive` : ce
+                   gestionnaire-là est la raison pour laquelle le menu du système ne doit pas s'ouvrir,
+                   et le dire sur place évite de dépendre d'un ordre d'écouteurs. */
+                onContextMenu={(evenement) => {
+                  if (actionsDe(noeud) === undefined) return
+                  evenement.preventDefault()
+                  setMenuAuPointeur({
+                    id: noeud.id,
+                    x: evenement.clientX,
+                    y: evenement.clientY,
+                  })
+                }}
                 onClick={() => {
                   // Un clic sur une ligne dépliable fait les deux : il sélectionne *et* déplie. Le
                   // mockup ne montre pas de zone de clic distincte pour le chevron, et en inventer
@@ -462,22 +583,25 @@ export function filtrer(noeuds: readonly Noeud[], filtre: string): Noeud[] {
  * Un schéma et une table viennent de la base, il n'y a rien à y modifier — et ce qu'un menu y
  * offrirait (copier le nom, ouvrir dans un onglet) n'est pas de la configuration.
  */
-function menuDe(
+function entreesDe(
   noeud: Noeud,
   onEditDatabase: ExplorerSidebarProps['onEditDatabase'],
+  /**
+   * Un booléen et non la fonction : ce menu n'appelle pas le renommage, il **passe la ligne en
+   * édition** — c'est le champ de saisie qui appellera. Il n'a donc besoin que de savoir si l'action
+   * aboutira, pour désactiver l'entrée avec sa raison plutôt que de l'offrir en vain.
+   */
+  renommageDisponible: boolean,
   onEditProject: ExplorerSidebarProps['onEditProject'],
   demanderLeRetrait: ((cible: CibleDeSuppression) => void) | undefined,
   onRefresh: ExplorerSidebarProps['onRefresh'],
   consoles: ExplorerSidebarProps['consoles'],
   demanderLeRenommage: (id: string) => void,
-): ReactNode | undefined {
+): readonly EntreeDeMenu[] | undefined {
   if (noeud.kind === 'project') {
-    return (
-      <RowMenu
-        cible={noeud.label}
-        entrees={[
-          {
-            /* **« Rafraîchir l'arborescence », et non « Rafraîchir »** — l'action a quitté le pied
+    return [
+      {
+        /* **« Rafraîchir l'arborescence », et non « Rafraîchir »** — l'action a quitté le pied
                de la sidebar le 20 août 2026, où son icône seule faisait nombre avec trois boutons
                de création qu'elle ne rejoignait pas.
 
@@ -489,37 +613,35 @@ function menuDe(
                Sa portée est celle de l'arbre entier, pas du seul projet cliqué ; le menu d'une ligne
                projet est néanmoins le seul déjà monté, et la racine est l'endroit le moins mensonger
                pour l'accrocher. */
-            libelle: 'Rafraîchir l’arborescence',
-            icone: 'refresh',
-            onClick: onRefresh,
-            raison: onRefresh ? undefined : RAISONS.rafraichirIndisponible,
-          },
-          {
-            // **« Modifier le projet… » et non « Renommer… »** (`23e`) : l'écran fait les deux, et
-            // un libellé qui n'annonce que le renommage cacherait les environnements.
-            libelle: 'Modifier le projet…',
-            icone: 'pencil',
-            onClick: onEditProject ? () => onEditProject(noeud.label) : undefined,
-            raison: onEditProject ? undefined : RAISONS.editionIndisponible,
-          },
-          {
-            // **« Retirer… » et non « Supprimer… »** : le mot compte, et c'est toute la décision de
-            // `08j`. Ce qui part est une déclaration sur cet ordinateur, pas une base de données.
-            libelle: 'Retirer de DoraBase…',
-            icone: 'trash',
-            onClick: demanderLeRetrait
-              ? () =>
-                  demanderLeRetrait({
-                    kind: 'project',
-                    project: noeud.label,
-                    connexions: noeud.connexions ?? 0,
-                  })
-              : undefined,
-            raison: demanderLeRetrait ? undefined : RAISONS.retirerIndisponible,
-          },
-        ]}
-      />
-    )
+        libelle: 'Rafraîchir l’arborescence',
+        icone: 'refresh',
+        onClick: onRefresh,
+        raison: onRefresh ? undefined : RAISONS.rafraichirIndisponible,
+      },
+      {
+        // **« Modifier le projet… » et non « Renommer… »** (`23e`) : l'écran fait les deux, et
+        // un libellé qui n'annonce que le renommage cacherait les environnements.
+        libelle: 'Modifier le projet…',
+        icone: 'pencil',
+        onClick: onEditProject ? () => onEditProject(noeud.label) : undefined,
+        raison: onEditProject ? undefined : RAISONS.editionIndisponible,
+      },
+      {
+        // **« Retirer… » et non « Supprimer… »** : le mot compte, et c'est toute la décision de
+        // `08j`. Ce qui part est une déclaration sur cet ordinateur, pas une base de données.
+        libelle: 'Retirer de DoraBase…',
+        icone: 'trash',
+        onClick: demanderLeRetrait
+          ? () =>
+              demanderLeRetrait({
+                kind: 'project',
+                project: noeud.label,
+                connexions: noeud.connexions ?? 0,
+              })
+          : undefined,
+        raison: demanderLeRetrait ? undefined : RAISONS.retirerIndisponible,
+      },
+    ]
   }
 
   /* **Le menu d'une console** : renommer, retirer. Pas de « Modifier… » — une console se modifie en
@@ -535,27 +657,22 @@ function menuDe(
     ) {
       return undefined
     }
-    return (
-      <RowMenu
-        cible={nom}
-        entrees={[
-          {
-            /* **Le même mécanisme que le double-clic**, pas une modale. L'entrée reste malgré tout :
+    return [
+      {
+        /* **Le même mécanisme que le double-clic**, pas une modale. L'entrée reste malgré tout :
                un geste qui n'existe qu'au double-clic est invisible pour qui ne l'essaie pas, et
                inatteignable au clavier. Elle passe la ligne en édition, le champ prend le focus. */
-            libelle: 'Renommer…',
-            icone: 'pencil',
-            onClick: () => demanderLeRenommage(noeud.id),
-          },
-          {
-            // **« Retirer… » et non « Supprimer… »**, comme partout : le mot est celui de `08j`.
-            libelle: 'Retirer…',
-            icone: 'trash',
-            onClick: () => consoles.onRetirer(project, database, environment, nom),
-          },
-        ]}
-      />
-    )
+        libelle: 'Renommer…',
+        icone: 'pencil',
+        onClick: () => demanderLeRenommage(noeud.id),
+      },
+      {
+        // **« Retirer… » et non « Supprimer… »**, comme partout : le mot est celui de `08j`.
+        libelle: 'Retirer…',
+        icone: 'trash',
+        onClick: () => consoles.onRetirer(project, database, environment, nom),
+      },
+    ]
   }
 
   if (noeud.kind !== 'database') return undefined
@@ -566,51 +683,70 @@ function menuDe(
   const modifiable =
     onEditDatabase !== undefined && project !== undefined && environment !== undefined
 
-  return (
-    <RowMenu
-      cible={label}
-      entrees={[
-        {
-          /* **La création d'une console part d'ici**, et non du pied de la sidebar. Une console
+  return [
+    {
+      /* **La création d'une console part d'ici**, et non du pied de la sidebar. Une console
              appartient à une connexion : l'endroit d'où on la crée doit dire laquelle, sans quoi il
              faudrait deviner le contexte — et se tromper dès que deux connexions sont dépliées. */
-          libelle: 'Nouvelle console…',
-          icone: 'term',
-          onClick:
-            consoles && project !== undefined && environment !== undefined
-              ? () => consoles.onCreer(project, label, environment)
-              : undefined,
-          raison: consoles ? undefined : RAISONS.consoleIndisponible,
-        },
-        {
-          libelle: 'Modifier…',
-          icone: 'pencil',
-          onClick: modifiable
-            ? () => onEditDatabase(project as string, label, environment as EnvironmentId)
-            : undefined,
-          raison: modifiable ? undefined : RAISONS.modifierIndisponible,
-        },
-        {
-          libelle: 'Retirer de DoraBase…',
-          icone: 'trash',
-          onClick:
-            demanderLeRetrait && project !== undefined
-              ? () =>
-                  demanderLeRetrait({
-                    kind: 'database',
-                    project,
-                    database: label,
-                    // L'environnement fait partie de l'identité de la connexion (`23b`) : sans lui, le
-                    // retrait viserait la première connexion de ce nom, quel que soit l'environnement.
-                    environment: environment as EnvironmentId,
-                    connexions: noeud.connexions ?? 1,
-                  })
-              : undefined,
-          raison: demanderLeRetrait ? undefined : RAISONS.retirerIndisponible,
-        },
-      ]}
-    />
-  )
+      libelle: 'Nouvelle console…',
+      icone: 'term',
+      onClick:
+        consoles && project !== undefined && environment !== undefined
+          ? () => consoles.onCreer(project, label, environment)
+          : undefined,
+      raison: consoles ? undefined : RAISONS.consoleIndisponible,
+    },
+    {
+      /* **« Renommer… » et « Modifier… » sont deux entrées, pas une** (`26`). Le nom est le seul
+             champ qui se corrige sur place, et le seul dont le changement déplace un mot de passe
+             dans le Trousseau ; les autres réglages se relisent ensemble, dans un formulaire. Les
+             fondre aurait fait ouvrir une modale de quinze champs pour corriger une lettre. */
+      libelle: 'Renommer…',
+      icone: 'pencil',
+      onClick: renommageDisponible ? () => demanderLeRenommage(noeud.id) : undefined,
+      raison: renommageDisponible ? undefined : RAISONS.renommerIndisponible,
+    },
+    {
+      libelle: 'Modifier…',
+      icone: 'pencil',
+      onClick: modifiable
+        ? () => onEditDatabase(project as string, label, environment as EnvironmentId)
+        : undefined,
+      raison: modifiable ? undefined : RAISONS.modifierIndisponible,
+    },
+    {
+      libelle: 'Retirer de DoraBase…',
+      icone: 'trash',
+      onClick:
+        demanderLeRetrait && project !== undefined
+          ? () =>
+              demanderLeRetrait({
+                kind: 'database',
+                project,
+                database: label,
+                // L'environnement fait partie de l'identité de la connexion (`23b`) : sans lui, le
+                // retrait viserait la première connexion de ce nom, quel que soit l'environnement.
+                environment: environment as EnvironmentId,
+                connexions: noeud.connexions ?? 1,
+              })
+          : undefined,
+      raison: demanderLeRetrait ? undefined : RAISONS.retirerIndisponible,
+    },
+  ]
+}
+
+/** Le nom que le menu annonce : celui de la console pour une console, le libellé sinon. */
+function cibleDe(noeud: Noeud): string {
+  return noeud.kind === 'console' ? (noeud.console ?? noeud.label) : noeud.label
+}
+
+/** Le « … » de la ligne, ou rien du tout quand elle n'a pas d'actions. */
+function renderActions(
+  noeud: Noeud,
+  entrees: readonly EntreeDeMenu[] | undefined,
+): ReactNode | undefined {
+  if (entrees === undefined) return undefined
+  return <RowMenu cible={cibleDe(noeud)} entrees={entrees} />
 }
 
 /**

@@ -523,6 +523,8 @@ le schéma déduit, et la console dont le langage n'est pas du SQL.
 | [`25a`](25a-l-environnement-un-noeud-de-l-arbre.md) | L'environnement, un nœud de l'arbre | à faire |
 | [`25b`](25b-la-barre-de-titre-n-est-plus-qu-un-indicateur.md) | La barre de titre n'est plus qu'un indicateur | à faire |
 | [`25c`](25c-l-environnement-actif-quitte-le-modele.md) | L'environnement actif quitte le modèle | à faire |
+| [`26`](26-renommer-une-connexion.md) | Renommer une connexion | livrée |
+| [`27`](27-le-menu-de-ligne-au-clic-droit.md) | Le menu d'une ligne : clic droit, et fermeture quand on s'en va | livrée |
 
 **`25` défait `23g`.** `23g` avait rendu le sélecteur de la barre de titre *actif* : il écrivait
 l'environnement du projet, et l'arbre se rechargeait sur les connexions de cet environnement. À

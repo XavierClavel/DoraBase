@@ -23,6 +23,9 @@ oblige à déclarer une seconde base.
 - **Supprimer une base ou un projet.** Destructif, et il faut décider du sort des secrets ; le
   handoff ne le maquette pas davantage. Sa propre spec.
 - **Renommer une base, ou changer son environnement.** Voir § Approche : c'est la clé.
+  **Le renommage a été rouvert par `26`** (25 août 2026), comme cette spec l'envisageait : le geste
+  n'est pas ici mais sur la ligne d'arbre, et le champ de `A2` reste verrouillé — son infobulle y
+  renvoie désormais au lieu de dire « supprimez et redéclarez ». L'environnement, lui, reste fermé.
 - **Changer de moteur.** Tous les réglages en dépendent ; autant supprimer et redéclarer.
 - **L'écran « Bases du projet » de `A10`.** C'est le vrai foyer de cette gestion — sa sidebar de
   préférences porte déjà cette entrée. Cette spec livre le chemin court en attendant `15`, et le

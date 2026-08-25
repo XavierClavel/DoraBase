@@ -16,11 +16,12 @@ mod store;
 
 pub use commands::{
     create_environment, create_project, delete_environment, load_config, recolor_environment,
-    rename_environment, reorder_environments, save_config, save_database, save_preferences,
-    update_variant, ConfigLoad, ConfigState, ConsoleRequest, CreateEnvironmentRequest,
-    CreateProjectRequest, DeleteDatabaseRequest, DeleteEnvironmentRequest, DeleteEnvironmentResult,
-    DeleteProjectRequest, DeleteResult, RecolorEnvironmentRequest, RenameEnvironmentRequest,
-    RenameProjectRequest, RenameProjectResult, ReorderEnvironmentsRequest, SaveDatabaseRequest,
+    rename_database, rename_environment, reorder_environments, save_config, save_database,
+    save_preferences, update_variant, ConfigLoad, ConfigState, ConsoleRequest,
+    CreateEnvironmentRequest, CreateProjectRequest, DeleteDatabaseRequest,
+    DeleteEnvironmentRequest, DeleteEnvironmentResult, DeleteProjectRequest, DeleteResult,
+    RecolorEnvironmentRequest, RenameDatabaseRequest, RenameEnvironmentRequest,
+    RenameProjectRequest, RenameResult, ReorderEnvironmentsRequest, SaveDatabaseRequest,
     UpdateVariantRequest,
 };
 pub use enregistrer::{enregistrer, reference_de, NouvelleBase, SaveError};

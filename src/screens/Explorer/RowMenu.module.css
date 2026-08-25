@@ -14,7 +14,11 @@
   height: 18px;
   padding: 0;
   border: none;
-  border-radius: var(--radius-chip);
+  /* **`--radius-control`, et non `--radius-chip`** : ce dernier n'existe pas dans `tokens.json`, donc
+   * la déclaration était ignorée et le fond du survol dessinait un carré. Six autres feuilles
+   * portaient le même token fantôme (`DEFAUTS.md` n° 121). 6 px sur une boîte de 18 px donne l'arrondi
+   * des contrôles du produit, qui est ce que ce bouton est. */
+  border-radius: var(--radius-control);
   background: transparent;
   cursor: pointer;
   /* Les points sont plus bas que le centre optique dans la plupart des fontes : la hauteur de

@@ -1,9 +1,27 @@
 import { useEffect, useRef } from 'react'
+import { Icon } from '../../design/icons/Icon'
+import type { IconName } from '../../design/icons/names'
+import { useSortieDuPointeur } from '../sortieDuPointeur'
 import styles from './MenuContextuel.module.css'
 
 export type EntreeDeMenu = {
   libelle: string
-  onClick: () => void
+  /**
+   * Absent, l'entrée est **désactivée et dit pourquoi** dans `raison` : la règle de `09f`, et le
+   * défaut n° 36. Optionnel pour que les appelants dont toutes les entrées agissent — le panneau de
+   * ligne de `10f` — n'aient rien à changer.
+   */
+  onClick?: () => void
+  /** La raison de l'absence, en infobulle. Requise quand `onClick` manque. */
+  raison?: string
+  /**
+   * Le glyphe de l'entrée, quand le menu en porte (`26`).
+   *
+   * **Optionnel, et l'alignement ne dépend pas de lui** : un menu sans icône aligne ses libellés au
+   * bord, un menu qui en a les aligne après le glyphe. Mélanger les deux dans un même menu
+   * décalerait une entrée sur deux, ce qu'aucun appelant ne fait — ils sont homogènes par nature.
+   */
+  icone?: IconName
 }
 
 type MenuContextuelProps = {
@@ -43,6 +61,7 @@ const MARGE = 8
  */
 export function MenuContextuel({ x, y, entrees, onFermer, label }: MenuContextuelProps) {
   const panneau = useRef<HTMLDivElement>(null)
+  const sortie = useSortieDuPointeur(true, onFermer)
 
   useEffect(() => {
     const premier = panneau.current?.querySelector('button')
@@ -89,6 +108,12 @@ export function MenuContextuel({ x, y, entrees, onFermer, label }: MenuContextue
       role="menu"
       aria-label={label}
       style={{ left: x, top: y }}
+      /* **Sortir du panneau le ferme**, et c'est une quatrième fermeture assumée : un menu qu'on a
+         quitté à la souris n'est plus celui qu'on visait. Le délai de grâce de `useSortieDuPointeur`
+         évite de le perdre en coupant un angle. Le clavier n'est pas concerné — sans pointeur, pas de
+         départ de pointeur. */
+      onPointerLeave={sortie.onPointerLeave}
+      onPointerEnter={sortie.onPointerEnter}
     >
       {entrees.map((entree) => (
         <button
@@ -96,11 +121,16 @@ export function MenuContextuel({ x, y, entrees, onFermer, label }: MenuContextue
           type="button"
           role="menuitem"
           className={styles.entree}
+          disabled={entree.onClick === undefined}
+          title={entree.onClick === undefined ? entree.raison : undefined}
           onClick={() => {
-            entree.onClick()
+            entree.onClick?.()
             onFermer()
           }}
         >
+          {entree.icone && (
+            <Icon name={entree.icone} size={12} strokeWidth={1.9} className={styles.icone} />
+          )}
           {entree.libelle}
         </button>
       ))}

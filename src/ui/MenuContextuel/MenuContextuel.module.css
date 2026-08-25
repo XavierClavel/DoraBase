@@ -53,8 +53,26 @@
   white-space: nowrap;
 }
 
-.entree:hover {
+.entree:hover:not(:disabled) {
   background: var(--hover-row);
+}
+
+/* Une action désactivée reste **lisible** : elle annonce ce qui existera, et son infobulle dit
+ * pourquoi elle n'est pas là. La cacher ferait croire qu'elle n'existera jamais — la règle de `09f`,
+ * et le même habillage que dans `RowMenu`, faute de quoi deux menus d'un même produit se
+ * contrediraient. */
+.entree:disabled {
+  cursor: default;
+  color: var(--ink-5);
+}
+
+.icone {
+  flex: none;
+  color: var(--ink-4);
+}
+
+.entree:disabled .icone {
+  color: var(--ink-5);
 }
 
 .entree:focus-visible {

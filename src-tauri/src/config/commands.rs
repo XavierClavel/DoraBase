@@ -211,7 +211,12 @@ pub struct RenameProjectRequest {
     pub name: String,
 }
 
-/// Ce qu'un renommage réussi rend à l'écran (`08i`).
+/// Ce qu'un renommage réussi rend à l'écran — celui d'un projet (`08i`) comme celui d'une connexion
+/// (`26`).
+///
+/// **Un seul type pour les deux**, et c'est pourquoi il ne s'appelle plus `RenameProjectResult` : les
+/// deux commandes déplacent des secrets et ont exactement les mêmes trois choses à rapporter. Deux
+/// types identiques auraient divergé au premier champ ajouté à l'un.
 ///
 /// **Pas seulement les projets.** Deux faits méritent d'être dits plutôt que tus : des mots de passe
 /// déclarés mais introuvables — les bases les redemanderont — et des originaux que le magasin n'a
@@ -219,10 +224,24 @@ pub struct RenameProjectRequest {
 #[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "config.ts")]
-pub struct RenameProjectResult {
+pub struct RenameResult {
     pub projects: Vec<Project>,
     pub missing_secrets: Vec<String>,
     pub leftover_secrets: Vec<String>,
+}
+
+/// Ce que `26` envoie pour renommer une connexion.
+///
+/// **L'environnement est là parce qu'il fait partie de l'identité** (`23b`) : sans lui, renommer
+/// « analytics » dans un projet qui la déclare en dev et en prod viserait la première venue.
+#[derive(Debug, Clone, serde::Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub struct RenameDatabaseRequest {
+    pub project: String,
+    pub database: String,
+    pub environment: super::model::EnvironmentId,
+    pub name: String,
 }
 
 /// Ce que `08j` envoie pour retirer une déclaration de connexion.
@@ -348,7 +367,7 @@ pub async fn rename_project(
     request: RenameProjectRequest,
     state: State<'_, ConfigState>,
     registry: State<'_, crate::engine::registry::ConnectionRegistry>,
-) -> Result<RenameProjectResult, String> {
+) -> Result<RenameResult, String> {
     let (projects, renommage) = {
         let garde = state
             .0
@@ -402,7 +421,84 @@ pub async fn rename_project(
         renommage.residus.len()
     );
 
-    Ok(RenameProjectResult {
+    Ok(RenameResult {
+        projects,
+        missing_secrets: renommage.secrets_absents,
+        leftover_secrets: renommage.residus,
+    })
+}
+
+/// Renomme une connexion, en déplaçant son mot de passe (`26`).
+///
+/// **`async`, comme `rename_project` et pour la même raison** : la connexion ouverte sous l'ancienne
+/// clé doit être fermée, et `fermer` attend la libération du port d'un éventuel tunnel. L'attente a
+/// lieu **hors du verrou** de configuration, qui resterait sinon indisponible aux autres commandes.
+///
+/// **Aucune donnée n'est touchée sur le serveur.** `name` n'entre dans aucune chaîne de connexion —
+/// seul `default_database` y va. Cette commande ne reçoit aucun moteur et n'émet aucun SQL.
+#[tauri::command]
+pub async fn rename_database(
+    request: RenameDatabaseRequest,
+    state: State<'_, ConfigState>,
+    registry: State<'_, crate::engine::registry::ConnectionRegistry>,
+) -> Result<RenameResult, String> {
+    let (projects, renommage) = {
+        let garde = state
+            .0
+            .lock()
+            .map_err(|_| "état de configuration corrompu".to_owned())?;
+        let store = garde
+            .as_ref()
+            .ok_or_else(|| "la configuration doit être lue avant d'être écrite".to_owned())?;
+
+        // Les projets viennent du disque, pas du front : une liste envoyée par l'écran pourrait être
+        // périmée et écraser une écriture. Même arbitrage qu'en `08e`, `08f` et `08i`.
+        let mut projects: Vec<Project> = store.load_projects()?;
+
+        let repertoire = store
+            .path()
+            .parent()
+            .ok_or_else(|| "le fichier de configuration n'a pas de répertoire parent".to_owned())?
+            .to_path_buf();
+        let magasin = crate::secrets::selectionner(&repertoire).map_err(|e| e.to_string())?;
+
+        let renommage = super::enregistrer::renommer_connexion(
+            &mut projects,
+            &request.project,
+            &request.environment,
+            &request.database,
+            &request.name,
+            magasin.store.as_ref(),
+            &mut |projets| {
+                // Les préférences sont **relues** à chaque écriture de projets : elles ne traversent
+                // pas ces commandes, et les remplacer par un défaut effacerait les réglages.
+                let preferences = store.load_preferences().unwrap_or_default();
+                store
+                    .save(projets, &preferences)
+                    .map_err(|erreur| erreur.to_string())
+            },
+        )
+        .map_err(|erreur| erreur.to_string())?;
+
+        (projects, renommage)
+    };
+
+    for cle in &renommage.cles_a_fermer {
+        registry.fermer(cle).await;
+    }
+
+    log::info!(
+        "rename_database ← {}/{}/{} → {} : {} connexion(s) fermée(s), {} secret(s) absent(s), {} résidu(s)",
+        request.project,
+        request.database,
+        request.environment.as_str(),
+        request.name,
+        renommage.cles_a_fermer.len(),
+        renommage.secrets_absents.len(),
+        renommage.residus.len()
+    );
+
+    Ok(RenameResult {
         projects,
         missing_secrets: renommage.secrets_absents,
         leftover_secrets: renommage.residus,

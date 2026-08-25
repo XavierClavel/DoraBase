@@ -5,8 +5,9 @@ import type {
   DeleteProjectRequest,
   DeleteResult,
   Project,
+  RenameDatabaseRequest,
   RenameProjectRequest,
-  RenameProjectResult,
+  RenameResult,
   SaveDatabaseRequest,
   UpdateVariantRequest,
 } from '../../domain/config'
@@ -57,10 +58,20 @@ export async function mettreAJourLaVariante(request: UpdateVariantRequest): Prom
  * l'utilisateur découvrir l'un ou l'autre bien plus tard, sur un échec de connexion sans raison
  * apparente.
  */
-export async function renommerLeProjet(
-  request: RenameProjectRequest,
-): Promise<RenameProjectResult> {
-  return invoke<RenameProjectResult>('rename_project', { request })
+export async function renommerLeProjet(request: RenameProjectRequest): Promise<RenameResult> {
+  return invoke<RenameResult>('rename_project', { request })
+}
+
+/**
+ * Renomme une connexion (`26`), et rend les projets à jour **avec ce qu'il y a à dire**.
+ *
+ * Le nom d'une connexion est le deuxième tiers de sa clé d'identité (`05a`) : renommer déplace un mot
+ * de passe dans le Trousseau et ferme la connexion ouverte. La commande rend donc, comme
+ * `renommerLeProjet`, le secret introuvable et celui qu'elle n'a pas su effacer — les taire
+ * laisserait l'utilisateur les découvrir sur un échec de connexion sans raison apparente.
+ */
+export async function renommerLaConnexion(request: RenameDatabaseRequest): Promise<RenameResult> {
+  return invoke<RenameResult>('rename_database', { request })
 }
 
 /**

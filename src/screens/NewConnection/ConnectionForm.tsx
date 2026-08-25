@@ -31,7 +31,18 @@ const RAISON_MOT_DE_PASSE_CLOUD_SQL =
 
 /** Pourquoi les trois champs d'identité sont verrouillés en édition. Dit, jamais deviné. */
 const RAISON_VERROU =
-  'Ces trois champs identifient la base : les changer déplacerait son mot de passe et fermerait sa connexion. Supprimez et redéclarez la base pour la renommer.'
+  'Ces champs identifient la connexion : les changer déplacerait son mot de passe et fermerait sa connexion.'
+
+/**
+ * La raison du verrou **du nom**, distincte depuis `26` : le geste existe désormais.
+ *
+ * Le champ reste verrouillé — cette modale a un bouton « Enregistrer », et un champ qui déplacerait
+ * un mot de passe dans le Trousseau au milieu d'un formulaire tampon serait le seul contrôle de
+ * l'écran à s'appliquer sans lui. Mais dire « supprimez et redéclarez » serait maintenant **faux** :
+ * l'infobulle nomme le geste au lieu d'un contournement qui n'a plus lieu d'être.
+ */
+const RAISON_VERROU_NOM =
+  'Le nom identifie la connexion. Pour le changer : menu « … » de sa ligne dans l’arbre, puis « Renommer… ».'
 
 type ConnectionFormProps = {
   draft: ConnectionDraft
@@ -156,7 +167,7 @@ export function ConnectionForm({
           className={styles.nameField}
           value={draft.name}
           disabled={verrouille}
-          title={verrouille ? RAISON_VERROU : undefined}
+          title={verrouille ? RAISON_VERROU_NOM : undefined}
           onChange={(event) => onChange({ name: event.target.value })}
         />
         {/* **Un constat, non un contrôle, quand le projet vient d'être créé** (`24c`).

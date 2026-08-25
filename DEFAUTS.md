@@ -1328,3 +1328,92 @@ mise en page sans écrire la mesure qui le tient revient à changer du CSS en es
    d'indentation que la spec `09d` déclarait introuvable, et s'est trompé sur l'icône. Les deux
    décisions se prenaient sur les mêmes sources ; seule la seconde demandait de **regarder deux
    lignes ensemble**, ce qu'aucune table de valeurs ne montre.
+
+120. **Un `Entrée` qui validait un renommage, puis refermait la fenêtre qu'il venait d'ouvrir.**
+   Trouvé en écrivant l'e2e de `26` : le refus d'un nom déjà pris ouvrait bien la modale de rapport,
+   et aucun `[role=dialog]` n'existait dans le DOM une fraction de seconde plus tard.
+
+   La chaîne, une fois démêlée : `Entrée` dans le champ de renommage valide, la validation rejette,
+   le rejet monte la modale — tout cela **avant le traitement par défaut du même `keydown`**. Le
+   navigateur applique alors ce défaut au contrôle qui a le focus *maintenant*, et c'est la croix de
+   la modale, que `Modal` vient de focaliser faute de focalisable dans son corps. La fenêtre se
+   fermait par son propre bouton, dans le geste qui l'ouvrait.
+
+   **Aucun test unitaire ne pouvait le voir** : jsdom ne rejoue pas l'activation par défaut d'un
+   `Entrée` sur un bouton. Ce n'est pas une lacune de la suite, c'est la frontière de l'outil — et
+   c'est le troisième défaut de ce journal qui ne se manifeste que dans un vrai navigateur.
+
+   Correction en un mot dans `ChampDeRenommage` : `preventDefault()` avant de valider. Un `Entrée`
+   qui confirme une saisie n'a aucun comportement par défaut souhaitable, et le composant sert
+   partout — la ligne d'arbre, l'onglet — donc la parade vaut pour tous les appelants à venir.
+
+   **Ce que ça dit de la méthode** : un geste qui *ouvre* quelque chose doit être essayé au clavier
+   dans un vrai navigateur, pas seulement à la souris. La souris n'a pas de « traitement par défaut »
+   qui atterrit ailleurs après coup.
+
+121. **Un token de rayon qui n'existait pas, employé à sept endroits.** `--radius-chip` n'est
+   déclaré nulle part dans `tokens.json` — donc dans aucune des sorties engendrées. Les sept
+   `border-radius: var(--radius-chip)` étaient **invalides**, et le navigateur les jetait : sept
+   contrôles dessinaient des coins carrés là où le CSS disait « arrondi ». Le « … » de l'arbre était
+   le plus visible, son fond de survol formant un carré autour de trois points.
+
+   **Ce qui l'a caché, c'est qu'une variable CSS inconnue ne fait rien** : pas d'avertissement de
+   build, pas d'erreur de lint, pas de test rouge. Une faute de frappe dans un nom de token est
+   silencieuse par construction, contrairement à une faute dans un nom de module. Signalé à l'œil,
+   par quelqu'un qui regardait le survol du menu.
+
+   Corrigé vers des tokens réels : `--radius-control` (6 px) pour les six petits boutons carrés,
+   `--radius-badge` (4 px) pour les deux étiquettes textuelles. **Aucune valeur inventée** — la source
+   de vérité reste `tokens.json`, et ce défaut est précisément ce qui arrive quand on invente un nom
+   plutôt que d'en choisir un qui existe.
+
+   **Ce que ça dit de la méthode** : `pnpm tokens:check` vérifie que les sorties sont engendrées
+   depuis la source ; rien ne vérifie l'inverse — qu'une feuille de style n'emploie que des tokens
+   déclarés. Le garde-fou manque, et il serait mécanique à écrire (une grep sur `var(--…)` confrontée
+   aux clés de `tokens.json`).
+
+122. **Un menu qui ne se fermait pas, mais disparaissait — et revenait au survol.** Signalé à
+   l'usage : le menu « … » d'une ligne d'arbre s'évanouissait dès que la souris quittait la ligne,
+   puis réapparaissait en la survolant, sans clic.
+
+   La cause tient en deux règles qui ne se connaissaient pas. Le panneau du `Popover` est un
+   descendant de la gouttière `.actions`, que `TreeRow` repasse en `visibility: hidden` hors survol
+   (`08h`, pour que le méta de la ligne ne bouge pas d'un pixel). Le menu restait donc **ouvert dans
+   l'état** tout en étant invisible : le survol suivant le repeignait, et le clic « ailleurs » qui
+   aurait dû le fermer n'avait jamais eu lieu.
+
+   Aucun test ne pouvait le voir : `toBeVisible()` n'était pas interrogé sur un panneau qu'on venait
+   de quitter, et jsdom ne calcule pas `visibility`. C'est le troisième défaut de ce journal où une
+   règle de mise en page d'un composant contredit l'état d'un autre — et le deuxième où la gouttière
+   du « … » est en cause.
+
+   Corrigé par une **quatrième fermeture** (`useSortieDuPointeur`) : le pointeur quitte l'ensemble
+   déclencheur + panneau, le menu se ferme pour de bon, et il faut recliquer. Avec un délai de grâce
+   de 150 ms — voir le défaut suivant, qui est le piège de cette correction.
+
+123. **La correction du n° 122, appliquée sèchement, rendait le menu inatteignable.** `Popover`
+   ouvre son panneau à `top: calc(100% + var(--space-1))` : **2 px** séparent le déclencheur de son
+   menu, et ces 2 px n'appartiennent à aucun des deux. Descendre du « … » vers une entrée traverse
+   donc une zone morte, et une fermeture au premier `pointerleave` refermait le menu en cours de
+   route.
+
+   **Le premier test e2e ne l'a pas vu, et c'est le point intéressant** : `hover()` de Playwright
+   *téléporte* le pointeur d'un élément à l'autre — il ne traverse jamais l'interstice. Le test était
+   vert avec un délai de grâce de 150 ms comme avec 0 : il ne mesurait pas ce qu'il croyait.
+   Réécrit en `page.mouse.move` par pas de 2 px, il rejoue le trajet d'une main, échoue avec 0 et
+   passe avec 150.
+
+   **Ce que ça dit de la méthode** : un test de geste à la souris qui n'emploie que `hover()` ne
+   teste pas un geste, il teste deux positions. Dès que le comportement dépend du *chemin* — menus,
+   glisser-déposer, survols en cascade — il faut bouger le pointeur pour de bon.
+
+124. **macOS corrigeait le nom qu'on tapait dans un champ de renommage.** Signalé à l'usage. Le
+   champ inline de renommage héritait des réglages système de WKWebView : correction automatique,
+   capitale en début de saisie, souligné rouge du correcteur, et complétion du navigateur par-dessus
+   la ligne d'arbre. Ce qu'on tape là est un **identifiant** — un nom de connexion, un nom de console
+   — et un « analytics_v2 » corrigé s'enregistrait sans que personne l'ait tapé.
+
+   Quatre attributs (`autoCorrect`, `autoCapitalize`, `autoComplete`, `spellCheck`) sur le seul
+   composant qui porte ce champ, donc pour tous ses appelants. **Un champ de saisie ne devrait jamais
+   hériter de ces réglages par défaut** : ils supposent de la prose, et une application de bases de
+   données n'en contient presque pas.
