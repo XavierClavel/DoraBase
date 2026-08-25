@@ -41,11 +41,28 @@
   align-items: center;
 }
 
+/*
+ * **Le fond et le filet de l'en-tête sont sur la ligne, pas sur ses cellules.**
+ *
+ * Ils étaient sur les `.th`, donc peints par piste de grille : avec une table dont les colonnes ne
+ * remplissent pas la largeur, la bande s'arrêtait net après la dernière et laissait le fond de la
+ * page à droite. Le `min-width: 100%` de `.head` étendait bien la boîte — mais une boîte sans fond
+ * ne peint rien, et il n'y a pas de piste au-delà de la dernière colonne.
+ *
+ * La ligne de filtres faisait déjà ainsi (`.filterRow`), ce qui explique qu'elle, elle allait au
+ * bout : les deux bandes de l'en-tête se contredisaient à l'écran. Signalé le 25 août 2026, capture
+ * à l'appui (`DEFAUTS.md` n° 125).
+ *
+ * Les teintes de colonne filtrée ou triée restent sur les cellules — elles désignent *une* colonne.
+ */
+.headRow {
+  background: var(--bar);
+  border-bottom: 1px solid var(--gridline-2);
+}
+
 .th {
   height: var(--rowh);
   padding: 0 8px;
-  background: var(--bar);
-  border-bottom: 1px solid var(--gridline-2);
   font-size: var(--text-label);
   font-weight: var(--weight-bold);
   letter-spacing: 0.2px;
