@@ -89,6 +89,23 @@ def etapes_de(jobs: dict, nom: str, minimum: int, fichier: str) -> list:
     return etapes
 
 
+def commandes_de(etapes: list) -> str:
+    """Les commandes des étapes, **commentaires retirés**.
+
+    Un `run:` est un script shell, donc il porte des commentaires — et ce dépôt en écrit
+    beaucoup. Chercher un fragment dans le texte brut fait donc passer un garde que la phrase
+    *expliquant* la commande suffit à satisfaire : le 25 août 2026, remplacer
+    `xcrun stapler validate` par un `echo` a laissé le garde vert, parce que le commentaire au-
+    dessus nommait `stapler validate`. Vérifié par sabotage, comme il se doit.
+    """
+    lignes = []
+    for etape in etapes:
+        for ligne in str(etape.get("run", "")).splitlines():
+            if not ligne.lstrip().startswith("#"):
+                lignes.append(ligne)
+    return " ".join(lignes)
+
+
 def verifier_ci() -> None:
     workflow = charger(CI)
     jobs = workflow.get("jobs", {})
@@ -98,7 +115,7 @@ def verifier_ci() -> None:
 
     # Le job macOS doit **construire** : c'est la raison de son existence, et c'est ce qui avait
     # disparu.
-    commandes = " ".join(str(e.get("run", "")) for e in build)
+    commandes = commandes_de(build)
     if "tauri build" not in commandes:
         print("le job « build » ne construit plus le .app", file=sys.stderr)
         raise SystemExit(1)
@@ -126,7 +143,7 @@ def verifier_publication() -> None:
 
     workflow = charger(PUBLICATION)
     jobs = workflow.get("jobs", {})
-    etapes = etapes_de(jobs, "macos", 23, "publication.yml")
+    etapes = etapes_de(jobs, "macos", 26, "publication.yml")
 
     sur = declencheurs(workflow)
     # **Le déclencheur, et rien d'autre que lui.** `on: push` sans filtre publierait une release
@@ -149,11 +166,14 @@ def verifier_publication() -> None:
         print("publication.yml : il manque `permissions: contents: write`", file=sys.stderr)
         raise SystemExit(1)
 
-    commandes = " ".join(str(e.get("run", "")) for e in etapes)
+    commandes = commandes_de(etapes)
     for fragment, raison in (
         ("universal-apple-darwin", "le bundle publié ne serait plus universel"),
         ("verifier-version.py", "rien ne vérifierait que le tag et les fichiers s'accordent"),
         ("codesign --verify", "rien ne vérifierait la signature, dont dépend le lancement"),
+        ("stapler validate", "rien ne vérifierait l'agrafage du ticket de notarisation"),
+        ("source=Notarized Developer ID",
+         "rien ne vérifierait le verdict que le système rend vraiment au lancement"),
         ("gh release create", "rien ne publierait le résultat"),
         ("verifier-aucun-decor-de-version.sh",
          "la version de décor pourrait partir dans le bundle livré"),
