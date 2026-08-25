@@ -266,6 +266,33 @@ fait refuser à coup sûr. Ce n'est pas une notarisation : l'utilisateur garde u
 premier lancement, et le README le dit franchement plutôt que de laisser croire à une
 application cassée.
 
+**Le Developer ID est acheté, et la notarisation est dans la chaîne de publication** — depuis
+la 0.1.5, une version publiée s'installe en double-cliquant. Six secrets `APPLE_*`, et Tauri
+signe, soumet, attend le verdict et agrafe. Trois choses apprises en le faisant, dont deux qui
+étaient des craintes ouvertes de ce fichier :
+
+- **le binaire embarqué reçoit le *hardened runtime* et l'identité** (`flags=0x10000(runtime)`,
+  `Authority=Developer ID Application`). La crainte que la notarisation bute sur le sidecar
+  était sans objet ;
+- **Tauri notarie l'application, il ne notarie pas l'image.** Il la *signe*, ce qui trompe :
+  `stapler validate` sur le `.dmg` répond « does not have a ticket stapled to it » pendant que
+  l'application est acceptée. Or c'est l'image que l'utilisateur télécharge, donc elle que macOS
+  met en quarantaine et évalue. D'où une étape de soumission explicite, et un verdict lu dans la
+  **sortie** de `notarytool` plutôt que dans son code de retour — `--wait` rend la main quand le
+  traitement s'achève, ce qui n'est pas la même chose que l'avoir accepté ;
+- **tout le bloc est conditionnel** à la présence des secrets, et `"signingIdentity": "-"` reste
+  dans `tauri.conf.json`. Sans certificat — un clone, un fork, une bifurcation —, la
+  construction reste celle d'avant. Une étape retire la clef de la *copie de travail du runner*
+  plutôt que de parier sur une précédence entre la conf et l'environnement que rien ne documente.
+
+**Un secret vide vaut la chaîne vide, et se paie en minutes.** `APPLE_ISSUER_ID` (le nom du
+secret) contre `APPLE_API_ISSUER` (la variable que Tauri lit) : la publication a passé un
+`--issuer ''` à `notarytool` et échoué **après** la signature, donc après vingt minutes, sur un
+message qui ne nommait pas le secret fautif. Les cinq secrets sont donc contrôlés avant de
+compiler — présence, puis forme : un Issuer ID est un UUID, un Key ID fait dix caractères, une
+identité commence par « Developer ID Application: ». Les deux premiers vivent dans le même écran
+d'App Store Connect ; les échanger est l'erreur naturelle, et c'est celle que le message nomme.
+
 **Les vérifications rapides sont rejouées dans le job de publication** — sabotage, typecheck,
 lint, Vitest, `cargo test`. Le tag est censé être posé sur un `main` vert, et le script refuse
 de le poser ailleurs ; mais « censé » n'est pas une vérification, et une release est publique.
@@ -332,6 +359,12 @@ manière de reprendre des données sans que `serde` les efface en silence.
 - **Les feux tricolores de macOS sont hors d'atteinte du CSS** sous
   `titleBarStyle: "Overlay"` : ils sont dessinés par le système par-dessus la fenêtre.
   Ni grisables derrière une modale, ni capturables par Playwright.
+- **`spctl --assess` et `codesign --verify` répondent à deux questions différentes.** Le second
+  dit « cette signature est cohérente », y compris pour un ad hoc ; le premier dit « le système
+  laisserait-il ceci s'ouvrir ». Un bundle ad hoc passe le second et échoue le premier — c'est
+  exactement l'écart qui décide si la fenêtre « Apple n'a pas pu confirmer… » paraît. Et le
+  troisième fait, l'agrafage (`stapler validate`), n'est impliqué par aucun des deux : sans lui
+  l'application dépend d'un aller-retour réseau chez l'utilisateur.
 - **Tauri ne fusionne pas les sidecars pour une cible universelle.** `--target
   universal-apple-darwin` exige un `externalBin` nommé `…-universal-apple-darwin`, **déjà
   fondu** ; les deux fichiers par architecture ne lui suffisent pas. Et l'absence n'apparaît
@@ -511,12 +544,12 @@ présenter comme vérifiées tant qu'un humain ne les a pas faites :
 - **Construire un bundle, le lancer depuis le Finder** sur une machine où `cloud-sql-proxy`
   n'est pas installé, et ouvrir une connexion Cloud SQL. Seule preuve du sidecar embarqué
   et du `PATH` minimal d'une app graphique.
-- **Télécharger le `.dmg` d'une release depuis un *autre* Mac**, le glisser dans
-  *Applications* et le lancer. C'est la seule preuve du chemin réel : quarantaine posée par le
-  navigateur, signature ad hoc acceptée ou non, et le geste du README exact — le libellé du
-  bouton de *Réglages Système* change d'une version de macOS à l'autre. La CI vérifie que le
-  bundle est signé et universel ; elle ne peut pas vérifier ce que Gatekeeper en fait chez
-  quelqu'un d'autre, la machine qui construit étant celle qui signe.
+- **Lancer l'application sur un *autre* Mac**, téléchargée par un navigateur. Le verdict de
+  Gatekeeper a été mesuré — `spctl` répond « accepted, source=Notarized Developer ID » sur
+  l'image et sur l'application, quarantaine posée à la main comme le fait Safari —, mais depuis
+  la machine qui a construit. Ce qu'il reste à voir chez quelqu'un d'autre : que rien ne
+  s'affiche du tout, et que l'application démarre. Un Mac Intel serait le meilleur essai, la
+  tranche `x86_64` du bundle universel n'ayant jamais été exécutée.
 - **Régler « Afficher les barres de défilement : toujours »**, puis regarder la sidebar et
   la bande d'onglets. Chromium sans tête rend des barres en survol, qui n'occupent aucune
   place : la mesure vaut 0 avec comme sans la correction.
@@ -660,12 +693,6 @@ Aucun de ces points ne bloque le code en place.
 - **L'écran de confiance SSH à la première connexion**, aujourd'hui contourné par un refus.
 - **Une variante d'icône simplifiée sous 32 px** : la carte du sac à dos devient un amas de
   pixels. Visible au Dock réduit, en vignette Finder, en barre des menus.
-- **Un Developer ID pour *diffuser*** (Gatekeeper, notarisation). Décision d'achat. La
-  diffusion existe désormais sans lui — `publication.yml` publie un `.dmg` universel signé en
-  **ad hoc**, et le README porte le geste de contournement au premier lancement. Ce que le
-  Developer ID achèterait, c'est la disparition de ce geste : une installation sans mise en
-  garde. **La notarisation avec un binaire embarqué n'est toujours pas vérifiée**, et cela ne
-  se voit qu'**après** distribution.
 - **Le visage Cloud SQL n'a jamais été conçu** : ses champs et ses libellés sont inventés.
   Un nom d'instance est long et prend trois colonnes de la grille, ce qui n'a pas été
   composé.
