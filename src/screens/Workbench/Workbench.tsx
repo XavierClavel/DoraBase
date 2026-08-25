@@ -38,6 +38,7 @@ import { TableView } from '../TableView/TableView'
 import { PASSERELLE_APPLY, type PasserelleApply, useApplication } from '../TableView/useApplication'
 import { PASSERELLE_LIGNES, type PasserelleLignes } from '../TableView/useLignes'
 import { PASSERELLE_PREVIEW, type PasserellePreview, useSqlPrevu } from '../TableView/useSqlPrevu'
+import { AucuneSelection } from './AucuneSelection'
 import { ColonneDroite } from './ColonneDroite'
 import {
   AUCUN_ONGLET,
@@ -326,6 +327,15 @@ export function Workbench({
       : selection?.project
         ? { project: selection.project, environment: selection.environment ?? null }
         : null
+
+  /**
+   * Rien n'est sélectionné : ni onglet ouvert, ni ligne d'arbre désignée.
+   *
+   * **Dérivé d'`indication`, et non d'un test à part** : les deux répondent à la même question, et
+   * deux formulations divergeraient au premier palier ajouté à l'arbre. Un onglet actif — table ou
+   * console — porte toujours un projet, donc `indication === null` implique qu'aucun n'est ouvert.
+   */
+  const rienDeSelectionne = indication === null
 
   const projetIndique = projects.find((p) => p.name === indication?.project) ?? null
   /** La déclaration de l'environnement indiqué, seule source du drapeau `production` (`23g`). */
@@ -1205,7 +1215,12 @@ export function Workbench({
             // qu'elle portait sa propre colonne de DDL à droite, exactement là où le panneau de
             // détail se serait posé. Ce DDL étant maintenant dans la colonne commune, la structure
             // redevient un centre ordinaire, et sa largeur se règle avec la même poignée.
-            consoleActive ? (
+            rienDeSelectionne ? (
+              // **Rien de sélectionné : rien à montrer.** Ni fil d'Ariane à « — · — », ni liste
+              // d'objets vide, ni cadre de détail d'un objet inexistant — voir `AucuneSelection`
+              // pour la raison. La sidebar reste, elle : c'est là qu'on sélectionne.
+              <AucuneSelection />
+            ) : consoleActive ? (
               centre
             ) : (
               <SplitPane
