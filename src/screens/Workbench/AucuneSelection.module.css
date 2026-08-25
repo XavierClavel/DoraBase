@@ -1,0 +1,44 @@
+/*
+ * L'état vide du corps de l'écran de travail. Il occupe la place du centre *et* de la colonne de
+ * droite : c'est une seule zone, donc rien ici ne porte de filet de séparation.
+ *
+ * Le logo reprend les 72 px et le rayon de `WelcomeHero` — même objet, même taille — mais pas son
+ * ombre portée : décoloré, il ne doit pas non plus flotter au-dessus du papier.
+ */
+
+.root {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-7);
+  min-width: 0;
+  min-height: 0;
+  /* `height: 100%` : le panneau du `SplitPane` est un bloc, donc `flex: 1` n'y suffit pas — c'est la
+     règle du centre, pour la même raison. */
+  height: 100%;
+  background: var(--paper);
+  /* Le geste de sélection est ailleurs — dans l'arbre — donc rien ici ne se clique, et une
+     sélection de texte au milieu du vide n'apporte rien. */
+  user-select: none;
+}
+
+/* `grayscale(1)` et non `saturate(.6)` : la barre de titre se ternit *en restant lisible*, alors
+   qu'ici le logo est un décor. L'opacité l'enfonce d'un cran de plus dans le papier. */
+.logo {
+  display: block;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-logo);
+  filter: grayscale(1);
+  opacity: 0.45;
+}
+
+.message {
+  font-family: var(--font-ui);
+  font-size: var(--text-body);
+  font-weight: var(--weight-normal);
+  color: var(--ink-2);
+  text-align: center;
+}
