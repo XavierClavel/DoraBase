@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { Sprite } from '../../design/icons/Sprite'
@@ -81,6 +81,7 @@ function Piloté({
   etat = { kind: 'never' } as ConnectionState,
   onToggleSpy,
   onEditDatabase,
+  onRenameDatabase,
   onEditProject,
   onDelete,
   modificationsEnAttenteDe,
@@ -93,6 +94,7 @@ function Piloté({
   etat?: ConnectionState
   onToggleSpy?: (n: Noeud) => void
   onEditDatabase?: (project: string, database: string, environment: EnvironmentId) => void
+  onRenameDatabase?: ExplorerSidebarProps['onRenameDatabase']
   onEditProject?: (project: string) => void
   onDelete?: (cible: CibleDeSuppression) => Promise<{ leftoverSecrets: string[] }>
   modificationsEnAttenteDe?: (cible: CibleDeSuppression) => number
@@ -112,6 +114,7 @@ function Piloté({
         etatDe={() => etat}
         selectedId={choisi}
         onEditDatabase={onEditDatabase}
+        onRenameDatabase={onRenameDatabase}
         onEditProject={onEditProject}
         onDelete={onDelete}
         modificationsEnAttenteDe={modificationsEnAttenteDe}
@@ -753,8 +756,178 @@ test('les autres lignes de l’arbre ne se renomment pas au double-clic', async 
       consoles={GESTES_DE_CONSOLE}
     />,
   )
-  // Le nom d'une connexion se change dans sa modale de configuration, qui porte bien d'autres
-  // champs ; celui d'une table ou d'un schéma vient du serveur.
+  // **Une connexion se renomme depuis son menu « … », pas au double-clic** (`26`) : son clic simple
+  // déplie, et un double-clic replierait puis déplierait sous le champ de saisie. Le nom d'une table
+  // ou d'un schéma, lui, vient du serveur et ne nous appartient pas.
   await userEvent.dblClick(screen.getByRole('treeitem', { name: /analytics/ }))
   expect(screen.queryByLabelText(/Nouveau nom de/)).toBeNull()
+})
+
+describe('renommer une connexion depuis sa ligne (`26`)', () => {
+  /** Le renommage réussi et muet : ni secret absent, ni résidu. */
+  const SANS_RESERVE = { missingSecrets: [], leftoverSecrets: [] }
+
+  test('« Renommer… » passe la ligne en édition, et n’appelle rien avant validation', async () => {
+    const renommer = vi.fn().mockResolvedValue(SANS_RESERVE)
+    render(<Piloté initial={TOUT_DEPLIE} onRenameDatabase={renommer} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Renommer…' }))
+
+    // Le champ prend la place du libellé, présélectionné : un renommage commence presque toujours
+    // par tout remplacer.
+    expect(screen.getByLabelText('Nouveau nom de analytics')).toHaveValue('analytics')
+    // **Rien n'est parti** : ouvrir le champ n'est pas renommer.
+    expect(renommer).not.toHaveBeenCalled()
+  })
+
+  test('« Entrée » envoie les coordonnées du nœud, environnement compris', async () => {
+    const renommer = vi.fn().mockResolvedValue(SANS_RESERVE)
+    render(<Piloté initial={TOUT_DEPLIE} onRenameDatabase={renommer} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Renommer…' }))
+    await userEvent.clear(screen.getByLabelText('Nouveau nom de analytics'))
+    await userEvent.type(screen.getByLabelText('Nouveau nom de analytics'), 'entrepot{Enter}')
+
+    // L'environnement fait partie de l'identité (`23b`) : sans lui, la commande viserait la
+    // première connexion de ce nom.
+    expect(renommer).toHaveBeenCalledWith('Atelier Nord', 'analytics', 'prod', 'entrepot')
+  })
+
+  test('« Échap » abandonne, et un nom inchangé n’envoie rien', async () => {
+    const renommer = vi.fn().mockResolvedValue(SANS_RESERVE)
+    render(<Piloté initial={TOUT_DEPLIE} onRenameDatabase={renommer} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Renommer…' }))
+    await userEvent.type(screen.getByLabelText('Nouveau nom de analytics'), '{Escape}')
+    expect(renommer).not.toHaveBeenCalled()
+    expect(screen.queryByLabelText('Nouveau nom de analytics')).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Renommer…' }))
+    await userEvent.keyboard('{Enter}')
+    // Un non-geste ne déplace pas un mot de passe dans le Trousseau pour rien.
+    expect(renommer).not.toHaveBeenCalled()
+  })
+
+  test('un succès sans réserve ne monte aucune modale', async () => {
+    render(
+      <Piloté initial={TOUT_DEPLIE} onRenameDatabase={vi.fn().mockResolvedValue(SANS_RESERVE)} />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Renommer…' }))
+    await userEvent.clear(screen.getByLabelText('Nouveau nom de analytics'))
+    await userEvent.type(screen.getByLabelText('Nouveau nom de analytics'), 'entrepot{Enter}')
+
+    // **Le succès est muet** : la ligne renommée est sa propre confirmation, et une modale « c'est
+    // fait » à chaque fois apprendrait à cliquer sans lire.
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  test('un refus du cœur est dit, avec ce qui rassure', async () => {
+    const renommer = vi
+      .fn()
+      .mockRejectedValue(new Error('une connexion « shop » est déjà déclarée en « prod »'))
+    render(<Piloté initial={TOUT_DEPLIE} onRenameDatabase={renommer} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Renommer…' }))
+    await userEvent.clear(screen.getByLabelText('Nouveau nom de analytics'))
+    await userEvent.type(screen.getByLabelText('Nouveau nom de analytics'), 'shop{Enter}')
+
+    const modale = await screen.findByRole('dialog')
+    expect(modale).toHaveTextContent('déjà déclarée')
+    // Le fait qui rassure, dit aussi fort que celui qui inquiète — la règle de `08j`.
+    expect(modale).toHaveTextContent('mot de passe est intact')
+  })
+
+  test('un secret introuvable et un résidu sont rapportés, le renommage ayant eu lieu', async () => {
+    const renommer = vi.fn().mockResolvedValue({
+      missingSecrets: ['Atelier Nord/analytics/prod'],
+      leftoverSecrets: ['Atelier Nord/analytics/prod'],
+    })
+    render(<Piloté initial={TOUT_DEPLIE} onRenameDatabase={renommer} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Renommer…' }))
+    await userEvent.clear(screen.getByLabelText('Nouveau nom de analytics'))
+    await userEvent.type(screen.getByLabelText('Nouveau nom de analytics'), 'entrepot{Enter}')
+
+    const modale = await screen.findByRole('dialog')
+    // Les taire laisserait découvrir l'un ou l'autre bien plus tard, sur un échec de connexion sans
+    // raison apparente.
+    expect(modale).toHaveTextContent('introuvable dans le Trousseau')
+    expect(modale).toHaveTextContent('n’a pas pu être effacé')
+  })
+
+  test('« Renommer… » se désactive quand l’écran ne la relie à rien', async () => {
+    render(<Piloté initial={TOUT_DEPLIE} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+    // Présente et désactivée, pas absente : la règle de `09f` et le défaut n° 36.
+    expect(screen.getByRole('button', { name: 'Renommer…' })).toBeDisabled()
+  })
+
+  test('les lignes projet, schéma et table n’offrent pas « Renommer… »', async () => {
+    render(<Piloté initial={TOUT_DEPLIE} onRenameDatabase={vi.fn()} />)
+    // Le projet a « Modifier le projet… », qui absorbe son renommage (`23e`) ; un schéma et une
+    // table n'ont pas de menu du tout.
+    await userEvent.click(screen.getByRole('button', { name: 'Actions de Atelier Nord' }))
+    expect(screen.queryByRole('button', { name: 'Renommer…' })).toBeNull()
+  })
+})
+
+describe('le clic droit ouvre le même menu, au pointeur (`26`)', () => {
+  /** Le clic droit, en `fireEvent` : `userEvent` ne porte pas de geste « bouton secondaire ». */
+  function clicDroit(ligne: HTMLElement) {
+    fireEvent.contextMenu(ligne, { clientX: 120, clientY: 80 })
+  }
+
+  test('une ligne de connexion ouvre ses actions, les mêmes que le « … »', () => {
+    render(<Piloté initial={TOUT_DEPLIE} onEditDatabase={() => {}} onRenameDatabase={vi.fn()} />)
+    clicDroit(ligne('analytics', '3'))
+
+    const menu = screen.getByRole('menu', { name: 'Actions de analytics' })
+    // **Les mêmes entrées que le « … »**, dans le même ordre : c'est une seule construction, et ce
+    // test est ce qui le prouve plutôt que de le supposer.
+    expect(
+      [...menu.querySelectorAll('[role=menuitem]')].map((entree) => entree.textContent),
+    ).toEqual(['Nouvelle console…', 'Renommer…', 'Modifier…', 'Retirer de DoraBase…'])
+  })
+
+  test('une entrée agit, et le menu se referme', async () => {
+    const vues: unknown[] = []
+    render(<Piloté initial={TOUT_DEPLIE} onEditDatabase={(...args) => vues.push(args)} />)
+    clicDroit(ligne('shop', '3'))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Modifier…' }))
+
+    // Les coordonnées viennent du nœud cliqué, pas de la première ligne du décor.
+    expect(vues).toEqual([['Atelier Nord', 'shop', 'prod']])
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  test('une action indisponible reste offerte et dit pourquoi', () => {
+    render(<Piloté initial={TOUT_DEPLIE} />)
+    clicDroit(ligne('analytics', '3'))
+    // La règle de `09f` valait déjà pour le « … » ; un second menu qui cacherait les entrées
+    // désactivées ferait croire à deux produits.
+    expect(screen.getByRole('menuitem', { name: 'Renommer…' })).toBeDisabled()
+  })
+
+  test('les lignes sans actions n’ouvrent aucun menu, et gardent celui du système', () => {
+    const charge: Charge = {
+      schemas: { [ID_ANALYTICS]: [schema('public')] },
+      objets: { [ID_PUBLIC]: [table('orders')] },
+      enCours: new Set(),
+      echecs: {},
+    }
+    render(<Piloté initial={TOUT_DEPLIE} charge={charge} />)
+
+    // Un schéma et une table n'ont pas de configuration : leur menu n'aurait rien à proposer, et
+    // `preventDefault` sur un clic droit sans menu retirerait le geste natif pour rien.
+    const evenement = fireEvent.contextMenu(screen.getByRole('treeitem', { name: /public/ }))
+    expect(evenement).toBe(true)
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
 })

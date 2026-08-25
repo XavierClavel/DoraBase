@@ -10,6 +10,7 @@ import { useConfiguration } from '../data/useConfiguration'
 import { Sprite } from '../design/icons/Sprite'
 import type { Database, Preferences, Project } from '../domain/config'
 import {
+  renommerLaConnexion,
   renommerLeProjet,
   retirerLaConnexion,
   retirerLeProjet,
@@ -271,6 +272,18 @@ export function App() {
             onProjets={setProjects}
             onRenameProject={async (project, nom) => {
               const issue = await renommerLeProjet({ project, name: nom })
+              setProjects(issue.projects)
+              return issue
+            }}
+            // Le renommage d'une connexion (`26`) : la liste rendue est reposée telle quelle, comme
+            // pour le projet — l'arbre montre le nouveau nom sans second aller-retour.
+            onRenameDatabase={async (project, database, environment, nouveau) => {
+              const issue = await renommerLaConnexion({
+                project,
+                database,
+                environment,
+                name: nouveau,
+              })
               setProjects(issue.projects)
               return issue
             }}

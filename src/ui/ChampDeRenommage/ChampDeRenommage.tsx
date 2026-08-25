@@ -45,10 +45,30 @@ export function ChampDeRenommage({ valeurInitiale, onValider, onAnnuler }: Champ
       className={styles.champ}
       value={valeur}
       aria-label={`Nouveau nom de ${valeurInitiale}`}
+      /* **Aucune assistance à la saisie, et les quatre comptent.** Ce qu'on tape ici est un
+         identifiant — un nom de connexion, un nom de console — pas une phrase. macOS corrigeait
+         « analytics_v2 » en autre chose, mettait une capitale en tête et soulignait le mot en rouge ;
+         WKWebView applique ces réglages système, donc un renommage pouvait enregistrer un nom que
+         personne n'avait tapé. `autoComplete` en plus : le navigateur proposait d'anciennes valeurs
+         de champs sans rapport, par-dessus la ligne d'arbre. */
+      autoCorrect="off"
+      autoCapitalize="off"
+      autoComplete="off"
+      spellCheck={false}
       onChange={(evenement) => setValeur(evenement.target.value)}
       onBlur={terminer}
       onKeyDown={(evenement) => {
-        if (evenement.key === 'Enter') terminer()
+        if (evenement.key === 'Enter') {
+          /* **`preventDefault` avant de valider, et ce n'est pas une précaution de style.** Le
+             comportement par défaut d'un `Enter` est d'activer le contrôle focalisé — *après* que
+             les gestionnaires ont tourné. Si la validation ouvre une fenêtre, celle-ci prend le
+             focus dans le même flux, et l'activation retombe sur son premier bouton : la modale de
+             rapport de `26` se refermait ainsi par sa croix, dans le même geste qui l'ouvrait, et
+             son refus n'était jamais lisible. Trouvé en e2e — jsdom ne rejoue pas cette activation
+             par défaut, donc aucun test unitaire ne pouvait le voir. */
+          evenement.preventDefault()
+          terminer()
+        }
         if (evenement.key === 'Escape') onAnnuler()
         // L'hôte ne doit pas voir ces touches : `Entrée` activerait la ligne ou l'onglet, et les
         // flèches déplaceraient la sélection au lieu du curseur dans le texte.

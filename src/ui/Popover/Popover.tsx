@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { useSortieDuPointeur } from '../sortieDuPointeur'
 import styles from './Popover.module.css'
 
 type PopoverProps = {
@@ -19,6 +20,16 @@ type PopoverProps = {
   content: ReactNode | ((fermer: () => void) => ReactNode)
   /** Alignement par rapport au déclencheur. Le panneau bascule seul s'il déborde. */
   align?: 'start' | 'end'
+  /**
+   * Ferme le panneau quand le pointeur quitte l'ensemble déclencheur + panneau (`26`).
+   *
+   * **Opt-in, et non le comportement par défaut.** Un menu d'actions se referme volontiers quand on
+   * s'en éloigne — on l'a quitté, on ne le visait plus. Un panneau où l'on *travaille*, comme le
+   * sélecteur de colonnes de `10e` ou le popover d'opérateur de `A5`, doit au contraire survivre à un
+   * pointeur qui va chercher autre chose : le fermer sous la souris ferait perdre une sélection en
+   * cours. Les deux besoins sont opposés, donc l'appelant tranche.
+   */
+  fermerEnSortant?: boolean
 }
 
 /**
@@ -35,7 +46,13 @@ type PopoverProps = {
  * Rendu sur place, l'ordre de tabulation est le bon sans code de rattrapage. Contrepartie
  * assumée : le panneau se replace lui-même quand il déborde à droite.
  */
-export function Popover({ title, children, content, align = 'start' }: PopoverProps) {
+export function Popover({
+  title,
+  children,
+  content,
+  align = 'start',
+  fermerEnSortant = false,
+}: PopoverProps) {
   const id = useId()
   const [ouvert, setOuvert] = useState(false)
   const [alignement, setAlignement] = useState(align)
@@ -98,6 +115,11 @@ export function Popover({ title, children, content, align = 'start' }: PopoverPr
     }
   }, [ouvert, align])
 
+  // **Sur la racine, qui contient le déclencheur *et* le panneau** : le départ n'est réel que
+  // lorsque le pointeur quitte l'ensemble. Un délai de grâce absorbe l'interstice de 2px que
+  // `top: calc(100% + var(--space-1))` laisse entre les deux — voir `useSortieDuPointeur`.
+  const sortie = useSortieDuPointeur(ouvert && fermerEnSortant, () => setOuvert(false))
+
   const declencheur = cloneElement(children, {
     'aria-haspopup': 'dialog',
     'aria-expanded': ouvert,
@@ -118,6 +140,8 @@ export function Popover({ title, children, content, align = 'start' }: PopoverPr
           fermer()
         }
       }}
+      onPointerLeave={sortie.onPointerLeave}
+      onPointerEnter={sortie.onPointerEnter}
       onBlur={(evenement) => {
         // Le focus quitte l'ensemble déclencheur + panneau : `relatedTarget` est l'élément qui
         // le reçoit, et `null` quand la fenêtre elle-même le perd — auquel cas on ne ferme pas,

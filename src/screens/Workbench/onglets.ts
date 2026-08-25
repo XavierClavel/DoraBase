@@ -276,3 +276,80 @@ export function baptiserLeBrouillon(etat: EtatOnglets, id: string, nom: string):
     actif: etat.actif === id ? idOnglet(baptise) : etat.actif,
   }
 }
+
+/**
+ * Fait suivre un **renommage de connexion** aux onglets ouverts (`26`).
+ *
+ * # Pourquoi les onglets suivent au lieu de se fermer
+ *
+ * `08j` les ferme quand une connexion est *retirée* : leur déclaration a disparu. Ici elle existe
+ * toujours, sous un autre nom — les fermer ferait perdre la place de l'utilisateur, et une
+ * modification en attente non appliquée avec elle. Un renommage est une correction de libellé du
+ * point de vue de celui qui le fait ; le lui faire payer d'une bande d'onglets vidée serait une
+ * punition.
+ *
+ * # Ce que ça demande
+ *
+ * `idOnglet` compose `projet/base/env::…` : la `key` de chaque onglet concerné est réécrite, donc son
+ * identité change, donc **`actif` aussi** — sans quoi la bande désignerait un onglet qui n'existe
+ * plus et le centre reviendrait à `A4` juste après un renommage réussi. C'est la même mécanique que
+ * `renommerLaConsole`, un cran au-dessus : là c'était le nom d'un onglet, ici les coordonnées de
+ * tous ceux d'une connexion.
+ */
+export function renommerLaConnexion(
+  etat: EtatOnglets,
+  key: DatabaseKey,
+  nouveau: string,
+): EtatOnglets {
+  if (nouveau === key.database) return etat
+
+  const onglets = etat.onglets.map((onglet) =>
+    memeBase(onglet.key, key) ? { ...onglet, key: { ...onglet.key, database: nouveau } } : onglet,
+  )
+  return {
+    onglets,
+    actif: etat.actif === null ? null : idApresRenommage(etat.actif, key, nouveau),
+  }
+}
+
+/**
+ * L'identifiant d'onglet tel qu'il devient après le renommage d'une connexion (`26`).
+ *
+ * **Sur les coordonnées décomposées, pas sur un remplacement de sous-chaîne.** `id.replace(ancien,
+ * nouveau)` renommerait aussi une table homonyme de la base — `orders/orders::public.orders` en est
+ * l'exemple minimal — et le bogue ne se verrait que sur ce cas précis. C'est la leçon du test de
+ * préfixe de `viseeParLId`.
+ *
+ * Un identifiant qui ne vise pas cette connexion est rendu **tel quel** : la fonction est donc sûre
+ * à appliquer à toutes les clés d'une table indexée par identifiant d'onglet.
+ */
+export function idApresRenommage(id: string, key: DatabaseKey, nouveau: string): string {
+  const [coordonnees = '', reste] = id.split('::')
+  const [projet, base, environnement] = coordonnees.split('/')
+  if (projet !== key.project || base !== key.database || environnement !== key.environment) {
+    return id
+  }
+  const suffixe = reste === undefined ? '' : `::${reste}`
+  return `${key.project}/${nouveau}/${key.environment}${suffixe}`
+}
+
+/**
+ * Réindexe une table dont les clés sont des identifiants d'onglets (`26`).
+ *
+ * Le texte d'une console, ses modifications en attente, l'association d'un onglet à sa console
+ * persistée : trois tables indexées par un identifiant qui **contient le nom de la connexion**. Sans
+ * cette réindexation, un renommage vide silencieusement l'éditeur et perd les modifications en
+ * attente — l'onglet est là, sous son nouveau nom, et ne trouve plus rien à sa clé.
+ *
+ * Une fonction générique plutôt que trois boucles chez l'appelant : ce sont les mêmes clés, et la
+ * troisième copie serait celle qu'on oublie de corriger.
+ */
+export function reindexerParConnexion<T>(
+  table: Readonly<Record<string, T>>,
+  key: DatabaseKey,
+  nouveau: string,
+): Record<string, T> {
+  return Object.fromEntries(
+    Object.entries(table).map(([id, valeur]) => [idApresRenommage(id, key, nouveau), valeur]),
+  )
+}

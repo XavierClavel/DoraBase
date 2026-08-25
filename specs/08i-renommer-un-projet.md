@@ -22,6 +22,8 @@ création), `08h` (le menu « … » qui ouvre cette action), `09b` (le registre
 - **Renommer une base.** `08g` l'a déjà tranché et verrouillé : son nom fait partie de la clé, et le
   changer demande les mêmes trois effets de bord pour un enjeu moindre. Si cette spec les résout
   proprement pour le projet, `08g` pourra être rouvert — mais pas dans le même commit.
+  **C'est fait, en `26`** (25 août 2026) : la mécanique de `renommer_projet` y est reprise sur un
+  seul secret, et le geste vit sur la ligne d'arbre plutôt que dans un formulaire.
 - **Changer l'environnement actif.** Le sélecteur « ENV » de la barre de titre le fait déjà.
 - **Fusionner deux projets** en leur donnant le même nom : le nom reste unique, un doublon est
   refusé.

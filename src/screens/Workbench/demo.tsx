@@ -942,6 +942,38 @@ export function WorkbenchDemo() {
           )
           return { missingSecrets: [`${nom}/analytics/prod`], leftoverSecrets: [] }
         }}
+        /* La démo renomme **dans son état**, comme `onRenameProject` et pour la même raison : l'arbre
+           doit montrer le nouveau nom, sans quoi le geste ne serait pas observable en Chromium.
+
+           Elle **refuse** aussi un nom déjà pris dans le même environnement — la règle de `23b`, que
+           le cœur porte et que la démo rejoue faute de pont. C'est ce qui rend le rapport de refus
+           atteignable par un test, et le succès reste **muet** : aucune réserve annoncée, donc aucune
+           modale, ce que `26` exige du cas normal. */
+        onRenameDatabase={async (projet, base, environnement, nouveau) => {
+          const homonyme = projets
+            .find((p) => p.name === projet)
+            ?.databases.some((d) => d.name === nouveau && d.environment === environnement)
+          if (homonyme) {
+            throw new Error(
+              `une connexion « ${nouveau} » est déjà déclarée en « ${environnement} »`,
+            )
+          }
+          setProjets((precedents) =>
+            precedents.map((p) =>
+              p.name === projet
+                ? {
+                    ...p,
+                    databases: p.databases.map((d) =>
+                      d.name === base && d.environment === environnement
+                        ? { ...d, name: nouveau }
+                        : d,
+                    ),
+                  }
+                : p,
+            ),
+          )
+          return { missingSecrets: [], leftoverSecrets: [] }
+        }}
         onProjets={setProjets}
         gestesEnvironnement={gestesEnvironnement}
       />

@@ -4,12 +4,15 @@ import {
   AUCUN_ONGLET,
   type EtatOnglets,
   fermer,
+  idApresRenommage,
   idOnglet,
   type Onglet,
   type OngletConsole,
   ongletActif,
   ouvrir,
   ouvrirConsole,
+  reindexerParConnexion,
+  renommerLaConnexion,
   reordonner,
   viseeParLId,
 } from './onglets'
@@ -237,5 +240,85 @@ describe('le dialecte d’une console (`13a`)', () => {
     // même suite, sans quoi la bande afficherait deux « console 1 ».
     const etat = ouvrirConsole(ouvrirConsole(AUCUN_ONGLET, analytics, 'mongo'), analytics)
     expect(etat.onglets.map(libelle)).toEqual(['console 1', 'console 2'])
+  })
+})
+
+describe('le renommage d’une connexion (`26`)', () => {
+  it('fait suivre les onglets ouverts, et l’onglet actif avec eux', () => {
+    const etat = ouvrir(ouvrir(AUCUN_ONGLET, orders), { ...items, key: shop })
+    const renomme = renommerLaConnexion(etat, analytics, 'entrepot')
+
+    // La connexion visée bouge… et sa voisine reste où elle est.
+    expect(renomme.onglets.map((onglet) => onglet.key.database)).toEqual(['entrepot', 'shop'])
+    // L'onglet actif était celui de `shop`, ouvert en second : il ne change pas d'identité.
+    expect(renomme.actif).toBe(idOnglet({ ...items, key: shop }))
+
+    // Et quand c'est l'onglet renommé qui est actif, `actif` suit — sans quoi la bande
+    // désignerait un onglet disparu et le centre reviendrait à `A4`.
+    const surOrders = { ...etat, actif: idOnglet(orders) }
+    expect(renommerLaConnexion(surOrders, analytics, 'entrepot').actif).toBe(
+      idOnglet({ ...orders, key: { ...analytics, database: 'entrepot' } }),
+    )
+  })
+
+  it('n’ouvre ni ne ferme rien : les onglets survivent au renommage', () => {
+    // C'est la différence avec le retrait de `08j`, qui les ferme : la déclaration existe encore.
+    const etat = ouvrir(ouvrir(AUCUN_ONGLET, orders), items)
+    const renomme = renommerLaConnexion(etat, analytics, 'entrepot')
+    expect(renomme.onglets).toHaveLength(2)
+    expect(renomme.onglets.map((onglet) => (onglet.sorte === 'table' ? onglet.table : ''))).toEqual(
+      ['orders', 'order_items'],
+    )
+  })
+
+  it('le même nom ne touche à rien', () => {
+    const etat = ouvrir(AUCUN_ONGLET, orders)
+    expect(renommerLaConnexion(etat, analytics, 'analytics')).toBe(etat)
+  })
+
+  it('ne renomme pas une table homonyme de sa base', () => {
+    // **Le piège d'un `replace` de sous-chaîne.** Sur `Atelier Nord/orders/prod::public.orders`, un
+    // remplacement textuel de « orders » toucherait aussi la table — l'onglet pointerait alors une
+    // table qui n'existe pas. Le découpage par coordonnées est ce qui l'évite.
+    const cle: DatabaseKey = { project: 'Atelier Nord', database: 'orders', environment: 'prod' }
+    const id = 'Atelier Nord/orders/prod::public.orders'
+    expect(idApresRenommage(id, cle, 'commandes')).toBe(
+      'Atelier Nord/commandes/prod::public.orders',
+    )
+  })
+
+  it('laisse intact un identifiant qui ne vise pas cette connexion', () => {
+    const id = idOnglet({ ...items, key: shop })
+    expect(idApresRenommage(id, analytics, 'entrepot')).toBe(id)
+  })
+
+  it('distingue deux homonymes de deux environnements', () => {
+    // `analytics` en dev et `analytics` en prod sont deux connexions (`23b`) : renommer l'une ne
+    // doit pas déplacer les onglets de l'autre.
+    const dev: DatabaseKey = { ...analytics, environment: 'dev' }
+    const etat = ouvrir(ouvrir(AUCUN_ONGLET, orders), { ...orders, key: dev })
+    const renomme = renommerLaConnexion(etat, dev, 'entrepot')
+
+    expect(renomme.onglets.map((onglet) => onglet.key)).toEqual([
+      analytics,
+      { ...dev, database: 'entrepot' },
+    ])
+  })
+
+  it('réindexe les tables indexées par identifiant d’onglet', () => {
+    // Le texte d'une console et ses modifications en attente vivent dans des tables indexées par
+    // cet identifiant : sans réindexation, l'onglet renommé ne trouve plus rien à sa clé, et
+    // l'éditeur se rouvre vide.
+    const table = {
+      [idOnglet(orders)]: 'select 1',
+      [idOnglet({ ...items, key: shop })]: 'select 2',
+    }
+    const reindexe = reindexerParConnexion(table, analytics, 'entrepot')
+
+    expect(reindexe[idOnglet({ ...orders, key: { ...analytics, database: 'entrepot' } })]).toBe(
+      'select 1',
+    )
+    expect(reindexe[idOnglet({ ...items, key: shop })]).toBe('select 2')
+    expect(Object.keys(reindexe)).toHaveLength(2)
   })
 })

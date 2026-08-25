@@ -4,7 +4,8 @@ Ce document existe pour qu'une session neuve reprenne le travail sans avoir la c
 précédente. Il complète les specs et les plans, qui disent *quoi* construire ; lui dit **où on
 en est, ce qui a été décidé, et pourquoi**.
 
-Dernière mise à jour : 20 août 2026 (support Cloud SQL). Le travail vit sur `quiver-leader` :
+Dernière mise à jour : 25 août 2026 (`26`, renommer une connexion ; après `25a`–`25c`, l'environnement
+devenu un palier de l'arbre). Le travail vit sur `quiver-leader` :
 les six specs de `A5` (`10a`–`10f`), la création de projet (`08f`), la modification et le retrait de
 connexions (`08g`–`08j`), l'édition inline de `A6` (`11a`–`11d`), la console SQL de `A7`
 (`12a`–`12f`), la console MongoDB de `A8` (`13a`–`13c`), la vue Structure de `A9` (`14a`–`14c`), les
@@ -12,11 +13,16 @@ préférences de `A10` (`15a`–`15d`), **le second moteur du projet** (`18a`–
 trentaine de correctifs venus du **premier usage réel** de l'application, et le **support Cloud
 SQL** (`05d`, `06g`, `08k`).
 
+Depuis, sur `voracious-bicycle` : **l'environnement devenu un palier de l'arbre** (`25a`–`25c`), **le
+renommage d'une connexion** (`26`), et **le menu de ligne au clic droit** (`27`) — cette dernière née
+de quatre retours d'usage sur la précédente, dont trois défauts qu'aucun test ne pouvait voir
+(`DEFAUTS.md` n° 121 à 124).
+
 **Les dix écrans du handoff sont assemblés et atteignables.**
 
 ---
 
-## 0. À faire en premier — neuf vérifications à l'œil, dont quatre en attente
+## 0. À faire en premier — dix vérifications à l'œil, dont cinq en attente
 
 **Elles s'accumulent depuis `08c` et rien ne peut les automatiser** : Playwright ne pilote pas
 WKWebView, et piloter le bureau par frappes synthétiques a été tenté puis abandonné — la fenêtre
@@ -35,6 +41,7 @@ pnpm tauri dev
 | ~~2b~~ | ~~Basculer « Type » sur « Cloud SQL », cliquer « Parcourir… »~~ | **Sans objet depuis le 24 août 2026** : `06j` a retiré le champ « Compte de service », son bouton et son sélecteur. Il n'y a plus de second appel au sélecteur natif, donc plus rien à observer ici — le seul restant est celui de la clé SSH, vérifié depuis le 10 août (ligne 2) | `06j` |
 | 3 | ~~Enregistrer une base, quitter, relancer~~ | **Fait le 10 août** : le projet et sa base survivent au redémarrage | `09b` |
 | ~~4~~ | ~~Cliquer la pastille projet de la barre de titre~~ | **Sans objet depuis le 25 août 2026** : `25b` a retiré la pastille et son menu. Le centre de la barre est un indicateur passif, et le menu des projets vit dans le « … » de la ligne d'arbre — déjà couvert en e2e, qui pilote un vrai navigateur. Le défaut n° 35 qu'il s'agissait de reconfirmer portait sur un `overflow: hidden` que ce chantier a laissé en place, avec son commentaire, parce que la règle reste juste | `25b` |
+| 4c | Renommer une connexion depuis son « … », **quitter l'application, la relancer** | La connexion doit reparaître sous son nouveau nom, et s'ouvrir **sans redemander son mot de passe** — c'est ce qui prouve que le secret a bien changé de référence dans le Trousseau réel, et non dans le magasin chiffré de développement. Le seul critère de `26` que rien n'automatise : aucun test ne relance l'app | `26` |
 | 4b | Cliquer un environnement dans l'arbre, puis une connexion, sous WKWebView | Le palier d'environnement est **nouveau** (`25a`) et l'arbre y gagne un niveau. À observer : que la colonne à 228 px reste lisible au palier des tables, et que la poignée du `SplitPane` descende bien jusqu'à 196 px sans tasser les noms. C'est la seule chose que Chromium sans tête ne dit pas — il mesure, il ne juge pas | `25a` |
 | 5 | ~~« Copier la ligne en INSERT », puis coller~~ | **Fait le 10 août** : le SQL arrive dans le presse-papiers | `10f` |
 | 6 | ~~`⌘E`, modifier une cellule, `⌘Z`~~ | **Fait le 10 août** : la bascule et l'annulation répondent sous WKWebView, malgré les raccourcis système. Deux défauts d'affichage relevés au passage (`DEFAUTS.md` n° 36 et 37), corrigés | `11b` |
@@ -43,7 +50,7 @@ pnpm tauri dev
 | 2c | Construire un bundle (`pnpm tauri build`), le lancer **depuis le Finder** sur une machine où `cloud-sql-proxy` n'est pas installé, et ouvrir une connexion Cloud SQL | Le proxy doit démarrer : c'est la seule preuve d'`06h`, et la seule observation du `PATH` minimal d'une app graphique — jamais constaté, seulement anticipé (`specs/README.md`). Si l'erreur dit « le binaire est introuvable », le sidecar n'a pas été embarqué ou n'est pas à côté de l'exécutable | `06h` |
 | 8 | Cliquer une autre application pour défocaliser DoraBase | Les trois feux tricolores doivent rester visibles (grisés). Signalé le 18 août : ils **disparaissent**. Boutons dessinés par le système sous `titleBarStyle: "Overlay"` — donc **ni reproductible ni corrigeable depuis le web** ; l'expérience à tenter est de passer `hiddenTitle` à `false` le temps d'un lancement pour savoir si la disparition vient de la superposition ou du thème | `tauri.conf.json` |
 
-**Quatre vérifications restent — et l'usage réel en a appris bien plus qu'elles** : dix-neuf défauts,
+**Cinq vérifications restent — et l'usage réel en a appris bien plus qu'elles** : dix-neuf défauts,
 dont seize signalés par l'utilisateur (voir `DEFAUTS.md` § « Ce qu'a trouvé le premier
 usage réel »). La leçon est au § 5, règle 9.
 
@@ -319,6 +326,9 @@ couvre, et les deux manquants n'attendent qu'un compte.
 | `06h`, `06i` | **le proxy livré avec l'app** — binaire embarqué à empreinte vérifiée, et l'authentification par les identifiants du CLI `gcloud` | **fait** (bundle ouvert depuis le Finder et notarisation : à observer) |
 | `06j` | **une seule voie d'authentification** — le champ « Compte de service » retiré, et la migration v3 → v4 | **fait** |
 | `06k` | **l'authentification IAM de base de données** — `--auto-iam-authn`, la bascule de `A2`, et le mot de passe vide | **fait** (instance IAM réelle non observée depuis ici) |
+| `25a`–`25c` | **l'environnement, un palier de l'arbre** — la barre de titre réduite à un indicateur, l'environnement actif retiré du modèle | **fait** |
+| `27` | **le menu d'une ligne** — clic droit, fermeture au départ du pointeur, et le token de rayon fantôme | **fait** |
+| `26` | **renommer une connexion** — `rename_database`, l'édition sur place dans la ligne d'arbre, les onglets qui suivent | **fait** (survie au redémarrage : à observer, § 0 ligne 4c) |
 | `19a` | Redis — **n'entre pas dans le contrat**, et pourquoi | écrite, conclusion négative |
 | `20`, `21` | Snowflake, BigQuery — **aucun décor de test** | écrites, bloquées |
 

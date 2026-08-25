@@ -187,6 +187,20 @@ pub enum RenameError {
     NomVide,
     /// Un autre projet porte déjà ce nom : les clés d'identité deviendraient ambiguës.
     DejaPris { project: String },
+    /// La connexion nommée n'existe pas **dans cet environnement** (`26`). L'environnement est dans
+    /// le message : « analytics n'existe pas » serait faux sous les yeux de quelqu'un qui la voit
+    /// déclarée en dev.
+    ConnexionInconnue {
+        project: String,
+        database: String,
+        environment: String,
+    },
+    /// Une autre connexion du **même environnement** porte déjà ce nom (`23b`). Le même nom dans un
+    /// autre environnement est, lui, le modèle même — d'où l'environnement dans le message.
+    ConnexionPrise {
+        database: String,
+        environment: String,
+    },
     /// Le magasin de secrets a refusé. **Les secrets déjà déplacés ont été remis en place.**
     Secret {
         source: SecretError,
@@ -204,10 +218,28 @@ impl std::fmt::Display for RenameError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Inconnu { project } => write!(f, "le projet « {project} » n'existe pas"),
-            Self::NomVide => write!(f, "un nom de projet ne peut pas être vide"),
+            // **Neutre depuis `26`** : le même enum sert au renommage d'un projet et à celui d'une
+            // connexion, et le refus s'affiche là où l'utilisateur vient de taper — le contexte est
+            // sous ses yeux, le mot « projet » ne l'était plus dans un cas sur deux.
+            Self::NomVide => write!(f, "un nom ne peut pas être vide"),
             Self::DejaPris { project } => {
                 write!(f, "un projet nommé « {project} » existe déjà")
             }
+            Self::ConnexionInconnue {
+                project,
+                database,
+                environment,
+            } => write!(
+                f,
+                "le projet « {project} » ne déclare pas de connexion « {database} » en « {environment} »"
+            ),
+            Self::ConnexionPrise {
+                database,
+                environment,
+            } => write!(
+                f,
+                "une connexion « {database} » est déjà déclarée en « {environment} »"
+            ),
             Self::Secret {
                 source,
                 secrets_repris,
@@ -453,6 +485,186 @@ fn retirer_les_ecrits(magasin: &dyn SecretStore, ecrits: &[SecretRef]) -> bool {
     ecrits
         .iter()
         .all(|nouvelle| magasin.delete(nouvelle).is_ok())
+}
+
+/// Renomme **une connexion** dans un projet, en déplaçant son mot de passe (`26`).
+///
+/// # Pourquoi le même travail que `renommer_projet`, en plus petit
+///
+/// `projet/base/environnement` est la clé du registre (`09b`) et la référence du secret (`05c`) :
+/// le nom d'une connexion en est le deuxième tiers. Le changer est donc une migration, et l'ordre
+/// est celui que `renommer_projet` documente — écrire le nouveau secret, **vérifier qu'il se
+/// relit**, écrire la configuration, supprimer l'original **en dernier**.
+///
+/// **Ce qui change par rapport au projet** : il n'y a qu'un secret. Un renommage de projet pouvait
+/// échouer à mi-parcours, avec trois bases migrées sur cinq ; ici, ou le secret a bougé, ou rien
+/// n'a bougé. Le rollback reste appelé — non pour couvrir un cas partiel, mais parce que le
+/// nouveau secret est déjà posé quand la configuration refuse de s'écrire, et le laisser ferait un
+/// doublon que rien ne nettoierait jamais.
+///
+/// **Rien ne change côté serveur.** `name` n'entre dans aucune chaîne de connexion — seul
+/// `connection.default_database` y va. Renommer une connexion ne peut donc pas viser une autre base
+/// distante par accident ; c'est l'étiquette et la clé locale qui bougent, rien d'autre.
+///
+/// L'unicité est celle du couple `(environnement, nom)` (`23b`) : `analytics` en dev et `analytics`
+/// en prod sont deux connexions légitimes, et c'est pourquoi le doublon est cherché **dans
+/// l'environnement de la connexion visée**, pas dans le projet entier.
+pub fn renommer_connexion(
+    projects: &mut [Project],
+    project: &str,
+    environment: &EnvironmentId,
+    ancien: &str,
+    nouveau: &str,
+    magasin: &dyn SecretStore,
+    ecrire: &mut dyn FnMut(&[Project]) -> Result<(), String>,
+) -> Result<Renommage, RenameError> {
+    let nouveau = nouveau.trim();
+    if nouveau.is_empty() {
+        return Err(RenameError::NomVide);
+    }
+
+    let index = projects
+        .iter()
+        .position(|projet| projet.name == project)
+        .ok_or_else(|| RenameError::Inconnu {
+            project: project.to_owned(),
+        })?;
+
+    // La connexion est désignée par le **couple** : chercher sur le seul nom viserait la première
+    // venue, et renommerait `analytics` de dev en croyant tenir celle de prod.
+    let cible = projects[index]
+        .databases
+        .iter()
+        .position(|base| base.name == ancien && &base.environment == environment)
+        .ok_or_else(|| RenameError::ConnexionInconnue {
+            project: project.to_owned(),
+            database: ancien.to_owned(),
+            environment: environment.as_str().to_owned(),
+        })?;
+
+    // **Renommer en son propre nom est accepté sans rien faire**, comme en `08i` : l'état voulu est
+    // déjà atteint, et appeler le magasin demanderait une autorisation du système pour rien.
+    if nouveau == ancien {
+        return Ok(Renommage {
+            cles_a_fermer: Vec::new(),
+            secrets_absents: Vec::new(),
+            residus: Vec::new(),
+        });
+    }
+
+    if projects[index]
+        .databases
+        .iter()
+        .any(|base| base.name == nouveau && &base.environment == environment)
+    {
+        return Err(RenameError::ConnexionPrise {
+            database: nouveau.to_owned(),
+            environment: environment.as_str().to_owned(),
+        });
+    }
+
+    // La référence **déclarée**, jamais recalculée : une connexion dont la référence a été posée
+    // autrement — un fichier écrit à la main, une convention passée — doit être suivie, pas devinée.
+    let ancienne = projects[index].databases[cible].connection.password.clone();
+    let nouvelle = ancienne
+        .as_ref()
+        .map(|_| reference_de(project, nouveau, environment.as_str()));
+
+    let mut ecrits: Vec<SecretRef> = Vec::new();
+    let mut secrets_absents = Vec::new();
+    // `Some` seulement si un secret a été retrouvé, déplacé, **et relu** : c'est ce qui autorise à
+    // effacer l'original, et l'effacer sans cette relecture est ce qui perd un mot de passe.
+    let mut a_supprimer: Option<SecretRef> = None;
+
+    if let (Some(ancienne), Some(nouvelle)) = (ancienne.as_ref(), nouvelle.as_ref()) {
+        match magasin.retrieve(ancienne) {
+            Ok(Some(secret)) => {
+                if let Err(source) = magasin.store(nouvelle, &secret) {
+                    return Err(RenameError::Secret {
+                        source,
+                        secrets_repris: retirer_les_ecrits(magasin, &ecrits),
+                    });
+                }
+                ecrits.push(nouvelle.clone());
+
+                // **Vérifier qu'il se relit avant de compter dessus** : un magasin qui accepte
+                // l'écriture sans la conserver ferait perdre le mot de passe à la suppression de
+                // l'original.
+                match magasin.retrieve(nouvelle) {
+                    Ok(Some(_)) => a_supprimer = Some(ancienne.clone()),
+                    Ok(None) => {
+                        return Err(RenameError::Secret {
+                            source: SecretError::Magasin {
+                                detail: "le mot de passe déplacé ne se relit pas".to_owned(),
+                            },
+                            secrets_repris: retirer_les_ecrits(magasin, &ecrits),
+                        })
+                    }
+                    Err(source) => {
+                        return Err(RenameError::Secret {
+                            source,
+                            secrets_repris: retirer_les_ecrits(magasin, &ecrits),
+                        })
+                    }
+                }
+            }
+            // **Introuvable n'est pas illisible**, et la distinction décide du sort du renommage
+            // (`08i`) : interrompre ici rendrait *irrenommable* la connexion dont le mot de passe a
+            // été effacé à la main. La référence suit, la connexion le redemandera, et l'appelant
+            // reçoit de quoi le dire.
+            Ok(None) => secrets_absents.push(ancienne.as_str().to_owned()),
+            Err(source) => {
+                return Err(RenameError::Secret {
+                    source,
+                    secrets_repris: retirer_les_ecrits(magasin, &ecrits),
+                })
+            }
+        }
+    }
+
+    // Relevée **avant** l'écriture : elle porte l'ancien nom, qui va disparaître du modèle.
+    let cles_a_fermer = vec![crate::engine::registry::cle(
+        project,
+        ancien,
+        environment.as_str(),
+    )];
+
+    // Le projet est reconstruit à côté, validé, puis substitué — le pattern de `mettre_a_jour` :
+    // un modèle à moitié muté n'existe jamais, même le temps d'une ligne.
+    let mut candidat = projects[index].clone();
+    candidat.databases[cible].name = nouveau.to_owned();
+    if nouvelle.is_some() {
+        candidat.databases[cible].connection.password = nouvelle.clone();
+    }
+    validate(&candidat).map_err(|erreur| RenameError::Config {
+        reason: erreur.to_string(),
+        secrets_repris: retirer_les_ecrits(magasin, &ecrits),
+    })?;
+
+    let precedent = std::mem::replace(&mut projects[index], candidat);
+    if let Err(reason) = ecrire(projects) {
+        // Le modèle en mémoire est rendu à son état d'origine : le laisser renommé alors que le
+        // disque ne l'est pas ferait divorcer l'écran du fichier jusqu'au prochain démarrage.
+        projects[index] = precedent;
+        return Err(RenameError::Config {
+            reason,
+            secrets_repris: retirer_les_ecrits(magasin, &ecrits),
+        });
+    }
+
+    // **La phase destructive, en dernier.** Un échec ici ne compromet rien : le renommage a eu lieu,
+    // il reste un doublon sous l'ancienne référence — bénin, et bien préférable à un secret perdu.
+    let residus = a_supprimer
+        .into_iter()
+        .filter(|ancienne| magasin.delete(ancienne).is_err())
+        .map(|ancienne| ancienne.as_str().to_owned())
+        .collect();
+
+    Ok(Renommage {
+        cles_a_fermer,
+        secrets_absents,
+        residus,
+    })
 }
 
 pub struct Modification<'a> {
@@ -1989,7 +2201,9 @@ mod tests_renommage {
         ]
     }
 
-    fn garnir(magasin: &MagasinSync) {
+    /// Garnit le magasin des trois secrets du décor. `pub(super)` depuis `26`, dont les tests
+    /// partent du même décor : deux fonctions de garnissage divergeraient au premier secret ajouté.
+    pub(super) fn garnir(magasin: &MagasinSync) {
         for (base, env) in [
             ("analytics", "dev"),
             ("analytics", "prod"),
@@ -2911,5 +3125,508 @@ mod tests_consoles {
         migrer_requetes_en_consoles(&mut projets);
         migrer_requetes_en_consoles(&mut projets);
         assert_eq!(projets[0].databases[0].consoles.len(), 1);
+    }
+}
+
+/// Les tests du renommage d'une **connexion** (`26`).
+///
+/// Séparés de `tests_renommage`, qui teste celui d'un projet : les deux fonctions partagent l'ordre
+/// des effets, pas ce qui les fait échouer — l'unicité par environnement et la désignation par le
+/// couple n'ont pas d'équivalent côté projet.
+#[cfg(test)]
+mod tests_renommage_connexion {
+    use super::tests::{magasin, magasin_defaillant};
+    use super::tests_renommage::{decor_partage, garnir};
+    use super::*;
+    use crate::config::model::{Console, EnvironmentId};
+
+    fn dev() -> EnvironmentId {
+        EnvironmentId::brut("dev")
+    }
+
+    fn prod() -> EnvironmentId {
+        EnvironmentId::brut("prod")
+    }
+
+    #[test]
+    fn renommer_deplace_le_secret_et_ecrit_la_configuration() {
+        let mut projets = decor_partage();
+        let m = magasin();
+        garnir(&m);
+        let mut ecrits = 0;
+
+        let issue = renommer_connexion(
+            &mut projets,
+            "Halle",
+            &dev(),
+            "analytics",
+            "entrepot",
+            &m,
+            &mut |_| {
+                ecrits += 1;
+                Ok(())
+            },
+        )
+        .expect("renommage");
+
+        assert_eq!(projets[0].databases[0].name, "entrepot");
+        assert_eq!(ecrits, 1);
+        assert_eq!(
+            projets[0].databases[0].connection.password,
+            Some(reference_de("Halle", "entrepot", "dev")),
+            "la référence du modèle suit, sinon la configuration désignerait un secret parti"
+        );
+        assert_eq!(
+            m.retrieve(&reference_de("Halle", "entrepot", "dev"))
+                .expect("relecture"),
+            Some(Secret::new("mdp-analytics-dev")),
+        );
+        assert!(
+            m.retrieve(&reference_de("Halle", "analytics", "dev"))
+                .expect("relecture")
+                .is_none(),
+            "l'original est effacé, en dernier"
+        );
+
+        // **L'homonyme de prod n'a pas bougé** : c'est ce qu'un décor à une seule `analytics`
+        // n'aurait pas pu montrer, et c'est le défaut le plus probable de cette fonction.
+        assert_eq!(projets[0].databases[1].name, "analytics");
+        assert_eq!(projets[0].databases[1].environment, prod());
+        assert!(m
+            .retrieve(&reference_de("Halle", "analytics", "prod"))
+            .expect("relecture")
+            .is_some());
+
+        // La clé rendue porte l'**ancien** nom : c'est celle à fermer.
+        assert_eq!(
+            issue.cles_a_fermer,
+            vec![crate::engine::registry::cle("Halle", "analytics", "dev")]
+        );
+        assert!(issue.secrets_absents.is_empty());
+        assert!(issue.residus.is_empty());
+    }
+
+    #[test]
+    fn la_configuration_n_est_ecrite_qu_une_fois_le_secret_en_place() {
+        let mut projets = decor_partage();
+        let m = magasin();
+        garnir(&m);
+        let mut vu_au_moment_de_l_ecriture = None;
+
+        renommer_connexion(
+            &mut projets,
+            "Halle",
+            &dev(),
+            "analytics",
+            "entrepot",
+            &m,
+            &mut |_| {
+                // L'ordre est la garantie de cette fonction : si la configuration était écrite
+                // d'abord, elle désignerait un secret qui n'existe pas encore.
+                vu_au_moment_de_l_ecriture = Some(
+                    m.retrieve(&reference_de("Halle", "entrepot", "dev"))
+                        .expect("relecture")
+                        .is_some(),
+                );
+                Ok(())
+            },
+        )
+        .expect("renommage");
+
+        assert_eq!(vu_au_moment_de_l_ecriture, Some(true));
+    }
+
+    #[test]
+    fn l_original_n_est_efface_qu_apres_l_ecriture() {
+        let mut projets = decor_partage();
+        let m = magasin();
+        garnir(&m);
+        let mut ancien_encore_la = None;
+
+        renommer_connexion(
+            &mut projets,
+            "Halle",
+            &dev(),
+            "analytics",
+            "entrepot",
+            &m,
+            &mut |_| {
+                // Tant que la configuration n'est pas écrite, l'original doit être là : c'est ce qui
+                // rend l'échec réversible.
+                ancien_encore_la = Some(
+                    m.retrieve(&reference_de("Halle", "analytics", "dev"))
+                        .expect("relecture")
+                        .is_some(),
+                );
+                Ok(())
+            },
+        )
+        .expect("renommage");
+
+        assert_eq!(ancien_encore_la, Some(true));
+    }
+
+    #[test]
+    fn un_magasin_qui_refuse_d_ecrire_annule_tout() {
+        let mut projets = decor_partage();
+        let defaillant = magasin_defaillant(true, false);
+        garnir(&defaillant);
+        let mut ecrits = 0;
+
+        let erreur = renommer_connexion(
+            &mut projets,
+            "Halle",
+            &dev(),
+            "analytics",
+            "entrepot",
+            &defaillant,
+            &mut |_| {
+                ecrits += 1;
+                Ok(())
+            },
+        )
+        .expect_err("le magasin refuse");
+
+        assert!(matches!(
+            erreur,
+            RenameError::Secret {
+                secrets_repris: true,
+                ..
+            }
+        ));
+        assert_eq!(ecrits, 0, "la configuration ne doit pas avoir été écrite");
+        assert_eq!(projets[0].databases[0].name, "analytics");
+        assert!(
+            defaillant
+                .retrieve(&reference_de("Halle", "analytics", "dev"))
+                .expect("relecture")
+                .is_some(),
+            "le mot de passe d'origine est intact"
+        );
+    }
+
+    #[test]
+    fn un_echec_d_ecriture_retire_le_secret_pose_et_rend_le_modele() {
+        let mut projets = decor_partage();
+        let m = magasin();
+        garnir(&m);
+
+        let erreur = renommer_connexion(
+            &mut projets,
+            "Halle",
+            &dev(),
+            "analytics",
+            "entrepot",
+            &m,
+            &mut |_| Err("disque plein".to_owned()),
+        )
+        .expect_err("l'écriture échoue");
+
+        assert!(matches!(
+            erreur,
+            RenameError::Config {
+                secrets_repris: true,
+                ..
+            }
+        ));
+        assert_eq!(
+            projets[0].databases[0].name, "analytics",
+            "le modèle en mémoire ne doit pas rester renommé alors que le disque ne l'est pas"
+        );
+        assert!(
+            m.retrieve(&reference_de("Halle", "entrepot", "dev"))
+                .expect("relecture")
+                .is_none(),
+            "le secret posé sous le nouveau nom est retiré : sinon un doublon que rien ne nettoie"
+        );
+        assert!(m
+            .retrieve(&reference_de("Halle", "analytics", "dev"))
+            .expect("relecture")
+            .is_some());
+    }
+
+    #[test]
+    fn un_secret_introuvable_ne_bloque_pas_et_est_rapporte() {
+        let mut projets = decor_partage();
+        // Le magasin est **vide** : la connexion déclare une référence dont le secret a disparu.
+        let m = magasin();
+
+        let issue = renommer_connexion(
+            &mut projets,
+            "Halle",
+            &dev(),
+            "analytics",
+            "entrepot",
+            &m,
+            &mut |_| Ok(()),
+        )
+        .expect("un secret absent ne bloque pas");
+
+        assert_eq!(projets[0].databases[0].name, "entrepot");
+        assert_eq!(
+            issue.secrets_absents,
+            vec!["Halle/analytics/dev".to_owned()],
+            "l'écran doit pouvoir le dire plutôt que le taire"
+        );
+    }
+
+    #[test]
+    fn un_residu_de_suppression_est_rapporte_sans_annuler() {
+        let mut projets = decor_partage();
+        let m = magasin_defaillant(false, true);
+        garnir(&m);
+
+        let issue = renommer_connexion(
+            &mut projets,
+            "Halle",
+            &dev(),
+            "analytics",
+            "entrepot",
+            &m,
+            &mut |_| Ok(()),
+        )
+        .expect("un échec de suppression ne compromet rien");
+
+        assert_eq!(projets[0].databases[0].name, "entrepot");
+        assert_eq!(issue.residus, vec!["Halle/analytics/dev".to_owned()]);
+    }
+
+    #[test]
+    fn un_nom_deja_pris_dans_le_meme_environnement_est_refuse() {
+        let mut projets = decor_partage();
+        let m = magasin();
+        garnir(&m);
+
+        // `shop` est déclarée en prod, comme la connexion visée.
+        let erreur = renommer_connexion(
+            &mut projets,
+            "Halle",
+            &prod(),
+            "analytics",
+            "shop",
+            &m,
+            &mut |_| Ok(()),
+        )
+        .expect_err("doublon");
+
+        assert!(matches!(erreur, RenameError::ConnexionPrise { .. }));
+        assert_eq!(projets[0].databases[1].name, "analytics");
+    }
+
+    #[test]
+    fn le_meme_nom_dans_un_autre_environnement_est_accepte() {
+        let mut projets = decor_partage();
+        let m = magasin();
+        garnir(&m);
+
+        // `shop` existe en prod ; la renommer ainsi **en dev** est le modèle même de `23b`.
+        renommer_connexion(
+            &mut projets,
+            "Halle",
+            &dev(),
+            "analytics",
+            "shop",
+            &m,
+            &mut |_| Ok(()),
+        )
+        .expect("deux homonymes dans deux environnements sont légitimes");
+
+        assert_eq!(projets[0].databases[0].name, "shop");
+        assert_eq!(projets[0].databases[0].environment, dev());
+    }
+
+    #[test]
+    fn renommer_en_son_propre_nom_ne_fait_rien() {
+        let mut projets = decor_partage();
+        let m = magasin();
+        garnir(&m);
+        let mut ecrits = 0;
+
+        let issue = renommer_connexion(
+            &mut projets,
+            "Halle",
+            &dev(),
+            "analytics",
+            "analytics",
+            &m,
+            &mut |_| {
+                ecrits += 1;
+                Ok(())
+            },
+        )
+        .expect("un non-geste n'est pas une erreur");
+
+        assert_eq!(ecrits, 0);
+        assert!(issue.cles_a_fermer.is_empty(), "rien à fermer");
+    }
+
+    #[test]
+    fn un_nom_vide_est_refuse() {
+        let mut projets = decor_partage();
+        let m = magasin();
+        assert!(matches!(
+            renommer_connexion(
+                &mut projets,
+                "Halle",
+                &dev(),
+                "analytics",
+                "   ",
+                &m,
+                &mut |_| Ok(())
+            ),
+            Err(RenameError::NomVide)
+        ));
+    }
+
+    #[test]
+    fn le_nouveau_nom_est_debarrasse_de_ses_espaces() {
+        let mut projets = decor_partage();
+        let m = magasin();
+        garnir(&m);
+
+        renommer_connexion(
+            &mut projets,
+            "Halle",
+            &dev(),
+            "analytics",
+            "  entrepot  ",
+            &m,
+            &mut |_| Ok(()),
+        )
+        .expect("renommage");
+
+        // Sinon la référence du secret porterait les espaces, et le nom affiché aussi.
+        assert_eq!(projets[0].databases[0].name, "entrepot");
+        assert!(m
+            .retrieve(&reference_de("Halle", "entrepot", "dev"))
+            .expect("relecture")
+            .is_some());
+    }
+
+    #[test]
+    fn une_connexion_absente_de_cet_environnement_est_refusee() {
+        let mut projets = decor_partage();
+        let m = magasin();
+
+        // `shop` n'existe qu'en prod : la viser en dev doit être refusé plutôt que de renommer la
+        // première connexion de ce nom, quel que soit son environnement.
+        assert!(matches!(
+            renommer_connexion(
+                &mut projets,
+                "Halle",
+                &dev(),
+                "shop",
+                "boutique",
+                &m,
+                &mut |_| { Ok(()) }
+            ),
+            Err(RenameError::ConnexionInconnue { .. })
+        ));
+        assert!(matches!(
+            renommer_connexion(
+                &mut projets,
+                "Absent",
+                &dev(),
+                "analytics",
+                "entrepot",
+                &m,
+                &mut |_| Ok(())
+            ),
+            Err(RenameError::Inconnu { .. })
+        ));
+    }
+
+    #[test]
+    fn les_consoles_suivent_la_connexion_renommee() {
+        let mut projets = decor_partage();
+        projets[0].databases[0].consoles = vec![Console {
+            name: "console 1".to_owned(),
+            sql: "select 1".to_owned(),
+        }];
+        let m = magasin();
+        garnir(&m);
+
+        renommer_connexion(
+            &mut projets,
+            "Halle",
+            &dev(),
+            "analytics",
+            "entrepot",
+            &m,
+            &mut |_| Ok(()),
+        )
+        .expect("renommage");
+
+        // Les consoles vivent **dans** la connexion : elles suivent sans code, et ce test fige la
+        // propriété plutôt que de la supposer.
+        assert_eq!(projets[0].databases[0].consoles.len(), 1);
+        assert_eq!(projets[0].databases[0].consoles[0].sql, "select 1");
+    }
+
+    #[test]
+    fn le_secret_reste_lisible_dans_le_vrai_magasin_apres_renommage() {
+        // **Le magasin réellement utilisé**, pas une simulation — la leçon de `08i` : un renommage
+        // qui passe sur une `HashMap` et échoue sur le magasin chiffré est un renommage qui ne
+        // marche pas. La signature ad hoc n'ouvrant pas le Trousseau, c'est ce magasin-là qui sert
+        // en développement.
+        let repertoire = tempfile::tempdir().expect("répertoire temporaire");
+        let magasin = crate::secrets::selectionner_pour(
+            crate::secrets::SignatureKind::AdHoc,
+            repertoire.path(),
+        )
+        .expect("magasin chiffré");
+        let magasin = magasin.store.as_ref();
+
+        let mut projets = decor_partage();
+        magasin
+            .store(
+                &reference_de("Halle", "analytics", "dev"),
+                &Secret::new("mdp-analytics-dev"),
+            )
+            .expect("garnissage");
+
+        renommer_connexion(
+            &mut projets,
+            "Halle",
+            &dev(),
+            "analytics",
+            "entrepot",
+            magasin,
+            &mut |_| Ok(()),
+        )
+        .expect("renommage");
+
+        assert_eq!(
+            magasin
+                .retrieve(&reference_de("Halle", "entrepot", "dev"))
+                .expect("relecture"),
+            Some(Secret::new("mdp-analytics-dev"))
+        );
+        assert!(magasin
+            .retrieve(&reference_de("Halle", "analytics", "dev"))
+            .expect("relecture")
+            .is_none());
+    }
+
+    #[test]
+    fn une_connexion_sans_mot_de_passe_se_renomme_quand_meme() {
+        let mut projets = decor_partage();
+        projets[0].databases[0].connection.password = None;
+        let m = magasin();
+
+        let issue = renommer_connexion(
+            &mut projets,
+            "Halle",
+            &dev(),
+            "analytics",
+            "entrepot",
+            &m,
+            &mut |_| Ok(()),
+        )
+        .expect("SQLite sur fichier n'a pas de secret, et se renomme comme les autres");
+
+        assert_eq!(projets[0].databases[0].name, "entrepot");
+        assert_eq!(projets[0].databases[0].connection.password, None);
+        assert!(issue.secrets_absents.is_empty(), "aucun secret n'était dû");
     }
 }

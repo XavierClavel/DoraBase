@@ -1407,3 +1407,68 @@ describe('mode édition', () => {
     expect(screen.getAllByRole('tab')).toHaveLength(1)
   })
 })
+
+/**
+ * Le renommage d'une connexion, vu de l'écran de travail (`26`).
+ *
+ * Ce que le cœur garantit — la migration du secret, le refus d'un doublon — est testé dans
+ * `enregistrer.rs`. Ce qui se mesure **ici** est ce que seul cet écran peut faire : les onglets
+ * ouverts, et les tables indexées par leur identité, qui portent le nom de la connexion.
+ */
+describe('renommer une connexion (`26`)', () => {
+  /** Applique le renommage à l'état, comme la commande réelle rend les projets à jour. */
+  function pilote(projets?: Project[]) {
+    const renommer = vi.fn(async () => ({ missingSecrets: [], leftoverSecrets: [] }))
+    // `projects` n'est **pas** passé à vide : `monter` répand ses arguments après son propre
+    // `projects`, donc un `undefined` explicite écraserait le décor par défaut.
+    monter({
+      ...(projets === undefined ? {} : { projects: projets }),
+      passerelleExecution: PASSERELLE_SQL,
+      onRenameDatabase: renommer,
+    })
+    return renommer
+  }
+
+  async function renommerAnalytics(
+    utilisateur: ReturnType<typeof userEvent.setup>,
+    nouveau: string,
+  ) {
+    await utilisateur.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+    await utilisateur.click(screen.getByRole('button', { name: 'Renommer…' }))
+    const champ = screen.getByLabelText('Nouveau nom de analytics')
+    await utilisateur.clear(champ)
+    await utilisateur.type(champ, `${nouveau}{Enter}`)
+  }
+
+  it('l’onglet de table reste ouvert et actif', async () => {
+    const utilisateur = userEvent.setup()
+    const renommer = pilote()
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
+
+    await renommerAnalytics(utilisateur, 'entrepot')
+
+    expect(renommer).toHaveBeenCalledWith('Atelier Nord', 'analytics', 'prod', 'entrepot')
+    // **Ils suivent, ils ne se ferment pas** — c'est ce qui distingue un renommage d'un retrait
+    // (`08j`). Les fermer ferait perdre la place de l'utilisateur pour une correction de libellé.
+    const onglet = await screen.findByRole('tab', { name: /orders/ })
+    expect(onglet).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('le texte de la console ouverte survit au renommage', async () => {
+    const utilisateur = userEvent.setup()
+    pilote(avecConsole('CA par jour', 'select 42'))
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /CA par jour/ }))
+    expect(document.querySelector('.cm-content')?.textContent).toContain('select 42')
+
+    await renommerAnalytics(utilisateur, 'entrepot')
+
+    // **La table des textes est indexée par identité d'onglet**, laquelle contient le nom de la
+    // connexion : sans réindexation, l'éditeur se retrouve devant une clé qui n'existe plus et
+    // s'affiche vide — un renommage qui a l'air d'avoir effacé le travail en cours.
+    await waitFor(() =>
+      expect(document.querySelector('.cm-content')?.textContent).toContain('select 42'),
+    )
+  })
+})

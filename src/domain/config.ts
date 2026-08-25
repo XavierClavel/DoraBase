@@ -381,6 +381,14 @@ export type ProxySsh = { bastionHost: string, bastionPort: number, username: str
 export type RecolorEnvironmentRequest = { project: string, environment: EnvironmentId, color: EnvironmentColor, production: boolean, };
 
 /**
+ * Ce que `26` envoie pour renommer une connexion.
+ *
+ * **L'environnement est là parce qu'il fait partie de l'identité** (`23b`) : sans lui, renommer
+ * « analytics » dans un projet qui la déclare en dev et en prod viserait la première venue.
+ */
+export type RenameDatabaseRequest = { project: string, database: string, environment: EnvironmentId, name: string, };
+
+/**
  * Ce que `23e` envoie pour changer le libellé d'un environnement.
  */
 export type RenameEnvironmentRequest = { project: string, 
@@ -397,13 +405,18 @@ environment: EnvironmentId, label: string, };
 export type RenameProjectRequest = { project: string, name: string, };
 
 /**
- * Ce qu'un renommage réussi rend à l'écran (`08i`).
+ * Ce qu'un renommage réussi rend à l'écran — celui d'un projet (`08i`) comme celui d'une connexion
+ * (`26`).
+ *
+ * **Un seul type pour les deux**, et c'est pourquoi il ne s'appelle plus `RenameProjectResult` : les
+ * deux commandes déplacent des secrets et ont exactement les mêmes trois choses à rapporter. Deux
+ * types identiques auraient divergé au premier champ ajouté à l'un.
  *
  * **Pas seulement les projets.** Deux faits méritent d'être dits plutôt que tus : des mots de passe
  * déclarés mais introuvables — les bases les redemanderont — et des originaux que le magasin n'a
  * pas su effacer. Les taire laisserait l'utilisateur découvrir l'un ou l'autre bien plus tard.
  */
-export type RenameProjectResult = { projects: Array<Project>, missingSecrets: Array<string>, leftoverSecrets: Array<string>, };
+export type RenameResult = { projects: Array<Project>, missingSecrets: Array<string>, leftoverSecrets: Array<string>, };
 
 /**
  * Ce que `23e` envoie après un glissement.

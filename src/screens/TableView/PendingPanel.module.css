@@ -92,7 +92,7 @@
   height: 16px;
   padding: 0;
   border: none;
-  border-radius: var(--radius-chip);
+  border-radius: var(--radius-control);
   background: transparent;
   cursor: pointer;
   color: var(--ink-4);
@@ -131,7 +131,7 @@
 
 .jeton {
   padding: 1px var(--space-3);
-  border-radius: var(--radius-chip);
+  border-radius: var(--radius-badge);
   font-family: var(--font-mono);
   font-size: var(--text-label);
   font-weight: var(--weight-medium);
@@ -193,7 +193,7 @@
   gap: var(--space-2);
   padding: 2px var(--space-4);
   border: 1px solid var(--border);
-  border-radius: var(--radius-chip);
+  border-radius: var(--radius-badge);
   background: var(--field);
   cursor: pointer;
   font-family: var(--font-ui);
