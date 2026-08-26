@@ -31,12 +31,8 @@ import { SegmentedControl } from '../../ui/SegmentedControl/SegmentedControl'
 import { Select } from '../../ui/Select/Select'
 import { Sidebar } from '../../ui/Sidebar/Sidebar'
 import { SidebarFilterBar } from '../../ui/SidebarFilterBar/SidebarFilterBar'
-import {
-  SidebarFooter,
-  SidebarFooterButton,
-  SidebarFooterRow,
-} from '../../ui/SidebarFooter/SidebarFooter'
 import { SidebarSectionTitle } from '../../ui/SidebarSectionTitle/SidebarSectionTitle'
+import { SidebarToolbar, SidebarToolbarButton } from '../../ui/SidebarToolbar/SidebarToolbar'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
 import { StatTile } from '../../ui/StatTile/StatTile'
 import { Stepper } from '../../ui/Stepper/Stepper'
@@ -756,23 +752,16 @@ function SidebarGallery() {
 
   return (
     <Section title="Sidebar standard (A5 → A9)">
-      <Sub title="Assemblage complet — filtre, arbre, section contextuelle, pied">
+      <Sub title="Assemblage complet — bande d’actions, filtre, arbre, section contextuelle">
         <div className={styles.sidebarDemo}>
           <Sidebar
             filter={
               <SidebarFilterBar value={filtre} onChange={setFiltre} matchCount={2} totalCount={8} />
             }
-            footer={
-              <SidebarFooter>
-                <SidebarFooterRow>
-                  <SidebarFooterButton icon="plus" onClick={() => {}}>
-                    Connexion
-                  </SidebarFooterButton>
-                  <SidebarFooterButton icon="bag" onClick={() => {}}>
-                    Projet
-                  </SidebarFooterButton>
-                </SidebarFooterRow>
-              </SidebarFooter>
+            toolbar={
+              <SidebarToolbar>
+                <SidebarToolbarButton icon="bag" label="Nouveau projet" onClick={() => {}} />
+              </SidebarToolbar>
             }
           >
             <TreeRow

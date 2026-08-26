@@ -1,0 +1,63 @@
+/*
+ * La barre d'actions en tête de sidebar (26 août 2026).
+ *
+ * Même facture que `SidebarFilterBar`, qu'elle surmonte : même hauteur de contenu (`--h-bar`), même
+ * remplissage horizontal, même filet bas, et le même `content-box` — les hauteurs de ce projet
+ * désignent le contenu, le filet s'ajoutant par-dessus. Deux bandes empilées qui ne se ressembleraient
+ * pas donneraient l'impression de deux produits, et c'est l'argument qui a déjà refondu le pied.
+ */
+.root {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--h-bar);
+  padding: 0 9px; /* hors échelle `--space-*`, la valeur de `SidebarFilterBar` */
+  border-bottom: 1px solid var(--divider-2);
+  box-sizing: content-box;
+  flex: none;
+}
+
+/*
+ * Une action : un carré, pas un bouton bordé.
+ *
+ * **Nue, et c'est le contraire du pied qu'elle remplace.** Le pied portait des boutons bordés à
+ * libellé parce qu'ils vivaient seuls en bas d'une colonne et devaient s'annoncer. Ici, la bande elle
+ * même annonce — elle est en tête, filetée, et ses gestes sont ceux du chrome. Un bouton bordé y
+ * ferait une deuxième boîte dans une boîte.
+ *
+ * 22 px : la hauteur d'une ligne d'arbre (`TreeRow`), pour que la bande n'introduise pas une troisième
+ * unité verticale dans une colonne qui en a déjà deux.
+ */
+.bouton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+/*
+ * **Le survol, et pourquoi ce n'en est pas un de plus.**
+ *
+ * La règle du projet est de n'inventer aucun état de survol. Celui-ci n'est pas inventé : c'est
+ * `--hover-row`, exactement la teinte d'une ligne d'arbre survolée et d'une entrée de menu parcourue.
+ * Une action de chrome sans retour au survol se lit comme une décoration, et celle-ci ouvre une
+ * modale.
+ */
+.bouton:hover {
+  background: var(--hover-row);
+  color: var(--ink);
+}
+
+.bouton:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}

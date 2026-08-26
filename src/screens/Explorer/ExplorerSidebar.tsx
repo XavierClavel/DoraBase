@@ -6,12 +6,8 @@ import { ColumnRow } from '../../ui/ColumnRow/ColumnRow'
 import { type EntreeDeMenu, MenuContextuel } from '../../ui/MenuContextuel/MenuContextuel'
 import { Sidebar } from '../../ui/Sidebar/Sidebar'
 import { SidebarFilterBar } from '../../ui/SidebarFilterBar/SidebarFilterBar'
-import {
-  SidebarFooter,
-  SidebarFooterButton,
-  SidebarFooterRow,
-} from '../../ui/SidebarFooter/SidebarFooter'
 import { SidebarSectionTitle } from '../../ui/SidebarSectionTitle/SidebarSectionTitle'
+import { SidebarToolbar, SidebarToolbarButton } from '../../ui/SidebarToolbar/SidebarToolbar'
 import { INDENT, TreeRow } from '../../ui/TreeRow/TreeRow'
 import { aplatir, type Charge, type Deplies, type Noeud } from './arbre'
 import { type CibleDeSuppression, DeleteConnectionDialog } from './DeleteConnectionDialog'
@@ -305,6 +301,31 @@ export function ExplorerSidebar({
       )}
       <Sidebar
         width={width}
+        toolbar={
+          /* **La bande d'actions, en tête** (26 août 2026, à la demande) — et le pied a disparu avec
+             elle. Un seul geste pour l'instant, créer un projet, et c'est délibéré : la bande
+             accueillera les suivants, chacun nommé par son glyphe.
+
+             **« Ajouter une connexion » n'y est pas**, et c'est la même raison qui avait déjà chassé
+             « Nouvelle console » du pied : une connexion appartient à un environnement, et une bande en
+             tête de colonne ne sait pas lequel. Le menu d'une ligne d'environnement, lui, ne devine
+             rien.
+
+             **Ce que le pied coûtait** : 78 px pris sur la hauteur de l'arbre, pour deux boutons à
+             libellé qui devaient s'annoncer parce qu'ils vivaient seuls en bas d'une colonne. En tête,
+             la bande coûte 35 px, vit là où l'on cherche les actions d'un panneau, et peut porter des
+             icônes seules — le sac est le glyphe du projet dans tout le produit. */
+          onNewProject && (
+            <SidebarToolbar>
+              <SidebarToolbarButton
+                icon="bag"
+                label="Nouveau projet"
+                title="Nouveau projet (⌘N)"
+                onClick={onNewProject}
+              />
+            </SidebarToolbar>
+          )
+        }
         filter={
           // Le compteur `n/m` de `04` sert ici : il dit combien de lignes **affichées** le filtre
           // retient, ce qui rappelle implicitement qu'il ne cherche pas au-delà.
@@ -314,55 +335,6 @@ export function ExplorerSidebar({
             matchCount={filtre === '' ? undefined : visibles.length}
             totalCount={filtre === '' ? undefined : noeuds.length}
           />
-        }
-        footer={
-          /* **Deux actions de création, une seule facture** — refondu le 20 août 2026, en trois
-             passes le même jour. Le pied empilait d'abord deux registres : « Nouvelle console » en
-             bouton bordé pleine largeur, puis deux pastilles nues partageant une barre de 28 px avec
-             l'icône « Rafraîchir ». Trois gestes de même nature s'annonçaient de trois façons.
-
-             Il ne reste que les deux gestes de **structure**, côte à côte et de même facture.
-             « Nouvelle console » est parti à son tour : une console appartient à une connexion, et le
-             pied ne sait pas laquelle — il fallait deviner le contexte, et se tromper dès que deux
-             connexions étaient dépliées. Le menu « … » de la connexion, lui, ne devine rien.
-
-             Les libellés visibles restent **courts** (« Connexion », « Projet ») : c'est le défaut
-             n° 102, et à 180 px — largeur minimale de la sidebar — « Ajouter une connexion » ne
-             tient pas. Le nom accessible reste entier par `aria-label`, et le raccourci vit dans
-             l'infobulle, comme `⌘E` et `⌘↩` ailleurs dans ce produit.
-
-             **« Rafraîchir » a quitté le pied** et vit dans le menu « … » de la ligne projet, sous
-             son nom long. Il n'est pas supprimé : il vide tout le cache de l'arbre, et
-             `useArbre.ts` justifie l'absence de rechargement au second dépliage par son existence
-             même — sans lui, un arbre périmé ne se récupérerait qu'en redémarrant. */
-          <SidebarFooter>
-            <SidebarFooterRow>
-              <SidebarFooterButton
-                icon="plus"
-                /* Sans cible : le pied ne sait pas de quel environnement il s'agit — c'est
-                   exactement ce que le menu d'une ligne d'environnement, lui, sait dire. */
-                onClick={onAddDatabase && (() => onAddDatabase())}
-                aria-label="Ajouter une connexion"
-                title="Ajouter une connexion (⇧⌘N)"
-              >
-                Connexion
-              </SidebarFooterButton>
-              {/* **Le second geste de création, ici même** (`24d`). La sidebar est l'endroit où l'on
-                  regarde ses projets, donc l'endroit où l'on en ajoute un. Le sac est le glyphe du
-                  projet dans tout le produit — pastille de la barre de titre, arbre, modales — donc il
-                  se lit sans son libellé. */}
-              {onNewProject && (
-                <SidebarFooterButton
-                  icon="bag"
-                  onClick={onNewProject}
-                  aria-label="Nouveau projet"
-                  title="Nouveau projet (⌘N)"
-                >
-                  Projet
-                </SidebarFooterButton>
-              )}
-            </SidebarFooterRow>
-          </SidebarFooter>
         }
       >
         {/* `role="tree"` et `treeitem` : l'arbre est aplati dans le DOM, donc `aria-level` porte la
