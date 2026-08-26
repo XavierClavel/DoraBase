@@ -39,6 +39,10 @@ etape "ci.yml et publication.yml cohérents" python3 scripts/verifier-ci.py
 # `Cargo.lock` — ne se parlent pas. Relever deux sur trois laisse tout vert et publie un `.dmg`
 # dont le nom contredit son `Info.plist`. `scripts/version.sh` est le geste qui les relève.
 etape "version cohérente" python3 scripts/verifier-version.py
+# L'image de fond de la fenêtre d'installation est un bitmap committé : aucune compilation ne
+# la relit. Une régénération à la mauvaise échelle ou une cote changée d'un seul côté
+# n'arrêterait rien avant le volume publié.
+etape "fond de la fenêtre .dmg" ./scripts/verifier-fond-dmg.sh
 etape "rust : format" cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check
 
 if [[ -n "${DORABASE_TEST_PG:-}" && -z "${DORABASE_TEST_SSH_HOST:-}" ]]; then

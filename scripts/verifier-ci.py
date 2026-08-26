@@ -110,7 +110,7 @@ def verifier_ci() -> None:
     workflow = charger(CI)
     jobs = workflow.get("jobs", {})
 
-    build = etapes_de(jobs, "build", 25, "ci.yml")
+    build = etapes_de(jobs, "build", 27, "ci.yml")
     etapes_de(jobs, "engine", 11, "ci.yml")
 
     # Le job macOS doit **construire** : c'est la raison de son existence, et c'est ce qui avait
@@ -125,6 +125,21 @@ def verifier_ci() -> None:
     utilise = " ".join(str(e.get("uses", "")) for e in build)
     if "actions/upload-artifact" not in utilise:
         print("le job « build » ne publie plus le .dmg en artefact", file=sys.stderr)
+        raise SystemExit(1)
+
+    # **Sans `TAURI_BUNDLER_DMG_IGNORE_CI`, le `.dmg` sort dépouillé.** Le bundler DMG ajoute
+    # `--skip-jenkins` dès qu'il voit `CI`, et ce drapeau saute l'AppleScript qui pose le fond,
+    # la taille de fenêtre et les deux positions d'icônes — sans erreur et sans trace. La
+    # variable ne se lit dans aucun `run:`, elle vit dans un `env:` : d'où cette lecture
+    # séparée, qui regarde l'étape et non son texte.
+    if not any(
+        "TAURI_BUNDLER_DMG_IGNORE_CI" in (etape.get("env") or {})
+        for etape in build
+        if "tauri build" in str(etape.get("run", ""))
+    ):
+        print("ci.yml : `tauri build` sans TAURI_BUNDLER_DMG_IGNORE_CI — le .dmg perdrait "
+              "son fond, sa taille de fenêtre et ses positions d'icônes, en silence",
+              file=sys.stderr)
         raise SystemExit(1)
 
     print(f"ci.yml cohérent — {len(jobs)} jobs, aucun doublon")
@@ -143,7 +158,7 @@ def verifier_publication() -> None:
 
     workflow = charger(PUBLICATION)
     jobs = workflow.get("jobs", {})
-    etapes = etapes_de(jobs, "macos", 27, "publication.yml")
+    etapes = etapes_de(jobs, "macos", 29, "publication.yml")
 
     sur = declencheurs(workflow)
     # **Le déclencheur, et rien d'autre que lui.** `on: push` sans filtre publierait une release
@@ -178,10 +193,22 @@ def verifier_publication() -> None:
         ("gh release create", "rien ne publierait le résultat"),
         ("verifier-aucun-decor-de-version.sh",
          "la version de décor pourrait partir dans le bundle livré"),
+        ("verifier-dmg-monte.sh",
+         "rien ne dirait que la fenêtre d'installation a bien été posée sur le volume"),
     ):
         if fragment not in commandes:
             print(f"publication.yml : « {fragment} » a disparu — {raison}", file=sys.stderr)
             raise SystemExit(1)
+
+    # Même variable, même raison — et ici la conséquence est publique.
+    if not any(
+        "TAURI_BUNDLER_DMG_IGNORE_CI" in (etape.get("env") or {})
+        for etape in etapes
+        if "tauri build" in str(etape.get("run", ""))
+    ):
+        print("publication.yml : `tauri build` sans TAURI_BUNDLER_DMG_IGNORE_CI — la version "
+              "publiée s'ouvrirait sur la vue Finder par défaut", file=sys.stderr)
+        raise SystemExit(1)
 
     print(f"publication.yml cohérent — {len(jobs)} job, tag ancré, release publiée")
 

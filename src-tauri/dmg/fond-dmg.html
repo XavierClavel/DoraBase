@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>DoraBase — fond de la fenêtre d'installation .dmg</title>
+
+    <!--
+      SOURCE de `fond-dmg.png`, `fond-dmg@2x.png` et `fond-dmg.tiff`.
+      Rendu par `scripts/construire-fond-dmg.mjs` (`pnpm dmg:fond`), jamais servi par l'app.
+
+      Deux règles à ne pas perdre :
+
+      - **aucun numéro de version dans cette image.** Le volume porte déjà la version dans
+        son nom (`version.sh`) ; la remettre ici obligerait à régénérer un bitmap à chaque
+        relèvement, donc à faire dépendre `publication.yml` d'un Chromium. Le handoff le
+        recommandait, `scripts/verifier-fond-dmg.sh` le fait respecter.
+      - **les deux emplacements d'icônes (centres 168,233 et 492,233) restent vides.** Le
+        Finder y dessine `DoraBase.app` et l'alias `Applications` — icône *et* libellé,
+        police système.
+
+      Le handoff composait ces emplacements pour des icônes de 96 pt. **Ce sont 128.** Aucune
+      clef de `bundle.macOS.dmg` n'expose la taille d'icône : le bundler la fixe en dur, et la
+      valeur se lit dans le `.DS_Store` du volume construit (`iconSize 128`, `textSize 16`).
+      Une icône de 128 centrée à y 233 occupe donc 169 → 297, et son libellé la bande qui
+      suit ; les deux lignes mono sont descendues à **y 322** pour la laisser passer — 9 pt
+      au-dessus du bord bas de la carte. Retoucher la composition était le moins coûteux des
+      deux remèdes : l'autre demandait de poser le `.DS_Store` soi-même, donc de rouvrir en
+      écriture une image que Tauri vient de compresser en lecture seule.
+
+      Les teintes du décor peint sont locales à cette illustration et n'ont pas vocation à
+      devenir des jetons ; tout le reste vient de `src/design/tokens.css`.
+    -->
+
+    <link rel="stylesheet" href="../../src/design/tokens.css" />
+    <style>
+      /*
+       * Les polices sont lues dans `node_modules` plutôt que chez Google : régénérer une
+       * image de publication ne doit pas dépendre du réseau. Ce sont les mêmes fichiers
+       * que `src/design/fonts.css` embarque dans l'app.
+       */
+      @font-face {
+        font-family: "Baloo 2";
+        font-weight: 400 800;
+        font-display: block;
+        src: url("../../node_modules/@fontsource-variable/baloo-2/files/baloo-2-latin-wght-normal.woff2")
+          format("woff2-variations");
+      }
+      @font-face {
+        font-family: "Nunito";
+        font-weight: 200 1000;
+        font-display: block;
+        src: url("../../node_modules/@fontsource-variable/nunito/files/nunito-latin-wght-normal.woff2")
+          format("woff2-variations");
+      }
+      @font-face {
+        font-family: "JetBrains Mono";
+        font-weight: 100 800;
+        font-display: block;
+        src: url("../../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2")
+          format("woff2-variations");
+      }
+
+      html,
+      body {
+        margin: 0;
+        background: #cfeef6;
+      }
+
+      /* 660 × 440 pt : la zone de contenu de la fenêtre du volume, hors barre de titre. */
+      #fond-dmg {
+        position: relative;
+        width: 660px;
+        height: 440px;
+        overflow: hidden;
+        background: #cfeef6;
+        font-family: var(--font-ui);
+      }
+
+      #fond-dmg svg.decor {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      /* Couche 3 — vignette : assied la carte sur le décor. */
+      .vignette {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(120% 90% at 50% 45%, rgba(35, 32, 28, 0), rgba(35, 32, 28, 0.14));
+      }
+
+      /* Couche 4 — la carte de dépôt. Rayon 18px : hors échelle (--radius-window vaut 14px). */
+      .carte {
+        position: absolute;
+        left: 54px;
+        top: 92px;
+        width: 552px;
+        height: 252px;
+        box-sizing: border-box;
+        border-radius: 18px;
+        background: var(--paper);
+        box-shadow:
+          0 22px 46px -20px rgba(35, 32, 28, 0.55),
+          0 0 0 1px var(--border);
+      }
+
+      .bloc {
+        position: absolute;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .titre {
+        left: 80px;
+        top: 112px;
+        width: 500px;
+        height: 31px;
+        font-family: var(--font-title);
+        font-size: 19px; /* métrique locale : hors échelle --text-* */
+        font-weight: 700;
+        letter-spacing: 0.1px;
+        color: var(--ink);
+      }
+
+      .sous-titre {
+        left: 80px;
+        top: 146px;
+        width: 500px;
+        height: 17px;
+        font-size: var(--text-body);
+        font-weight: 400;
+        color: var(--ink-2);
+      }
+
+      .legende-glisser {
+        left: 265px;
+        top: 207px;
+        width: 130px;
+        height: 13px;
+        font-family: var(--font-mono);
+        font-size: var(--text-caps-sm);
+        font-weight: 500;
+        letter-spacing: var(--tracking-caps);
+        text-transform: uppercase;
+        color: var(--ink-meta);
+      }
+
+      /* Indicateur « glisser » : deux filets pointillés et trois chevrons en rampe. */
+      .fleche {
+        left: 271px;
+        top: 228px;
+        width: 119px;
+        height: 22px;
+        gap: 5px;
+      }
+
+      .fleche .filet {
+        width: 30px;
+        border-top: 2px dashed rgba(35, 32, 28, 0.22); /* --border-dashed, monté à .22 */
+      }
+
+      /* viewBox recadrée : le chevron du sprite occupe toute la boîte de 13 × 22. */
+      .fleche svg {
+        width: 13px;
+        height: 22px;
+      }
+
+      .fleche svg:nth-of-type(1) {
+        opacity: 0.4;
+      }
+      .fleche svg:nth-of-type(2) {
+        opacity: 0.7;
+      }
+
+      .fleche path {
+        fill: none;
+        stroke: var(--accent);
+        stroke-width: 2.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      /* Sous le libellé que le Finder dessine, pas à sa place — voir l'en-tête : l'icône
+         fait 128 pt, pas 96, et son libellé descend d'autant. */
+      .sous-icone {
+        top: 322px;
+        width: 200px;
+        height: 13px;
+        font-family: var(--font-mono);
+        font-size: var(--text-caps-sm);
+        font-weight: 400;
+        letter-spacing: 0.3px;
+        color: var(--ink-meta);
+      }
+
+      .sous-icone.gauche {
+        left: 68px;
+      }
+      .sous-icone.droite {
+        left: 392px;
+      }
+
+      .pastille-rangee {
+        left: 0;
+        top: 395px;
+        width: 660px;
+        height: 23px;
+      }
+
+      .pastille {
+        padding: 5px 12px;
+        border-radius: 999px;
+        background: rgba(251, 247, 239, 0.82); /* --paper à .82 */
+        box-shadow: 0 0 0 1px rgba(35, 32, 28, 0.1);
+        font-family: var(--font-mono);
+        font-size: var(--text-meta);
+        font-weight: 500;
+        letter-spacing: 0.2px;
+        color: rgba(35, 32, 28, 0.6);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="fond-dmg">
+      <svg class="decor" viewBox="0 0 660 440" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <linearGradient id="fdSky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#8AD2EC"></stop>
+            <stop offset="1" stop-color="#D4F0F7"></stop>
+          </linearGradient>
+          <!--
+            Le rendu « peint » tient à ce seul filtre. Le ciel reste **hors** du groupe
+            filtré : déplacé, ses bords se déchirent sur le cadre.
+          -->
+          <filter id="fdPaint" x="-8%" y="-8%" width="116%" height="116%">
+            <feTurbulence type="fractalNoise" baseFrequency=".018" numOctaves="3" seed="7" result="n"></feTurbulence>
+            <feDisplacementMap in="SourceGraphic" in2="n" scale="7" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap>
+          </filter>
+        </defs>
+
+        <rect x="-20" y="-20" width="700" height="300" fill="url(#fdSky)"></rect>
+
+        <g filter="url(#fdPaint)">
+          <ellipse cx="120" cy="52" rx="86" ry="26" fill="#FFFFFF" opacity=".55"></ellipse>
+          <ellipse cx="196" cy="40" rx="52" ry="18" fill="#FFFFFF" opacity=".45"></ellipse>
+          <ellipse cx="520" cy="34" rx="74" ry="22" fill="#FFFFFF" opacity=".4"></ellipse>
+
+          <path d="M-20,206 C60,178 150,192 214,202 C300,214 344,186 432,188 C520,190 592,204 680,184 L680,470 L-20,470 Z" fill="#77BC47"></path>
+          <path d="M-20,252 C90,230 184,248 282,242 C400,235 472,250 680,232 L680,470 L-20,470 Z" fill="#8CC950"></path>
+          <path d="M-20,318 C120,296 262,316 402,304 C522,294 604,306 680,296 L680,470 L-20,470 Z" fill="#A3D65D"></path>
+
+          <path d="M-20,470 C42,410 28,374 152,344 C262,317 332,326 432,300 C502,282 562,286 680,270 L680,314 C562,328 502,324 432,342 C342,364 282,360 192,386 C122,406 92,436 82,470 Z" fill="#E8DAA4"></path>
+          <path d="M-10,462 C46,412 40,382 158,354 C266,328 336,336 434,311 C504,293 566,296 680,282 L680,298 C566,312 504,308 434,326 C336,350 266,342 158,368 C48,392 34,418 22,462 Z" fill="#F2E7BC"></path>
+
+          <g fill="#4E9E36">
+            <circle cx="168" cy="196" r="28"></circle>
+            <circle cx="212" cy="204" r="22"></circle>
+            <circle cx="252" cy="192" r="30"></circle>
+            <circle cx="296" cy="206" r="20"></circle>
+            <circle cx="386" cy="198" r="26"></circle>
+            <circle cx="424" cy="208" r="19"></circle>
+          </g>
+          <g fill="#62B341">
+            <circle cx="176" cy="186" r="16"></circle>
+            <circle cx="246" cy="180" r="18"></circle>
+            <circle cx="392" cy="188" r="14"></circle>
+          </g>
+
+          <g fill="#5FAE3E" opacity=".85">
+            <circle cx="188" cy="104" r="24"></circle>
+            <circle cx="228" cy="112" r="18"></circle>
+            <circle cx="268" cy="100" r="26"></circle>
+            <circle cx="312" cy="112" r="17"></circle>
+            <circle cx="352" cy="102" r="23"></circle>
+            <circle cx="392" cy="112" r="18"></circle>
+            <circle cx="430" cy="104" r="24"></circle>
+            <circle cx="470" cy="114" r="16"></circle>
+          </g>
+
+          <path d="M14,470 C28,340 40,214 48,96 L86,98 C86,216 84,340 94,470 Z" fill="#B4834F"></path>
+          <g stroke="#946A3C" stroke-width="5" stroke-linecap="round" opacity=".5">
+            <path d="M34,300 h50"></path>
+            <path d="M30,344 h54"></path>
+            <path d="M26,392 h58"></path>
+            <path d="M40,204 h44"></path>
+            <path d="M44,150 h40"></path>
+          </g>
+          <g transform="translate(66,92)">
+            <g transform="rotate(-152)"><ellipse cx="74" cy="0" rx="80" ry="23" fill="#3E8D2C"></ellipse><path d="M0,0 L152,0" stroke="#2F7523" stroke-width="3" opacity=".5"></path></g>
+            <g transform="rotate(-112)"><ellipse cx="78" cy="0" rx="84" ry="25" fill="#4E9E36"></ellipse><path d="M0,0 L160,0" stroke="#2F7523" stroke-width="3" opacity=".45"></path></g>
+            <g transform="rotate(-72)"><ellipse cx="72" cy="0" rx="78" ry="22" fill="#3E8D2C"></ellipse><path d="M0,0 L148,0" stroke="#2F7523" stroke-width="3" opacity=".5"></path></g>
+            <g transform="rotate(-34)"><ellipse cx="80" cy="0" rx="86" ry="24" fill="#5AA83B"></ellipse><path d="M0,0 L164,0" stroke="#2F7523" stroke-width="3" opacity=".4"></path></g>
+            <g transform="rotate(6)"><ellipse cx="70" cy="0" rx="76" ry="21" fill="#4E9E36"></ellipse><path d="M0,0 L144,0" stroke="#2F7523" stroke-width="3" opacity=".45"></path></g>
+            <g transform="rotate(44)"><ellipse cx="62" cy="0" rx="68" ry="19" fill="#3E8D2C"></ellipse><path d="M0,0 L128,0" stroke="#2F7523" stroke-width="3" opacity=".45"></path></g>
+            <circle cx="0" cy="0" r="13" fill="#2F7523"></circle>
+          </g>
+
+          <path d="M602,470 C608,360 612,204 614,72 L642,74 C642,206 644,360 650,470 Z" fill="#A9784B"></path>
+          <g transform="translate(626,68)">
+            <g transform="rotate(-146)"><ellipse cx="56" cy="0" rx="62" ry="18" fill="#3E8D2C"></ellipse></g>
+            <g transform="rotate(-104)"><ellipse cx="60" cy="0" rx="66" ry="19" fill="#4E9E36"></ellipse></g>
+            <g transform="rotate(-62)"><ellipse cx="54" cy="0" rx="60" ry="17" fill="#3E8D2C"></ellipse></g>
+            <g transform="rotate(-20)"><ellipse cx="58" cy="0" rx="64" ry="18" fill="#5AA83B"></ellipse></g>
+            <g transform="rotate(24)"><ellipse cx="50" cy="0" rx="56" ry="16" fill="#4E9E36"></ellipse></g>
+            <circle cx="0" cy="0" r="10" fill="#2F7523"></circle>
+          </g>
+
+          <g fill="#3F8E2F">
+            <circle cx="24" cy="410" r="34"></circle>
+            <circle cx="66" cy="428" r="26"></circle>
+            <circle cx="636" cy="404" r="36"></circle>
+            <circle cx="596" cy="428" r="24"></circle>
+          </g>
+          <g fill="#57AB3C">
+            <circle cx="34" cy="396" r="18"></circle>
+            <circle cx="628" cy="392" r="20"></circle>
+          </g>
+
+          <g>
+            <g transform="translate(56,268)"><circle cx="0" cy="-9" r="7" fill="#F292BC"></circle><circle cx="8" cy="-3" r="7" fill="#F292BC"></circle><circle cx="5" cy="7" r="7" fill="#F292BC"></circle><circle cx="-5" cy="7" r="7" fill="#F292BC"></circle><circle cx="-8" cy="-3" r="7" fill="#F292BC"></circle><circle cx="0" cy="0" r="4" fill="#F5B335"></circle></g>
+            <g transform="translate(30,336)"><circle cx="0" cy="-7" r="6" fill="#F292BC"></circle><circle cx="7" cy="-2" r="6" fill="#F292BC"></circle><circle cx="4" cy="6" r="6" fill="#F292BC"></circle><circle cx="-4" cy="6" r="6" fill="#F292BC"></circle><circle cx="-7" cy="-2" r="6" fill="#F292BC"></circle><circle cx="0" cy="0" r="3.5" fill="#F5B335"></circle></g>
+            <g transform="translate(598,368)"><circle cx="0" cy="-8" r="7" fill="#F5B335"></circle><circle cx="8" cy="-3" r="7" fill="#F5B335"></circle><circle cx="5" cy="7" r="7" fill="#F5B335"></circle><circle cx="-5" cy="7" r="7" fill="#F5B335"></circle><circle cx="-8" cy="-3" r="7" fill="#F5B335"></circle><circle cx="0" cy="0" r="4" fill="#F2653A"></circle></g>
+            <g transform="translate(636,352)"><circle cx="0" cy="-7" r="6" fill="#F292BC"></circle><circle cx="7" cy="-2" r="6" fill="#F292BC"></circle><circle cx="4" cy="6" r="6" fill="#F292BC"></circle><circle cx="-4" cy="6" r="6" fill="#F292BC"></circle><circle cx="-7" cy="-2" r="6" fill="#F292BC"></circle><circle cx="0" cy="0" r="3.5" fill="#F5B335"></circle></g>
+          </g>
+
+          <g fill="#8E877A" opacity=".8">
+            <ellipse cx="336" cy="252" rx="26" ry="13"></ellipse>
+            <ellipse cx="356" cy="248" rx="14" ry="8"></ellipse>
+          </g>
+        </g>
+      </svg>
+
+      <div class="vignette"></div>
+      <div class="carte"></div>
+
+      <div class="bloc titre">Glisse DoraBase dans Applications</div>
+      <div class="bloc sous-titre">Puis double-clique — l'app est signée et notariée.</div>
+
+      <div class="bloc legende-glisser">glisser</div>
+
+      <div class="bloc fleche">
+        <div class="filet"></div>
+        <svg viewBox="8 4 10 16" aria-hidden="true"><path d="m9.5 5.5 7 6.5-7 6.5"></path></svg>
+        <svg viewBox="8 4 10 16" aria-hidden="true"><path d="m9.5 5.5 7 6.5-7 6.5"></path></svg>
+        <svg viewBox="8 4 10 16" aria-hidden="true"><path d="m9.5 5.5 7 6.5-7 6.5"></path></svg>
+        <div class="filet"></div>
+      </div>
+
+      <div class="bloc sous-icone gauche">universel</div>
+      <div class="bloc sous-icone droite">/Applications</div>
+
+      <div class="bloc pastille-rangee">
+        <span class="pastille">macOS 13 Ventura minimum · Apple Silicon &amp; Intel</span>
+      </div>
+    </div>
+  </body>
+</html>

@@ -18,6 +18,7 @@
     "test:e2e": "playwright test",
     "tokens:build": "node scripts/build-tokens.mjs",
     "tokens:check": "node scripts/build-tokens.mjs && git diff --exit-code src/design/tokens.css src/design/tokens.ts",
+    "dmg:fond": "node scripts/construire-fond-dmg.mjs",
     "domain:build": "cargo run --quiet --manifest-path src-tauri/Cargo.toml --bin export-types",
     "domain:check": "cargo run --quiet --manifest-path src-tauri/Cargo.toml --bin export-types && git diff --exit-code src/domain/"
   },
