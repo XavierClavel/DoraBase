@@ -28,11 +28,21 @@ N'en écrivez pas de nouveaux.
 
 Au début de chaque session, **demander la langue de travail** en une question courte,
 avant toute autre chose, puis s'y tenir. Cela vaut pour la conversation, les
-explications, les questions et les messages de commit. **Le code, les identifiants et
+explications et les questions. **Le code, les identifiants et
 les noms de fichiers techniques restent en anglais** — sauf le Rust de `src-tauri/`, dont
 les identifiants sont en français : le code en place fait foi, imitez-le.
 
 Si la réponse a déjà été donnée dans la session, ne pas redemander.
+
+**Les messages de commit sont toujours en anglais, et toujours succincts** — quelle que soit
+la langue de travail de la session. Un historique se lit des années plus tard, souvent par
+quelqu'un d'autre, et souvent à travers `git log --oneline` : c'est le seul texte du dépôt
+dont le lecteur n'est pas choisi. Une ligne de sujet en `type(scope): ce que ça fait`, à
+l'impératif, sous cinquante caractères. Le pourquoi va dans le code, dans ce fichier, ou dans
+le corps du message — pas dans le sujet.
+
+L'historique antérieur au 26 août 2026 est en français : la règle vaut pour ce qui s'écrit
+maintenant, et rien n'est à réécrire.
 
 ---
 
@@ -292,6 +302,92 @@ message qui ne nommait pas le secret fautif. Les cinq secrets sont donc contrôl
 compiler — présence, puis forme : un Issuer ID est un UUID, un Key ID fait dix caractères, une
 identité commence par « Developer ID Application: ». Les deux premiers vivent dans le même écran
 d'App Store Connect ; les échanger est l'erreur naturelle, et c'est celle que le message nomme.
+
+### La mise à jour en place
+
+**Le plugin `updater` est enregistré pour son API Rust, et n'ouvre aucune permission.** Deux
+commandes maison — `check_update`, `install_update` — remplacent les quatre du plugin plus
+`process:allow-restart`, et `capabilities/default.json` n'a pas bougé : les capacités ne
+gouvernent que l'IPC venant de la webview, donc le Rust n'a besoin d'aucune. Conséquence à ne
+pas perdre : **le front ne sait ni télécharger ni redémarrer**, il sait qu'une version existe
+et il sait la demander. Corollaire pratique : la CSP n'est pas concernée, la requête ne partant
+pas de la webview.
+
+**Deux signatures, deux questions distinctes.** Apple décide si macOS *ouvre* l'application ;
+la clé minisign du projet décide si une application déjà installée accepte de se *remplacer*
+par ce qu'on lui envoie. La seconde est **irremplaçable** : sa moitié publique est dans
+`tauri.conf.json`, donc dans le bundle que les utilisateurs ont déjà. La perdre coupe la voie
+de mise à jour de toutes les installations existantes, sans rattrapage possible.
+
+**Rien n'est proposé qui n'ait été notarié.** Le manifeste et l'archive ne sont attachés à la
+release que si les secrets Apple étaient là. Une archive ad hoc — un fork, une bifurcation —
+s'installerait proprement puis serait refusée par macOS au redémarrage, chez des gens qui
+n'avaient rien demandé et qui n'ont plus de voie de retour. C'est le même arbitrage que
+`signingIdentity: "-"`, poussé un cran plus loin : sans certificat, la construction reste
+possible, la **distribution** de mises à jour non.
+
+**`--latest` cesse d'être cosmétique.** Les applications installées lisent
+`…/releases/latest/download/latest.json`, une URL qui ne nomme aucune version : c'est GitHub
+qui la redirige vers l'asset de la release marquée « latest ». Sans le drapeau, plus personne
+ne trouve de mise à jour. Et les URL *dans* le manifeste sont épinglées au tag, à l'inverse :
+il annonce une version, il doit désigner l'archive de cette version.
+
+**Les deux architectures pointent sur la même archive**, qui est universelle. Tauri cherche la
+sienne par `{plateforme}-{architecture}` et ne connaît pas la notion d'universel : le manifeste
+doit donc porter `darwin-aarch64` **et** `darwin-x86_64` sur la même URL.
+
+**Pas de `pub_date` dans le manifeste.** Le champ est optionnel et n'est affiché nulle part,
+mais il est typé côté Tauri : une date mal formée ne rend pas le manifeste incomplet, elle le
+rend *illisible* — donc coupe la mise à jour pour tout le monde. Un champ décoratif ne mérite
+pas ce mode de défaillance.
+
+**Une clé jetable en CI, régénérée à chaque tour.** Depuis `createUpdaterArtifacts`, tout
+`tauri build` échoue s'il trouve une clé publique sans clé privée en face — donc `ci.yml` ne
+compilait plus. Retirer la clé de la copie de travail aurait fait cesser à la CI d'exercer le
+chemin qui produit l'archive, et sa première exécution aurait été une publication ; donner le
+vrai secret au job aurait rendu la CI rouge sur toute PR venue d'un fork. Une paire jetée
+exerce le chemin complet sans secret, et Tauri **dit** que la clé ne correspond pas à la
+publique — en avertissement, pas en erreur, ce qui est exactement le fait voulu.
+
+**Trois formes de variable mesurées, les trois fausses au premier essai** :
+`TAURI_SIGNING_PRIVATE_KEY` veut le **contenu** de la clé et décode sa valeur en base64 sans
+regarder si c'est un fichier ; `TAURI_SIGNING_PRIVATE_KEY_PATH`, qui prend bien un chemin, n'est
+lu que par la commande `tauri signer` et **pas par le bundler** ; et la variable de mot de passe
+doit être **posée même vide**, faute de quoi la CLI la demande à l'invite et échoue sur un
+runner sans terminal, avec un message qui parle de mot de passe incorrect plutôt que de
+variable absente.
+
+**L'archive de mise à jour porte un second exemplaire de l'application, et il est vérifié
+plutôt que déduit.** Tauri la fabrique après la notarisation — l'ordre des étapes le dit, et la
+sortie de `tauri build` le confirme — mais l'erreur serait invisible jusqu'à ce qu'un
+utilisateur déjà installé se retrouve avec une application que macOS refuse, sans plus aucune
+voie de retour. Le workflow ouvre donc l'archive et demande à `stapler` et `codesign`. C'est
+exactement le piège de la notarisation de l'image, à l'étage suivant.
+
+**Aucune recherche périodique, aucune installation automatique.** Une fois au démarrage, et
+l'installation attend un clic. Une session dure l'après-midi : une requête toutes les heures ne
+ferait qu'annoncer plus tôt une release que le redémarrage suivant aurait trouvée de toute
+façon.
+
+**L'annonce vit dans la barre d'état, et ne rend rien par défaut.** Une mise à jour n'est pas un
+événement — elle attend, et un bandeau qui prend une bande de l'écran pour attendre coûte plus
+que ce qu'il annonce. Propriété qui en découle et qu'il faut garder : hors de la webview
+(galerie, `?demo`, tout Playwright) la recherche est rejetée, l'état reste nul, le composant ne
+rend rien — donc **aucune capture de fidélité ne bouge et il n'y a pas de variante de décor à
+maintenir**. Le silence sur rejet est le comportement voulu, pas un oubli.
+
+**`install_update` ne rend jamais `Ok`** : au succès, le processus est remplacé. Une promesse
+qui se résout est donc un **échec**, et l'écran le traite comme tel — sans quoi le bouton
+resterait sur « Téléchargement… » indéfiniment, ce qui est le pire des deux messages possibles.
+
+**Le piège vérifié plutôt que supposé** : le plugin amène `reqwest`, donc un second usage de
+`rustls` — et deux fournisseurs cryptographiques dans le même binaire font *paniquer*
+`ClientConfig::builder()` à l'exécution, là où `engine/tls.rs` l'appelle sans fournisseur
+explicite. La panne serait apparue à la première connexion TLS, pas à la compilation.
+`cargo tree -e features` dit que ce n'est pas le cas : `reqwest` prend `rustls-no-provider`, la
+seule feature de fournisseur activée sur `rustls` reste `ring`, et l'`aws-lc-rs` du graphe vient
+de `russh` — il y était déjà. Le jour où une dépendance activerait `aws_lc_rs` sur `rustls`, il
+faudra passer le plugin en `native-tls`.
 
 **Les vérifications rapides sont rejouées dans le job de publication** — sabotage, typecheck,
 lint, Vitest, `cargo test`. Le tag est censé être posé sur un `main` vert, et le script refuse
@@ -596,6 +692,13 @@ présenter comme vérifiées tant qu'un humain ne les a pas faites :
   la machine qui a construit. Ce qu'il reste à voir chez quelqu'un d'autre : que rien ne
   s'affiche du tout, et que l'application démarre. Un Mac Intel serait le meilleur essai, la
   tranche `x86_64` du bundle universel n'ayant jamais été exécutée.
+- **Installer une version, en publier une suivante, et laisser l'application se mettre à
+  jour.** Toute la chaîne est vérifiée en CI — l'archive existe, elle est notariée, agrafée,
+  universelle, signée par la bonne clé, et le manifeste la désigne — mais **le remplacement du
+  bundle par lui-même n'a jamais été exercé**. C'est le geste qui prouve à la fois que
+  l'application sait écrire dans `/Applications`, que macOS accepte le bundle remplacé, et que
+  le redémarrage rend une application qui s'ouvre. Aucun test ne peut le faire : Playwright ne
+  pilote pas WKWebView, et le chemin passe par un vrai téléchargement depuis GitHub.
 - **Ouvrir le `.dmg` publié, sur un écran Retina et sur un écran 1×.** Que le fond soit
   *appliqué* se vérifie par script (`verifier-dmg-monte.sh` : le fichier est dans le volume et
   le `.DS_Store` le référence) ; qu'il soit **net**, cadré, et que les deux icônes tombent bien

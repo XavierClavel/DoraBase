@@ -82,6 +82,18 @@ mysql_async = { version = "0.36", default-features = false, features = [
 tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt", "rt-multi-thread", "time"] }
 russh = "0.62.5"
 tauri-plugin-dialog = "2"
+# La mise à jour en place (`maj/`). Enregistré pour son **API Rust** : aucune de ses commandes
+# IPC n'est ouverte à la webview, et `tests/permissions.rs` le garde.
+#
+# **Le piège vérifié plutôt que supposé** : le plugin amène `reqwest`, donc un second usage de
+# `rustls` — et deux fournisseurs cryptographiques compilés dans le même binaire font *paniquer*
+# `ClientConfig::builder()` à l'exécution, là où `06f` l'appelle sans fournisseur explicite. La
+# panne serait apparue à la première connexion TLS, pas à la compilation. `cargo tree -e features`
+# dit que ce n'est pas le cas : `reqwest` prend `rustls-no-provider`, la seule feature de fournisseur
+# activée sur `rustls` reste `ring`, et l'`aws-lc-rs` du graphe vient de `russh` — il y était déjà.
+# Le jour où une dépendance activerait `aws_lc_rs` sur `rustls`, c'est ici qu'il faudra passer le
+# plugin en `native-tls`.
+tauri-plugin-updater = "2"
 
 [dev-dependencies]
 tempfile = "3.27.0"

@@ -20,6 +20,8 @@ empreinte SHA-256 :
 | --- | --- |
 | `DoraBase-X.Y.Z-universal.dmg` | l'application, à glisser dans *Applications* |
 | `DoraBase-X.Y.Z-universal.dmg.sha256` | l'empreinte, à comparer avant d'ouvrir |
+| `DoraBase-X.Y.Z-universal.app.tar.gz` | la mise à jour, que l'application va chercher elle-même |
+| `latest.json` | ce que l'application lit pour savoir qu'une version existe |
 
 **macOS 13 Ventura** au minimum. Toutes les versions sont sur la
 [page des releases](https://github.com/g3wis/DoraBase/releases).
@@ -43,6 +45,25 @@ L'empreinte du `.dmg` est publiée à côté de lui :
 ```bash
 shasum -a 256 ~/Téléchargements/DoraBase-*.dmg
 ```
+
+### Mettre à jour
+
+Rien à télécharger. Quand une version plus récente existe, DoraBase l'annonce dans sa **barre
+d'état**, en bas à droite, à côté du numéro qui tourne : cliquer dessus montre les changements
+et le bouton *Installer et redémarrer*. L'application se remplace et se relance seule.
+
+Il n'y a **ni recherche périodique ni installation automatique** : la recherche a lieu une fois
+au démarrage, et l'installation attend un clic. Hors ligne, ou derrière un pare-feu qui ferme
+`github.com`, rien ne s'affiche et rien ne se plaint.
+
+Ce que l'application accepte d'installer est **signé deux fois** : par Apple, qui décide si
+macOS l'ouvre, et par une clé propre au projet, qui décide si l'application accepte de se
+remplacer par ce qu'on lui envoie. Une archive dont la seconde signature ne correspond pas est
+refusée avant d'être ouverte.
+
+Le remplacement demande de pouvoir écrire dans le bundle. Installée d'un glisser-déposer dans
+*Applications*, elle en a le droit ; posée là par un administrateur pour un autre compte, elle
+ne l'a pas, et le dit plutôt que d'échouer en silence — dans ce cas, retéléchargez le `.dmg`.
 
 ### Essayer un commit, sans attendre une version
 
@@ -81,13 +102,41 @@ branche de travail  ──PR──▶  main (CI verte)  ──version.sh──�
    ```
 
 3. **Le tag `vX.Y.Z` déclenche `publication.yml`** : construction du bundle universel,
-   signature ad hoc, vérifications, puis release GitHub avec le `.dmg` et ses notes de
-   version — celles-ci listent les commits depuis le tag précédent.
+   signature et notarisation Apple, vérifications, puis release GitHub avec le `.dmg`,
+   l'archive de mise à jour, le manifeste `latest.json` et les notes de version — celles-ci
+   listent les commits depuis le tag précédent.
 
 Ce que le script refuse, et pourquoi : une branche autre que `main` (le tag désignerait un
 état que la CI n'a pas validé), un arbre sale (le commit de relèvement emporterait du
 travail en cours), une divergence avec `origin/main`, un numéro qui recule, un tag déjà
 publié. Il **ne pousse rien** : la commande est affichée, le geste reste humain.
+
+### Les huit secrets
+
+`publication.yml` les contrôle **avant de compiler** : un secret vide vaut la chaîne vide, et
+l'échec tomberait sinon après vingt minutes, sur un message qui ne le nomme pas.
+
+| Secret | Ce que c'est |
+| --- | --- |
+| `APPLE_SIGNING_IDENTITY` | « Developer ID Application: … » — sa présence décide de tout le bloc |
+| `APPLE_CERTIFICATE` | le certificat, en base64 |
+| `APPLE_CERTIFICATE_PASSWORD` | son mot de passe |
+| `APPLE_API_KEY` | le **Key ID** App Store Connect (dix caractères) |
+| `APPLE_API_KEY_P8` | la clé `.p8` elle-même, en base64 — `notarytool` veut un fichier |
+| `APPLE_ISSUER_ID` | l'**Issuer ID** du même écran (un UUID) — les échanger est l'erreur naturelle |
+| `TAURI_SIGNING_PRIVATE_KEY` | la clé qui signe les mises à jour, en une ligne |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | son mot de passe |
+
+Sans les six premiers, la construction reste possible : signature ad hoc, sans notarisation,
+et **sans mise à jour proposée** — une archive qu'Apple n'a pas acceptée s'installerait
+proprement puis serait refusée au redémarrage, chez des gens qui n'ont plus de voie de retour.
+
+> **La clé de mise à jour est irremplaçable.** Sa moitié publique est dans le bundle que les
+> utilisateurs ont déjà ; la perdre coupe la voie de mise à jour de toutes les installations
+> existantes, définitivement — il leur faudra retélécharger un `.dmg` une fois. Elle se génère
+> par `pnpm tauri signer generate --write-keys <chemin>`, et se garde ailleurs que dans GitHub.
+> Elle n'a rien à voir avec la signature Apple : celle-ci décide si macOS *ouvre*
+> l'application, celle-là si une application installée accepte de se *remplacer*.
 
 Un numéro de version vit à **trois** endroits — `package.json` (que `tauri.conf.json` lit,
 donc celui qui finit dans l'`Info.plist` et dans le nom du `.dmg`), `src-tauri/Cargo.toml`
