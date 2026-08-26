@@ -48,6 +48,13 @@
         "appPosition": { "x": 168, "y": 233 },
         "applicationFolderPosition": { "x": 492, "y": 233 }
       }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFDNEUwRUFGNEM2RjMyREQKUldUZE1tOU1ydzVPSEh2cE5oVEgxb3FSd1ZSZG1INzJxYVY5NmtPaWFJSHVVUks5QUl6MVkxR1EK",
+      "endpoints": ["https://github.com/g3wis/DoraBase/releases/latest/download/latest.json"]
     }
   }
 }

@@ -23,6 +23,7 @@ import type {
   UpdatePlan,
   Value,
 } from '../domain/engine'
+import type { AvailableUpdate } from '../domain/maj'
 import { PREFERENCES_PAR_DEFAUT } from '../screens/Preferences/preferences'
 
 /**
@@ -188,6 +189,28 @@ export async function renameConsole(request: ConsoleRequest): Promise<Project[]>
  */
 export async function explainSql(key: DatabaseKey, sql: string): Promise<QueryPlan> {
   return invoke<QueryPlan>('explain_sql', { key, sql })
+}
+
+/**
+ * Cherche une version plus récente. `null` quand il n'y en a pas.
+ *
+ * **Le rejet est normal et il ne se remonte pas** : hors ligne, derrière un pare-feu, ou dans
+ * `pnpm dev` où le pont ne répond pas, cette commande échoue — et l'utilisateur n'a rien
+ * demandé. C'est à l'appelant de retomber sur `null`, ce que fait `MiseAJour`.
+ */
+export async function checkUpdate(): Promise<AvailableUpdate | null> {
+  return invoke<AvailableUpdate | null>('check_update')
+}
+
+/**
+ * Télécharge, installe, redémarre.
+ *
+ * **Ne se résout jamais** au succès : le processus est remplacé pendant l'attente. Un `await`
+ * qui rend la main veut donc dire que quelque chose a échoué — c'est le seul cas que l'écran
+ * ait à traiter.
+ */
+export async function installUpdate(): Promise<void> {
+  return invoke<void>('install_update')
 }
 
 export async function runSql(key: DatabaseKey, sql: string, limit: RowLimit): Promise<QueryResult> {

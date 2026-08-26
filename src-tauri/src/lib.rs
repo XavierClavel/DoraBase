@@ -4,6 +4,7 @@
 // déclarer l'intention aurait caché de vraies régressions plus tard.
 pub mod config;
 pub mod engine;
+pub mod maj;
 pub mod secrets;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -13,6 +14,11 @@ pub fn run() {
         // pas `dialog:default` — celui-ci ajouterait la sauvegarde, les messages et la
         // confirmation, dont rien n'a besoin. Gardé par `tests/permissions.rs`.
         .plugin(tauri_plugin_dialog::init())
+        // **La mise à jour en place.** Le plugin est enregistré pour son API Rust seule : ses
+        // commandes IPC restent inatteignables depuis la webview, faute de `updater:default`
+        // dans `capabilities/default.json`. C'est `maj::check_update` et `maj::install_update`
+        // qui les remplacent — voir l'en-tête de `maj/mod.rs`.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(config::ConfigState::new())
         // Le registre des connexions ouvertes (`09b`) : une base ouverte le reste, et le
         // recréer à chaque commande rouvrirait un tunnel SSH par requête.
@@ -49,7 +55,9 @@ pub fn run() {
             engine::commands::preview_updates,
             engine::commands::apply_changes,
             engine::commands::run_sql,
-            engine::commands::explain_sql
+            engine::commands::explain_sql,
+            maj::check_update,
+            maj::install_update
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

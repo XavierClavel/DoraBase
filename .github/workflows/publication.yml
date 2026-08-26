@@ -92,6 +92,41 @@ jobs:
           grep -q arm64 <<<"$archs"
           grep -q x86_64 <<<"$archs"
 
+      # **La clé qui signe les mises à jour, contrôlée avant de compiler.** `tauri.conf.json`
+      # porte la clé publique : Tauri **échoue le bundling** s'il ne trouve pas la privée en
+      # face — donc après la compilation des deux cibles. Même leçon que les secrets Apple, même
+      # remède, et la vérification de forme est la même que celle qu'on peut faire sans réseau :
+      # le fichier de clé minisign est du base64 dont le texte clair commence par
+      # « untrusted comment: ». Un secret collé sans son en-tête, ou tronqué, échoue ici.
+      #
+      # **Cette clé n'est pas celle d'Apple, et elle n'est pas optionnelle.** Apple décide si
+      # macOS *ouvre* l'application ; celle-ci décide si une application déjà installée accepte
+      # de se remplacer par ce qu'on lui envoie. Sans elle, la voie de mise à jour de tous les
+      # utilisateurs déjà installés est coupée, et il n'y a pas de rattrapage : la clé publique
+      # est dans le bundle qu'ils ont.
+      - name: la clé de signature des mises à jour est là, et bien formée
+        env:
+          CLEF: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          MOT_DE_PASSE: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z ${CLEF:-} ]]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY est vide — le bundling échouera après la"
+            echo "  compilation, puisque tauri.conf.json annonce une clé publique. Voir le README." >&2
+            exit 1
+          fi
+          if [[ -z ${MOT_DE_PASSE:-} ]]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY_PASSWORD est vide — la clé a été générée avec" >&2
+            echo "  un mot de passe, et Tauri ne peut pas l'ouvrir sans." >&2
+            exit 1
+          fi
+          base64 -d <<<"$CLEF" 2>/dev/null | head -c 18 | grep -q 'untrusted comment' || {
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY n'est pas une clé minisign — c'est le contenu" >&2
+            echo "  entier du fichier produit par 'tauri signer generate', en une ligne base64." >&2
+            exit 1
+          }
+          echo "clé de signature des mises à jour : présente et bien formée"
+
       # ── Ce qui doit être vrai avant de publier un binaire ──────────────────────────────
       #
       # Le tag est censé être posé sur un `main` déjà vert, et `scripts/version.sh` refuse de
@@ -236,6 +271,10 @@ jobs:
           # Le secret s'appelle `APPLE_ISSUER_ID`, la variable que Tauri lit s'appelle
           # `APPLE_API_ISSUER` : la correspondance se fait ici, une fois.
           APPLE_API_ISSUER: ${{ secrets.APPLE_ISSUER_ID }}
+          # **La signature des artefacts de mise à jour** (`createUpdaterArtifacts`). Deux
+          # variables dont Tauri porte déjà les noms — pas de correspondance à faire ici.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       # La version affichée vient du build et elle est **figée sous Playwright** : sans quoi
       # chaque publication périmerait les captures de fidélité. La contrepartie est de vérifier
@@ -279,6 +318,38 @@ jobs:
           echo "$sortie"
           grep -qE 'status: Accepted' <<<"$sortie"
           xcrun stapler staple "$dmg"
+
+      # **L'archive de mise à jour contient un second exemplaire de l'application**, et rien ne
+      # garantit *a priori* qu'il soit celui qu'Apple a accepté : Tauri fabrique les artefacts de
+      # mise à jour au même moment que le `.dmg`, donc après la notarisation — mais « après » est
+      # une lecture de l'ordre des étapes, pas une vérification. Or l'erreur serait invisible
+      # jusqu'à ce qu'un utilisateur déjà installé se retrouve avec une application que macOS
+      # refuse de lancer, sans plus aucune voie de retour. On ouvre donc l'archive et on demande.
+      #
+      # Constaté et non supposé, comme la notarisation de l'image : c'est le même piège, à
+      # l'étage suivant.
+      - name: l'archive de mise à jour porte bien l'application notariée
+        if: env.NOTARISE == 'oui'
+        run: |
+          set -euo pipefail
+          archive=src-tauri/target/universal-apple-darwin/release/bundle/macos/DoraBase.app.tar.gz
+          test -f "$archive"
+          test -f "$archive.sig"
+          ouverture=$(mktemp -d)
+          tar -xzf "$archive" -C "$ouverture"
+          xcrun stapler validate "$ouverture/DoraBase.app"
+          codesign --display --verbose=4 "$ouverture/DoraBase.app" 2>&1 \
+            | grep -F 'Authority=Developer ID Application'
+          # Les deux architectures, ici aussi : une archive mono-architecture s'installerait
+          # chez la moitié des utilisateurs et casserait l'autre moitié.
+          for binaire in DoraBase cloud-sql-proxy; do
+            archs=$(lipo -archs "$ouverture/DoraBase.app/Contents/MacOS/$binaire")
+            echo "$binaire : $archs"
+            grep -q arm64 <<<"$archs"
+            grep -q x86_64 <<<"$archs"
+          done
+          rm -rf "$ouverture"
+          echo "archive de mise à jour : notariée, agrafée, universelle"
 
       - name: le bundle est bien universel
         run: |
@@ -375,6 +446,19 @@ jobs:
             | sed "s|publication/||" > "publication/DoraBase-$VERSION-universal.dmg.sha256"
           ls -lh publication/
 
+      # L'archive de mise à jour et sa signature, sous le même nom porteur de version que le
+      # disque. Tauri les nomme `DoraBase.app.tar.gz` — un nom qui ne dit pas la version, donc
+      # deux releases voisines exposeraient deux fichiers homonymes, et un `latest.json` mal
+      # daté enverrait la mauvaise archive sans que personne ne le voie.
+      - name: nommer l'archive de mise à jour
+        if: env.NOTARISE == 'oui'
+        run: |
+          set -euo pipefail
+          source=src-tauri/target/universal-apple-darwin/release/bundle/macos/DoraBase.app.tar.gz
+          cp "$source" "publication/DoraBase-$VERSION-universal.app.tar.gz"
+          cp "$source.sig" "publication/DoraBase-$VERSION-universal.app.tar.gz.sig"
+          ls -lh publication/
+
       # ── La release ─────────────────────────────────────────────────────────────────────
 
       - name: notes de version
@@ -392,6 +476,11 @@ jobs:
               echo "Téléchargez \`DoraBase-$VERSION-universal.dmg\` ci-dessous, ouvrez-le, et"
               echo "glissez **DoraBase** dans **Applications**. C'est tout : l'application est"
               echo "signée et notariée par Apple."
+              echo
+              # Dit une fois ici plutôt que dans un « et au fait » : c'est la question que se
+              # pose quelqu'un qui a déjà l'application, et il la lit sur cette page.
+              echo "Déjà installée ? Il n'y a rien à télécharger : DoraBase propose la mise à"
+              echo "jour dans sa barre d'état, et se relance seule."
             else
               echo "> Cette version n'est **pas notariée** : elle a été construite sans les"
               echo "> secrets de signature. macOS la refusera au premier lancement."
@@ -408,7 +497,13 @@ jobs:
             echo "## Changements"
             echo
             if [[ -n $precedent ]]; then
-              git log --no-merges --pretty='- %s' "$precedent..$GITHUB_REF_NAME"
+              # Écrit à part **et** repris ici : c'est ce même texte que le manifeste de mise à
+              # jour porte, donc que l'application affiche avant de se remplacer. Deux
+              # générations indépendantes finiraient par ne plus dire la même chose, et celle
+              # que l'utilisateur lit dans l'application est la moins relue des deux.
+              git log --no-merges --pretty='- %s' "$precedent..$GITHUB_REF_NAME" \
+                > publication/changements.md
+              cat publication/changements.md
               echo
               # **Accolades obligatoires.** `$precedent…` : bash range les octets non-ASCII de
               # l'ellipse *dans le nom de variable*, cherche « precedent… », ne le trouve pas, et
@@ -422,14 +517,90 @@ jobs:
           } > publication/notes.md
           cat publication/notes.md
 
+      # ── Le manifeste de mise à jour ────────────────────────────────────────────────────
+      #
+      # C'est le seul fichier que les applications déjà installées vont chercher, à une URL qui
+      # ne nomme aucune version : `…/releases/latest/download/latest.json`. GitHub la redirige
+      # vers l'asset de la release marquée « latest » — d'où le `--latest` de l'étape suivante,
+      # qui cesse d'être cosmétique : sans lui, plus personne ne trouve de mise à jour.
+      #
+      # **Les deux architectures pointent sur la même archive**, qui est universelle. C'est la
+      # conséquence directe du choix d'un bundle unique : le manifeste doit quand même porter
+      # les deux clés, Tauri cherchant la sienne par `{plateforme}-{architecture}` et ne
+      # connaissant pas la notion d'universel.
+      #
+      # **Et rien n'est publié sans notarisation.** Une archive signée ad hoc — un fork, une
+      # bifurcation — s'installerait proprement puis serait refusée par macOS au redémarrage,
+      # chez des gens qui n'avaient rien demandé et qui n'ont plus de voie de retour. Sans
+      # certificat, il n'y a pas de manifeste, donc pas de mise à jour proposée.
+      - name: le manifeste de mise à jour
+        if: env.NOTARISE == 'oui'
+        run: |
+          set -euo pipefail
+          python3 - <<'FIN'
+          import json, os, pathlib
+
+          version = os.environ["VERSION"]
+          tag = os.environ["GITHUB_REF_NAME"]
+          depot = os.environ["GITHUB_REPOSITORY"]
+          archive = f"DoraBase-{version}-universal.app.tar.gz"
+          dossier = pathlib.Path("publication")
+
+          # La signature est le **contenu** du `.sig`, pas son chemin : le manifeste est ce que
+          # l'application lit, et elle ne va pas chercher un second fichier.
+          signature = (dossier / f"{archive}.sig").read_text().strip()
+          notes = dossier / "changements.md"
+
+          # **Pas de `pub_date`.** Le champ est optionnel, il n'est affiché nulle part, et il est
+          # typé côté Tauri : une date mal formée ne rend pas le manifeste incomplet, elle le
+          # rend *illisible* — donc coupe la mise à jour pour tout le monde. Un champ décoratif
+          # ne mérite pas ce mode de défaillance.
+          manifeste = {
+              "version": version,
+              "notes": notes.read_text().strip() if notes.exists() else "",
+              "platforms": {
+                  arch: {
+                      "signature": signature,
+                      "url": f"https://github.com/{depot}/releases/download/{tag}/{archive}",
+                  }
+                  # L'URL est **épinglée au tag** et non à « latest » : le manifeste dit une
+                  # version, il doit désigner l'archive de cette version. Une URL en « latest »
+                  # ferait installer autre chose que ce qui vient d'être annoncé et vérifié.
+                  for arch in ("darwin-aarch64", "darwin-x86_64")
+              },
+          }
+          (dossier / "latest.json").write_text(json.dumps(manifeste, indent=2) + "\n")
+          print(json.dumps(manifeste, indent=2)[:600])
+          FIN
+
       - name: créer la release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+
+          # Le disque et son empreinte sont toujours là ; les trois fichiers de mise à jour
+          # n'existent que si la construction était notariée — voir l'étape du manifeste.
+          # **Une liste construite, et non un second `gh release create`** : deux appels
+          # divergeraient sur le titre, les notes ou le `--latest`, et c'est précisément
+          # `--latest` qui décide si les mises à jour sont trouvables.
+          assets=(
+            "publication/DoraBase-$VERSION-universal.dmg"
+            "publication/DoraBase-$VERSION-universal.dmg.sha256"
+          )
+          if [[ ${NOTARISE:-non} == oui ]]; then
+            assets+=(
+              "publication/DoraBase-$VERSION-universal.app.tar.gz"
+              "publication/DoraBase-$VERSION-universal.app.tar.gz.sig"
+              "publication/latest.json"
+            )
+          else
+            echo "::notice::sans notarisation, ni archive ni manifeste — les installations"
+            echo "  existantes ne verront pas cette version."
+          fi
+
           gh release create "$GITHUB_REF_NAME" \
             --title "DoraBase $VERSION" \
             --notes-file publication/notes.md \
             --latest \
-            "publication/DoraBase-$VERSION-universal.dmg" \
-            "publication/DoraBase-$VERSION-universal.dmg.sha256"
+            "${assets[@]}"

@@ -30,6 +30,7 @@ use dorabase_lib::engine::{
     ApplyOutcome, ConnectionProbe, EngineError, PendingUpdate, QueryPlan, QueryResult, RowQuery,
     RowWindow, SchemaInfo, TableDetail, TableSummary, UpdatePlan,
 };
+use dorabase_lib::maj::AvailableUpdate;
 use dorabase_lib::secrets::SecretMechanism;
 use ts_rs::TS;
 
@@ -76,6 +77,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     DeleteEnvironmentRequest::export_all(&config)?;
     DeleteEnvironmentResult::export_all(&config)?;
     SecretMechanism::export_all(&config)?;
+    // La mise à jour en place. Un seul type traverse l'IPC dans ce sens : `install_update`
+    // ne prend rien et ne rend rien.
+    AvailableUpdate::export_all(&config)?;
 
     ConnectionProbe::export_all(&config)?;
     EngineError::export_all(&config)?;
