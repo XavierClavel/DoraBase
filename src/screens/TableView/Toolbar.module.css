@@ -20,6 +20,11 @@
 
 .carre,
 .bouton {
+  /* Les contrôles de la barre ne se réduisent jamais : c'est la zone des chips qui absorbe la
+     place, et un `flex-shrink` laissé à sa valeur par défaut faisait replier « Voir le SQL » sur
+     trois lignes dès cinq filtres. */
+  flex: none;
+  white-space: nowrap;
   /* `content-box`, comme `Button` (02) : le mockup ne déclare aucun `box-sizing`, donc ses
      éléments sont en content-box et un contrôle de 25px y rend 27 avec son filet. Les `<button>`
      étant en `border-box` par défaut dans les navigateurs, l'omettre rendrait 25 — deux pixels
@@ -158,8 +163,44 @@
   transform: rotate(180deg);
 }
 
-.espace {
+/*
+ * La zone des chips : bornée, défilante, et écarteur par la même occasion.
+ *
+ * `flex: 1` donne la place restante, et **c'est `overflow-x` qui la borne** : la taille minimale
+ * automatique d'un élément flex vaut sa largeur de contenu, sauf quand un axe quitte `visible`. Le
+ * `min-width: 0` est donc redondant ici, et gardé en garde-fou — sabotage mesuré le 26 août 2026 :
+ * le retirer ne change rien, retirer `overflow-x` non plus (voir la ligne suivante), retirer les
+ * deux fait tomber `10e`.
+ *
+ * `overflow-y: hidden` n'est pas qu'une précaution de hauteur : le CSS force l'autre axe à quitter
+ * `visible` dès qu'un axe est en `hidden`, donc il **maintient** le défilement horizontal à lui seul.
+ * Sa raison première reste la barre verticale qu'un chip de 27 px dans une bande de 36 ferait
+ * dessiner dans une hauteur qui n'a pas la place — le défaut n° 69, tel qu'il s'était produit sur la
+ * bande d'onglets.
+ *
+ * Les barres natives sont masquées comme partout ailleurs dans le produit (`reset.css`) : elles ne
+ * réservent aucune place, et 36 px de haut n'en ont pas à donner.
+ */
+.chips {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  /* Pas de rebond élastique aux extrémités sous WKWebView — voir la note de `reset.css`. */
+  overscroll-behavior: none;
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
+}
+
+/* Un chip garde sa largeur : rétréci, il tronquerait son libellé alors que la zone sait défiler. */
+.chips > * {
+  flex: none;
 }
 
 .sql {
