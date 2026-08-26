@@ -23,7 +23,7 @@ test.beforeEach(async ({ page }) => {
   await page.getByLabel('Nom du projet').fill('Comptoir Sud')
   await page.getByRole('button', { name: /Continuer/ }).click()
   // Étape 2 : la modale de connexion, projet imposé.
-  await page.waitForSelector('[data-testid=projet-impose]')
+  await page.waitForSelector('[data-testid=projet-de-la-modale]')
   await page.evaluate(() => document.fonts.ready)
 })
 
@@ -107,25 +107,59 @@ test('les colonnes de la grille s’alignent d’une rangée à l’autre', asyn
   expect(droite[0]).not.toBe(gauche[0])
 })
 
-test('la rangée d’identité suit la grille 1fr 196px auto', async ({ page }) => {
-  const projet = await boite(page, 'Projet')
-  expect(projet?.largeur).toBe(196)
+test('le projet s’annonce dans la bande d’en-tête, pas dans le formulaire', async ({ page }) => {
+  // **La piste de 196px a disparu de la rangée d'identité** (26 août 2026) : elle portait le projet,
+  // monté depuis dans l'en-tête. Ce qui se mesure ici est qu'il est bien *là* et pas *ici* — un
+  // sélecteur laissé dans le formulaire, même désactivé, rendrait le geste ambigu.
+  const boiteIndication = await page.getByTestId('projet-de-la-modale').boundingBox()
+  const boiteEnTete = await page.locator('[role=dialog] > div').first().boundingBox()
+  // Dans la bande de 44px de l'en-tête, et non ailleurs dans la coquille.
+  expect(boiteIndication?.y ?? 0).toBeGreaterThanOrEqual(boiteEnTete?.y ?? 0)
+  expect((boiteIndication?.y ?? 0) + (boiteIndication?.height ?? 0)).toBeLessThanOrEqual(
+    (boiteEnTete?.y ?? 0) + (boiteEnTete?.height ?? 0),
+  )
+  // Et la rangée d'identité ne le contient plus.
+  const dansLaRangee = await page.evaluate(
+    () =>
+      document
+        .querySelector('[class*=rowIdentity]')
+        ?.querySelector('[data-testid=projet-de-la-modale]') !== null,
+  )
+  expect(dansLaRangee).toBe(false)
 })
 
-test('les trois cellules de la rangée d’identité s’alignent en bas', async ({ page }) => {
+test('un nom de projet long ne pousse pas la croix hors de la bande', async ({ page }) => {
+  // **Rien ne borne un nom de projet**, et la croix est la seule commande de sortie visible de la
+  // modale : la faire dépendre de la longueur d'un nom serait un piège. Le nom est allongé de force,
+  // comme le faisait le test du pied de sidebar — mesurer le nom du jour ne mesure que sa brièveté.
+  await page.evaluate(() => {
+    const nom = document.querySelector('[data-testid=projet-de-la-modale] span')
+    // Démesuré volontairement : la modale fait 820 px, et un nom de soixante caractères y tient
+    // encore. Ce qui se mesure est la mise en page sous contrainte, pas la brièveté du nom du jour.
+    if (nom) nom.textContent = 'Atelier Nord de la Vitrine Sud '.repeat(12)
+  })
+  const croix = await page.getByRole('button', { name: 'Fermer' }).boundingBox()
+  const coquille = await page.locator('[role=dialog]').boundingBox()
+  expect((croix?.x ?? 0) + (croix?.width ?? 0)).toBeLessThanOrEqual(
+    (coquille?.x ?? 0) + (coquille?.width ?? 0),
+  )
+  // Et c'est le nom qui a cédé, par l'ellipse : il est coupé, non replié.
+  const coupe = await page.evaluate(() => {
+    const nom = document.querySelector('[data-testid=projet-de-la-modale] span') as HTMLElement
+    return { coupe: nom.scrollWidth > nom.clientWidth, replie: nom.scrollHeight > nom.clientHeight }
+  })
+  expect(coupe.coupe).toBe(true)
+  expect(coupe.replie).toBe(false)
+})
+
+test('les deux cellules de la rangée d’identité s’alignent en bas', async ({ page }) => {
   const bas = await page.evaluate(() => {
     const rangee = document.querySelector('[class*=rowIdentity]')
     if (!rangee) return null
-    // Les **boîtes visibles** des trois contrôles. Pour le select c'est son enveloppe, qui
-    // porte la bordure : une première version mesurait le `<select>` lui-même et trouvait
-    // 16 px de haut, ce qui a révélé un autre défaut — voir le test suivant.
-    // **Le second contrôle est un constat à l'étape 2** (`24c`) : le sélecteur cède la place à du
-    // texte étiqueté, qui n'a pas d'enveloppe `wrap`. On mesure donc celui des deux qui est là.
-    const controles = [
-      rangee.querySelector('input'),
-      rangee.querySelector('[class*=wrap], [data-testid=projet-impose]'),
-      rangee.querySelector('fieldset label'),
-    ]
+    // **Deux, et non trois** : le nom de la base et le groupe d'environnements. Les **boîtes
+    // visibles**, pas les contrôles nus — une première version mesurait le `<select>` lui-même et
+    // trouvait 16 px de haut dans une boîte de 32, ce qui a révélé un autre défaut.
+    const controles = [rangee.querySelector('input'), rangee.querySelector('fieldset label')]
     return controles.map((c) => (c ? Math.round(c.getBoundingClientRect().bottom) : null))
   })
 
@@ -526,7 +560,7 @@ test('le verdict d’un test réussi tient sur une ligne, sans écraser les bout
   await page.getByRole('button', { name: /Nouveau projet/ }).click()
   await page.getByLabel('Nom du projet').fill('Comptoir Sud')
   await page.getByRole('button', { name: /Continuer/ }).click()
-  await page.waitForSelector('[data-testid=projet-impose]')
+  await page.waitForSelector('[data-testid=projet-de-la-modale]')
   await page.getByRole('button', { name: /Tester la connexion/ }).click()
   await page.waitForSelector('[class*=testOk]')
   await page.evaluate(() => document.fonts.ready)

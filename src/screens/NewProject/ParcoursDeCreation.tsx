@@ -99,12 +99,17 @@ export function ParcoursDeCreation({
   return (
     <NewConnection
       projects={listeAJour}
-      // **Imposé, non choisi** : à l'étape 2, le projet est celui de l'étape 1 (`24c`). C'est ce qui
-      // remplace le sélecteur par un constat et fait paraître la bande.
-      projetImpose={projetCree}
+      // **Le cadre, non un choix** : à l'étape 2, le projet est celui de l'étape 1 (`24c`). Il s'annonce
+      // en tête de la modale.
+      projet={projetCree}
       {...(depart.etape === 'connexion' && depart.environnement !== undefined
-        ? { cible: { project: projetCree, environment: depart.environnement } }
+        ? { environnement: depart.environnement }
         : {})}
+      /* **La bande de progression et « Plus tard » ne dépendent pas du projet, mais du chemin.** Le
+         projet est toujours connu depuis le 26 août 2026 ; ce qui distingue cet écran, c'est qu'une
+         étape vient d'être franchie — et qu'un projet a donc été créé, dont il faut dire ce qu'il
+         devient si l'on renonce ici. */
+      venantDuParcours
       onClose={onClose}
       onSaved={onProjets}
     />

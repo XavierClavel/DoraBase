@@ -76,7 +76,7 @@ async function allerAA2(page: import('@playwright/test').Page) {
   // pour la même raison.
   await page.getByLabel('Nom du projet').fill('Comptoir Sud')
   await page.getByRole('button', { name: /Continuer/ }).click()
-  await page.waitForSelector('[data-testid=projet-impose]')
+  await page.waitForSelector('[data-testid=projet-de-la-modale]')
   await page.evaluate(() => document.fonts.ready)
 }
 

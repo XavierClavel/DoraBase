@@ -28,7 +28,8 @@ function monter(
     onSave?: (request: SaveDatabaseRequest) => Promise<Project[]>
     projects?: readonly { id: string; name: string; environments: typeof TRIO_DE_TEST }[]
     onClose?: () => void
-    projetImpose?: string
+    projet?: string
+    venantDuParcours?: boolean
   } = {},
 ) {
   const espion: Espion = { requetes: [], projets: [] }
@@ -49,7 +50,10 @@ function monter(
             return APRES
           })
         }
-        projetImpose={options.projetImpose}
+        // Par défaut, le projet du décor : le cadre est désormais toujours désigné par l'appelant, et
+        // un décor sans projet ne mesurerait que le refus de la garde de `08e`.
+        projet={options.projet ?? 'Atelier Nord'}
+        venantDuParcours={options.venantDuParcours ?? false}
         onSaved={(projets) => espion.projets.push(projets)}
       />
     </>,
@@ -127,7 +131,9 @@ test('⌘↩ enregistre', async () => {
 test('⌘↩ est inopérant quand le bouton est désactivé', async () => {
   // Un raccourci qui contourne l'état d'un bouton est un piège : il ferait passer outre le
   // refus que l'écran vient d'afficher.
-  const espion = monter({ projects: [] })
+  // **Le cadre vide est ce qui désactive** depuis le 26 août 2026 : c'est la garde de `08e` sous sa
+  // nouvelle forme — sans projet désigné, il n'y a rien où enregistrer.
+  const espion = monter({ projet: '', projects: [] })
   expect(enregistrer()).toBeDisabled()
 
   await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
@@ -202,44 +208,44 @@ test('pendant l’enregistrement, le bouton ne se reclique pas', async () => {
 // qu'ils portaient ont déménagé — le rognage du nom et le refus d'un nom vide sont dans
 // `NewProject.test.tsx`, le trio repris par défaut est un test Rust de `creer_projet`.
 //
-// Ce qui suit vérifie ce qui **reste** : qu'un projet imposé remplace le sélecteur, que la sortie ne
-// mente pas, et qu'un échec dise que le projet est gardé.
+// Ce qui suit vérifie ce qui **reste** : que le projet s'annonce en tête sans se choisir, que la sortie
+// ne mente pas, et qu'un échec dise que le projet est gardé.
 
-test('un projet imposé remplace le sélecteur par un constat', () => {
-  monter({ projetImpose: 'Data science', projects: PROJETS })
+test('le projet s’annonce en tête, et nulle part ailleurs', () => {
+  monter({ projet: 'Data science', projects: PROJETS })
 
-  // Le sélecteur serait faux de deux façons : il proposerait de changer un choix que l'étape 1 vient
-  // de trancher, et son entrée « + Nouveau projet… » rebouclerait vers cette étape.
+  // **Plus aucun sélecteur de projet** (26 août 2026) : il proposait de déplacer une connexion d'un
+  // projet à l'autre, geste qui n'existe pas — le triplet `projet/base/environnement` est la clé du
+  // registre et la référence du secret.
   expect(screen.queryByRole('combobox', { name: 'Projet' })).toBeNull()
   // **Par son `data-testid`** : le nom du projet apparaît aussi dans la ligne d'information du pied,
   // et un sélecteur par texte trouverait les deux.
-  expect(screen.getByTestId('projet-impose')).toHaveTextContent('Data science')
+  expect(screen.getByTestId('projet-de-la-modale')).toHaveTextContent('Data science')
 })
 
-test('les environnements proposés sont ceux du projet **imposé**', () => {
-  monter({ projetImpose: 'Atelier Nord', projects: PROJETS })
-  // **Le défaut que ce test garde.** L'effet qui ramène le brouillon sur un projet valable rend la main
-  // quand le projet est imposé : `draft.project` reste vide, et chercher les environnements avec lui
-  // n'en trouvait aucun. Le groupe était vide, donc l'étape 2 ne permettait pas de déclarer une
-  // connexion. Trouvé par une mesure de `08b`, qui compte les trois boutons.
+test('les environnements proposés sont ceux du projet du cadre', () => {
+  monter({ projet: 'Atelier Nord', projects: PROJETS })
+  // **Le défaut que ce test garde.** Les environnements se cherchaient dans le formulaire, sur
+  // `projetImpose ?? draft.project` : l'oubli du premier terme rendait le groupe **vide**, donc
+  // l'étape 2 ne permettait pas de déclarer une connexion. La liste arrive désormais toute faite —
+  // une recherche en moins est un oubli en moins, mais la garantie reste à mesurer.
   const radios = screen
     .getByRole('group', { name: 'Environnement' })
     .querySelectorAll('input[type=radio]')
   expect(radios).toHaveLength(3)
 })
 
-test('le constat n’est pas un contrôle', () => {
-  monter({ projetImpose: 'Data science' })
-  const constat = screen.getByTestId('projet-impose')
+test('l’indication de tête n’est pas un contrôle', () => {
+  monter({ projet: 'Data science' })
+  const indication = screen.getByTestId('projet-de-la-modale')
   // **Pas un `Chip`, et pas cliquable** : un chip est un contrôle partout ailleurs dans ce produit, et
   // un chip inerte se lit comme un contrôle en panne. Les quatre marques du cliquable sont absentes.
-  expect(constat.closest('button')).toBeNull()
-  expect(constat).not.toHaveAttribute('role')
-  expect(screen.queryAllByRole('combobox', { name: 'Projet' })).toHaveLength(0)
+  expect(indication.closest('button')).toBeNull()
+  expect(indication).not.toHaveAttribute('role')
 })
 
 test('la bande de progression paraît, et dit qu’on est à la seconde étape', () => {
-  monter({ projetImpose: 'Data science' })
+  monter({ projet: 'Data science', venantDuParcours: true })
   const bande = screen.getByRole('list', { name: 'Progression' })
   expect(within(bande).getByRole('listitem', { current: 'step' })).toHaveTextContent(
     'Étape 2 sur 2, en cours',
@@ -248,15 +254,16 @@ test('la bande de progression paraît, et dit qu’on est à la seconde étape',
   expect(within(bande).getAllByRole('listitem')[0]).toHaveTextContent('Étape 1 sur 2, faite')
 })
 
-test('sans projet imposé, la bande est absente', () => {
-  monter({ projects: PROJETS })
+test('hors du parcours, la bande est absente, projet connu ou non', () => {
+  monter({ projet: 'Atelier Nord', projects: PROJETS })
   // Ouvert pour un projet existant, cet écran n'a qu'une étape. Une bande qui montrerait « 1 ✓ »
-  // affirmerait que cette modale a créé le projet.
+  // affirmerait que cette modale a créé le projet — et depuis le 26 août 2026, le projet est
+  // *toujours* connu : c'est le chemin, pas le projet, qui décide de la bande.
   expect(screen.queryByRole('list', { name: 'Progression' })).toBeNull()
 })
 
-test('« Annuler » devient « Plus tard » quand le projet est déjà créé', () => {
-  monter({ projetImpose: 'Data science' })
+test('« Annuler » devient « Plus tard » quand le projet vient d’être créé', () => {
+  monter({ projet: 'Data science', venantDuParcours: true })
   // À ce moment, « Annuler » mentirait : le projet reste. Un bouton ne doit pas nommer un
   // défaissement qui n'a pas lieu.
   expect(screen.getByRole('button', { name: 'Plus tard' })).toBeInTheDocument()
@@ -264,28 +271,29 @@ test('« Annuler » devient « Plus tard » quand le projet est déjà créé', 
 })
 
 test('la ligne d’information nomme le projet créé et le chemin de retour', () => {
-  monter({ projetImpose: 'Data science' })
+  monter({ projet: 'Data science', venantDuParcours: true })
   const ligne = screen.getByRole('status')
   expect(ligne).toHaveTextContent('Le projet Data science est créé')
   // Elle nomme le chemin de retour : c'est ce qui rend « Plus tard » sans conséquence.
   expect(ligne).toHaveTextContent('plus tard depuis la sidebar')
 })
 
-test('la connexion est enregistrée dans le projet imposé, non dans celui du brouillon', async () => {
+test('la connexion est enregistrée dans le projet du cadre', async () => {
   const utilisateur = userEvent.setup()
-  const espion = monter({ projetImpose: 'Data science', projects: PROJETS })
+  const espion = monter({ projet: 'Data science', projects: PROJETS })
   await utilisateur.type(screen.getByLabelText('Nom de la base'), 'analytics')
   await utilisateur.click(enregistrer())
 
   await waitFor(() => expect(espion.requetes).toHaveLength(1))
-  // Le brouillon porte encore le premier projet de la liste ; c'est le projet **imposé** qui compte.
+  // Le cadre fait foi, et lui seul : plus rien dans l'écran ne peut en désigner un autre.
   expect(espion.requetes[0]?.project).toBe('Data science')
 })
 
 test('un échec d’enregistrement dit que le projet est gardé', async () => {
   const utilisateur = userEvent.setup()
   monter({
-    projetImpose: 'Data science',
+    projet: 'Data science',
+    venantDuParcours: true,
     onSave: async () => {
       throw new Error('la base « analytics » existe déjà dans ce projet')
     },

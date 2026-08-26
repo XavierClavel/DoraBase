@@ -306,15 +306,15 @@ export function App() {
               }}
               projects={projetsPourLesEcrans}
               edition={edition ?? undefined}
-              {...(connexionOuverte?.project !== undefined &&
-              connexionOuverte.environment !== undefined
-                ? {
-                    cible: {
-                      project: connexionOuverte.project,
-                      environment: connexionOuverte.environment,
-                    },
-                  }
-                : {})}
+              /* **Le projet est le cadre de la modale** (26 août 2026), plus un champ à choisir : il
+                 vient de la ligne d'arbre d'où part le geste. Le raccourci `⇧⌘N`, lui, ne désigne
+                 rien — il retombe sur le premier projet, que l'en-tête **nomme**. C'est ce qui rend
+                 le repli acceptable : rien n'est silencieux, et le chemin qui désigne vraiment son
+                 projet est le menu d'un environnement. */
+              projet={connexionOuverte?.project ?? projects.at(0)?.name ?? ''}
+              {...(connexionOuverte?.environment === undefined
+                ? {}
+                : { environnement: connexionOuverte.environment })}
               onSaved={setProjects}
             />
           )}

@@ -7,6 +7,13 @@ import { SSL_MODE_ORDER } from './environments'
 import { NewConnection } from './NewConnection'
 import { TRIO_DE_TEST } from './pourLesTests'
 
+/**
+ * Monte l'écran dans le **premier** projet de la liste, à la façon de l'application.
+ *
+ * **Le projet est un paramètre du cadre depuis le 26 août 2026**, plus un choix de l'écran : le
+ * décor doit donc le désigner, comme le fait l'appelant réel — le menu d'un environnement, ou le
+ * repli du raccourci clavier. Le déduire ici plutôt que de le répéter dans quarante appels.
+ */
 function monter(
   projects: readonly {
     id: string
@@ -17,7 +24,7 @@ function monter(
   return render(
     <>
       <Sprite />
-      <NewConnection onClose={() => {}} projects={projects} />
+      <NewConnection onClose={() => {}} projects={projects} projet={projects.at(0)?.name ?? ''} />
     </>,
   )
 }
@@ -124,7 +131,7 @@ test('le formulaire ouvre vide, pas rempli des valeurs du mockup', () => {
   expect(screen.getByLabelText('Utilisateur')).toHaveValue('')
 })
 
-test('la cible préremplit le projet et l’environnement', () => {
+test('le projet du cadre s’annonce en tête, et l’environnement désigné est préréglé', () => {
   render(
     <>
       <Sprite />
@@ -134,14 +141,14 @@ test('la cible préremplit le projet et l’environnement', () => {
           { id: 'Comptoir Sud', name: 'Comptoir Sud', environments: TRIO_DE_TEST },
           { id: 'Atelier Nord', name: 'Atelier Nord', environments: TRIO_DE_TEST },
         ]}
-        cible={{ project: 'Atelier Nord', environment: 'staging' }}
+        projet="Atelier Nord"
+        environnement="staging"
       />
     </>,
   )
-  // **Le second projet de la liste, et non le premier.** Sans cible, l'effet d'alignement du
-  // sélecteur pose le premier projet ; c'est exactement ce qui rendait le geste faux quand il partait
-  // d'une ligne d'arbre — la modale s'ouvrait sur un autre projet que celui qu'on avait désigné.
-  expect(screen.getByRole('combobox', { name: 'Projet' })).toHaveTextContent('Atelier Nord')
+  // **Le second projet de la liste, et non le premier** : c'est celui que l'appelant désigne. Le
+  // sélecteur qui posait le premier projet de la liste n'existe plus.
+  expect(screen.getByTestId('projet-de-la-modale')).toHaveTextContent('Atelier Nord')
   // Et `staging`, non le `dev` par défaut.
   expect(screen.getByRole('radio', { name: 'staging' })).toBeChecked()
 })
@@ -235,17 +242,19 @@ test('l’enregistrement est bloqué sans aucun projet, et le champ de création
   expect(screen.getByRole('button', { name: /Enregistrer & ouvrir/ })).toBeDisabled()
 })
 
-test('les projets sont proposés, et rien d’autre', async () => {
+test('le projet ne se choisit pas dans cet écran', () => {
   monter([
     { id: 'print', name: 'Atelier Nord', environments: TRIO_DE_TEST },
     { id: 'web', name: 'Atelier Sud', environments: TRIO_DE_TEST },
   ])
-  // **Plus d'entrée « + Nouveau projet… »** (`24c`) : elle rebouclerait vers l'étape qu'on vient de
-  // quitter, et la création a son propre écran.
-  expect(await optionsDeLaListe('Projet')).toEqual(['Atelier Nord', 'Atelier Sud'])
-  // Le champ n'apparaît **que** sous la création : le rendre toujours, désactivé, ferait croire
-  // qu'on peut renommer le projet choisi.
+  // **Deux projets déclarés, et aucun sélecteur** (26 août 2026). En proposer un revenait à offrir de
+  // déplacer une connexion d'un projet à l'autre, geste qui n'existe pas — la confirmation de
+  // suppression se garde déjà de le proposer. Le projet vient de la ligne d'arbre d'où part le geste.
+  expect(screen.queryByRole('combobox', { name: 'Projet' })).toBeNull()
+  // Le champ de création n'est pas revenu par la porte de derrière (`24c`).
   expect(screen.queryByLabelText('Nom du nouveau projet')).not.toBeInTheDocument()
+  // Et le projet du cadre est bien celui qui s'annonce.
+  expect(screen.getByTestId('projet-de-la-modale')).toHaveTextContent('Atelier Nord')
 })
 
 // --- Pied ---
@@ -318,7 +327,8 @@ test('tout le formulaire est atteignable au clavier', async () => {
     // bouton, donc il entre dans l'ordre de tabulation avant « Nom de la base ».
     'Proxy / tunnel',
     'Nom de la base',
-    'Projet',
+    // **« Projet » n'est plus dans le parcours** (26 août 2026) : le sélecteur est parti, le projet
+    // s'annonçant en tête de la modale. Une indication n'est pas un contrôle, donc elle ne tabule pas.
     'dev', // groupe d'environnements : une seule entrée
     // **« Nom du nouveau projet » n'est plus dans le parcours** (`24c`) : le champ existait sous
     // l'entrée « + Nouveau projet… » du sélecteur, et les deux sont partis avec la création depuis
