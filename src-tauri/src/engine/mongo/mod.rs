@@ -15,8 +15,8 @@
 //!    perte nommée sur `ObjectId`.
 //! 5. **Une transaction exige un jeu de réplicas** : sur un `mongod` isolé, l'écriture est refusée
 //!    avec sa raison plutôt que tentée sans filet.
-//! 6. **`run_sql` et `explain_sql` gardent leur nom**, et reçoivent une opération de collection.
-//!    Dette assumée, inscrite dans `18a`.
+//! 6. **`run_sql` garde son nom**, et reçoit une opération de collection. Dette assumée, inscrite
+//!    dans `18a`.
 
 pub mod bson;
 mod commande;
@@ -36,8 +36,8 @@ use crate::config::ConnectionSettings;
 use crate::engine::proxy::{EtatProxy, ProxyOuvert};
 use crate::engine::{
     ApplyOutcome, ColumnInfo, ConnectionProbe, EngineAdapter, EngineError, PendingUpdate,
-    QueryPlan, QueryResult, RowCount, RowLimit, RowQuery, RowWindow, SchemaInfo, TableDetail,
-    TableSummary, UpdatePlan, Value,
+    QueryResult, RowCount, RowLimit, RowQuery, RowWindow, SchemaInfo, TableDetail, TableSummary,
+    UpdatePlan, Value,
 };
 use crate::secrets::Secret;
 
@@ -318,13 +318,6 @@ impl EngineAdapter for MongoAdapter {
         let base = self.base_courante();
         executer(&self.client, &base, &operation, limite, debut).await
     }
-
-    async fn explain_sql(&self, sql: &str) -> Result<QueryPlan, EngineError> {
-        let debut = Instant::now();
-        let operation = commande::analyser(sql)?;
-        let base = self.base_courante();
-        expliquer(&self.client, &base, &operation, debut).await
-    }
 }
 
 impl MongoAdapter {
@@ -559,69 +552,6 @@ async fn executer(
         sql: commande_executee,
         duration_ms: u64::try_from(debut.elapsed().as_millis()).unwrap_or(u64::MAX),
         applied_limit: limite_ajoutee,
-    })
-}
-
-/// Le plan d'exécution (`18g`), **sans exécuter**.
-///
-/// `queryPlanner` rend le plan choisi sans exécuter la requête, là où `executionStats` et
-/// `allPlansExecution` l'exécutent pour la mesurer. C'est exactement la raison qui a fait refuser
-/// `EXPLAIN ANALYZE` en `12e` : sur une console où l'on écrit aussi, « Expliquer » deviendrait un
-/// bouton qui écrit.
-async fn expliquer(
-    client: &Client,
-    base_par_defaut: &str,
-    operation: &commande::Operation,
-    debut: Instant,
-) -> Result<QueryPlan, EngineError> {
-    let base = operation.base.as_deref().unwrap_or(base_par_defaut);
-    let interne = match operation.genre {
-        commande::Genre::Find => mongodb::bson::doc! {
-            "find": operation.collection.clone(),
-            "filter": argument_document(operation, 0).unwrap_or_default(),
-        },
-        commande::Genre::Aggregate => {
-            let etapes = operation
-                .arguments
-                .first()
-                .and_then(|a| a.as_array().cloned())
-                .unwrap_or_default();
-            mongodb::bson::doc! {
-                "aggregate": operation.collection.clone(),
-                "pipeline": etapes,
-                "cursor": {},
-            }
-        }
-        commande::Genre::CountDocuments => mongodb::bson::doc! {
-            "count": operation.collection.clone(),
-            "query": argument_document(operation, 0).unwrap_or_default(),
-        },
-        commande::Genre::Distinct => mongodb::bson::doc! {
-            "distinct": operation.collection.clone(),
-            "key": operation.arguments.first().and_then(|a| a.as_str()).unwrap_or("_id"),
-        },
-    };
-
-    let commande = mongodb::bson::doc! {
-        "explain": interne,
-        "verbosity": "queryPlanner",
-    };
-    let reponse = client
-        .database(base)
-        .run_command(commande.clone())
-        .await
-        .map_err(|e| mongo_error::traduire(&e))?;
-
-    let texte = serde_json::to_string_pretty(&Bson::Document(reponse).into_relaxed_extjson())
-        .unwrap_or_else(|_| "plan illisible".to_owned());
-
-    Ok(QueryPlan {
-        lines: texte.lines().map(str::to_owned).collect(),
-        sql: format!(
-            "db.runCommand({})",
-            Bson::Document(commande).into_relaxed_extjson()
-        ),
-        duration_ms: u64::try_from(debut.elapsed().as_millis()).unwrap_or(u64::MAX),
     })
 }
 
@@ -999,58 +929,6 @@ mod tests_db {
             .expect("exécution");
         // La base déclarée est `atelier_ventes`, qui n'a pas de collection `evenements`.
         assert_eq!(resultat.rows.len(), 2);
-    }
-
-    #[tokio::test]
-    async fn expliquer_n_execute_pas_la_requete() {
-        let adaptateur = adaptateur().await;
-        let avant = documents_lus(&adaptateur).await;
-        let plan = adaptateur
-            .explain_sql("db.mouvements.find({ canal: 'ligne' })")
-            .await
-            .expect("plan");
-        let apres = documents_lus(&adaptateur).await;
-
-        let texte = plan.lines.join("\n");
-        assert!(texte.contains("queryPlanner"), "{texte}");
-
-        // **La preuve est structurelle, pas statistique.** MongoDB ne rend `executionStats` que
-        // s'il a *exécuté* la requête : son absence est le signal, et il est déterministe.
-        //
-        // Une première version comparait le compteur `document.returned` du serveur avant et après.
-        // Il est **global au serveur** : les vingt-trois autres tests de ce module lisaient en même
-        // temps, et le test échouait sur « explain a lu 37 documents » — trente-sept documents que
-        // ses voisins avaient lus. Une mesure d'état partagé ne prouve rien dans une suite
-        // parallèle.
-        assert!(
-            !texte.contains("executionStats"),
-            "explain a exécuté la requête : {texte}"
-        );
-
-        // Le compteur reste, en garde-fou **large** : cette requête rendrait quinze mille
-        // documents, donc un écart de cet ordre serait une exécution, quoi que fassent les voisins.
-        assert!(
-            apres - avant < 5_000,
-            "explain a lu {} documents",
-            apres - avant
-        );
-    }
-
-    /// Le compteur `document.returned` du serveur.
-    ///
-    /// **Global au serveur**, donc bruité par les tests voisins : il ne sert que de borne large.
-    async fn documents_lus(adaptateur: &MongoAdapter) -> i64 {
-        let stats = adaptateur
-            .client
-            .database("admin")
-            .run_command(mongodb::bson::doc! { "serverStatus": 1 })
-            .await
-            .expect("serverStatus");
-        stats
-            .get_document("metrics")
-            .and_then(|m| m.get_document("document"))
-            .and_then(|d| d.get_i64("returned"))
-            .unwrap_or(0)
     }
 
     #[tokio::test]

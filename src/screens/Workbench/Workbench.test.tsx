@@ -194,14 +194,6 @@ const PREVIEW = { previewUpdates: async () => 'BEGIN;\nCOMMIT;' }
 /** Une passerelle d'exécution complète, pour les tests qui ne portent pas sur elle. */
 const PASSERELLE_SQL = {
   runSql: async () => RESULTAT,
-  explainSql: async () => PLAN,
-}
-
-/** Un plan d'exécution minimal (`12e`). */
-const PLAN = {
-  lines: ['Seq Scan on orders  (cost=0.00..35.50 rows=2550 width=4)'],
-  sql: 'explain select 1',
-  durationMs: 2,
 }
 
 /** Un résultat de requête minimal, pour les tests qui ne portent pas sur son contenu. */
@@ -681,7 +673,7 @@ describe('la console SQL (`12a`)', () => {
 
     // **Présentes et désactivées, pas absentes** : les cacher ferait croire qu'elles n'existeront
     // pas, les laisser cliquables et inertes ferait croire à une panne (défaut n° 36).
-    // Les cinq autres répondent depuis `12c` à `12f`. **Il ne reste que « Formater »**, seule action
+    // Les trois autres répondent depuis `12c` à `12f`. **Il ne reste que « Formater »**, seule action
     // du mockup sans spec : elle demande un formateur SQL, donc une décision de dépendance.
     for (const libelle of ['Formater']) {
       const action = screen.getByRole('button', { name: new RegExp(libelle) })
@@ -693,7 +685,7 @@ describe('la console SQL (`12a`)', () => {
   it('« Exécuter » envoie le texte de la console au moteur (`12c`)', async () => {
     const utilisateur = userEvent.setup()
     const executer = vi.fn(async () => RESULTAT)
-    monter({ passerelleExecution: { runSql: executer, explainSql: async () => PLAN } })
+    monter({ passerelleExecution: { runSql: executer } })
     await ouvrirUneConsole(utilisateur)
     await saisir(utilisateur, 'select 1')
 
@@ -713,7 +705,6 @@ describe('la console SQL (`12a`)', () => {
     monter({
       passerelleExecution: {
         runSql: async () => ({ ...RESULTAT, appliedLimit: 1000 }),
-        explainSql: async () => PLAN,
       },
     })
     await ouvrirUneConsole(utilisateur)
@@ -730,7 +721,7 @@ describe('la console SQL (`12a`)', () => {
   it('une lecture ne demande aucune confirmation', async () => {
     const utilisateur = userEvent.setup()
     const executer = vi.fn(async () => RESULTAT)
-    monter({ passerelleExecution: { runSql: executer, explainSql: async () => PLAN } })
+    monter({ passerelleExecution: { runSql: executer } })
     await ouvrirUneConsole(utilisateur)
     await saisir(utilisateur, 'select 1')
     await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
@@ -744,7 +735,7 @@ describe('la console SQL (`12a`)', () => {
   it('un `delete` sans `where` demande confirmation, et la nomme', async () => {
     const utilisateur = userEvent.setup()
     const executer = vi.fn(async () => RESULTAT)
-    monter({ passerelleExecution: { runSql: executer, explainSql: async () => PLAN } })
+    monter({ passerelleExecution: { runSql: executer } })
     await ouvrirUneConsole(utilisateur)
     await saisir(utilisateur, 'delete from orders')
     await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
@@ -768,7 +759,7 @@ describe('la console SQL (`12a`)', () => {
   it('annuler la confirmation n’exécute rien et garde la requête', async () => {
     const utilisateur = userEvent.setup()
     const executer = vi.fn(async () => RESULTAT)
-    monter({ passerelleExecution: { runSql: executer, explainSql: async () => PLAN } })
+    monter({ passerelleExecution: { runSql: executer } })
     await ouvrirUneConsole(utilisateur)
     await saisir(utilisateur, 'drop table orders')
     await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
@@ -790,7 +781,6 @@ describe('la console SQL (`12a`)', () => {
           if (echoue) throw new Error('ERROR: relation "absente" does not exist')
           return RESULTAT
         },
-        explainSql: async () => PLAN,
       },
     })
     await ouvrirUneConsole(utilisateur)
@@ -814,7 +804,6 @@ describe('la console SQL (`12a`)', () => {
         runSql: async () => {
           throw new Error('ERROR: syntax error at or near "from"\nLINE 1: select from')
         },
-        explainSql: async () => PLAN,
       },
     })
     await ouvrirUneConsole(utilisateur)
@@ -830,35 +819,11 @@ describe('la console SQL (`12a`)', () => {
     expect(texteDeLEditeur()).toBe('select from')
   })
 
-  it('« Expliquer » demande le plan et bascule sur sa vue (`12e`)', async () => {
-    const utilisateur = userEvent.setup()
-    const expliquer = vi.fn(async () => PLAN)
-    const executer = vi.fn(async () => RESULTAT)
-    monter({ passerelleExecution: { runSql: executer, explainSql: expliquer } })
-    await ouvrirUneConsole(utilisateur)
-    await saisir(utilisateur, 'select 1')
-    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
-    await screen.findByRole('grid', { name: /Résultat de la requête/ })
-
-    await utilisateur.click(screen.getByRole('button', { name: /Expliquer/ }))
-
-    await waitFor(() => expect(expliquer).toHaveBeenCalledOnce())
-    // **Basculer fait partie de l'action** : « Expliquer » sans changer de vue laisserait croire que
-    // rien ne s'est passé, et il faudrait deviner qu'un onglet s'est rempli.
-    expect(await screen.findByText(/Coûts/)).toBeInTheDocument()
-    // Et le plan dit qu'il est **estimé** : un plan dont on croirait les temps réels ferait prendre
-    // des décisions sur des chiffres qui n'en sont pas.
-    expect(screen.getByText(/n’a pas été exécutée/)).toBeInTheDocument()
-    // La requête n'a **pas** été exécutée par « Expliquer ».
-    expect(executer).toHaveBeenCalledOnce()
-  })
-
   it('la vue JSON suit la ligne sélectionnée', async () => {
     const utilisateur = userEvent.setup()
     monter({
       passerelleExecution: {
         runSql: async () => RESULTAT,
-        explainSql: async () => PLAN,
       },
     })
     await ouvrirUneConsole(utilisateur)
@@ -882,7 +847,6 @@ describe('la console SQL (`12a`)', () => {
     monter({
       passerelleExecution: {
         runSql: async () => ({ ...RESULTAT, appliedLimit: 1000 }),
-        explainSql: async () => PLAN,
       },
     })
     await ouvrirUneConsole(utilisateur)
