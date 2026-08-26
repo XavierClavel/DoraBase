@@ -24,13 +24,14 @@ export type ExplorerSidebarProps = {
   onToggle: (noeud: Noeud) => void
   onSelect: (noeud: Noeud) => void
   /**
-   * Ouvre la déclaration d'une connexion.
+   * Ouvre la déclaration d'une connexion **dans un environnement d'un projet** (26 août 2026).
    *
-   * **La cible est passée quand on la connaît** (26 août 2026) : le menu d'une ligne
-   * d'environnement sait de quel projet et de quel environnement il s'agit, et le dire évite à
-   * l'écran suivant de le redemander. Sans argument — le raccourci clavier — l'écran choisit.
+   * La cible est **obligatoire**, et c'est le point : une connexion appartient à un environnement,
+   * donc le geste ne peut partir que d'un endroit qui sait lequel. Le pied de la sidebar devait
+   * deviner, le raccourci `⇧⌘N` aussi — les deux ont été retirés, et le type dit maintenant pourquoi
+   * ils ne pouvaient pas marcher.
    */
-  onAddDatabase?: (cible?: { project: string; environment: EnvironmentId }) => void
+  onAddDatabase?: (cible: { project: string; environment: EnvironmentId }) => void
   /**
    * Ouvre l'étape 1 du parcours de création (`24d`).
    *

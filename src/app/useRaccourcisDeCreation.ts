@@ -3,40 +3,53 @@ import { useEffect } from 'react'
 type Gestes = {
   /** `⌘N`. */
   nouveauProjet: () => void
-  /** `⇧⌘N`. */
-  ajouterUneConnexion: () => void
 }
 
 /**
- * Les deux raccourcis de création (`24d`) : `⌘N` un projet, `⇧⌘N` une connexion.
+ * Le raccourci de création (`24d`) : `⌘N` ouvre « Nouveau projet ».
  *
- * # Pourquoi ils vivent ici, et pas dans les écrans
+ * # Pourquoi il vit ici, et pas dans les écrans
  *
  * `⌘N` était monté par `WelcomeScreen`, donc il ne répondait que sur `A1` — la spec le veut « sur tous
  * les écrans », et un raccourci par écran finit par diverger : celui de `A4` n'aurait jamais existé.
  * `App` est le seul composant que les deux écrans ont en commun, et c'est aussi lui qui tient les
- * états que ces gestes ouvrent.
+ * états que ce geste ouvre.
  *
  * **`⌘N` garde le même sens partout**, contre la recommandation de la conception UX qui suivait la
  * fréquence (`⌘N` devenant « Nouvelle connexion » sur `A4`) : un raccourci qui change de sens selon
  * l'écran demande de savoir où l'on est avant de le presser. Arbitrage du commanditaire du 19 août
  * 2026, consigné dans `24d`.
  *
- * # Ce qu'ils refusent de faire
+ * # `⇧⌘N` a été retiré (26 août 2026, à la demande)
  *
- * **Rien pendant qu'une modale est ouverte.** Un `⇧⌘N` frappé devant l'étape 2 remplacerait le
+ * Il ouvrait « Ajouter une connexion ». Une connexion appartient à un environnement d'un projet, et
+ * **un raccourci clavier ne désigne rien** : il fallait donc deviner le projet, ce qui revenait à
+ * retomber sur le premier de la liste. C'est le défaut que le pied de la sidebar avait déjà, et qui
+ * l'a fait disparaître le même jour ; le garder ici en aurait laissé la moitié.
+ *
+ * Le geste n'est pas perdu : il part du menu d'une ligne d'environnement, seul endroit qui sache dans
+ * quel environnement la connexion se déclare.
+ *
+ * **Et `⇧⌘N` cesse d'être à nous** : plus de `preventDefault` dessus. Le reprendre pour ne rien en
+ * faire serait un raccourci mort qui avale une frappe — la même règle que pour les deux refus
+ * ci-dessous.
+ *
+ * # Ce qu'il refuse de faire
+ *
+ * **Rien pendant qu'une modale est ouverte.** Un `⌘N` frappé devant l'étape 2 remplacerait le
  * formulaire en cours de saisie par un autre, sans le dire — c'est la perte silencieuse que `12c`
  * refuse déjà ailleurs. La présence d'un `[role=dialog]` est le test : il vaut pour les modales à
  * venir sans que ce fichier ait à les connaître.
  *
  * **Rien dans une zone de saisie**, pour la même raison qu'un `⌘E` : `⌘N` n'a pas de sens dans un
- * champ, mais `⇧⌘N` frappé de travers pendant qu'on tape une requête ne doit pas emporter l'écran.
+ * champ, et frappé de travers pendant qu'on tape une requête il ne doit pas emporter l'écran.
  */
-export function useRaccourcisDeCreation({ nouveauProjet, ajouterUneConnexion }: Gestes) {
+export function useRaccourcisDeCreation({ nouveauProjet }: Gestes) {
   useEffect(() => {
     function auClavier(evenement: KeyboardEvent) {
       if (!evenement.metaKey || evenement.key.toLowerCase() !== 'n') return
-      if (evenement.ctrlKey || evenement.altKey) return
+      // `⇧⌘N` n'est plus à nous : on le laisse passer sans le consommer.
+      if (evenement.shiftKey || evenement.ctrlKey || evenement.altKey) return
       if (document.querySelector('[role=dialog]') !== null) return
       const cible = evenement.target
       if (
@@ -44,14 +57,12 @@ export function useRaccourcisDeCreation({ nouveauProjet, ajouterUneConnexion }: 
         (cible.isContentEditable || cible.matches('input, textarea'))
       )
         return
-      // **Avant le tri des deux gestes** : sans cette ligne, le navigateur ouvre une fenêtre — et il
-      // l'ouvrirait aussi dans les cas rendus au-dessus, ce qui est voulu : là, le raccourci n'est
-      // pas à nous.
+      // **Après les refus, jamais avant** : sans cette ligne le navigateur ouvre une fenêtre, et dans
+      // les cas rendus au-dessus c'est voulu — là, le raccourci n'est pas à nous.
       evenement.preventDefault()
-      if (evenement.shiftKey) ajouterUneConnexion()
-      else nouveauProjet()
+      nouveauProjet()
     }
     window.addEventListener('keydown', auClavier)
     return () => window.removeEventListener('keydown', auClavier)
-  }, [nouveauProjet, ajouterUneConnexion])
+  }, [nouveauProjet])
 }

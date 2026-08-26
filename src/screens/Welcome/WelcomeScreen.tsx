@@ -15,7 +15,8 @@ type WelcomeScreenProps = {
  * `A1`, l'écran des débuts.
  *
  * **`⌘N` n'est plus monté ici** (`24d`) : il vivait dans cet écran, donc il ne répondait que sur `A1`.
- * `useRaccourcisDeCreation` le tient une fois pour l'application entière, avec `⇧⌘N`.
+ * `useRaccourcisDeCreation` le tient une fois pour l'application entière — et lui seul depuis que
+ * `⇧⌘N` a été retiré (26 août 2026).
  */
 export function WelcomeScreen({ onNewProject, projectCount, dimmed = false }: WelcomeScreenProps) {
   return (

@@ -60,13 +60,14 @@ export function App() {
   /**
    * La déclaration d'une connexion est ouverte, et **sur quoi** (26 août 2026).
    *
-   * Un objet plutôt qu'un booléen : le geste part désormais du menu d'une ligne d'environnement, qui
-   * sait de quel projet et de quel environnement il s'agit. L'objet vide reste le cas du raccourci
-   * clavier, où rien n'est désigné.
+   * Un objet plutôt qu'un booléen, et ses deux champs **obligatoires** : le geste ne part plus que du
+   * menu d'une ligne d'environnement, qui sait de quel projet et de quel environnement il s'agit. Le
+   * raccourci `⇧⌘N` était le seul appelant à ne rien désigner, et il a été retiré — c'est ce qui
+   * permet au type de refuser l'ignorance plutôt que de la traiter.
    */
   const [connexionOuverte, setConnexionOuverte] = useState<{
-    project?: string
-    environment?: EnvironmentId
+    project: string
+    environment: EnvironmentId
   } | null>(null)
   /**
    * Le parcours de création est ouvert (`24d`).
@@ -154,26 +155,7 @@ export function App() {
     }
   }
 
-  /**
-   * « Ajouter une connexion » — **le geste, non le bouton** (`24d`).
-   *
-   * Sans aucun projet déclaré, il entre à l'étape 1 avec sa raison écrite, au lieu d'ouvrir un
-   * formulaire dont le sélecteur de projet serait vide et le bouton d'enregistrement inerte (l'état
-   * que `08e` rendait, faute de mieux). Le parcours aboutit là où l'on voulait aller ; il passe par ce
-   * qui manquait.
-   */
-  const ajouterUneConnexion = (cible?: { project: string; environment: EnvironmentId }) => {
-    if (projects.length === 0)
-      setProjetOuvert({
-        raison: 'Une connexion appartient à un projet. Commençons par le projet.',
-      })
-    else setConnexionOuverte(cible ?? {})
-  }
-
-  useRaccourcisDeCreation({
-    nouveauProjet: () => setProjetOuvert({}),
-    ajouterUneConnexion,
-  })
+  useRaccourcisDeCreation({ nouveauProjet: () => setProjetOuvert({}) })
 
   /**
    * Les projets sous la forme que les écrans de création attendent.
@@ -217,7 +199,7 @@ export function App() {
             projects={projects}
             onOpenPreferences={() => setPreferencesOuvertes(true)}
             rowHeight={preferences.rowHeight}
-            onNewDatabase={ajouterUneConnexion}
+            onNewDatabase={setConnexionOuverte}
             onNewProject={() => setProjetOuvert({})}
             onEditDatabase={(project, database) => setEdition({ project, database })}
             // Le renommage rend les projets à jour : les reposer ici évite un second aller-retour,
@@ -307,12 +289,14 @@ export function App() {
               projects={projetsPourLesEcrans}
               edition={edition ?? undefined}
               /* **Le projet est le cadre de la modale** (26 août 2026), plus un champ à choisir : il
-                 vient de la ligne d'arbre d'où part le geste. Le raccourci `⇧⌘N`, lui, ne désigne
-                 rien — il retombe sur le premier projet, que l'en-tête **nomme**. C'est ce qui rend
-                 le repli acceptable : rien n'est silencieux, et le chemin qui désigne vraiment son
-                 projet est le menu d'un environnement. */
-              projet={connexionOuverte?.project ?? projects.at(0)?.name ?? ''}
-              {...(connexionOuverte?.environment === undefined
+                 vient de la ligne d'arbre d'où part le geste, toujours. Le repli sur « le premier
+                 projet de la liste » a disparu avec `⇧⌘N`, seul chemin qui ne désignait rien : plus
+                 aucun appelant ne laisse ce cadre à deviner.
+
+                 La chaîne vide reste pour le mode **édition**, où le projet qui fait foi est celui de
+                 la base modifiée — `NewConnection` le lit sur `edition`. */
+              projet={connexionOuverte?.project ?? ''}
+              {...(connexionOuverte === null
                 ? {}
                 : { environnement: connexionOuverte.environment })}
               onSaved={setProjects}
