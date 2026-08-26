@@ -555,6 +555,55 @@ async function provoquerUnEchec(page: import('@playwright/test').Page) {
   await page.waitForSelector('[role=dialog][aria-label="Connexion impossible"]')
 }
 
+test('les six options du mode SSL sont toutes atteignables, malgré le bord de la modale', async ({
+  page,
+}) => {
+  // **Le défaut n° 35, sous une autre forme.** Le panneau de la liste était ancré dans le flux
+  // (`position: absolute`), donc rogné par le premier ancêtre en `overflow: hidden` — la coquille de
+  // `Modal`, qui en porte un pour ses coins arrondis. « Mode SSL » vit en bas de la modale : ses
+  // dernières options tombaient hors du cadre. Rien ne s'en apercevait, le DOM étant juste et les
+  // options « visibles » au sens de Playwright.
+  await page.getByRole('combobox', { name: 'Mode SSL' }).click()
+  const options = page.getByRole('option')
+  await expect(options).toHaveCount(6)
+  // **`elementFromPoint`, et non une assertion de visibilité** : c'est la seule mesure qui distingue
+  // « présent dans la mise en page » de « réellement sous le pointeur ». Chaque option est interrogée
+  // en son centre.
+  for (const option of await options.all()) {
+    const cadre = await option.boundingBox()
+    expect(cadre).not.toBeNull()
+    const atteignable = await page.evaluate(
+      ({ x, y }) => {
+        const cible = document.elementFromPoint(x, y)
+        return cible?.closest('[role=option]') !== null
+      },
+      {
+        x: (cadre?.x ?? 0) + (cadre?.width ?? 0) / 2,
+        y: (cadre?.y ?? 0) + (cadre?.height ?? 0) / 2,
+      },
+    )
+    expect(atteignable, `option « ${await option.textContent()} » sous le pointeur`).toBe(true)
+  }
+  // Et le panneau reste dans la fenêtre : replié vers le haut plutôt que sorti par le bas.
+  const panneau = await page.getByRole('listbox', { name: 'Mode SSL' }).boundingBox()
+  expect(panneau?.y ?? -1).toBeGreaterThanOrEqual(0)
+  expect((panneau?.y ?? 0) + (panneau?.height ?? 0)).toBeLessThanOrEqual(
+    page.viewportSize()?.height ?? 0,
+  )
+})
+
+test('le panneau ouvert est au moins aussi large que son champ', async ({ page }) => {
+  // La géométrie du panneau vient du composant depuis qu'il est en coordonnées de fenêtre :
+  // `min-width: 100%` ne veut plus rien dire hors du flux, et un panneau plus étroit que son champ
+  // aurait l'air décroché.
+  const champ = await page.getByRole('combobox', { name: 'Mode SSL' }).boundingBox()
+  await page.getByRole('combobox', { name: 'Mode SSL' }).click()
+  const panneau = await page.getByRole('listbox', { name: 'Mode SSL' }).boundingBox()
+  expect(panneau?.width ?? 0).toBeGreaterThanOrEqual(champ?.width ?? 0)
+  // Et aligné à gauche sur lui, à un pixel de filet près.
+  expect(Math.abs((panneau?.x ?? 0) - (champ?.x ?? 0))).toBeLessThanOrEqual(1)
+})
+
 test('la sous-modale de A3 fait 436 px et se centre dans la fenêtre', async ({ page }) => {
   await provoquerUnEchec(page)
 
