@@ -143,10 +143,53 @@ pub fn valeur_de(brute: ValueRef<'_>) -> Value {
 /// de SQLite, l'équivalent du `is not distinct from` que `11d` emploie en PostgreSQL. Sans lui, une
 /// modification partant d'une cellule vide ne trouverait aucune ligne.
 pub fn instructions_de(plan: &UpdatePlan) -> Vec<(String, Vec<Option<String>>)> {
-    plan.changes
+    let mut instructions: Vec<(String, Vec<Option<String>>)> = plan
+        .changes
         .iter()
         .map(|modification| instruction_de(plan, modification))
-        .collect()
+        .collect();
+    // Les insertions viennent après les modifications, dans la même transaction — l'ordre du panneau.
+    instructions.extend(
+        plan.inserts
+            .iter()
+            .map(|insertion| insertion_de(plan, insertion)),
+    );
+    instructions
+}
+
+/// L'`insert` d'une ligne saisie, paramétré comme les modifications.
+///
+/// **Les colonnes non saisies sont absentes**, pour que la base applique ses défauts — un
+/// `INTEGER PRIMARY KEY` qui s'auto-incrémente, un `DEFAULT`. Aucune valeur du tout donne
+/// `DEFAULT VALUES`, la forme SQLite d'une ligne entièrement faite de défauts.
+fn insertion_de(
+    plan: &UpdatePlan,
+    insertion: &crate::engine::PendingInsert,
+) -> (String, Vec<Option<String>>) {
+    let cible = citer(&plan.table);
+    if insertion.values.is_empty() {
+        return (format!("insert into {cible} default values"), Vec::new());
+    }
+    let noms = insertion
+        .values
+        .iter()
+        .map(|valeur| citer(&valeur.column))
+        .collect::<Vec<_>>()
+        .join(", ");
+    // Les places sont **numérotées** — `?1`, `?2` — parce que `texte_de` les retrouve par leur
+    // numéro pour composer le texte lisible.
+    let places = (1..=insertion.values.len())
+        .map(|rang| format!("?{rang}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    (
+        format!("insert into {cible} ({noms}) values ({places})"),
+        insertion
+            .values
+            .iter()
+            .map(|valeur| valeur.value.clone())
+            .collect(),
+    )
 }
 
 fn instruction_de(
@@ -170,6 +213,7 @@ fn instruction_de(
 }
 
 /// Le patch inverse : valeur et attendue échangées, comme `11d` le fait.
+/// **Les insertions n'y sont pas** — voir `engine::rows::avertissement_insertions`.
 pub fn instructions_inverses(plan: &UpdatePlan) -> Vec<(String, Vec<Option<String>>)> {
     plan.changes
         .iter()
@@ -190,11 +234,24 @@ pub fn instructions_inverses(plan: &UpdatePlan) -> Vec<(String, Vec<Option<Strin
 /// **Les paramètres sont inscrits en clair ici, et seulement ici** : c'est un texte à lire, pas à
 /// exécuter — l'exécution passe par les paramètres. Les deux viennent de la même liste, donc ils ne
 /// peuvent pas décrire des écritures différentes.
+/// Le patch inverse en texte : l'avertissement des insertions, puis les `update` qui défont.
+pub fn patch_inverse_de(plan: &UpdatePlan) -> String {
+    let instructions = instructions_inverses(plan);
+    crate::engine::rows::patch_inverse(
+        crate::engine::rows::avertissement_insertions(plan.inserts.len()),
+        (!instructions.is_empty()).then(|| texte_de(&instructions)),
+    )
+}
+
 pub fn texte_de(instructions: &[(String, Vec<Option<String>>)]) -> String {
     let mut lignes = vec!["BEGIN;".to_owned()];
     for (sql, parametres) in instructions {
         let mut lisible = sql.clone();
-        for (rang, parametre) in parametres.iter().enumerate() {
+        // **En ordre décroissant, et c'est une correction.** `?1` est un préfixe de `?11` : substitué
+        // en premier, il coupait le second en deux et le texte montré cessait d'être celui qui part.
+        // Invisible à trois paramètres — la taille d'une modification —, certain dès qu'une insertion
+        // porte onze colonnes.
+        for (rang, parametre) in parametres.iter().enumerate().rev() {
             let litteral = match parametre {
                 Some(valeur) => format!("'{}'", valeur.replace('\'', "''")),
                 None => "NULL".to_owned(),
@@ -385,6 +442,7 @@ mod tests {
             schema: "main".into(),
             table: "commandes".into(),
             key_column: "id".into(),
+            inserts: Vec::new(),
             changes: vec![PendingUpdate {
                 key: "7".into(),
                 column: "note".into(),
@@ -406,6 +464,7 @@ mod tests {
             schema: "main".into(),
             table: "commandes".into(),
             key_column: "id".into(),
+            inserts: Vec::new(),
             changes: vec![PendingUpdate {
                 key: "7".into(),
                 column: "statut".into(),
@@ -429,6 +488,7 @@ mod tests {
             schema: "main".into(),
             table: "t".into(),
             key_column: "id".into(),
+            inserts: Vec::new(),
             changes: vec![PendingUpdate {
                 key: "1".into(),
                 column: "nom".into(),
@@ -445,6 +505,7 @@ mod tests {
             schema: "main".into(),
             table: "t".into(),
             key_column: "id".into(),
+            inserts: Vec::new(),
             changes: vec![PendingUpdate {
                 key: "1".into(),
                 column: "statut".into(),
@@ -455,6 +516,66 @@ mod tests {
         let (_, parametres) = &instructions_inverses(&plan)[0];
         assert_eq!(parametres[0], Some("en_attente".to_owned()));
         assert_eq!(parametres[2], Some("payee".to_owned()));
+    }
+
+    fn plan_qui_ajoute(valeurs: &[(&str, Option<&str>)]) -> UpdatePlan {
+        UpdatePlan {
+            schema: "main".into(),
+            table: "t".into(),
+            key_column: "id".into(),
+            changes: Vec::new(),
+            inserts: vec![crate::engine::PendingInsert {
+                values: valeurs
+                    .iter()
+                    .map(|(column, value)| crate::engine::PendingInsertValue {
+                        column: (*column).to_owned(),
+                        value: value.map(str::to_owned),
+                    })
+                    .collect(),
+            }],
+        }
+    }
+
+    #[test]
+    fn une_ligne_ajoutee_est_un_insert_parametre() {
+        let (sql, parametres) =
+            instructions_de(&plan_qui_ajoute(&[("nom", Some("Albi")), ("pays", None)]))[0].clone();
+        assert_eq!(sql, r#"insert into "t" ("nom", "pays") values (?1, ?2)"#);
+        assert_eq!(parametres, vec![Some("Albi".to_owned()), None::<String>]);
+    }
+
+    #[test]
+    fn une_ligne_sans_valeur_prend_les_defauts() {
+        let (sql, parametres) = instructions_de(&plan_qui_ajoute(&[]))[0].clone();
+        // `insert into t () values ()` n'est pas du SQL SQLite : `default values` l'est.
+        assert_eq!(sql, r#"insert into "t" default values"#);
+        assert!(parametres.is_empty());
+    }
+
+    #[test]
+    fn le_texte_lisible_ne_coupe_pas_les_places_a_deux_chiffres() {
+        // **Le piège de `?1` préfixe de `?11`.** Substitué en premier, il coupait le second en deux
+        // et le texte montré cessait d'être celui qui part — invisible à trois paramètres, certain
+        // dès qu'une ligne ajoutée porte onze colonnes.
+        let colonnes: Vec<(String, Option<String>)> = (1..=12)
+            .map(|rang| (format!("c{rang}"), Some(format!("v{rang}"))))
+            .collect();
+        let empruntees: Vec<(&str, Option<&str>)> = colonnes
+            .iter()
+            .map(|(nom, valeur)| (nom.as_str(), valeur.as_deref()))
+            .collect();
+        let texte = texte_de(&instructions_de(&plan_qui_ajoute(&empruntees)));
+        assert!(texte.contains("'v11'"), "{texte}");
+        assert!(texte.contains("'v12'"), "{texte}");
+        // Et aucune place ne survit à la substitution : un `?` restant serait une valeur perdue.
+        assert!(!texte.contains('?'), "{texte}");
+    }
+
+    #[test]
+    fn le_patch_inverse_annonce_les_insertions_qu_il_ne_defait_pas() {
+        let patch = patch_inverse_de(&plan_qui_ajoute(&[("nom", Some("Albi"))]));
+        assert!(patch.starts_with("-- 1 ligne ajoutée"), "{patch}");
+        assert!(!patch.contains("BEGIN"), "{patch}");
     }
 
     #[test]

@@ -35,6 +35,14 @@ type ToolbarProps = {
   sql: string | null
   onRefresh: () => void
   /**
+   * Ajoute une ligne au modèle — **absent hors mode édition**, où il n'y aurait rien à en faire.
+   *
+   * Le bouton n'apparaît donc qu'en édition, plutôt que d'y être désactivé en permanence : un
+   * bouton grisé dit « ceci ne marche pas ici », alors que l'ajout marche très bien dès qu'on entre
+   * en édition — ce que le badge de la pastille et les cellules ouvertes annoncent déjà.
+   */
+  onAjouterUneLigne?: () => void
+  /**
    * Une relecture est en cours : le bouton tourne et devient inerte.
    *
    * **Les deux vont ensemble.** Un bouton qui tourne mais reste cliquable lance trois relectures dont
@@ -61,6 +69,7 @@ export function Toolbar({
   onToggleColonne,
   sql,
   onRefresh,
+  onAjouterUneLigne,
   enCours = false,
 }: ToolbarProps) {
   const rang = PALIERS.indexOf(limite)
@@ -123,6 +132,20 @@ export function Toolbar({
           </button>
         </span>
       </div>
+
+      {/* **Contre le stepper, et non dans la moitié droite.** La barre se lit en deux temps : à
+          gauche ce qui décide des lignes qu'on voit — relire, la limite, les filtres —, à droite ce
+          qui les regarde. Ajouter une ligne appartient au premier groupe. */}
+      {onAjouterUneLigne !== undefined && (
+        <button
+          type="button"
+          className={styles.carre}
+          onClick={onAjouterUneLigne}
+          aria-label="Ajouter une ligne"
+        >
+          <Icon name="plus" size={14} strokeWidth={2.1} />
+        </button>
+      )}
 
       {filters.map((filtre) => (
         <Chip

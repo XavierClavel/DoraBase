@@ -336,7 +336,7 @@ impl EngineAdapter for PostgresAdapter {
         // Calculé **avant** d'écrire : le patch inverse part des valeurs attendues, celles que la
         // base contient encore à cet instant. Le produire après l'application demanderait de relire,
         // et une relecture peut déjà voir l'écriture d'un tiers.
-        let inverse_sql = rows::texte_de(&rows::instructions_inverses(plan)?);
+        let inverse_sql = rows::patch_inverse_de(plan)?;
 
         // **La transaction est conduite à la main**, `Transaction` de `tokio_postgres` exigeant un
         // client mutable que l'adaptateur ne peut pas offrir derrière `&self`. Le risque de sortir
@@ -1190,6 +1190,7 @@ mod tests_db {
             schema: "introspection".into(),
             table: "orders".into(),
             key_column: "id".into(),
+            inserts: Vec::new(),
             changes: vec![crate::engine::PendingUpdate {
                 key: id.to_string(),
                 column: "status".into(),
@@ -1242,6 +1243,7 @@ mod tests_db {
             schema: "introspection".into(),
             table: "orders".into(),
             key_column: "id".into(),
+            inserts: Vec::new(),
             changes: vec![crate::engine::PendingUpdate {
                 key: id.to_string(),
                 column: colonne.into(),
@@ -1291,6 +1293,81 @@ mod tests_db {
             .execute("delete from introspection.orders where id = $1", &[&id])
             .await
             .expect("nettoyage");
+    }
+
+    /// Une ligne **ajoutée** part avec les modifications, dans la même transaction.
+    ///
+    /// **Le chemin réel, pas seulement le texte.** Le SQL d'insertion se relit très bien et peut
+    /// être refusé par la base — c'est exactement ce qui est arrivé à l'`INSERT` reconstruit de
+    /// `10f`, qui butait sur une contrainte `not null`. Ce test le fait exécuter, puis relit.
+    #[tokio::test]
+    async fn une_ligne_ajoutee_est_ecrite_avec_ses_defauts() {
+        let adaptateur = adaptateur().await;
+        let proprietaire: i64 = adaptateur
+            .client
+            .query_one(
+                "select id from introspection.users order by id limit 1",
+                &[],
+            )
+            .await
+            .expect("un utilisateur")
+            .get(0);
+
+        let marque = "ajoutée par le test";
+        let plan = crate::engine::UpdatePlan {
+            schema: "introspection".into(),
+            table: "orders".into(),
+            key_column: "id".into(),
+            changes: Vec::new(),
+            inserts: vec![crate::engine::PendingInsert {
+                // `id` et `created_at` ne sont **pas** saisis : la séquence et le `now()` doivent
+                // s'appliquer. Les poser à `NULL` ferait échouer l'insertion sur `not null`.
+                values: vec![
+                    crate::engine::PendingInsertValue {
+                        column: "user_id".into(),
+                        value: Some(proprietaire.to_string()),
+                    },
+                    crate::engine::PendingInsertValue {
+                        column: "status".into(),
+                        value: Some(marque.into()),
+                    },
+                    // Un `NULL` **demandé** sur une colonne qui l'accepte.
+                    crate::engine::PendingInsertValue {
+                        column: "total_cents".into(),
+                        value: None,
+                    },
+                ],
+            }],
+        };
+
+        let issue = adaptateur
+            .apply_updates(&plan)
+            .await
+            .expect("l'insertion doit réussir");
+        assert_eq!(issue.applied, 1);
+        // **Le patch inverse le dit plutôt que de le taire** : la clé engendrée n'est pas connue,
+        // et supprimer sur les valeurs saisies emporterait les lignes voisines identiques.
+        assert!(
+            issue.inverse_sql.starts_with("-- 1 ligne ajoutée"),
+            "{}",
+            issue.inverse_sql
+        );
+
+        let ajoutee = adaptateur
+            .client
+            .query_one(
+                "select id, total_cents, created_at is not null
+                 from introspection.orders where status = $1",
+                &[&marque],
+            )
+            .await
+            .expect("la ligne ajoutée doit être relisible");
+        let id: i64 = ajoutee.get(0);
+        // La séquence a donné un `id`, le défaut a donné une date, et le `NULL` demandé est resté.
+        assert!(ajoutee.get::<_, Option<i32>>(1).is_none());
+        assert!(ajoutee.get::<_, bool>(2));
+
+        retirer_ligne(&adaptateur, id).await;
     }
 
     /// **La première écriture réelle du projet, vérifiée contre PostgreSQL.**

@@ -4,9 +4,17 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { ColumnInfo, DatabaseKey, RowQuery, Value } from '../../domain/engine'
-import type { EnAttente } from './modifications'
+import type { EnAttente, Modification, ModificationDeCellule } from './modifications'
 import { TableView } from './TableView'
 import type { PasserelleLignes } from './useLignes'
+
+/** La modification de cellule attendue — les assertions portent sur ses champs. */
+function cellule(modification: Modification | undefined): ModificationDeCellule {
+  if (modification === undefined || modification.sorte !== 'cellule') {
+    throw new Error('une modification de cellule était attendue')
+  }
+  return modification
+}
 
 const CLE: DatabaseKey = { project: 'Halle', database: 'analytics', environment: 'prod' }
 
@@ -172,9 +180,9 @@ describe('valider, abandonner, retenir', () => {
     await utilisateur.type(champ, 'shipped{Enter}')
 
     await waitFor(() => expect(derniere()).toHaveLength(1))
-    expect(derniere()[0]?.column).toBe('status')
+    expect(cellule(derniere()[0]).column).toBe('status')
     expect(derniere()[0]?.cle).toBe('184217')
-    expect(derniere()[0]?.apres).toEqual({ kind: 'texte', texte: 'shipped' })
+    expect(cellule(derniere()[0]).apres).toEqual({ kind: 'texte', texte: 'shipped' })
     // **Rien n'est envoyé** : c'est le sens de « en attente ». Une seule lecture, celle du montage.
     expect(readRows).toHaveBeenCalledTimes(1)
   })
@@ -231,7 +239,7 @@ describe('valider, abandonner, retenir', () => {
     expect(champ).toHaveValue('NULL')
     await utilisateur.keyboard('{Enter}')
 
-    await waitFor(() => expect(derniere()[0]?.apres).toEqual({ kind: 'null' }))
+    await waitFor(() => expect(cellule(derniere()[0]).apres).toEqual({ kind: 'null' }))
   })
 
   it('vider le champ donne la chaîne vide, pas NULL', async () => {
@@ -243,7 +251,7 @@ describe('valider, abandonner, retenir', () => {
     await utilisateur.keyboard('{Enter}')
 
     // La distinction que `10c` a posée et qu'un client de bases ne doit pas brouiller.
-    await waitFor(() => expect(derniere()[0]?.apres).toEqual({ kind: 'texte', texte: '' }))
+    await waitFor(() => expect(cellule(derniere()[0]).apres).toEqual({ kind: 'texte', texte: '' }))
   })
 })
 
@@ -293,5 +301,120 @@ describe('⌘Z annule la dernière modification retenue', () => {
     await attendreLaGrille()
     await utilisateur.keyboard('{Meta>}z{/Meta}')
     expect(derniere()).toHaveLength(0)
+  })
+})
+
+describe('ajouter une ligne', () => {
+  it('le bouton n’existe qu’en mode édition', async () => {
+    monter({ edition: false })
+    await attendreLaGrille()
+    // Absent plutôt que désactivé : l'ajout marche dès qu'on entre en édition, et un bouton grisé
+    // dirait « ceci ne marche pas ici ».
+    expect(screen.queryByRole('button', { name: 'Ajouter une ligne' })).not.toBeInTheDocument()
+  })
+
+  it('chaque clic ajoute une ligne à la grille, sous les lignes lues', async () => {
+    const utilisateur = userEvent.setup()
+    const { derniere } = monter()
+    const grille = await attendreLaGrille()
+
+    const ajouter = screen.getByRole('button', { name: 'Ajouter une ligne' })
+    await utilisateur.click(ajouter)
+    await utilisateur.click(ajouter)
+
+    await waitFor(() => expect(derniere()).toHaveLength(2))
+    // **En bas** : ajoutées en tête, elles pousseraient la table d'un cran à chaque clic et la
+    // ligne qu'on lisait changerait de place.
+    expect(within(grille).getByText('+1')).toBeInTheDocument()
+    expect(within(grille).getByText('+2')).toBeInTheDocument()
+  })
+
+  it('une cellule non renseignée annonce le défaut de la base, pas NULL', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    const grille = await attendreLaGrille()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Ajouter une ligne' }))
+
+    // « vide » et « la base décidera » sont deux choses différentes : les confondre ferait attendre
+    // un `NULL` là où une séquence ou un `now()` va s'appliquer. La mesure porte sur **la ligne
+    // ajoutée seule** — une ligne lue de ce décor porte un vrai `NULL`, qui lui est juste.
+    const ajoutee = await waitFor(() => {
+      const trouvee = within(grille)
+        .getAllByRole('row')
+        .find((ligne) => within(ligne).queryByText('+1') !== null)
+      if (trouvee === undefined) throw new Error('la ligne ajoutée n’est pas rendue')
+      return trouvee
+    })
+    expect(within(ajoutee).getAllByText('défaut')).toHaveLength(3)
+    expect(within(ajoutee).queryByText('NULL')).not.toBeInTheDocument()
+  })
+
+  it('la clé primaire se saisit dans une ligne ajoutée, pas dans une ligne lue', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await attendreLaGrille()
+
+    // Aucune ligne lue n'offre sa clé : la modifier déplacerait la cible du `WHERE`.
+    expect(screen.queryByRole('button', { name: 'Modifier id' })).not.toBeInTheDocument()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Ajouter une ligne' }))
+    // Celle qu'on ajoute l'offre : il n'y a pas de `WHERE`, et une table dont la clé est un code
+    // saisi ne pourrait recevoir aucune ligne autrement.
+    expect(await screen.findByRole('button', { name: 'Renseigner id' })).toBeInTheDocument()
+  })
+
+  it('une valeur saisie dans une ligne ajoutée est retenue, et rien n’est lu de plus', async () => {
+    const utilisateur = userEvent.setup()
+    const { derniere, readRows } = monter()
+    await attendreLaGrille()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Ajouter une ligne' }))
+    await utilisateur.click(await screen.findByRole('button', { name: 'Renseigner status' }))
+    await utilisateur.type(
+      screen.getByRole('textbox', { name: 'Nouvelle valeur' }),
+      'pending{Enter}',
+    )
+
+    await waitFor(() => {
+      const ligne = derniere()[0]
+      expect(ligne?.sorte === 'ligne' ? ligne.valeurs.status : undefined).toEqual({
+        kind: 'texte',
+        texte: 'pending',
+      })
+    })
+    // **Rien n'est envoyé** : c'est le sens de « en attente », et une ligne ajoutée n'y échappe pas.
+    expect(readRows).toHaveBeenCalledTimes(1)
+    // Et le modèle ne porte toujours qu'une entrée : une ligne, pas une par cellule remplie.
+    expect(derniere()).toHaveLength(1)
+  })
+
+  it('ouvrir puis sortir sans rien taper laisse la colonne à son défaut', async () => {
+    const utilisateur = userEvent.setup()
+    const { derniere } = monter()
+    await attendreLaGrille()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Ajouter une ligne' }))
+    await utilisateur.click(await screen.findByRole('button', { name: 'Renseigner status' }))
+    await utilisateur.keyboard('{Enter}')
+
+    // Le geste est courant, et le prendre pour une saisie écrirait `''` dans une colonne qu'on n'a
+    // pas voulu remplir — en volant à la table sa valeur par défaut.
+    await waitFor(() => {
+      const ligne = derniere()[0]
+      expect(ligne?.sorte === 'ligne' ? ligne.valeurs : undefined).toEqual({})
+    })
+  })
+
+  it('une table sans clé primaire refuse la modification et accepte l’ajout', async () => {
+    const utilisateur = userEvent.setup()
+    monter({ columns: [colonne('status'), colonne('note')] })
+    await attendreLaGrille()
+
+    // Sans clé, aucune ligne lue n'est modifiable : `11d` n'aurait pas de `WHERE`.
+    expect(screen.queryByRole('button', { name: 'Modifier status' })).not.toBeInTheDocument()
+    // L'ajout, lui, ne vise aucune ligne — le refuser interdirait un geste possible.
+    await utilisateur.click(screen.getByRole('button', { name: 'Ajouter une ligne' }))
+    expect(await screen.findByRole('button', { name: 'Renseigner status' })).toBeInTheDocument()
   })
 })

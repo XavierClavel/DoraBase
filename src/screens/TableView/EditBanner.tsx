@@ -2,8 +2,16 @@ import { Icon } from '../../design/icons/Icon'
 import styles from './EditBanner.module.css'
 
 type EditBannerProps = {
-  /** Le nombre de modifications en attente. Le bandeau n'existe pas à zéro. */
+  /** Le nombre d'entrées en attente, ajouts compris. Le bandeau n'existe pas à zéro. */
   compte: number
+  /**
+   * Combien de ces entrées sont des **lignes ajoutées**.
+   *
+   * **Nommées à part, et c'est le seul endroit qui annonce ce qui attend.** « 3 modifications » sur
+   * un lot qui insère deux lignes dirait le contraire de ce qui partira : modifier et ajouter ne se
+   * défont pas de la même façon — le patch inverse ne sait annuler que le premier.
+   */
+  ajouts?: number
   /** La table concernée, en mono — `public.orders`. */
   table: string
   /**
@@ -35,6 +43,7 @@ type EditBannerProps = {
  */
 export function EditBanner({
   compte,
+  ajouts = 0,
   table,
   onVoirLeSQL,
   onToutAnnuler,
@@ -51,7 +60,7 @@ export function EditBanner({
     <div className={styles.root} role="status" aria-label="Modifications en attente">
       <Icon name="warn" size={14} strokeWidth={2.1} className={styles.icone} />
       <span className={styles.compte}>
-        {compte} modification{compte > 1 ? 's' : ''} en attente sur{' '}
+        {resumeDeLAttente(compte, ajouts)} en attente sur{' '}
         <span className={styles.table}>{table}</span>
       </span>
       {/* **La promesse la plus importante de l'écran**, et le mockup la met là : tant qu'on n'a pas
@@ -95,4 +104,21 @@ export function EditBanner({
 const RAISONS = {
   sql: 'Le SQL des modifications arrive avec le panneau des modifications en attente.',
   appliquer: 'L’écriture dans la base n’est pas encore branchée : rien ne peut partir.',
+}
+
+/**
+ * « 2 modifications et 1 ligne ajoutée » — ce qui attend, dit par son nom.
+ *
+ * Pure et exportée : c'est une règle de formulation, elle se teste sans DOM, comme `tri.ts` et
+ * `modifications.ts`.
+ */
+export function resumeDeLAttente(compte: number, ajouts: number): string {
+  const modifications = compte - ajouts
+  const morceaux: string[] = []
+  if (modifications > 0) {
+    morceaux.push(`${modifications} modification${modifications > 1 ? 's' : ''}`)
+  }
+  if (ajouts > 0)
+    morceaux.push(`${ajouts} ligne${ajouts > 1 ? 's' : ''} ajoutée${ajouts > 1 ? 's' : ''}`)
+  return morceaux.join(' et ')
 }

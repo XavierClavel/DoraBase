@@ -12,7 +12,9 @@ import type { ColumnInfo, Value } from '../../domain/engine'
 /** La nouvelle valeur d'une cellule : du texte saisi, ou `NULL` demandé explicitement. */
 export type Saisie = { kind: 'texte'; texte: string } | { kind: 'null' }
 
-export type Modification = {
+/** La modification d'une cellule d'une ligne **qui existe** — un `UPDATE`. */
+export type ModificationDeCellule = {
+  sorte: 'cellule'
   /**
    * La valeur de la **clé primaire** de la ligne, en texte.
    *
@@ -28,11 +30,44 @@ export type Modification = {
   apres: Saisie
 }
 
+/**
+ * Une ligne **à ajouter**, retenue comme les autres modifications — un `INSERT`.
+ *
+ * **Une seule entrée pour toute la ligne, et non une par cellule.** Le compte affiché est celui des
+ * *écritures* qui partiront : trois cellules remplies dans une ligne neuve font un seul `INSERT`, et
+ * les compter trois annoncerait trois écritures qui n'existent pas. C'est aussi ce qui donne au
+ * panneau une carte par ligne, où le diff n'aurait aucun « avant » à montrer.
+ *
+ * **Sa `cle` est locale**, jamais envoyée : la vraie clé est décidée par la base — une séquence, un
+ * `uuid` par défaut, un `_id`. Elle sert à identifier la ligne à l'écran, rien d'autre.
+ */
+export type LigneAjoutee = {
+  sorte: 'ligne'
+  cle: string
+  /** Le numéro d'ordre parmi les lignes ajoutées — « nouvelle ligne 2 ». */
+  rang: number
+  /**
+   * Les valeurs saisies, par colonne.
+   *
+   * **Une colonne absente n'est pas une colonne nulle** : elle est laissée au défaut de la base. La
+   * distinction traverse tout le chemin jusqu'au SQL, et c'est elle qui permet d'ajouter une ligne
+   * sans connaître la moitié de ses colonnes.
+   */
+  valeurs: Readonly<Record<string, Saisie>>
+}
+
+export type Modification = ModificationDeCellule | LigneAjoutee
+
 export type EnAttente = readonly Modification[]
+
+/** Vrai pour une ligne ajoutée — le garde de typage des deux sortes. */
+export function estUneLigneAjoutee(modification: Modification): modification is LigneAjoutee {
+  return modification.sorte === 'ligne'
+}
 
 /** Identifie une cellule : une ligne et une colonne. */
 function memeCellule(m: Modification, cle: string, column: string): boolean {
-  return m.cle === cle && m.column === column
+  return m.sorte === 'cellule' && m.cle === cle && m.column === column
 }
 
 /**
@@ -49,21 +84,83 @@ function memeCellule(m: Modification, cle: string, column: string): boolean {
  */
 export function retenir(
   attente: EnAttente,
-  modification: Omit<Modification, 'avant'> & { avant: Value },
+  modification: Omit<ModificationDeCellule, 'sorte'>,
 ): Modification[] {
   const autres = attente.filter((m) => !memeCellule(m, modification.cle, modification.column))
   const existante = attente.find((m) => memeCellule(m, modification.cle, modification.column))
 
   // `avant` vient de la **première** saisie : la valeur d'origine, pas la précédente.
-  const avant = existante?.avant ?? modification.avant
+  const avant =
+    existante !== undefined && existante.sorte === 'cellule' ? existante.avant : modification.avant
   if (estIdentique(avant, modification.apres)) return autres
 
-  return [...autres, { ...modification, avant }]
+  return [...autres, { ...modification, sorte: 'cellule', avant }]
 }
 
-/** Retire la modification d'une cellule. */
+/**
+ * Retire la modification d'une cellule — ou **la ligne entière** si la clé est celle d'un ajout.
+ *
+ * Une ligne ajoutée n'a pas de colonne à retirer isolément : sa carte porte une seule croix, et
+ * c'est toute la ligne qu'elle enlève. Passer une colonne quelconque pour un ajout retire donc la
+ * ligne, ce qui est le seul geste que le panneau puisse offrir.
+ */
 export function retirer(attente: EnAttente, cle: string, column: string): Modification[] {
-  return attente.filter((m) => !memeCellule(m, cle, column))
+  return attente.filter(
+    (m) => !memeCellule(m, cle, column) && !(m.sorte === 'ligne' && m.cle === cle),
+  )
+}
+
+/**
+ * Ajoute une ligne vide au modèle — le bouton « + » de la barre d'outils.
+ *
+ * **Chaque clic en ajoute une**, sans rien demander : nommer ou remplir avant d'avoir la ligne
+ * sous les yeux revient à demander un titre pour une page blanche, ce que le projet refuse déjà
+ * pour les consoles. La ligne s'emplit ensuite cellule par cellule, comme n'importe quelle autre.
+ *
+ * L'identité locale prend le **plus petit numéro libre**, comme les consoles : deux ajouts suivis
+ * d'un retrait ne doivent pas laisser un trou dans les numéros affichés.
+ */
+export function ajouterUneLigne(attente: EnAttente): Modification[] {
+  const prises = new Set(attente.filter(estUneLigneAjoutee).map((ligne) => ligne.rang))
+  let rang = 1
+  while (prises.has(rang)) rang += 1
+  return [...attente, { sorte: 'ligne', cle: `nouvelle-${rang}`, rang, valeurs: {} }]
+}
+
+/**
+ * Pose une valeur dans une ligne ajoutée.
+ *
+ * **Vider une cellule la retire de la ligne** plutôt que d'y poser la chaîne vide : c'est ce qui
+ * rend la colonne à son défaut. Demander `NULL` explicitement (`⌥⌫`) reste une valeur, et s'écrit.
+ */
+export function saisirDansLaLigne(
+  attente: EnAttente,
+  cle: string,
+  column: string,
+  apres: Saisie | null,
+): Modification[] {
+  return attente.map((modification) => {
+    if (!estUneLigneAjoutee(modification) || modification.cle !== cle) return modification
+    const valeurs = { ...modification.valeurs }
+    if (apres === null) delete valeurs[column]
+    else valeurs[column] = apres
+    return { ...modification, valeurs }
+  })
+}
+
+/** La saisie retenue pour une cellule d'une ligne ajoutée, s'il y en a une. */
+export function valeurDeLaLigne(
+  attente: EnAttente,
+  cle: string,
+  column: string,
+): Saisie | undefined {
+  const ligne = attente.find((m) => estUneLigneAjoutee(m) && m.cle === cle)
+  return ligne !== undefined && estUneLigneAjoutee(ligne) ? ligne.valeurs[column] : undefined
+}
+
+/** Les lignes ajoutées, dans l'ordre où elles ont été demandées. */
+export function lignesAjoutees(attente: EnAttente): LigneAjoutee[] {
+  return attente.filter(estUneLigneAjoutee)
 }
 
 /** Retire la **dernière** modification retenue — `⌘Z`. */
@@ -76,13 +173,26 @@ export function modificationDe(
   attente: EnAttente,
   cle: string,
   column: string,
-): Modification | undefined {
-  return attente.find((m) => memeCellule(m, cle, column))
+): ModificationDeCellule | undefined {
+  const trouvee = attente.find((m) => memeCellule(m, cle, column))
+  return trouvee !== undefined && trouvee.sorte === 'cellule' ? trouvee : undefined
 }
 
 /** Les lignes qui portent au moins une modification — la teinte de ligne de `11b`. */
 export function lignesModifiees(attente: EnAttente): ReadonlySet<string> {
   return new Set(attente.map((m) => m.cle))
+}
+
+/**
+ * Une colonne est-elle éditable **dans une ligne qu'on ajoute** ?
+ *
+ * **La clé primaire l'est ici**, alors qu'elle ne l'est pas dans une ligne existante : il n'y a
+ * aucun `WHERE` à déplacer, et une table dont la clé n'est pas engendrée — un code, une référence —
+ * ne pourrait recevoir aucune ligne si on la refusait. Le binaire reste refusé, pour la raison qui
+ * ne change pas : il ne se saisit pas au clavier.
+ */
+export function estEditableALAjout(colonne: ColumnInfo): boolean {
+  return colonne.category !== 'binary'
 }
 
 /**

@@ -116,6 +116,31 @@
   color: var(--ink);
 }
 
+/* Les valeurs d'une ligne ajoutée : une par ligne, colonne puis valeur.
+   **Pas la trame du diff** — il n'y a pas d'avant à barrer, et réemployer `.diff` ferait attendre
+   une flèche qui ne viendrait jamais. */
+.valeurs {
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.valeur {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* La colonne d'une valeur ajoutée n'a pas la marge de `.colonne`, qui la décollait de son en-tête. */
+.valeur .colonne {
+  margin-top: 0;
+  min-width: 0;
+}
+
 .diff {
   margin-top: var(--space-3);
   display: flex;

@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { applyChanges } from '../../data/commandes'
 import type { ApplyOutcome, ColumnInfo, DatabaseKey, UpdatePlan } from '../../domain/engine'
 import type { EnAttente } from './modifications'
-import { planDe } from './useSqlPrevu'
+import { planDuModele } from './useSqlPrevu'
 
 /** Ce qui appelle la commande d'écriture. Injectable : le pont ne répond pas hors de la webview. */
 export type PasserelleApply = {
@@ -60,12 +60,7 @@ export function useApplication(
     if (cle === null || cible === null || attente.length === 0) return
     setEnCours(true)
     setRefus(null)
-    const plan: UpdatePlan = {
-      schema: cible.schema,
-      table: cible.table,
-      keyColumn: cleColonne,
-      changes: attente.map(planDe),
-    }
+    const plan: UpdatePlan = planDuModele(cible, cleColonne, attente)
     passerelle
       .applyChanges(cle, plan)
       .then((issue) => {

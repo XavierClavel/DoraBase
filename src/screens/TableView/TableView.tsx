@@ -17,13 +17,19 @@ import { apercuDeLaSaisie, estNumerique, rendreValeur } from './cellule'
 import { EditableCell } from './EditableCell'
 import { FilterCell } from './FilterCell'
 import {
+  ajouterUneLigne,
   annulerLaDerniere,
   type EnAttente,
+  estEditableALAjout,
+  lignesAjoutees,
   lignesModifiees,
   modificationDe,
   raisonDuRefus,
   retenir,
+  type Saisie,
+  saisirDansLaLigne,
   texteBrutDe,
+  valeurDeLaLigne,
 } from './modifications'
 import styles from './TableView.module.css'
 import { Toolbar } from './Toolbar'
@@ -99,8 +105,17 @@ type TableViewProps = {
   onAttenteChange?: (attente: EnAttente) => void
 }
 
-/** Une ligne de la fenêtre, avec son rang — la gouttière `#` du mockup. */
-type Ligne = { rang: number; valeurs: readonly Value[] }
+/**
+ * Une ligne de la grille : lue dans la base, ou **ajoutée** et pas encore écrite.
+ *
+ * Les deux vivent dans la même grille parce qu'elles s'éditent pareil — c'est ce que « mode édition
+ * classique » veut dire. Ce qui les sépare tient en trois points : la ligne ajoutée n'a pas de
+ * valeurs d'origine, sa gouttière porte `+` au lieu d'un rang, et la sélectionner n'aurait aucun
+ * détail à montrer dans le panneau droit.
+ */
+type Ligne = LigneLue | { sorte: 'ajoutee'; rang: number; cle: string }
+
+type LigneLue = { sorte: 'lue'; rang: number; valeurs: readonly Value[] }
 
 /** Largeur par défaut d'une colonne de données, faute de mesure du contenu. */
 const LARGEUR_COLONNE = 130
@@ -187,9 +202,36 @@ export function TableView({
     [],
   )
 
-  const lignes: Ligne[] = useMemo(
-    () => (fenetre?.rows ?? []).map((valeurs, rang) => ({ rang: rang + 1, valeurs })),
+  const lignes: LigneLue[] = useMemo(
+    () =>
+      (fenetre?.rows ?? []).map((valeurs, rang) => ({
+        sorte: 'lue' as const,
+        rang: rang + 1,
+        valeurs,
+      })),
     [fenetre],
+  )
+
+  /**
+   * Les lignes de la grille : celles de la base, puis celles qu'on ajoute.
+   *
+   * **En bas, et non en haut.** Une ligne ajoutée en tête pousserait toute la table d'un cran à
+   * chaque clic, et la ligne qu'on lisait changerait de place sous les yeux. En bas, elle apparaît
+   * là où le regard finit et où l'on défile déjà.
+   */
+  const toutesLesLignes: Ligne[] = useMemo(
+    () =>
+      edition
+        ? [
+            ...lignes,
+            ...lignesAjoutees(attente).map((ligne) => ({
+              sorte: 'ajoutee' as const,
+              rang: ligne.rang,
+              cle: ligne.cle,
+            })),
+          ]
+        : lignes,
+    [lignes, attente, edition],
   )
 
   /**
@@ -219,6 +261,8 @@ export function TableView({
     if (!edition) setEnEdition(null)
   }, [edition])
 
+  // **Parmi les lignes lues seulement** : une ligne ajoutée n'a pas de détail à montrer dans le
+  // panneau droit, et lui en inventer un ferait croire à une ligne déjà écrite.
   const ligneChoisie = lignes.find((l) => String(l.rang) === choisie)
 
   useEffect(() => {
@@ -243,6 +287,9 @@ export function TableView({
   // chaque rendu recalculerait pour rien.
   const cleDe = useCallback(
     (ligne: Ligne): string | null => {
+      // Une ligne ajoutée porte son identité **locale** : elle n'a pas encore de clé dans la base,
+      // et c'est celle-ci qui la désigne dans le modèle jusqu'à l'écriture.
+      if (ligne.sorte === 'ajoutee') return ligne.cle
       if (rangDeLaCle === -1) return null
       const valeur = ligne.valeurs[rangDeLaCle]
       return valeur === undefined ? null : texteBrutDe(valeur)
@@ -256,7 +303,14 @@ export function TableView({
         key: '#',
         header: '#',
         width: LARGEUR_GOUTTIERE,
-        cell: (ligne) => <span className={styles.gouttiere}>{ligne.rang}</span>,
+        // **`+2` plutôt qu'un rang** : une ligne ajoutée n'a pas de place dans la table, seulement
+        // un ordre d'arrivée. Lui donner un rang la ferait passer pour la 501ᵉ ligne lue.
+        cell: (ligne) =>
+          ligne.sorte === 'ajoutee' ? (
+            <span className={cx(styles.gouttiere, styles.gouttiereAjoutee)}>+{ligne.rang}</span>
+          ) : (
+            <span className={styles.gouttiere}>{ligne.rang}</span>
+          ),
       },
       // Masquer une colonne ne change pas la requête : `SELECT *` reste, et la colonne est
       // retirée du **rendu**. Restreindre la projection rendrait le SQL affiché dépendant d'un
@@ -314,6 +368,23 @@ export function TableView({
               />
             ),
             cell: (ligne: Ligne) => {
+              if (ligne.sorte === 'ajoutee') {
+                return (
+                  <CelluleAjoutee
+                    cle={ligne.cle}
+                    colonne={colonne}
+                    attente={attente}
+                    ouverte={enEdition?.cle === ligne.cle && enEdition.column === colonne.name}
+                    onOuvrir={() =>
+                      setEnEdition({ cle: ligne.cle, rang: ligne.rang, column: colonne.name })
+                    }
+                    onFermer={() => setEnEdition(null)}
+                    onSaisir={(saisie) =>
+                      onAttenteChange?.(saisirDansLaLigne(attente, ligne.cle, colonne.name, saisie))
+                    }
+                  />
+                )
+              }
               const valeur = ligne.valeurs[rang]
               if (valeur === undefined) return null
               const cle = cleDe(ligne)
@@ -416,6 +487,11 @@ export function TableView({
           })
         }
         sql={fenetre?.sql ?? null}
+        onAjouterUneLigne={
+          edition && onAttenteChange !== undefined
+            ? () => onAttenteChange(ajouterUneLigne(attente))
+            : undefined
+        }
         onRefresh={() => {
           relire()
           onRelireLaStructure?.()
@@ -430,8 +506,11 @@ export function TableView({
             rowHeight={rowHeight}
             label={`Lignes de ${schema}.${table}`}
             columns={colonnes}
-            rows={lignes}
-            rowId={(ligne) => String(ligne.rang)}
+            rows={toutesLesLignes}
+            // L'identité locale d'une ligne ajoutée, jamais son rang : `+1` et la première ligne
+            // lue partagent le rang 1, et deux lignes de même identité feraient sauter la sélection
+            // de l'une à l'autre.
+            rowId={(ligne) => (ligne.sorte === 'ajoutee' ? ligne.cle : String(ligne.rang))}
             {...(edition
               ? {
                   // Les teintes de `11b` : une ligne qui porte une modification, une cellule qui en
@@ -444,7 +523,15 @@ export function TableView({
                   },
                   cellTint: (ligne: Ligne, column: string) => {
                     const cle = cleDe(ligne)
-                    return cle !== null && modificationDe(attente, cle, column) !== undefined
+                    if (cle === null) return undefined
+                    // Dans une ligne ajoutée, la teinte marque les cellules **saisies** : le coin
+                    // ambre dit « ceci partira », et les colonnes laissées au défaut ne partent pas.
+                    if (ligne.sorte === 'ajoutee') {
+                      return valeurDeLaLigne(attente, cle, column) !== undefined
+                        ? 'modified'
+                        : undefined
+                    }
+                    return modificationDe(attente, cle, column) !== undefined
                       ? 'modified'
                       : undefined
                   },
@@ -453,12 +540,98 @@ export function TableView({
             viewportHeight={hauteur.valeur}
             filterRow
             selectedId={choisie}
-            onSelect={(ligne) => setChoisie(String(ligne.rang))}
+            // Une ligne ajoutée ne se sélectionne pas : le panneau droit montre le détail d'une
+            // ligne **de la base**, et celle-ci n'y est pas encore.
+            onSelect={(ligne) => {
+              if (ligne.sorte === 'lue') setChoisie(String(ligne.rang))
+            }}
             empty={<span>{messageVide(loading, error, schema, table)}</span>}
           />
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * Une cellule d'une ligne qu'on ajoute.
+ *
+ * **Toutes les colonnes s'y saisissent, clé primaire comprise** — voir `estEditableALAjout` : il n'y
+ * a aucun `WHERE` à déplacer, et une table dont la clé est un code saisi ne pourrait recevoir aucune
+ * ligne si on la refusait.
+ *
+ * **Vide veut dire « au défaut de la base », pas chaîne vide.** Ouvrir une cellule et en sortir sans
+ * rien taper est un geste courant ; le prendre pour une saisie écrirait `''` dans une colonne qu'on
+ * n'a pas voulu remplir, et volerait à la table sa valeur par défaut. Limite assumée : la chaîne
+ * vide **explicite** n'est pas exprimable à l'ajout — elle se pose ensuite, en modifiant la ligne
+ * écrite. `⌥⌫` reste le geste pour un `NULL` demandé, qui lui s'écrit.
+ */
+function CelluleAjoutee({
+  cle,
+  colonne,
+  attente,
+  ouverte,
+  onOuvrir,
+  onFermer,
+  onSaisir,
+}: {
+  cle: string
+  colonne: ColumnInfo
+  attente: EnAttente
+  ouverte: boolean
+  onOuvrir: () => void
+  onFermer: () => void
+  onSaisir: (saisie: Saisie | null) => void
+}) {
+  const saisie = valeurDeLaLigne(attente, cle, colonne.name)
+
+  if (ouverte) {
+    return (
+      <EditableCell
+        // Il n'y a pas de valeur d'origine : `NULL` est le point de départ neutre, et c'est aussi ce
+        // que la cellule montre tant que rien n'est saisi.
+        valeur={{ kind: 'null' }}
+        retenue={saisie}
+        onValider={(valeur) => {
+          onSaisir(valeur.kind === 'texte' && valeur.texte === '' ? null : valeur)
+          onFermer()
+        }}
+        onAbandonner={onFermer}
+      />
+    )
+  }
+
+  const classe = colonne.category === 'number' ? styles.nombre : undefined
+  const affichee =
+    saisie === undefined ? (
+      // **Dit, pas deviné** : une cellule vide dans une ligne neuve ne veut pas dire « vide », elle
+      // veut dire « la base décidera ». Les confondre ferait attendre un `NULL` là où une séquence
+      // ou un `now()` va s'appliquer.
+      <span className={styles.defaut}>défaut</span>
+    ) : (
+      apercuDeLaSaisie(saisie)
+    )
+
+  if (!estEditableALAjout(colonne)) {
+    return (
+      <span
+        className={cx(classe, styles.nonEditable)}
+        title={`${colonne.name} est binaire : sa valeur ne se saisit pas au clavier.`}
+      >
+        {affichee}
+      </span>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      className={cx(classe, styles.editable)}
+      aria-label={`Renseigner ${colonne.name}`}
+      onClick={onOuvrir}
+    >
+      {affichee}
+    </button>
   )
 }
 

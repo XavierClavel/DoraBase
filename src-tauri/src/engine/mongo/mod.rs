@@ -220,13 +220,7 @@ impl EngineAdapter for MongoAdapter {
     }
 
     async fn preview_updates(&self, plan: &UpdatePlan) -> Result<String, EngineError> {
-        Ok(commandes_de(plan)
-            .iter()
-            .map(|(filtre, mise_a_jour)| {
-                documents::commande_lisible(&plan.table, filtre, mise_a_jour)
-            })
-            .collect::<Vec<_>>()
-            .join("\n"))
+        Ok(apercu_de(plan))
     }
 
     async fn apply_updates(&self, plan: &UpdatePlan) -> Result<ApplyOutcome, EngineError> {
@@ -282,6 +276,20 @@ impl EngineAdapter for MongoAdapter {
             }
         }
 
+        // **Les insertions viennent après les modifications, dans la même transaction** : c'est
+        // l'ordre du panneau, et le filet de `18f` couvre les deux — un `insertOne` isolé au milieu
+        // d'un lot annulé laisserait un document que personne n'a demandé.
+        for insertion in &plan.inserts {
+            let document = documents::document_a_inserer(insertion);
+            match collection.insert_one(document).session(&mut session).await {
+                Ok(_) => appliquees += 1,
+                Err(erreur) => {
+                    let _ = session.abort_transaction().await;
+                    return Err(mongo_error::traduire(&erreur));
+                }
+            }
+        }
+
         session
             .commit_transaction()
             .await
@@ -289,13 +297,18 @@ impl EngineAdapter for MongoAdapter {
 
         Ok(ApplyOutcome {
             applied: appliquees,
-            inverse_sql: commandes_inverses_de(plan)
-                .iter()
-                .map(|(filtre, mise_a_jour)| {
-                    documents::commande_lisible(&plan.table, filtre, mise_a_jour)
-                })
-                .collect::<Vec<_>>()
-                .join("\n"),
+            inverse_sql: crate::engine::rows::patch_inverse(
+                crate::engine::rows::avertissement_insertions(plan.inserts.len()),
+                (!plan.changes.is_empty()).then(|| {
+                    commandes_inverses_de(plan)
+                        .iter()
+                        .map(|(filtre, mise_a_jour)| {
+                            documents::commande_lisible(&plan.table, filtre, mise_a_jour)
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                }),
+            ),
         })
     }
 
@@ -344,6 +357,18 @@ fn commandes_de(plan: &UpdatePlan) -> Vec<(Document, Document)> {
 }
 
 /// Le patch inverse : valeur et attendue échangées, comme `11d` le fait en SQL.
+/// Le texte des commandes qu'`Appliquer` exécutera : les `updateOne`, puis les `insertOne`.
+fn apercu_de(plan: &UpdatePlan) -> String {
+    let mut lignes: Vec<String> = commandes_de(plan)
+        .iter()
+        .map(|(filtre, mise_a_jour)| documents::commande_lisible(&plan.table, filtre, mise_a_jour))
+        .collect();
+    lignes.extend(plan.inserts.iter().map(|insertion| {
+        documents::insertion_lisible(&plan.table, &documents::document_a_inserer(insertion))
+    }));
+    lignes.join("\n")
+}
+
 fn commandes_inverses_de(plan: &UpdatePlan) -> Vec<(Document, Document)> {
     plan.changes
         .iter()
@@ -1071,6 +1096,7 @@ mod tests_db {
             schema: BASE.to_owned(),
             table: "commandes_essai".to_owned(),
             key_column: "reference".to_owned(),
+            inserts: Vec::new(),
             changes: vec![PendingUpdate {
                 key: reference.to_owned(),
                 column: "statut".to_owned(),
@@ -1131,6 +1157,7 @@ mod tests_db {
             schema: BASE.to_owned(),
             table: "commandes_essai".to_owned(),
             key_column: "reference".to_owned(),
+            inserts: Vec::new(),
             changes: vec![PendingUpdate {
                 key: reference.to_owned(),
                 column: "note".to_owned(),
@@ -1152,6 +1179,7 @@ mod tests_db {
             schema: BASE.to_owned(),
             table: "commandes_essai".to_owned(),
             key_column: "reference".to_owned(),
+            inserts: Vec::new(),
             changes: vec![
                 PendingUpdate {
                     key: reference.to_owned(),
