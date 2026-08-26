@@ -110,8 +110,53 @@ def verifier_ci() -> None:
     workflow = charger(CI)
     jobs = workflow.get("jobs", {})
 
-    build = etapes_de(jobs, "build", 27, "ci.yml")
+    build = etapes_de(jobs, "build", 25, "ci.yml")
     etapes_de(jobs, "engine", 11, "ci.yml")
+    e2e = etapes_de(jobs, "e2e", 6, "ci.yml")
+
+    # **Une exécution par commit.** `on: [push, pull_request]` faisait tourner toute la CI deux
+    # fois sur chaque branche ayant une PR : deux verdicts identiques, à la seconde près. Le
+    # remède est un push restreint à `main`, et il se défait d'une ligne — d'où ce garde. Un
+    # `push:` sans filtre de branches, ou filtrant autre chose que `main`, rétablirait le
+    # doublon sans que personne ne le voie autrement qu'en comptant les exécutions.
+    sur = declencheurs(workflow)
+    # `on: [push, pull_request]` — la forme abrégée — rend une **liste**, où rien ne peut être
+    # filtré. C'est exactement la forme fautive, et la nommer valait mieux qu'une trace de pile
+    # sur `.get` : constaté par sabotage.
+    if not isinstance(sur, dict):
+        print(f"ci.yml : `on:` est une liste ({sur!r}), donc sans filtre de branches",
+              file=sys.stderr)
+        print("  le push doit être restreint à `main`, sinon chaque commit à PR passe deux fois",
+              file=sys.stderr)
+        raise SystemExit(1)
+    branches = (sur.get("push") or {}).get("branches")
+    if branches != ["main"]:
+        print(f"ci.yml : le push est filtré sur {branches!r}, attendu ['main']", file=sys.stderr)
+        print("  sans ce filtre, chaque commit d'une branche à PR fait tourner la CI deux fois",
+              file=sys.stderr)
+        raise SystemExit(1)
+    if "pull_request" not in sur:
+        print("ci.yml : sans `pull_request`, plus rien ne vérifie une branche de travail",
+              file=sys.stderr)
+        raise SystemExit(1)
+
+    # **Playwright doit rester découpé, et rester sur macOS.** Les captures de fidélité portent
+    # le suffixe de plateforme (`-darwin.png`) : sur un runner Linux, Playwright ne les
+    # trouverait pas, les **écrirait**, et rendrait une suite verte qui ne compare rien. Quant au
+    # `--shard`, c'est lui qui tient le job sous les deux minutes ; retiré, il ne casse rien et
+    # ne se remarque qu'au chronomètre.
+    commandes_e2e = commandes_de(e2e)
+    if "test:e2e" not in commandes_e2e:
+        print("ci.yml : le job « e2e » ne lance plus Playwright", file=sys.stderr)
+        raise SystemExit(1)
+    if "--shard=" not in commandes_e2e:
+        print("ci.yml : le job « e2e » ne découpe plus la suite — six minutes au lieu de deux",
+              file=sys.stderr)
+        raise SystemExit(1)
+    if "macos" not in str(jobs["e2e"].get("runs-on", "")):
+        print("ci.yml : le job « e2e » a quitté macOS — les captures `-darwin` seraient "
+              "réécrites au lieu d'être comparées", file=sys.stderr)
+        raise SystemExit(1)
 
     # Le job macOS doit **construire** : c'est la raison de son existence, et c'est ce qui avait
     # disparu.
