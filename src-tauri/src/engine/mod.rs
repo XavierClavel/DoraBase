@@ -542,7 +542,6 @@ mod tests_refus {
             tunnel: None,
         }
     }
-
 }
 
 #[cfg(test)]

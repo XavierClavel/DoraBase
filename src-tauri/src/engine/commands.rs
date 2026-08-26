@@ -635,6 +635,3 @@ fn known_hosts_utilisateur() -> std::path::PathBuf {
         .join(".ssh")
         .join("known_hosts")
 }
-
-
-
