@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { checkUpdate, installUpdate } from '../../data/commandes'
 import { Icon } from '../../design/icons/Icon'
 import type { IconName } from '../../design/icons/names'
 import type { Guards, Preferences, Theme } from '../../domain/config'
+import type { AvailableUpdate } from '../../domain/maj'
 import { Button } from '../../ui/Button/Button'
 import { Modal } from '../../ui/Modal/Modal'
 import { Toggle } from '../../ui/Toggle/Toggle'
@@ -30,9 +32,15 @@ type PreferencesDialogProps = {
   onClose: () => void
   /** La version affichée en pied de sidebar — `DoraBase 0.4.2 (arm64)`. */
   version: string
+  /**
+   * Injectées, comme tout ce qui touche à l'IPC : le pont ne répond pas hors de la webview.
+   * Les tests et la galerie passent les leurs ; l'application laisse les commandes réelles.
+   */
+  chercherMiseAJour?: () => Promise<AvailableUpdate | null>
+  installerMiseAJour?: () => Promise<void>
 }
 
-/** Les sept sections du mockup, dans son ordre. */
+/** Les sept sections du mockup, dans son ordre, plus « Mises à jour » (26 août 2026). */
 type Section =
   | 'general'
   | 'apparence'
@@ -41,6 +49,7 @@ type Section =
   | 'connexions'
   | 'securite'
   | 'raccourcis'
+  | 'maj'
 
 const SECTIONS: readonly { cle: Section; nom: string; icone: IconName }[] = [
   { cle: 'general', nom: 'Général', icone: 'gear' },
@@ -50,6 +59,11 @@ const SECTIONS: readonly { cle: Section; nom: string; icone: IconName }[] = [
   { cle: 'connexions', nom: 'Connexions', icone: 'srv' },
   { cle: 'securite', nom: 'Sécurité & écriture', icone: 'shield' },
   { cle: 'raccourcis', nom: 'Raccourcis', icone: 'kbd' },
+  // **En dernier, et après les sept du mockup.** Ce n'est pas un réglage : rien ne s'y règle, on y
+  // demande et on y installe. La placer parmi les sections de préférences la ferait chercher parmi
+  // les cases à cocher, et la version que la sidebar affiche déjà juste en dessous en est le
+  // voisinage naturel.
+  { cle: 'maj', nom: 'Mises à jour', icone: 'dl' },
 ]
 
 /**
@@ -64,6 +78,8 @@ export function PreferencesDialog({
   onChange,
   onClose,
   version,
+  chercherMiseAJour = checkUpdate,
+  installerMiseAJour = installUpdate,
 }: PreferencesDialogProps) {
   // Le mockup ouvre sur « Apparence » : c'est la section qui a du contenu, et ouvrir sur « Général »
   // montrerait d'abord une section qui annonce ce qu'elle portera.
@@ -158,6 +174,9 @@ export function PreferencesDialog({
           {section === 'grille' && <Grille preferences={preferences} onRegler={regler} />}
           {section === 'securite' && (
             <GardeFous guards={preferences.guards} onRegler={reglerUnGardeFou} />
+          )}
+          {section === 'maj' && (
+            <MisesAJour chercher={chercherMiseAJour} installer={installerMiseAJour} />
           )}
           {section === 'general' && (
             <AVenir
@@ -417,6 +436,118 @@ function GardeFou({
       </div>
     </div>
   )
+}
+
+/**
+ * « Mises à jour » : chercher une version plus récente, et l'installer (26 août 2026).
+ *
+ * **La version installée n'est pas redite ici** : le pied de la sidebar la porte, à trois
+ * centimètres de là et dans la même vue. Deux vérités pour une seule valeur, dont la visible
+ * pourrait être la fausse — c'est la raison qui a déjà tenu `AvailableUpdate` hors de la version
+ * courante.
+ *
+ * **Rien n'est cherché à l'ouverture.** La barre d'état interroge déjà une fois au démarrage, et
+ * une seconde recherche à chaque ouverture des préférences n'annoncerait rien de neuf. Surtout,
+ * un appel au montage ferait dépendre le rendu de la modale d'une réponse réseau — donc de
+ * l'instant — et toute capture de fidélité de `A10` deviendrait instable. La recherche part d'un
+ * clic, et c'est le clic qui autorise à afficher ce qu'elle répond.
+ *
+ * **Ici, l'échec se dit** — à l'inverse de la barre d'état, qui l'avale. La règle n'a pas changé :
+ * on ne dérange pas quelqu'un pour une requête qu'il n'a pas demandée. Celle-ci, il l'a demandée,
+ * et un bouton qui retombe en silence se lit comme une panne.
+ */
+function MisesAJour({
+  chercher,
+  installer,
+}: {
+  chercher: () => Promise<AvailableUpdate | null>
+  installer: () => Promise<void>
+}) {
+  // Quatre états, et « pas encore cherché » n'est pas « à jour » — c'est la même distinction que
+  // les quatre états d'une base dans l'arbre : « jamais tentée » n'est pas « hors ligne ».
+  const [etat, setEtat] = useState<
+    | { quoi: 'repos' }
+    | { quoi: 'recherche' }
+    | { quoi: 'aJour' }
+    | { quoi: 'disponible'; maj: AvailableUpdate }
+    | { quoi: 'echec'; raison: string }
+  >({ quoi: 'repos' })
+  const [installation, setInstallation] = useState(false)
+  const [echecInstallation, setEchecInstallation] = useState<string | null>(null)
+
+  async function rechercher() {
+    setEtat({ quoi: 'recherche' })
+    try {
+      const trouvee = await chercher()
+      setEtat(trouvee === null ? { quoi: 'aJour' } : { quoi: 'disponible', maj: trouvee })
+    } catch (erreur) {
+      setEtat({ quoi: 'echec', raison: message(erreur) })
+    }
+  }
+
+  async function lancer() {
+    setInstallation(true)
+    setEchecInstallation(null)
+    try {
+      await installer()
+      // **Atteint seulement en cas d'échec** : au succès, le processus est remplacé pendant
+      // l'attente. Le dire ainsi plutôt que de laisser le bouton tourner indéfiniment, qui est le
+      // pire des deux messages possibles.
+      setEchecInstallation('l’installation n’a pas abouti')
+    } catch (erreur) {
+      setEchecInstallation(message(erreur))
+    }
+    setInstallation(false)
+  }
+
+  return (
+    <section className={styles.bloc}>
+      <h3 className={styles.titre}>Mises à jour</h3>
+      <div className={styles.maj}>
+        <Button
+          variant="secondary"
+          size="md"
+          onClick={rechercher}
+          disabled={etat.quoi === 'recherche'}
+        >
+          {etat.quoi === 'recherche' ? 'Recherche…' : 'Rechercher une mise à jour'}
+        </Button>
+      </div>
+
+      {/* `role="status"` : la réponse arrive après le clic, donc elle doit s'annoncer sans que le
+          focus quitte le bouton. */}
+      <div role="status">
+        {etat.quoi === 'aJour' && <p className={styles.majVerdict}>DoraBase est à jour.</p>}
+        {etat.quoi === 'echec' && (
+          <p className={styles.reserve}>
+            La recherche n’a pas abouti : {etat.raison}. Une machine hors ligne, un pare-feu, ou
+            l’application lancée hors de son bundle donnent tous ce résultat.
+          </p>
+        )}
+        {etat.quoi === 'disponible' && (
+          <div className={styles.majTrouvee}>
+            <p className={styles.majVerdict}>
+              La version <strong>{etat.maj.version}</strong> est disponible.
+            </p>
+            {/* Une release sans notes est un cas normal du manifeste, et l'écran tient sans. */}
+            <p className={styles.majNotes}>{etat.maj.notes ?? 'Cette version n’a pas de notes.'}</p>
+            {echecInstallation !== null && <p className={styles.reserve}>{echecInstallation}</p>}
+            <Button variant="dark" size="md" onClick={lancer} disabled={installation}>
+              {installation ? 'Téléchargement…' : 'Installer et redémarrer'}
+            </Button>
+            <p className={styles.note}>
+              DoraBase se relance seul. Les consoles non enregistrées ne sont pas conservées.
+            </p>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+/** Ce que `catch` reçoit n'est pas toujours une `Error` : Tauri rejette avec une chaîne. */
+function message(erreur: unknown): string {
+  return erreur instanceof Error ? erreur.message : String(erreur)
 }
 
 /**

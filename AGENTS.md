@@ -471,6 +471,21 @@ que ce qu'il annonce. Propriété qui en découle et qu'il faut garder : hors de
 rend rien — donc **aucune capture de fidélité ne bouge et il n'y a pas de variante de décor à
 maintenir**. Le silence sur rejet est le comportement voulu, pas un oubli.
 
+**Et une seconde voie, demandée à la main, dans les préférences** (26 août 2026). La barre d'état
+annonce ce qu'elle a trouvé au démarrage ; elle ne répond pas à « et maintenant ? », qui est la
+question qu'on se pose en attendant un correctif. La section « Mises à jour » de `A10` porte donc un
+bouton qui cherche, et le résultat qui s'ensuit. Trois points à ne pas défaire :
+
+- **rien n'est cherché à l'ouverture de la modale.** Une recherche au montage ferait dépendre le
+  rendu de `A10` d'une réponse réseau, donc de l'instant, et toute capture de fidélité de cet écran
+  deviendrait instable. C'est le même arbitrage que « la barre d'état ne rend rien par défaut »,
+  pour la même raison ;
+- **ici l'échec se dit**, à l'inverse de la barre d'état qui l'avale. La règle n'a pas changé : on ne
+  dérange pas quelqu'un pour une requête qu'il n'a pas demandée. Celle-ci, il l'a demandée, et un
+  bouton qui retombe en silence se lit comme une panne (défaut n° 36) ;
+- **« pas encore cherché » n'est pas « à jour »**, exactement comme « jamais tentée » n'est pas
+  « hors ligne » pour une base de l'arbre. Quatre états, pas deux.
+
 **`install_update` ne rend jamais `Ok`** : au succès, le processus est remplacé. Une promesse
 qui se résout est donc un **échec**, et l'écran le traite comme tel — sans quoi le bouton
 resterait sur « Téléchargement… » indéfiniment, ce qui est le pire des deux messages possibles.

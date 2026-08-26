@@ -3,10 +3,19 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { Preferences } from '../../domain/config'
+import type { AvailableUpdate } from '../../domain/maj'
 import { PreferencesDialog } from './PreferencesDialog'
 import { HAUTEUR_MIN, PREFERENCES_PAR_DEFAUT } from './preferences'
 
-function monter(preferences: Preferences = PREFERENCES_PAR_DEFAUT) {
+function monter(
+  preferences: Preferences = PREFERENCES_PAR_DEFAUT,
+  // Les deux commandes de mise à jour sont **toujours** injectées : les vraies passent par l'IPC,
+  // qui ne répond pas sous jsdom. Le défaut refuse, ce qui suffit aux tests qui ne les touchent pas.
+  maj: {
+    chercher?: () => Promise<AvailableUpdate | null>
+    installer?: () => Promise<void>
+  } = {},
+) {
   const onChange = vi.fn()
   const onClose = vi.fn()
   render(
@@ -17,6 +26,8 @@ function monter(preferences: Preferences = PREFERENCES_PAR_DEFAUT) {
         onChange={onChange}
         onClose={onClose}
         version="DoraBase 0.4.2 (arm64)"
+        chercherMiseAJour={maj.chercher ?? (() => Promise.reject(new Error('pas de pont')))}
+        installerMiseAJour={maj.installer ?? (() => Promise.reject(new Error('pas de pont')))}
       />
     </>,
   )
@@ -28,9 +39,9 @@ function allerA(nom: string) {
 }
 
 describe('la coquille (`15a`)', () => {
-  it('liste les sept sections du mockup et affiche la version', () => {
+  it('liste les sept sections du mockup, plus les mises à jour, et affiche la version', () => {
     monter()
-    expect(screen.getAllByRole('tab')).toHaveLength(7)
+    expect(screen.getAllByRole('tab')).toHaveLength(8)
     expect(screen.getByText('DoraBase 0.4.2 (arm64)')).toBeInTheDocument()
   })
 
@@ -224,5 +235,86 @@ describe('la navigation', () => {
     monter()
     const modale = screen.getByRole('dialog', { name: 'Préférences' })
     expect(within(modale).getByRole('tablist', { name: /Sections/ })).toBeInTheDocument()
+  })
+})
+
+/**
+ * « Mises à jour » (26 août 2026).
+ *
+ * **Le point qui compte : rien n'est cherché tant que rien n'est cliqué.** Un appel au montage
+ * ferait dépendre le rendu de la modale d'une réponse réseau, donc de l'instant, et toute capture
+ * de fidélité de `A10` deviendrait instable.
+ */
+describe('les mises à jour', () => {
+  it('ne cherche rien tant qu’on n’a rien demandé', async () => {
+    const chercher = vi.fn(() => Promise.resolve(null))
+    monter(PREFERENCES_PAR_DEFAUT, { chercher })
+    await allerA('Mises à jour')
+    expect(chercher).not.toHaveBeenCalled()
+    // « Pas encore cherché » n'est pas « à jour » : rien n'est affirmé avant la réponse.
+    expect(screen.queryByText(/est à jour/)).not.toBeInTheDocument()
+  })
+
+  it('dit que l’application est à jour quand il n’y a rien', async () => {
+    monter(PREFERENCES_PAR_DEFAUT, { chercher: () => Promise.resolve(null) })
+    await allerA('Mises à jour')
+    await userEvent.click(screen.getByRole('button', { name: 'Rechercher une mise à jour' }))
+    expect(await screen.findByText('DoraBase est à jour.')).toBeInTheDocument()
+  })
+
+  it('annonce la version trouvée, ses notes, et propose de l’installer', async () => {
+    const installer = vi.fn(() => new Promise<void>(() => {}))
+    monter(PREFERENCES_PAR_DEFAUT, {
+      chercher: () => Promise.resolve({ version: '9.9.9', notes: 'Deux moteurs de plus.' }),
+      installer,
+    })
+    await allerA('Mises à jour')
+    await userEvent.click(screen.getByRole('button', { name: 'Rechercher une mise à jour' }))
+
+    expect(await screen.findByText('9.9.9')).toBeInTheDocument()
+    expect(screen.getByText('Deux moteurs de plus.')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Installer et redémarrer' }))
+    expect(installer).toHaveBeenCalledOnce()
+    // L'installation ne rend jamais la main au succès : le bouton dit ce qu'il fait en attendant.
+    expect(screen.getByRole('button', { name: 'Téléchargement…' })).toBeDisabled()
+  })
+
+  it('tient sans notes — une release peut n’en avoir aucune', async () => {
+    monter(PREFERENCES_PAR_DEFAUT, {
+      chercher: () => Promise.resolve({ version: '9.9.9', notes: null }),
+    })
+    await allerA('Mises à jour')
+    await userEvent.click(screen.getByRole('button', { name: 'Rechercher une mise à jour' }))
+    expect(await screen.findByText('Cette version n’a pas de notes.')).toBeInTheDocument()
+  })
+
+  /*
+   * **Ici l'échec se dit**, à l'inverse de la barre d'état qui l'avale : l'utilisateur a cliqué, et
+   * un bouton qui retombe en silence se lit comme une panne.
+   */
+  it('dit pourquoi la recherche n’a pas abouti', async () => {
+    monter(PREFERENCES_PAR_DEFAUT, {
+      chercher: () => Promise.reject(new Error('réseau injoignable')),
+    })
+    await allerA('Mises à jour')
+    await userEvent.click(screen.getByRole('button', { name: 'Rechercher une mise à jour' }))
+    expect(await screen.findByText(/réseau injoignable/)).toBeInTheDocument()
+  })
+
+  /*
+   * `install_update` ne rend jamais `Ok` : au succès le processus est remplacé. Une promesse qui se
+   * résout est donc un **échec**, et le bouton doit cesser de tourner.
+   */
+  it('traite une installation qui rend la main comme un échec', async () => {
+    monter(PREFERENCES_PAR_DEFAUT, {
+      chercher: () => Promise.resolve({ version: '9.9.9', notes: null }),
+      installer: () => Promise.resolve(),
+    })
+    await allerA('Mises à jour')
+    await userEvent.click(screen.getByRole('button', { name: 'Rechercher une mise à jour' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Installer et redémarrer' }))
+    expect(await screen.findByText(/n’a pas abouti/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Installer et redémarrer' })).toBeEnabled()
   })
 })
