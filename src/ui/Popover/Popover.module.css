@@ -13,10 +13,17 @@
   display: inline-flex;
 }
 
-.panel,
-.panelEnd {
+/*
+ * Quatre modificateurs, deux axes : le panneau se compose par `cx`.
+ *
+ * **L'axe vertical n'existait pas**, et c'est ce qui rendait le popover de la barre d'état
+ * inatteignable : ancré dans les 26 derniers pixels de la fenêtre, il s'ouvrait vers le bas,
+ * donc entièrement hors de la fenêtre — que `html, body { overflow: hidden }` (voir
+ * `reset.css`) ne laisse pas défiler. Rien ne se passait au clic, littéralement.
+ */
+
+.panel {
   position: absolute;
-  top: calc(100% + var(--space-1));
   z-index: 10;
   min-width: 198px;
   border-radius: var(--radius-panel);
@@ -30,14 +37,22 @@
   color: var(--ink);
 }
 
-.panel {
+.aGauche {
   left: 0;
 }
 
 /* Bascule quand le panneau déborderait à droite : il s'aligne alors sur le bord droit du
  * déclencheur. Pas de portail, donc c'est ici que le débordement se règle. */
-.panelEnd {
+.aDroite {
   right: 0;
+}
+
+.versLeBas {
+  top: calc(100% + var(--space-1));
+}
+
+.versLeHaut {
+  bottom: calc(100% + var(--space-1));
 }
 
 .title {

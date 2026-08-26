@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { cx } from '../cx'
 import { useSortieDuPointeur } from '../sortieDuPointeur'
 import styles from './Popover.module.css'
 
@@ -20,6 +21,20 @@ type PopoverProps = {
   content: ReactNode | ((fermer: () => void) => ReactNode)
   /** Alignement par rapport au déclencheur. Le panneau bascule seul s'il déborde. */
   align?: 'start' | 'end'
+  /**
+   * De quel côté le panneau s'ouvre. `bas` par défaut, comme tous les popovers du produit.
+   *
+   * **Explicite, et non mesuré, délibérément.** La bascule horizontale se mesure parce qu'elle
+   * dépend de la largeur du contenu — donc de la fenêtre, du texte, des polices chargées. La
+   * verticale, elle, est **structurelle** chez le seul appelant qui en a besoin : un déclencheur
+   * dans la barre d'état est dans les 26 derniers pixels de la fenêtre, il n'aura jamais la place
+   * en dessous, et aucune mesure ne changera cela. Une prop se vérifie sous Vitest ; une mesure de
+   * plus ne se vérifierait que dans un vrai navigateur, or `MiseAJour` ne rend rien hors de la
+   * webview — donc ni la galerie, ni Playwright ne pourraient l'atteindre. Le jour où un appelant
+   * a un déclencheur qui *peut* manquer de place selon le contenu, la bascule mesurée se
+   * rajoutera ici, à côté de l'horizontale.
+   */
+  ouvertureVers?: 'haut' | 'bas'
   /**
    * Ferme le panneau quand le pointeur quitte l'ensemble déclencheur + panneau (`26`).
    *
@@ -51,6 +66,7 @@ export function Popover({
   children,
   content,
   align = 'start',
+  ouvertureVers = 'bas',
   fermerEnSortant = false,
 }: PopoverProps) {
   const id = useId()
@@ -157,7 +173,16 @@ export function Popover({
           id={id}
           role="dialog"
           aria-label={title}
-          className={alignement === 'end' ? styles.panelEnd : styles.panel}
+          /* Le sens d'ouverture, dans le DOM. **Ce n'est pas qu'un crochet de test** : c'est la
+             seule trace lisible d'une propriété que jsdom ne calcule pas et qu'une classe de CSS
+             module ne nomme qu'en `string | undefined`. Un panneau ouvert hors de la fenêtre est
+             invisible *et* indistinguable d'un panneau bien posé — voir `MiseAJour`. */
+          data-ouverture={ouvertureVers}
+          className={cx(
+            styles.panel,
+            alignement === 'end' ? styles.aDroite : styles.aGauche,
+            ouvertureVers === 'haut' ? styles.versLeHaut : styles.versLeBas,
+          )}
         >
           {title !== undefined && <div className={styles.title}>{title}</div>}
           {typeof content === 'function' ? content(() => fermer()) : content}
