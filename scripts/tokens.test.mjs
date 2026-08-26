@@ -1,4 +1,4 @@
-import { emitCss, emitTs, flatten } from './tokens.mjs'
+import { emitCss, emitTs, flatten, separerThemes } from './tokens.mjs'
 
 const tree = {
   surface: { canvas: '#EFEAE0', paper: '#FBF7EF' },
@@ -37,4 +37,35 @@ test('aplatit une imbrication à trois niveaux', () => {
     'surface-overlay': '#000',
     'surface-overlay-hover': '#111',
   })
+})
+
+test('sépare le sous-arbre « nuit » du thème clair', () => {
+  const { clair, nuit } = separerThemes({ ...tree, nuit: { ink: { base: '#EDE7DA' } } })
+  expect(clair.nuit).toBeUndefined()
+  expect(flatten(nuit)).toEqual({ ink: '#EDE7DA' })
+  // Sans sous-arbre « nuit », la séparation rend un objet vide — pas `undefined`.
+  expect(separerThemes(tree).nuit).toEqual({})
+})
+
+test('émet le sombre sur l’attribut **et** sous la requête média', () => {
+  const css = emitCss(flatten(tree), { ink: '#EDE7DA' })
+  expect(css).toMatch(/^:root\[data-theme="nuit"\] \{$/m)
+  // Le `:not([data-theme="cahier"])` est ce qui laisse « Cahier » clair sur un macOS en sombre :
+  // « Système » ne pose **aucun** attribut, donc c'est l'absence que la requête média rattrape.
+  expect(css).toMatch(
+    /@media \(prefers-color-scheme: dark\) \{\n {2}:root:not\(\[data-theme="cahier"\]\) \{/,
+  )
+  expect(css).toContain('    --ink: #EDE7DA;')
+})
+
+test('sans jeton sombre, le CSS n’a que le bloc clair', () => {
+  const css = emitCss(flatten(tree))
+  expect(css).not.toContain('data-theme')
+  expect(css).not.toContain('prefers-color-scheme')
+})
+
+test('un jeton sombre sans équivalent clair arrête le générateur', () => {
+  // Il ne casserait rien de visible — ni TypeScript, ni Vitest, ni l'œil : c'est ce qui en fait un
+  // piège. `tokens.ts` ne connaît que les noms du thème clair.
+  expect(() => emitCss(flatten(tree), { 'ink-inexistant': '#000' })).toThrow(/ink-inexistant/)
 })

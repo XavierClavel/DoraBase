@@ -573,6 +573,92 @@ chargées en ligne.
 autorisé — un export par `URL.createObjectURL` sera bloqué. Ne pas élargir la CSP par
 anticipation : traiter l'écriture côté Rust.
 
+### Le thème « Nuit »
+
+**Les valeurs sombres vivent dans `tokens.json`, sous une clé de premier niveau `nuit`** (26 août
+2026). Un second fichier aurait été plus simple à lire et aurait mis des couleurs littérales hors du
+seul fichier que la prohibition et `pnpm tokens:check` gardent — la règle porte sur le *fichier*,
+pas sur le nombre de thèmes. `separerThemes` détache ce sous-arbre avant l'aplatissement, donc
+`tokens.ts` ne connaît **que** les noms du clair : les deux thèmes ont forcément le même jeu de
+jetons, et un nom sombre sans équivalent clair **arrête le générateur** plutôt que d'engendrer un
+`var()` que rien ne casse.
+
+**Trois blocs CSS, et il en faut trois** : `:root` pour le clair, `:root[data-theme="nuit"]` pour le
+sombre choisi, et le même sombre sous `@media (prefers-color-scheme: dark)` pour
+`:root:not([data-theme="cahier"])`. « Système » ne pose **aucun** attribut (voir `themeApplique`) :
+c'est cette absence que la requête média rattrape, et le `:not` est ce qui empêche « Cahier » choisi
+*explicitement* de virer au sombre sur un macOS en sombre.
+
+**`color-scheme` est déclaré à la main dans `reset.css`, et ce n'est pas un doublon.** Aucun jeton
+n'atteint ce que le moteur dessine lui-même — barres de défilement, curseur de saisie, les
+`input[type="range"]` des préférences. Sans lui, « Nuit » laisserait des barres claires sur des
+panneaux sombres.
+
+**Les quatre `--preview-*` sont les seuls jetons de couleur que « Nuit » ne redéfinit pas**, et
+c'est délibéré : les vignettes du sélecteur de thème montrent *l'autre* thème autant que le leur.
+Reprises de `--bar`/`--paper`/`--dark`, elles auraient toutes viré au sombre sous « Nuit » — un
+sélecteur de thème qui ne montre plus qu'un thème.
+
+**Ce que le sombre n'a pas touché** : les `--syn-*` de l'éditeur, qui étaient déjà des couleurs de
+fond sombre ; `--accent` et ses deux nuances, que les préférences posent en style *inline* sur la
+racine, donc hors de portée d'une redéfinition par thème ; et `--gold`, lisible sur les deux fonds.
+`--dark` et `--dark-2` restent des surfaces sombres **relevées** (`#35302A`, `#413B33`) : un bouton
+« dark » et une infobulle doivent rester distincts du fond, et sous « Nuit » c'est vers le haut que
+se fait la distinction.
+
+**Deux défauts trouvés à l'œil dès le premier lancement, et ils ont la même forme** : un jeton de
+*surface* employé comme *encre*. `color: var(--paper)` posé sur `background: var(--dark)` — sept
+occurrences, dont l'infobulle, le segment actif et la liste des sections d'A10 — donnait un texte
+qui disparaissait dans son fond dès que `--paper` cessait d'être clair. D'où **`--on-dark`**, qui
+porte la valeur claire d'avant (`#FBF7EF`, donc rien ne bouge au pixel) et une valeur sombre. La
+règle qui en sort : **un jeton nommé pour une surface ne doit jamais servir d'encre**, et
+inversement — le nom porte le rôle, et c'est le rôle qui décide de la valeur sombre.
+
+**`--btn-strong-bg`/`--btn-strong-ink` est la seule chose du sombre qui s'*inverse*.** Le bouton
+plein est celui qui contraste le plus avec la page : le plus sombre sur du papier, donc le plus
+**clair** sur une nuit. Les autres surfaces sombres — infobulle, segment actif, blocs de code —
+restent sombres et se contentent d'une encre lisible. La variante garde son nom `dark` dans l'API
+de `Button` : renommer une variante publique est une autre décision.
+
+**Un littéral ne suit aucun thème, et c'est une raison de plus pour la prohibition.** Le dégradé
+d'`A1` portait `#F8F3E9`, autorisé par un commentaire qui disait vrai — « une seule occurrence, pas
+un rôle partagé, pas de jeton ». Sous « Nuit », le fond de la fenêtre restait crème en dégradant
+depuis un `--paper-bright` devenu noir. C'était **la seule** couleur littérale du dépôt hors
+`tokens.json` ; rien ne la vérifie automatiquement.
+
+**La plaque du logo suit le thème, le dessin non.** `sprite.svg` porte la plaque en
+`fill="var(--logo-plate,#FBF7EF)"` — la même forme que l'`--accent` juste en dessous, repli compris.
+Les autres `#FBF7EF` du symbole sont du **dessin** — la carte, le carnet — et ne bougent pas : ils
+doivent contraster avec la plaque, pas avec la page. L'icône de l'application n'est pas concernée,
+elle vit dans `src-tauri/icons/icon-dorabase.svg`, un fichier séparé qu'aucune CSS n'atteint.
+
+**Une ombre écrite sur une encre devient un halo.** `box-shadow: … var(--ink-4)` sous le logo
+d'`A1` : `--ink-4` passe au crème sous « Nuit », donc l'ombre éclairait. D'où `--shadow-logo`, à la
+valeur claire inchangée. Les ombres se déclarent **en entier** dans `tokens.json`, forme comprise —
+c'est ce qui laisse le sombre changer l'opacité en même temps que la couleur.
+
+**L'ombre d'un élément accent se dérive de l'accent, elle ne se choisit pas.** `--shadow-accent`
+teinte son ombre avec `--accent` lui-même : c'est la seule forme correcte, l'accent étant réglable
+et posé en style *inline* par les préférences — une ombre écrite sur `--accent-deeper`, statique et
+terracotta, serait orange derrière un bouton vert. Sous « Nuit », l'ombre claire portait trop : elle
+passe donc par un `color-mix` **imbriqué**, l'accent d'abord assombri vers `--canvas` (70 / 30) puis
+posé à 50 % au lieu de 70 %. Mesuré sur la valeur *calculée* et non sur la déclaration : la
+luminosité oklab tombe de .68 à .53, l'alpha de .7 à .5.
+
+**L'imbrication de `color-mix` est le seul endroit du projet qui approche le plancher Safari 16.4.**
+Chromium la résout ; WKWebView n'est pas pilotable (voir « Ce que l'outillage ne peut pas voir »), et
+une valeur invalide ne dégraderait pas — elle supprimerait l'ombre. À regarder dans l'application
+réelle plutôt qu'à supposer.
+
+**Une coïncidence à connaître** : le bouton vert de la console porte `color: var(--paper-bright)`,
+qui sous « Nuit » devient une *surface* sombre — donc du texte sombre sur un vert clair, ce qui est
+lisible et même souhaitable sur un aplat saturé. Le rendu est juste, le nom ne l'est pas.
+
+**Ce qui reste à faire à l'œil, et qu'aucun test ne dira** : lire les dix écrans en « Nuit ». Toute
+la suite Playwright et toutes les captures de fidélité mesurent le **clair** — leur vert prouve
+seulement que le sombre n'a rien changé au clair. Un contraste faible, une bordure disparue ou une
+pastille illisible sous « Nuit » ne se voient qu'en regardant.
+
 ### La migration du format de configuration
 
 `VERSION_COURANTE` vaut **5**. Les crans successifs sont des passes sur du
@@ -616,6 +702,17 @@ manière de reprendre des données sans que `serde` les efface en silence.
 - **Une app lancée depuis le Finder n'hérite pas du `PATH` du shell.** macOS lui en donne
   un minimal, sans `/opt/homebrew/bin` ni `/usr/local/bin`. Tout scope qui lance un
   programme tiers doit fouiller les emplacements usuels en plus du `PATH`.
+- **Un fichier qu'on vient d'écrire ne s'exécute pas toujours : `ETXTBSY`.** Linux refuse
+  d'exécuter un fichier qu'un processus tient ouvert **en écriture**. `std::fs::write` ouvre ce
+  descripteur dans *notre* processus ; les tests tournant en parallèle, le `fork` que fait un autre
+  fil avant son `exec` le duplique dans l'enfant, et le fichier devient inexécutable le temps que
+  cet enfant atteigne son `exec`. Rust pose bien `O_CLOEXEC` — la fenêtre dure quelques
+  microsecondes, et c'est assez : elle a fait tomber `main` et une PR le 26 août 2026, sur **deux
+  tests différents**, ce qui est la marque d'une course et non d'un test faux. Le remède est que le
+  descripteur n'existe jamais chez nous : le faux binaire de `cloudsql` est posé par `cp` dans un
+  sous-processus, qui s'achève avant qu'on l'exécute. La source, elle, s'écrit normalement —
+  `ETXTBSY` porte sur l'inode qu'on exécute, pas sur celui qu'on lit. Et ce n'est pas reproductible
+  à volonté : trois tours verts en local ne prouvent rien, seule la CI juge.
 - **Un sous-processus dont personne ne lit la sortie se bloque en écriture** : le tampon du
   système se remplit et l'enfant s'arrête au milieu d'un `write`. Une tâche de drain n'est
   pas un raffinement, c'est une condition de fonctionnement.
@@ -1004,9 +1101,6 @@ Aucun de ces points ne bloque le code en place.
 - **Le patch inverse persisté** — où l'écrire, sous quelle forme, et ce qu'il advient d'un
   patch dont la base a changé. Le garde-fou est livré **désactivé avec sa raison** plutôt
   qu'allumé sans effet.
-- **Le thème « Nuit »** — le mécanisme existe (`data-theme` sur la racine, suivi de
-  `prefers-color-scheme`) et l'écran le dit ; les valeurs sombres des cent jetons de
-  `tokens.json` sont un travail de design.
 - **L'écran de confiance SSH à la première connexion**, aujourd'hui contourné par un refus.
 - **Une variante d'icône simplifiée sous 32 px** : la carte du sac à dos devient un amas de
   pixels. Visible au Dock réduit, en vignette Finder, en barre des menus.

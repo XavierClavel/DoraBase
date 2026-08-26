@@ -1,13 +1,16 @@
 /*
  * Zone centrale de l'écran d'accueil, cotes relevées sur le mockup de handoff.
  *
- * `#F8F3E9` est un littéral local à ce dégradé : une seule occurrence dans tout le
- * mockup, pas une valeur de rôle partagée — pas de token. `--paper-bright` couvre
- * l'autre point d'arrêt, déjà tokenisé en écrivant `TitleBar`.
+ * `--hero-wash` était un littéral `#F8F3E9`, au motif d'une occurrence unique — un rôle
+ * n'était pas partagé, donc pas de jeton. **« Nuit » a tranché autrement** : un littéral
+ * ne suit aucun thème, et celui-ci laissait le fond de la fenêtre crème sous le sombre,
+ * dégradé depuis un `--paper-bright` devenu noir. La valeur claire est inchangée.
  *
  * Logo 72px `--radius-logo` (17, valeur du mockup — la table du handoff annonçait 20px,
  * écart assumé). Ombre : forme locale à une seule
- * occurrence, couleur `--ink-4` référencée par `var()` — pas un littéral `rgba()`.
+ * occurrence — mais `--shadow-logo` et non plus la forme écrite ici sur `--ink-4` : une encre
+ * devient **claire** sous « Nuit », et l'ombre du logo s'y muait en halo. La valeur claire est
+ * celle d'avant, à l'octet près.
  *
  * Titre 27px `--text-hero`, interligne 1.15 : hors échelle `--leading-*`, une seule
  * occurrence, métrique locale documentée. Sous-titre 13.5px : même situation, hors
@@ -20,7 +23,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(120% 90% at 50% 0%, var(--paper-bright), #f8f3e9);
+  background: radial-gradient(120% 90% at 50% 0%, var(--paper-bright), var(--hero-wash));
 }
 
 .content {
@@ -36,7 +39,7 @@
   width: 72px;
   height: 72px;
   border-radius: var(--radius-logo);
-  box-shadow: 0 12px 26px -10px var(--ink-4);
+  box-shadow: var(--shadow-logo);
 }
 
 .title {

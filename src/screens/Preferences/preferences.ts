@@ -40,7 +40,7 @@ export const PALETTE: readonly { valeur: Accent; couleur: string; nom: string }[
 /** Les trois thèmes, avec le nom que le mockup leur donne. */
 export const THEMES: readonly { valeur: Theme; nom: string; detail: string }[] = [
   { valeur: 'cahier', nom: 'Cahier', detail: 'le thème clair du handoff' },
-  { valeur: 'nuit', nom: 'Nuit', detail: 'incomplet — voir la mention' },
+  { valeur: 'nuit', nom: 'Nuit', detail: 'le thème sombre' },
   { valeur: 'systeme', nom: 'Système', detail: 'suit le réglage de macOS' },
 ]
 
@@ -104,15 +104,4 @@ export function jetonsDe(preferences: Preferences): Record<string, string> {
  */
 export function themeApplique(preferences: Preferences): 'cahier' | 'nuit' | null {
   return preferences.theme === 'systeme' ? null : preferences.theme
-}
-
-/**
- * Vrai quand ce thème est **incomplet** (`15b`).
- *
- * `tokens.json` n'a qu'une valeur par jeton : le sombre demande une seconde valeur pour chacun, ce
- * qui est un travail de design que le handoff ne fournit pas. L'écran le dit plutôt que de laisser
- * découvrir un écran à moitié illisible.
- */
-export function themeIncomplet(theme: Theme): boolean {
-  return theme === 'nuit'
 }
