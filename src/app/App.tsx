@@ -8,7 +8,7 @@ import {
 } from '../data/commandes'
 import { useConfiguration } from '../data/useConfiguration'
 import { Sprite } from '../design/icons/Sprite'
-import type { Database, Preferences, Project } from '../domain/config'
+import type { Database, EnvironmentId, Preferences, Project } from '../domain/config'
 import {
   renommerLaConnexion,
   renommerLeProjet,
@@ -57,7 +57,17 @@ export function App() {
   // Le menu contextuel du moteur de rendu, remplacé par le silence : nos menus s'ouvrent eux-mêmes.
   useClicDroitDesactive()
 
-  const [connexionOuverte, setConnexionOuverte] = useState(false)
+  /**
+   * La déclaration d'une connexion est ouverte, et **sur quoi** (26 août 2026).
+   *
+   * Un objet plutôt qu'un booléen : le geste part désormais du menu d'une ligne d'environnement, qui
+   * sait de quel projet et de quel environnement il s'agit. L'objet vide reste le cas du raccourci
+   * clavier, où rien n'est désigné.
+   */
+  const [connexionOuverte, setConnexionOuverte] = useState<{
+    project?: string
+    environment?: EnvironmentId
+  } | null>(null)
   /**
    * Le parcours de création est ouvert (`24d`).
    *
@@ -152,12 +162,12 @@ export function App() {
    * que `08e` rendait, faute de mieux). Le parcours aboutit là où l'on voulait aller ; il passe par ce
    * qui manquait.
    */
-  const ajouterUneConnexion = () => {
+  const ajouterUneConnexion = (cible?: { project: string; environment: EnvironmentId }) => {
     if (projects.length === 0)
       setProjetOuvert({
         raison: 'Une connexion appartient à un projet. Commençons par le projet.',
       })
-    else setConnexionOuverte(true)
+    else setConnexionOuverte(cible ?? {})
   }
 
   useRaccourcisDeCreation({
@@ -288,14 +298,23 @@ export function App() {
               return issue
             }}
           />
-          {(connexionOuverte || edition) && (
+          {(connexionOuverte !== null || edition) && (
             <NewConnection
               onClose={() => {
-                setConnexionOuverte(false)
+                setConnexionOuverte(null)
                 setEdition(null)
               }}
               projects={projetsPourLesEcrans}
               edition={edition ?? undefined}
+              {...(connexionOuverte?.project !== undefined &&
+              connexionOuverte.environment !== undefined
+                ? {
+                    cible: {
+                      project: connexionOuverte.project,
+                      environment: connexionOuverte.environment,
+                    },
+                  }
+                : {})}
               onSaved={setProjects}
             />
           )}
@@ -312,7 +331,7 @@ export function App() {
             // d'assemblage — `08f` créait le projet au passage — mais le geste s'est inversé.
             onNewProject={() => setProjetOuvert({})}
             projectCount={projects.length}
-            dimmed={connexionOuverte || projetOuvert !== null}
+            dimmed={connexionOuverte !== null || projetOuvert !== null}
           />
         </>
       )}

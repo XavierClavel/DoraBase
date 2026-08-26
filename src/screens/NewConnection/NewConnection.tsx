@@ -4,6 +4,7 @@ import type {
   Database,
   Engine,
   EnvironmentDeclaration,
+  EnvironmentId,
   Project,
   UpdateVariantRequest,
 } from '../../domain/config'
@@ -75,6 +76,18 @@ type NewConnectionProps = {
    */
   projetImpose?: string
   /**
+   * Le projet et l'environnement dans lesquels la connexion se déclare, quand l'appelant les connaît
+   * (26 août 2026).
+   *
+   * C'est le cas du menu d'une ligne d'environnement : il sait de quel palier de l'arbre part le
+   * geste. Le brouillon part donc préréglé sur ce couple, plutôt que sur le premier projet de la
+   * liste et sur `dev` — deux valeurs qui, ici, seraient devinées alors qu'elles sont connues.
+   *
+   * Distinct de `projetImpose`, qui dit « ce projet vient d'être créé » et fait paraître la bande de
+   * progression : la cible ne fait que préremplir.
+   */
+  cible?: { project: string; environment: EnvironmentId }
+  /**
    * La base à modifier (`08g`). Absente, la modale **crée**.
    *
    * Le même formulaire sert les deux : `A2` porte déjà tous les champs, et un second écran en
@@ -137,13 +150,19 @@ export function NewConnection({
   onUpdate = mettreAJourLaVariante,
   onSaved,
   projetImpose,
+  cible,
 }: NewConnectionProps) {
   // En mode édition, le brouillon part des réglages enregistrés. `useState` avec initialiseur : le
   // recalculer à chaque rendu écraserait la saisie en cours.
   const [draft, setDraft] = useState<ConnectionDraft>(() =>
     edition
       ? draftDepuisLaVariante(edition.project, edition.database, varianteCible(edition))
-      : emptyDraft(),
+      : // La cible préremplit le couple projet/environnement quand l'appelant le connaît ; le reste du
+        // brouillon reste celui de `emptyDraft`.
+        {
+          ...emptyDraft(),
+          ...(cible ? { project: cible.project, environment: cible.environment } : {}),
+        },
   )
   // Le panneau proxy est replié à l'ouverture : le mockup le montre déplié, mais il y montre
   // aussi un tunnel configuré. Pour une connexion neuve, déplier un bloc vide de cinq champs
