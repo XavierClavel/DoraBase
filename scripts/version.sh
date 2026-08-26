@@ -139,27 +139,35 @@ fi
 
 # ── Les trois fichiers ──────────────────────────────────────────────────────────────────────
 
-# `sed -i ''` est la forme BSD, la seule qui marche sur macOS ; le projet ne construit que là.
-sed -i '' "s/^  \"version\": \".*\",/  \"version\": \"$nouvelle\",/" package.json
-sed -i '' "s/^version = \".*\"/version = \"$nouvelle\"/" src-tauri/Cargo.toml
-# Le verrou : la ligne `version` qui **suit** `name = "dorabase"`, et pas une autre. Six cents
-# paquets y portent la même clef. `cargo` la réécrirait aussi, mais il exigerait d'être dans le
-# `PATH` (voir AGENTS.md, deux pièges propres à cette machine) et toucherait au reste du verrou.
+# **Les trois écritures en Python, et pas en `sed`.** `sed -i ''` est la forme BSD, la seule qui
+# marche sur macOS ; `sed -i` sans suffixe est la forme GNU, la seule qui marche ailleurs. Aucune
+# des deux ne marche des deux côtés, et le script devait pouvoir être **essayé** hors d'un Mac —
+# depuis un conteneur Linux, par exemple, où le sabotage se joue sans risquer le dépôt de travail.
+# Python écrit pareil partout, et c'est déjà lui qui traitait le verrou.
+#
+# Chaque substitution est **comptée** : une clef renommée ou une ligne déplacée laisserait un
+# fichier inchangé, les trois divergeraient, et `verifier-version.py` refuserait juste après —
+# mais deux étapes plus tard, sur un message qui ne nommerait pas le fichier fautif.
 python3 - "$nouvelle" <<'PY'
 import re, sys
 from pathlib import Path
 
 nouvelle = sys.argv[1]
-chemin = Path("src-tauri/Cargo.lock")
-texte = chemin.read_text(encoding="utf-8")
-remplace, combien = re.subn(
-    r'(?m)^(name = "dorabase"\nversion = ")[^"]+(")',
-    lambda m: m.group(1) + nouvelle + m.group(2),
-    texte,
-)
-if combien != 1:
-    sys.exit(f"Cargo.lock : {combien} occurrence(s) du paquet dorabase, 1 attendue")
-chemin.write_text(remplace, encoding="utf-8")
+
+# Le verrou : la ligne `version` qui **suit** `name = "dorabase"`, et pas une autre. Six cents
+# paquets y portent la même clef. `cargo` la réécrirait aussi, mais il exigerait d'être dans le
+# `PATH` (voir AGENTS.md, deux pièges propres à cette machine) et toucherait au reste du verrou.
+for chemin, motif, remplacement in (
+    ("package.json", r'(?m)^(  "version": ")[^"]+(",)$', r"\g<1>%s\g<2>"),
+    ("src-tauri/Cargo.toml", r'(?m)^(version = ")[^"]+(")$', r"\g<1>%s\g<2>"),
+    ("src-tauri/Cargo.lock", r'(?m)^(name = "dorabase"\nversion = ")[^"]+(")', r"\g<1>%s\g<2>"),
+):
+    fichier = Path(chemin)
+    texte = fichier.read_text(encoding="utf-8")
+    remplace, combien = re.subn(motif, remplacement % nouvelle, texte, count=1)
+    if combien != 1:
+        sys.exit(f"{chemin} : {combien} occurrence(s) de la ligne de version, 1 attendue")
+    fichier.write_text(remplace, encoding="utf-8")
 PY
 
 # Le producteur vérifie sa propre sortie. Si les trois fichiers ne s'accordent pas, rien n'est

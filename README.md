@@ -79,37 +79,55 @@ publiée.
 
 Les versions sont en **`majeur.fonction.correctif`** (SemVer) :
 
-| Cran | Quand | Commande |
-| --- | --- | --- |
-| **correctif** | une correction, rien de neuf | `./scripts/version.sh correctif` |
-| **fonction** | une fonctionnalité, rien de cassé | `./scripts/version.sh fonction` |
-| **majeur** | une rupture assumée | `./scripts/version.sh majeur` |
+| Cran | Quand |
+| --- | --- |
+| **correctif** | une correction, rien de neuf |
+| **fonction** | une fonctionnalité, rien de cassé |
+| **majeur** | une rupture assumée |
 
-Le flux, du travail à la release :
+Le travail se fait sur une branche, arrive dans `main` par PR, et `main` reste verte —
+`ci.yml` tourne sur chaque push et chaque PR. Publier se fait ensuite d'un clic.
 
+### Publier : le bouton
+
+> **Actions** ▸ [**Publication**](https://github.com/g3wis/DoraBase/actions/workflows/publication.yml)
+> ▸ *Run workflow* ▸ branche `main`, cran `fonction` ▸ **Run workflow**
+
+C'est tout. Ni Mac, ni `git`, ni tag à poser. Le run relève les trois fichiers de version,
+pose le tag annoté, construit le bundle universel, le signe et le notarie chez Apple, vérifie,
+**puis seulement** pousse et crée la release avec le `.dmg`, son empreinte, l'archive de mise à
+jour et `latest.json`. Une trentaine de minutes.
+
+L'ordre compte : le commit de relèvement et le tag restent locaux au runner jusqu'à ce que le
+bundle soit vérifié. **Si quoi que ce soit échoue, il ne reste rien** — ni commit, ni tag, ni
+release à moitié. Il n'y a rien à nettoyer, seulement à recliquer.
+
+Avant de relever quoi que ce soit, le run refuse deux états :
+
+- **une branche autre que `main`** — c'est le seul état que la CI a validé ;
+- **une CI qui n'est pas verte sur ce commit exact.** Encore en cours compte comme un refus :
+  laissez-la finir, puis recliquez.
+
+Le champ *version* reste vide sauf pour un numéro que les trois crans ne savent pas dire.
+
+### Publier : depuis un poste
+
+La voie d'origine, sans Actions, pour qui l'a sous la main :
+
+```bash
+git switch main && git pull
+./scripts/version.sh fonction        # relève les 3 fichiers, committe, pose le tag annoté
+git push origin main --follow-tags   # c'est le tag qui déclenche la publication
 ```
-branche de travail  ──PR──▶  main (CI verte)  ──version.sh──▶  tag vX.Y.Z  ──▶  release GitHub
-```
 
-1. **Le travail se fait sur une branche**, arrive dans `main` par PR, et `main` reste verte —
-   `ci.yml` tourne sur chaque push et chaque PR.
-2. **Publier**, depuis `main` à jour et propre :
+`version.sh` **ne pousse rien** : la commande est affichée, le geste reste humain. Ce qu'il
+refuse, et pourquoi : une branche autre que `main` (le tag désignerait un état que la CI n'a
+pas validé), un arbre sale (le commit de relèvement emporterait du travail en cours), une
+divergence avec `origin/main`, un numéro qui recule, un tag déjà publié. Les mêmes refus valent
+sur le runner, qui appelle le même script.
 
-   ```bash
-   git switch main && git pull
-   ./scripts/version.sh fonction        # relève les 3 fichiers, committe, pose le tag annoté
-   git push origin main --follow-tags   # c'est le tag qui déclenche la publication
-   ```
-
-3. **Le tag `vX.Y.Z` déclenche `publication.yml`** : construction du bundle universel,
-   signature et notarisation Apple, vérifications, puis release GitHub avec le `.dmg`,
-   l'archive de mise à jour, le manifeste `latest.json` et les notes de version — celles-ci
-   listent les commits depuis le tag précédent.
-
-Ce que le script refuse, et pourquoi : une branche autre que `main` (le tag désignerait un
-état que la CI n'a pas validé), un arbre sale (le commit de relèvement emporterait du
-travail en cours), une divergence avec `origin/main`, un numéro qui recule, un tag déjà
-publié. Il **ne pousse rien** : la commande est affichée, le geste reste humain.
+Le tag `vX.Y.Z` déclenche alors `publication.yml`, qui fait le reste — mêmes étapes, mêmes
+vérifications, mêmes assets. Les notes de version listent les commits depuis le tag précédent.
 
 ### Les huit secrets
 

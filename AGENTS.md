@@ -358,15 +358,54 @@ décisions à ne pas défaire :
 
 **Convention Rust à 4 espaces**, pas de `rustfmt.toml` alignant Rust sur le JS du projet.
 
-### La publication : un tag, et rien d'autre
+### La publication : un geste, deux voies
 
-**Le tag est le déclencheur, le commit ne l'est pas.** `ci.yml` tourne sur chaque push et
-chaque PR ; `publication.yml` ne tourne que sur un tag `vX.Y.Z`, motif **ancré** sur les
-trois nombres. Une release est un geste, pas un effet de bord d'un push — et un motif large
-(`v*`) accepterait `v1.2` ou `v0.1.0-essai`, dont le nom de bundle n'a été décidé par
-personne. Le format de version est fermé pour la même raison : un suffixe de pré-version
-traverserait `Info.plist`, le nom du `.dmg` et le nom du tag sans que quiconque ait tranché
-ce qu'il y devient.
+**Ce qui déclenche est toujours une demande, jamais un effet de bord d'un push.** `ci.yml`
+tourne sur chaque push et chaque PR ; `publication.yml` ne tourne que sur un tag `vX.Y.Z`,
+motif **ancré** sur les trois nombres, ou sur le bouton *Run workflow*. Un motif large (`v*`)
+accepterait `v1.2` ou `v0.1.0-essai`, dont le nom de bundle n'a été décidé par personne. Le
+format de version est fermé pour la même raison : un suffixe de pré-version traverserait
+`Info.plist`, le nom du `.dmg` et le nom du tag sans que quiconque ait tranché ce qu'il y
+devient. Et la liste des déclencheurs est **close** dans `verifier-ci.py` plutôt qu'une suite
+de refus nommés : une liste de refus ne couvre jamais celui qu'on n'a pas prévu.
+
+**Le bouton fait tout dans un seul run, et ce n'est pas un raccourci d'écriture** (26 août
+2026). Poser le tag dans un job et laisser le déclencheur du dessus prendre le relais ne
+partirait **jamais** : un tag poussé avec le `GITHUB_TOKEN` ne déclenche aucun workflow —
+GitHub coupe la récursion, sans erreur ni trace. L'échec serait un silence, ce qui est le pire
+des modes de défaillance pour un geste qu'on fait cinq fois par an.
+
+**Et le push vient en avant-dernier, après la notarisation.** Le commit de relèvement et son
+tag sont posés au début du run mais restent **locaux sur le runner** ; ils ne sortent qu'une
+fois le bundle construit, signé, notarié et vérifié. Un échec en amont ne laisse donc rien —
+ni commit, ni tag, ni release à moitié. Ce n'est pas de la prudence en général : c'est l'état
+exact où le dépôt s'est trouvé le 26 août 2026, `main` annonçant `0.3.0` qu'aucun tag ne
+désignait, parce que le geste en trois temps du README autorise de s'arrêter entre deux.
+L'**ordre** de cette étape est la garantie ; la remonter ne casserait rien de visible, le run
+resterait vert, et le défaut reviendrait. C'est pourquoi `verifier-ci.py` vérifie une position
+et pas seulement une présence — quatre sabotages, quatre refus.
+
+**Ce que le bouton doit constater à la place de l'œil.** Publier d'un clic retire l'occasion
+de regarder deux choses que le README demandait à un humain : d'où l'on publie, et si c'est
+vert. Le run refuse donc toute branche autre que `main`, et lit la conclusion de `ci.yml`
+**sur le commit exact** — jamais « la dernière en date », qui serait verte sur le commit
+d'avant, ce qui est précisément le cas quand on clique juste après un push. Une CI encore en
+cours est un **refus**, pas une attente : recliquer coûte un clic, publier sur du rouge coûte
+une release. Quatre états, pas deux — même forme que « jamais tentée » n'est pas « hors
+ligne ».
+
+**La voie du tag n'a pas bougé**, et c'est délibéré : elle marche depuis un poste, sans
+Actions, et c'est elle que `version.sh` sert. Les deux voies se rejoignent sur **deux
+variables**, `VERSION` et `TAG`, et plus rien ne lit `GITHUB_REF_NAME` en aval — il vaut
+« main » quand c'est le bouton qui a déclenché. Deux dérivations divergeraient, et celle du
+bouton n'aurait personne pour la relire.
+
+**Les trois fichiers s'écrivent en Python, pas en `sed`.** `sed -i ''` est la forme BSD, la
+seule qui marche sur macOS ; `sed -i` sans suffixe est la forme GNU, la seule qui marche
+ailleurs. Aucune des deux ne marche des deux côtés, et `version.sh` devait pouvoir être
+**essayé** hors d'un Mac — dans un conteneur, où le sabotage se joue sans risquer le dépôt de
+travail. Chaque substitution est **comptée** : sans le compte, une clef renommée laisserait un
+fichier inchangé et l'erreur ne se dirait qu'une étape plus loin, sans nommer le fichier.
 
 **Le numéro de version vit à trois endroits qui ne se parlent pas** : `package.json` — le
 seul que `tauri.conf.json` lise, donc celui qui finit dans l'`Info.plist` et dans le nom du

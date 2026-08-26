@@ -1,10 +1,18 @@
 name: Publication
 
-# Un tag `vX.Y.Z` poussé sur `main` construit le bundle macOS et l'attache à une release
-# GitHub, d'où il est téléchargeable. Rien d'autre ne déclenche ce workflow : une publication
-# est un geste, pas un effet de bord d'un push.
+# Construit le bundle macOS universel et l'attache à une release GitHub, d'où il est
+# téléchargeable. **Deux voies y mènent, et une seule sorte de geste** : quelqu'un a demandé une
+# publication. Rien ne publie par effet de bord d'un push.
 #
-# Le geste complet, côté humain, est dans `scripts/version.sh` et dans le README.
+#   - le **bouton** : Actions ▸ Publication ▸ Run workflow. Le run relève la version, pose le
+#     tag, construit, et ne pousse qu'une fois le bundle vérifié ;
+#   - un **tag** `vX.Y.Z` poussé à la main, par `scripts/version.sh`. La voie du README, celle
+#     qui marche depuis un poste, et elle n'a pas bougé.
+#
+# **Pourquoi le bouton fait tout dans un seul run**, plutôt que de poser le tag et laisser le
+# déclencheur du dessus prendre le relais : un tag poussé avec le `GITHUB_TOKEN` ne déclenche
+# aucun workflow — GitHub coupe la récursion, sans erreur ni trace. « Un job tague, le tag
+# publie » ne partirait jamais, et l'échec serait un silence.
 on:
   push:
     tags:
@@ -13,8 +21,33 @@ on:
       # format produirait un nom de bundle que rien n'a décidé.
       - "v[0-9]+.[0-9]+.[0-9]+"
 
-# La seule permission dont le job a besoin, et il en a besoin : créer la release et y attacher
-# le `.dmg`. Le reste du jeton reste en lecture.
+  workflow_dispatch:
+    inputs:
+      cran:
+        description: "Le cran à relever depuis la version en place"
+        type: choice
+        options: [correctif, fonction, majeur]
+        default: correctif
+      version:
+        # Laissé vide dans la quasi-totalité des cas. Le champ existe pour le numéro que les
+        # trois crans ne savent pas dire — un saut assumé —, et `version.sh` refuse tout ce qui
+        # n'est pas `majeur.fonction.correctif`.
+        description: "…ou un numéro exact X.Y.Z, qui prend le pas sur le cran"
+        type: string
+        default: ""
+
+# **Deux publications à la fois se marcheraient dessus.** La seconde relèverait depuis une
+# version que la première n'a pas encore poussée : deux runs calculeraient le même numéro, et le
+# second échouerait au bout de trente minutes, sur le push. Un seul groupe suffit — il n'y a
+# qu'un endroit d'où l'on publie. Et surtout pas `cancel-in-progress` : interrompre un run qui
+# vient de pousser son tag laisserait exactement la moitié d'une release.
+concurrency:
+  group: publication
+  cancel-in-progress: false
+
+# `contents: write` sert deux fois, et les deux sont indispensables : pousser le commit de
+# relèvement avec son tag, puis créer la release et y attacher le `.dmg`. Sans elle, tout le job
+# réussit et seules les deux dernières étapes échouent — trente minutes pour l'apprendre.
 permissions:
   contents: write
 
@@ -33,16 +66,95 @@ jobs:
           # vides sans que rien ne le dise.
           fetch-depth: 0
 
-      # **Le tag et les fichiers doivent dire le même numéro.** Un tag `v0.3.0` posé sur un
-      # arbre resté en `0.2.0` publierait un `.dmg` nommé `0.2.0` sous une release `0.3.0` :
-      # à partir de là, personne ne peut plus dire ce qu'il a installé. Vérifié **avant** de
-      # compiler, pour échouer en dix secondes plutôt qu'en trente minutes.
+      # ── Le numéro de version, et le tag qui le porte ────────────────────────────────
+      #
+      # Les deux voies se rejoignent ici sur **deux variables**, `VERSION` (le numéro nu) et
+      # `TAG` (le `vX.Y.Z`). Tout ce qui suit les lit, et plus jamais `GITHUB_REF_NAME` — qui
+      # vaut « main », et non un tag, quand c'est le bouton qui a déclenché. Un seul état pour
+      # deux chemins : deux dérivations divergeraient, et celle du bouton n'aurait personne
+      # pour la relire.
+
+      # **La voie du tag.** Le tag et les fichiers doivent dire le même numéro : un `v0.3.0`
+      # posé sur un arbre resté en `0.2.0` publierait un `.dmg` nommé `0.2.0` sous une release
+      # `0.3.0`, et à partir de là personne ne peut plus dire ce qu'il a installé. Vérifié
+      # **avant** de compiler, pour échouer en dix secondes plutôt qu'en trente minutes.
       - name: le tag correspond à la version des fichiers
+        if: github.event_name == 'push'
         run: |
           set -euo pipefail
           version=${GITHUB_REF_NAME#v}
           python3 scripts/verifier-version.py "$version"
           echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+
+      # **La voie du bouton, et ce qu'elle doit rendre à la machine.** Publier d'un clic retire
+      # l'occasion de regarder deux choses que `version.sh` et le README demandaient à un
+      # humain : d'où l'on publie, et si c'est vert. Les deux sont donc constatées ici.
+      #
+      # La conclusion de `ci.yml` est cherchée **sur ce commit exact**, jamais « la dernière en
+      # date » : une CI verte sur le commit d'avant ne dit rien de celui qu'on s'apprête à
+      # publier, et c'est précisément le cas qui se présente quand on clique juste après un
+      # push. Une CI encore en cours est un refus, pas une attente — le message dit de
+      # recliquer, ce qui coûte un clic là où publier sur du rouge coûte une release.
+      - name: publier depuis main, et depuis un main vert
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ $GITHUB_REF_NAME != main ]]; then
+            echo "::error::lancé depuis « $GITHUB_REF_NAME » — une publication se coupe depuis main," >&2
+            echo "  seul état que la CI a validé. Choisissez la branche main dans « Run workflow »." >&2
+            exit 1
+          fi
+
+          etat=$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&per_page=1" \
+            --jq '.workflow_runs | if length == 0 then "aucune" else "\(.[0].status) \(.[0].conclusion)" end')
+
+          case $etat in
+            "completed success")
+              echo "CI verte sur ${GITHUB_SHA:0:7}" ;;
+            aucune)
+              echo "::error::aucune exécution de ci.yml sur ${GITHUB_SHA:0:7} — rien n'a validé cet état" >&2
+              exit 1 ;;
+            completed*)
+              echo "::error::ci.yml a conclu « ${etat#completed } » sur ${GITHUB_SHA:0:7}" >&2
+              exit 1 ;;
+            *)
+              echo "::error::ci.yml est « ${etat%% *} » sur ${GITHUB_SHA:0:7} — laissez-la finir, puis recliquez" >&2
+              exit 1 ;;
+          esac
+
+      # `version.sh` calcule le numéro, écrit les trois fichiers, passe `verifier-version.py`
+      # sur sa propre sortie, committe et pose le tag annoté. Un seul producteur du numéro pour
+      # les deux voies : le bouton n'a pas sa propre arithmétique.
+      #
+      # **Et rien ne part d'ici.** Le script ne pousse pas, et c'est ce qui laisse la
+      # construction décider — voir l'étape « pousser », tout en bas. Il refuse par ailleurs une
+      # branche autre que `main`, un arbre sale, une divergence avec `origin/main`, un numéro
+      # qui recule et un tag déjà publié : cinq refus qui valent ici comme sur un poste.
+      - name: relever la version et poser le tag, en local
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          CRAN: ${{ inputs.cran }}
+          EXACTE: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # **La branche, posée plutôt que supposée.** `version.sh` exige d'être sur `main`, et
+          # ce que `actions/checkout` laisse comme `HEAD` — la branche, ou un détaché sur le
+          # SHA — n'est pas une garantie documentée. Un `-B` sur le SHA qu'on a déjà est un
+          # non-geste si la branche est là, et le rattrapage sinon. Parier aurait donné un
+          # bouton mort au premier clic, sur un message parlant d'une branche « HEAD ».
+          git checkout -B main "$GITHUB_SHA"
+
+          ./scripts/version.sh "${EXACTE:-$CRAN}"
+          version=$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "TAG=v$version" >> "$GITHUB_ENV"
 
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
@@ -465,7 +577,7 @@ jobs:
         run: |
           set -euo pipefail
           precedent=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' \
-            "$GITHUB_REF_NAME^" 2>/dev/null || true)
+            "$TAG^" 2>/dev/null || true)
           {
             echo "## Installation"
             echo
@@ -501,7 +613,7 @@ jobs:
               # jour porte, donc que l'application affiche avant de se remplacer. Deux
               # générations indépendantes finiraient par ne plus dire la même chose, et celle
               # que l'utilisateur lit dans l'application est la moins relue des deux.
-              git log --no-merges --pretty='- %s' "$precedent..$GITHUB_REF_NAME" \
+              git log --no-merges --pretty='- %s' "$precedent..$TAG" \
                 > publication/changements.md
               cat publication/changements.md
               echo
@@ -510,7 +622,7 @@ jobs:
               # `set -u` fait échouer l'étape. La v0.1.0 y avait échappé — sans tag précédent, elle
               # passait par la branche « première version publiée ». Le défaut n'existait donc que
               # de la **deuxième** publication, là où plus personne ne relit le script.
-              echo "[Comparer ${precedent}…${GITHUB_REF_NAME}](https://github.com/${GITHUB_REPOSITORY}/compare/${precedent}...${GITHUB_REF_NAME})"
+              echo "[Comparer ${precedent}…${TAG}](https://github.com/${GITHUB_REPOSITORY}/compare/${precedent}...${TAG})"
             else
               echo "- première version publiée"
             fi
@@ -541,7 +653,7 @@ jobs:
           import json, os, pathlib
 
           version = os.environ["VERSION"]
-          tag = os.environ["GITHUB_REF_NAME"]
+          tag = os.environ["TAG"]
           depot = os.environ["GITHUB_REPOSITORY"]
           archive = f"DoraBase-{version}-universal.app.tar.gz"
           dossier = pathlib.Path("publication")
@@ -573,6 +685,23 @@ jobs:
           print(json.dumps(manifeste, indent=2)[:600])
           FIN
 
+      # **Le premier geste public du run, et il vient après tout le reste.** Le commit de
+      # relèvement et le tag existent depuis le début, mais en local sur le runner : ils ne
+      # sortent qu'une fois le bundle construit, signé, notarié, et vérifié sur les six points
+      # au-dessus. Si quoi que ce soit en amont échoue, il ne reste **rien** — ni commit, ni
+      # tag, ni release à moitié.
+      #
+      # C'est l'état où le dépôt s'est trouvé le 26 août 2026, `main` annonçant une version
+      # qu'aucun tag ne désignait, et il est ici supprimé par construction plutôt que par
+      # vigilance. L'ordre de cette étape **est** la garantie : la remonter la rendrait
+      # inoffensive à l'œil et rétablirait le défaut. `verifier-ci.py` la tient.
+      #
+      # `main` peut avoir bougé pendant la construction : le push est alors rejeté, rien n'est
+      # publié, et il suffit de recliquer. C'est le bon échec.
+      - name: pousser le relèvement et le tag
+        if: github.event_name == 'workflow_dispatch'
+        run: git push origin main --follow-tags
+
       - name: créer la release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -599,7 +728,7 @@ jobs:
             echo "  existantes ne verront pas cette version."
           fi
 
-          gh release create "$GITHUB_REF_NAME" \
+          gh release create "$TAG" \
             --title "DoraBase $VERSION" \
             --notes-file publication/notes.md \
             --latest \

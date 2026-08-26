@@ -106,6 +106,21 @@ def commandes_de(etapes: list) -> str:
     return " ".join(lignes)
 
 
+def indice_de(etapes: list, fragment: str) -> int:
+    """L'indice de la première étape dont une commande porte ce fragment, -1 sinon.
+
+    Sert à vérifier un **ordre**, là où `commandes_de` ne vérifie qu'une présence. Certaines
+    garanties de `publication.yml` ne tiennent qu'à la place d'une étape dans la liste : le
+    push du relèvement, par exemple, ne protège de rien s'il remonte au-dessus de la
+    construction. Commentaires retirés, pour la même raison que `commandes_de`.
+    """
+    for i, etape in enumerate(etapes):
+        for ligne in str(etape.get("run", "")).splitlines():
+            if not ligne.lstrip().startswith("#") and fragment in ligne:
+                return i
+    return -1
+
+
 def verifier_ci() -> None:
     workflow = charger(CI)
     jobs = workflow.get("jobs", {})
@@ -203,7 +218,7 @@ def verifier_publication() -> None:
 
     workflow = charger(PUBLICATION)
     jobs = workflow.get("jobs", {})
-    etapes = etapes_de(jobs, "macos", 29, "publication.yml")
+    etapes = etapes_de(jobs, "macos", 34, "publication.yml")
 
     sur = declencheurs(workflow)
     # **Le déclencheur, et rien d'autre que lui.** `on: push` sans filtre publierait une release
@@ -215,8 +230,18 @@ def verifier_publication() -> None:
         print("  attendu : ['v[0-9]+.[0-9]+.[0-9]+'] — ancré sur les trois nombres",
               file=sys.stderr)
         raise SystemExit(1)
-    if (sur.get("push") or {}).get("branches") or "pull_request" in sur:
-        print("publication.yml : un déclencheur autre qu'un tag publierait sans qu'on le demande",
+    if (sur.get("push") or {}).get("branches"):
+        print("publication.yml : un `push:` sur des branches publierait à chaque commit",
+              file=sys.stderr)
+        raise SystemExit(1)
+
+    # **Les deux voies, et rien d'autre.** Un tag poussé, ou le bouton — dans les deux cas
+    # quelqu'un a demandé une publication. La liste est close plutôt qu'une suite de refus
+    # nommés : `pull_request`, `schedule`, `release` publieraient chacun sans qu'on le demande,
+    # et une liste de refus ne couvre jamais celui qu'on n'a pas prévu.
+    if set(sur) != {"push", "workflow_dispatch"}:
+        print(f"publication.yml : déclencheurs {sorted(sur)!r}", file=sys.stderr)
+        print("  attendus : push (tag ancré) et workflow_dispatch (le bouton), pas d'autre",
               file=sys.stderr)
         raise SystemExit(1)
 
@@ -255,7 +280,30 @@ def verifier_publication() -> None:
               "publiée s'ouvrirait sur la vue Finder par défaut", file=sys.stderr)
         raise SystemExit(1)
 
-    print(f"publication.yml cohérent — {len(jobs)} job, tag ancré, release publiée")
+    # **L'ordre du push, qui *est* la garantie du bouton.** Le commit de relèvement et son tag
+    # vivent en local sur le runner jusqu'à ce que le bundle soit construit, signé, notarié et
+    # vérifié ; ils ne sortent qu'à l'avant-dernière étape. Remonter ce push au-dessus de la
+    # construction ne casserait rien de visible — le run resterait vert — et rétablirait l'état
+    # où `main` annonce une version qu'aucune release ne porte, constaté le 26 août 2026.
+    #
+    # Un ordre ne se lit pas dans `commandes_de`, qui ne dit qu'une présence : d'où `indice_de`.
+    construction = indice_de(etapes, "tauri build")
+    push = indice_de(etapes, "git push origin main --follow-tags")
+    release = indice_de(etapes, "gh release create")
+    if push == -1:
+        print("publication.yml : plus rien ne pousse le relèvement — le bouton construirait une",
+              file=sys.stderr)
+        print("  release dont le tag n'existe pas sur le dépôt", file=sys.stderr)
+        raise SystemExit(1)
+    if not construction < push < release:
+        print("publication.yml : le push du relèvement est à l'étape "
+              f"{push}, la construction à {construction}, la release à {release}",
+              file=sys.stderr)
+        print("  il doit venir après la construction et avant la release : c'est ce qui fait"
+              " qu'un échec ne laisse ni commit, ni tag, ni release à moitié", file=sys.stderr)
+        raise SystemExit(1)
+
+    print(f"publication.yml cohérent — {len(jobs)} job, deux voies, push en {push}e position")
 
 
 def main() -> int:
