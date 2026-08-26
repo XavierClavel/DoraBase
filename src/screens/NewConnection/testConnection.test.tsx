@@ -24,6 +24,9 @@ function monter(onTest: (request: ConnectionRequest) => Promise<ConnectionTest>)
       <NewConnection
         onClose={() => {}}
         projects={PROJETS}
+        // Le cadre : depuis le 26 août 2026, c'est l'appelant qui désigne le projet, et sans lui
+        // l'enregistrement est refusé — ce qui masquerait ce que ce fichier mesure.
+        projet={PROJETS[0]?.name ?? ''}
         onBrowseKey={async () => null}
         onTest={onTest}
       />

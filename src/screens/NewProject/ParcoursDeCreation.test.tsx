@@ -42,8 +42,8 @@ test('l’étape 1 enchaîne sur l’étape 2, projet imposé', async () => {
   await utilisateur.type(screen.getByLabelText('Nom du projet'), 'Atelier Nord')
   await utilisateur.click(screen.getByRole('button', { name: /Continuer/ }))
 
-  await waitFor(() => expect(screen.getByTestId('projet-impose')).toBeInTheDocument())
-  expect(screen.getByTestId('projet-impose')).toHaveTextContent('Atelier Nord')
+  await waitFor(() => expect(screen.getByTestId('projet-de-la-modale')).toBeInTheDocument())
+  expect(screen.getByTestId('projet-de-la-modale')).toHaveTextContent('Atelier Nord')
   // **Les environnements viennent du projet qui vient d'être créé**, non de la liste d'origine — qui
   // est vide ici, et ne le contenait donc pas. C'est le défaut que `24c` a corrigé : l'étape 2
   // n'offrait aucun environnement, faute de relire la liste rendue par la création.
@@ -53,7 +53,7 @@ test('l’étape 1 enchaîne sur l’étape 2, projet imposé', async () => {
 
 test('entrer directement à l’étape 2 ne crée aucun projet', async () => {
   const { onCreate } = monter({ etape: 'connexion', projet: 'Atelier Nord' })
-  expect(screen.getByTestId('projet-impose')).toHaveTextContent('Atelier Nord')
+  expect(screen.getByTestId('projet-de-la-modale')).toHaveTextContent('Atelier Nord')
   expect(screen.queryByLabelText('Nom du projet')).toBeNull()
   expect(onCreate).not.toHaveBeenCalled()
 })

@@ -754,7 +754,20 @@ export function WorkbenchDemo() {
 
   return (
     <>
-      {edition && <NewConnection edition={edition} onClose={() => setEdition(null)} />}
+      {edition && (
+        <NewConnection
+          edition={edition}
+          // **Les projets, pour que le groupe d'environnements ne soit pas vide.** Le formulaire y lit
+          // les environnements déclarés du projet de la base modifiée ; sans la liste, il n'en trouve
+          // aucun et la modale s'ouvre sur trois radios absentes.
+          projects={projets.map((projet) => ({
+            id: projet.name,
+            name: projet.name,
+            environments: projet.environments,
+          }))}
+          onClose={() => setEdition(null)}
+        />
+      )}
       {/* **Le parcours de création, dans la démo** (`24d`). `create_project` ne répond pas hors de la
           webview : la démo fournit donc sa propre création, qui ajoute le projet à son état local. Sans
           elle, l'étape 1 refuserait, et l'étape 2 — c'est-à-dire `A2` — serait inatteignable pour les

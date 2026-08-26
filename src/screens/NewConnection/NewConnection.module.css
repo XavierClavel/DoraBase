@@ -57,10 +57,17 @@
  * de hauteurs différentes (une ligne pour « Projet », une pour « Variante d'environnement »
  * qui peut passer à deux si la fenêtre rétrécit). Sans lui, les champs se décaleraient
  * verticalement les uns par rapport aux autres. */
+/*
+ * La rangée d'identité : le nom de la base, et ses environnements.
+ *
+ * **`1fr auto`, et la piste de 196px a disparu** (26 août 2026) : elle portait le projet, monté depuis
+ * dans l'en-tête de la modale. Le nom de la base prend la place rendue — c'est la valeur la plus longue
+ * de la rangée, et la seule que l'utilisateur *nomme* au lieu de la transcrire.
+ */
 .rowIdentity {
   display: grid;
   grid-column: 1 / -1;
-  grid-template-columns: 1fr 196px auto;
+  grid-template-columns: 1fr auto;
   gap: 12px;
   align-items: end;
 }
@@ -429,33 +436,38 @@
 }
 
 /*
- * Le constat de projet imposé, à la place du sélecteur (`24c`).
+ * Le projet, dans la bande d'en-tête de la modale (26 août 2026).
  *
- * `28px` de contenu plus les deux filets : **la hauteur du `Select` qu'il remplace**, parce que
- * l'`align-items: end` de la rangée d'identité est structurel — un constat plus court désalignerait le
- * nom de la base et les boutons d'environnement.
+ * Il occupait une piste de 196px dans la rangée d'identité du formulaire, sous une étiquette
+ * « Projet » — soit la facture d'un champ pour ce qui est le **cadre** du formulaire. En tête, il n'a
+ * plus besoin d'étiquette : sa place et son glyphe le disent.
+ *
+ * **Aucun curseur de pointeur, aucun survol, aucune bordure.** C'est un constat, pas un contrôle : les
+ * quatre marques que ce produit pose sur ce qui se clique sont absentes, et c'est le message. Le fond
+ * discret suffit à le détacher du titre sans en faire une pastille cliquable.
  */
-.projetImpose {
-  display: flex;
-  flex-direction: column;
-}
-
-.projetImposeValeur {
+.projetDuTitre {
   display: flex;
   align-items: center;
-  gap: 6px;
-  box-sizing: border-box;
-  height: calc(var(--h-field) + 2px);
-  padding: 0 var(--space-5);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-field);
-  background: var(--muted);
+  /* **`0 1 auto` et `min-width: 0`**, sinon un nom de projet long pousse la croix de fermeture hors
+     de la bande : rien ne borne un nom de projet, et la seule commande de sortie de la modale ne doit
+     pas dépendre de sa longueur. C'est au nom de céder, par l'ellipse. */
+  flex: 0 1 auto;
+  min-width: 0;
+  gap: 5px;
+  /* Le titre est en Baloo 2 ; l'indication est de l'interface, donc en Nunito et plus petite : elle
+     accompagne le titre, elle ne le concurrence pas. */
   font-family: var(--font-ui);
-  font-size: var(--text-control);
+  font-size: var(--text-label);
   font-weight: var(--weight-semibold);
-  color: var(--ink);
-  /* **Aucun curseur de pointeur, aucun survol.** C'est un constat, pas un contrôle : les quatre
-   * marques que ce produit pose sur ce qui se clique sont absentes, et c'est le message. */
+  color: var(--ink-2);
+}
+
+.projetDuTitreNom {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .projetIcone {
