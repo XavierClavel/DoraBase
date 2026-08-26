@@ -234,7 +234,11 @@ mod tests {
             let mut v = variante();
             v.ssl_mode = mode;
             let erreur = preparer(&v, None, None).expect_err("ce mode n'est pas exprimable");
-            assert!(erreur.message.contains("négocier le TLS"), "{}", erreur.message);
+            assert!(
+                erreur.message.contains("négocier le TLS"),
+                "{}",
+                erreur.message
+            );
             assert!(erreur.message.contains("disable"), "{}", erreur.message);
             assert!(erreur.message.contains("require"), "{}", erreur.message);
         }
