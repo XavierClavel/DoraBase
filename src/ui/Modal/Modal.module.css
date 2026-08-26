@@ -150,13 +150,35 @@
   align-items: center;
   align-content: center;
   gap: 9px;
-  min-height: 56px;
-  padding: 0 var(--space-7);
+  /* **`border-box`, et c'est ce qui rend le remplissage vertical gratuit.** En `content-box`, les
+   * 56px du handoff désigneraient le contenu et les deux remplissages s'ajouteraient par-dessus : le
+   * pied d'une rangée seule passerait à 74px, et les captures de fidélité de `A2` et `A3` avec lui.
+   * En `border-box`, une rangée de boutons `lg` (33px filets compris) tient dans les 38px qui restent,
+   * donc le pied à une ligne mesure **toujours la même chose** — inchangé — et seul le pied qui se
+   * replie grandit.
+   *
+   * **Et la hauteur minimale a été convertie avec, à 57px.** C'est la leçon de `SidebarFooter` :
+   * les 56px du handoff désignent le contenu, le filet du dessus s'ajoutant par-dessus. Écrire 56 en
+   * `border-box` aurait mangé ce filet et remonté tout le pied d'un pixel — un pixel qui déplace la
+   * sous-modale de `A3`, centrée dans la fenêtre, et périme sa capture pour rien. */
+  box-sizing: border-box;
+  min-height: 57px;
+  /* **Un remplissage vertical, et non zéro.** Le pied peut porter une seconde ligne (`24c`), et une
+   * hauteur minimale ne protège que le premier cas : dès que le contenu dépasse 56px, la rangée de
+   * boutons venait s'appuyer sur le filet du dessus. Le remplissage vaut pour les deux états, là où
+   * une marge sur la phrase n'aurait rappelé qu'un seul. */
+  padding: var(--space-5) var(--space-7);
   border-top: 1px solid var(--divider);
   background: var(--field);
 }
 
 .shellNested .footer {
-  min-height: 46px;
+  /* 47px : les 46 du handoff plus le filet, même conversion que ci-dessus. */
+  min-height: 47px;
+  /* 8px, hors de l'échelle `--space-*` — la convention du projet, littéral commenté plutôt que jeton
+   * approchant. Le pied de `A3` porte un bouton `md` (30px, filets compris) : 8px de part et d'autre
+   * le laissent mesurer **exactement** ses 47px, là où les 9px de la modale de base l'auraient poussé
+   * à 49 et périmé sa capture de fidélité pour deux pixels. */
+  padding-block: 8px;
   justify-content: flex-end;
 }

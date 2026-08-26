@@ -416,9 +416,11 @@
  */
 .projetCree {
   flex-basis: 100%;
-  /* Une marge basse, parce que le pied n'a pas de remplissage vertical : sans elle, la phrase
-   * s'appuierait sur le bord de la modale. */
-  margin: var(--space-3) 0 var(--space-6);
+  /* **Aucune marge, et c'est un retrait.** La phrase portait la sienne parce que le pied n'avait pas
+   * de remplissage vertical ; il en a un désormais, et l'écart avec la rangée de boutons vient du
+   * `gap` du pied, qui vaut aussi entre les lignes d'un `flex-wrap`. Deux sources pour un même écart
+   * l'auraient doublé. */
+  margin: 0;
   font-family: var(--font-ui);
   font-size: var(--text-label);
   font-weight: var(--weight-medium);
