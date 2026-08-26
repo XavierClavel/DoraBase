@@ -75,10 +75,13 @@ qu'il portait et que le rendu ne dit pas.
 
 ### Les prohibitions — les respecter, ne pas les « corriger »
 
-- **N'inventez aucun état de survol.** Seuls trois en ont un : les lignes d'arbre, les
-  lignes de tableau (`--hover-row`) et le bouton secondaire. Un survol ailleurs serait une
-  valeur qui n'est ni dans les jetons ni dans une maquette. La galerie l'affiche
-  franchement ; ce n'est pas un oubli.
+- **N'inventez aucun état de survol.** Quatre en ont un : les lignes d'arbre, les lignes de
+  tableau (`--hover-row`), le bouton secondaire, et depuis le 26 août 2026 les actions de la
+  bande en tête de sidebar — celles-là reprennent `--hover-row`, la teinte de la ligne d'arbre
+  et de l'entrée de menu, parce qu'une icône nue sans retour au survol se lit comme une
+  décoration alors qu'elle ouvre une modale. Un survol **ailleurs**, ou avec une valeur qui
+  n'est pas déjà un jeton, serait une invention. La galerie l'affiche franchement ; ce n'est
+  pas un oubli.
 - **Aucune couleur littérale hors `src/design/tokens.json`.** Garde-fou : `pnpm tokens:check`.
 - **L'échelle d'espacement n'a pas de 8 px** : 3, 5, 6, 7, 9, 11, 14, 16. Un littéral
   commenté vaut mieux qu'un jeton approximatif choisi « parce que ça se ressemble ».
@@ -116,6 +119,23 @@ qu'il portait et que le rendu ne dit pas.
   comme sur l'onglet : `Entrée` valide, `Échap` abandonne, la perte de focus valide.
   L'entrée « Renommer… » du menu « … » subsiste — un geste qui n'existe qu'au double-clic
   est invisible et inatteignable au clavier.
+- **Le projet est le *cadre* de la modale de connexion, pas un de ses champs** (26 août 2026).
+  Il s'annonce dans la bande d'en-tête, à droite du titre, et ne se choisit nulle part : le
+  triplet `projet/base/environnement` est la clé du registre et la référence du secret, donc un
+  sélecteur y proposait un geste qui **n'existe pas** — déplacer une connexion d'un projet à
+  l'autre. Corollaire : le geste de création part du **palier qui connaît son contexte** — le
+  menu d'une ligne d'environnement —, comme la création de console part du menu d'une connexion.
+  Le pied de la sidebar est parti pour la même raison : il devait deviner, et se trompait dès que
+  deux projets étaient dépliés. Ce qu'il portait encore, « Nouveau projet », est monté dans une
+  bande d'icônes en tête, où 35 px remplacent ses 78 px pris sur la hauteur de l'arbre.
+- **Le port prérempli appartient au moteur, pas au formulaire** — voir le tableau des quatre
+  moteurs. Un port **saisi à la main** survit au changement de moteur, le défaut de l'autre
+  moteur non : le champ est saisissable parce qu'un serveur peut n'être pas sur le port usuel.
+- **Le pincement du trackpad ne zoome pas** (26 août 2026). Il se déclenche tout seul en
+  glissant deux doigts pour défiler une grille, et l'interface changeait d'échelle sans que
+  personne l'ait demandé. Le refus est **actif** (`preventDefault` sur `wheel` + `ctrlKey`) :
+  s'abstenir laisserait la webview appliquer son propre pas, de dix à vingt-cinq pour cent.
+  `⌘` + molette reste, à pas fin, et `⌘0` revient à l'origine.
 - **`esc` dans un champ rend le focus, il ne ferme pas la modale.** Un second `esc` ferme ;
   depuis un bouton, la fermeture est immédiate — il n'y a pas de saisie à abandonner.
 - **Aucune correction automatique dans les champs.** macOS transformait `localhost` en
@@ -476,6 +496,14 @@ manière de reprendre des données sans que `serde` les efface en silence.
 - **`data-tauri-drag-region` nu ne rend glissable que l'élément lui-même**, pas son
   sous-arbre. La valeur **`deep`** étend le glissement, et les éléments cliquables le
   bloquent d'eux-mêmes. Nécessite `core:window:allow-start-dragging`.
+- **Un panneau flottant ancré dans le flux est rogné par le premier ancêtre en
+  `overflow: hidden`.** C'est le défaut n° 35, et il s'est reproduit sur la liste déroulante : la
+  coquille de `Modal` porte un `overflow: hidden` pour ses coins arrondis, et le « Mode SSL » de
+  `A2`, en bas de la modale, y perdait ses trois dernières options. Rien ne s'en apercevait — le
+  DOM était juste et les options « visibles » au sens de Playwright. Tout panneau qui flotte est
+  donc en `position: fixed`, sa géométrie posée au pixel par le composant, et la mesure qui
+  l'atteste passe par `elementFromPoint` : c'est la seule qui distingue « présent dans la mise en
+  page » de « réellement sous le pointeur ».
 - **Un WebSocket refusé par la CSP lève un `SecurityError` synchrone** sous WKWebView ; il
   n'échoue pas silencieusement. Du code qui ne l'attrape pas plante net.
 - **Une app lancée depuis le Finder n'hérite pas du `PATH` du shell.** macOS lui en donne
@@ -546,6 +574,7 @@ manière de reprendre des données sans que `serde` les efface en silence.
 | L'égalité sûre au nul | `is not distinct from` | `$in: [null]` | `is` | `<=>` |
 | Les transactions | toujours | jeu de réplicas requis | toujours | InnoDB oui, MyISAM **non** |
 | La citation | guillemet double | — | guillemet double | **backtick** |
+| Le port par défaut | 5432 | 27017 | **aucun** — un fichier | 3306 |
 | La connexion | hôte et port | hôte et port | **un fichier** | hôte et port |
 
 **La ligne de l'égalité sûre au nul a mordu quatre fois** : avec `=`, une modification
