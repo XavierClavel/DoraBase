@@ -208,7 +208,7 @@ impl EngineAdapter for SqliteAdapter {
 
     async fn apply_updates(&self, plan: &UpdatePlan) -> Result<ApplyOutcome, EngineError> {
         let instructions = rows::instructions_de(plan);
-        let inverse = rows::texte_de(&rows::instructions_inverses(plan));
+        let inverse = rows::patch_inverse_de(plan);
 
         let appliquees = self
             .avec(move |connexion| {
@@ -611,6 +611,7 @@ mod tests_fichier {
             schema: "main".into(),
             table: "ateliers".into(),
             key_column: "id".into(),
+            inserts: Vec::new(),
             changes: vec![PendingUpdate {
                 key: "1".into(),
                 column: "ville".into(),
@@ -663,6 +664,7 @@ mod tests_fichier {
             schema: "main".into(),
             table: "ateliers".into(),
             key_column: "id".into(),
+            inserts: Vec::new(),
             changes: vec![PendingUpdate {
                 key: "2".into(),
                 column: "divers".into(),
@@ -681,6 +683,7 @@ mod tests_fichier {
             schema: "main".into(),
             table: "ateliers".into(),
             key_column: "id".into(),
+            inserts: Vec::new(),
             changes: vec![
                 PendingUpdate {
                     key: "1".into(),

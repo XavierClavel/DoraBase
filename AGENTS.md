@@ -333,6 +333,29 @@ connexion qui marche —, et ce que l'écran **envoie** est filtré par moteur
 (`baseDAuthentificationAEnvoyer`), sans quoi chaque connexion PostgreSQL persisterait un `admin` que
 rien ne lit.
 
+**Ajouter une ligne est une modification en attente, pas un écran à part** (26 août 2026). Le `+` de
+la barre d'outils n'apparaît qu'en mode édition, chaque clic pose une ligne vide en **bas** de la
+grille, et elle s'édite comme les autres — mêmes cellules, même `⌘Z`, même « Appliquer ». Quatre
+décisions à ne pas défaire :
+
+- **une ligne ajoutée compte pour *une* entrée**, quel que soit le nombre de cellules remplies : le
+  compte affiché à cinq endroits est celui des **écritures qui partiront**, et trois cellules d'une
+  ligne neuve font un seul `INSERT` ;
+- **une colonne non saisie est absente du SQL, elle n'est pas `NULL`.** C'est ce qui laisse la base
+  appliquer ses défauts — une séquence, un `now()` —, et les poser à `NULL` ferait échouer
+  l'insertion sur la première colonne obligatoire. La grille l'écrit en toutes lettres, « défaut »,
+  plutôt que de laisser une cellule vide se confondre avec `NULL`. Corollaire assumé : **la chaîne
+  vide explicite n'est pas exprimable à l'ajout** — vider une cellule la rend à son défaut, parce
+  qu'ouvrir puis sortir sans rien taper est un geste bien plus fréquent que vouloir écrire `''` ;
+- **la clé primaire s'y saisit**, alors qu'elle est refusée dans une ligne existante : il n'y a
+  aucun `WHERE` à déplacer, et une table dont la clé est un code saisi ne pourrait rien recevoir. Une
+  table **sans** clé primaire refuse la modification et accepte l'ajout, pour la même raison ;
+- **le patch inverse ne défait pas une insertion, et il le dit.** La clé écrite est décidée par la
+  base et n'est pas relue — la relire supposerait une clé primaire —, et un `DELETE` sur les valeurs
+  saisies emporterait les lignes voisines identiques. Le patch porte donc une phrase en tête plutôt
+  que d'être silencieusement incomplet. C'est le seul geste de l'écran qui ne s'annule pas après
+  écriture, et c'est ce qui justifie que le bandeau nomme « lignes ajoutées » à part.
+
 **Convention Rust à 4 espaces**, pas de `rustfmt.toml` alignant Rust sur le JS du projet.
 
 ### La publication : un tag, et rien d'autre

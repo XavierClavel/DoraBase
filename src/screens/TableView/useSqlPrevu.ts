@@ -1,7 +1,19 @@
 import { useEffect, useState } from 'react'
 import { previewUpdates } from '../../data/commandes'
-import type { ColumnInfo, DatabaseKey, PendingUpdate, UpdatePlan } from '../../domain/engine'
-import { type EnAttente, type Modification, texteBrutDe } from './modifications'
+import type {
+  ColumnInfo,
+  DatabaseKey,
+  PendingInsert,
+  PendingUpdate,
+  UpdatePlan,
+} from '../../domain/engine'
+import {
+  type EnAttente,
+  estUneLigneAjoutee,
+  type LigneAjoutee,
+  type ModificationDeCellule,
+  texteBrutDe,
+} from './modifications'
 
 /** Ce qui appelle la commande. Injectable, le pont ne répondant pas hors de la webview. */
 export type PasserellePreview = {
@@ -36,12 +48,7 @@ export function useSqlPrevu(
   // `attente` étant recréé par le parent. Le piège de `10d`, où une passerelle littérale relisait
   // les lignes à chaque frappe.
   const cleColonne = colonnes.find((colonne) => colonne.key === 'primary')?.name ?? ''
-  const signature = JSON.stringify({
-    cle,
-    cible,
-    cleColonne,
-    changes: attente.map((m) => [m.cle, m.column, m.apres, m.avant]),
-  })
+  const signature = JSON.stringify({ cle, cible, cleColonne, attente })
 
   // `signature` sérialise tout ce qui entre dans le plan — clé, cible, colonne d'identité,
   // changements. Lister les objets eux-mêmes relancerait l'effet à chaque rendu, leur identité
@@ -55,12 +62,7 @@ export function useSqlPrevu(
     }
 
     let vivant = true
-    const plan: UpdatePlan = {
-      schema: cible.schema,
-      table: cible.table,
-      keyColumn: cleColonne,
-      changes: attente.map((modification) => planDe(modification)),
-    }
+    const plan = planDuModele(cible, cleColonne, attente)
 
     passerelle
       .previewUpdates(cle, plan)
@@ -97,7 +99,7 @@ function messageDe(erreur: unknown): string {
  * traduction. Deux conversions divergeraient, et l'écart tomberait sur les cas rares — une valeur
  * attendue nulle, une chaîne vide.
  */
-export function planDe(modification: Modification): PendingUpdate {
+export function planDe(modification: ModificationDeCellule): PendingUpdate {
   return {
     key: modification.cle,
     column: modification.column,
@@ -107,5 +109,42 @@ export function planDe(modification: Modification): PendingUpdate {
     // du **texte brut** de l'origine, celui que la base a rendu — pas du rendu formaté de la grille,
     // qui grouperait les milliers et ne comparerait plus rien.
     expected: modification.avant.kind === 'null' ? null : texteBrutDe(modification.avant),
+  }
+}
+
+/**
+ * Une ligne ajoutée traduite pour le moteur.
+ *
+ * **Seules les colonnes saisies partent**, et c'est tout l'enjeu : une colonne absente laisse la
+ * base appliquer son défaut, une colonne à `NULL` écrit `NULL`. Les confondre ferait échouer
+ * l'insertion sur la première colonne obligatoire.
+ */
+export function insertionDe(ligne: LigneAjoutee): PendingInsert {
+  return {
+    values: Object.entries(ligne.valeurs).map(([column, saisie]) => ({
+      column,
+      value: saisie.kind === 'null' ? null : saisie.texte,
+    })),
+  }
+}
+
+/**
+ * Le plan complet d'un modèle — modifications **et** lignes ajoutées.
+ *
+ * **Exportée, et c'est le point de `11d` étendu** : la prévisualisation et l'application partent de
+ * la même traduction. Deux conversions divergeraient, et l'écart tomberait sur les cas rares — une
+ * valeur attendue nulle, une colonne laissée à son défaut.
+ */
+export function planDuModele(
+  cible: { schema: string; table: string },
+  cleColonne: string,
+  attente: EnAttente,
+): UpdatePlan {
+  return {
+    schema: cible.schema,
+    table: cible.table,
+    keyColumn: cleColonne,
+    changes: attente.filter((m) => m.sorte === 'cellule').map(planDe),
+    inserts: attente.filter(estUneLigneAjoutee).map(insertionDe),
   }
 }

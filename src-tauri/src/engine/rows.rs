@@ -133,6 +133,33 @@ pub struct PendingUpdate {
     pub expected: Option<String>,
 }
 
+/// Une valeur saisie dans une ligne à insérer.
+///
+/// **Une colonne absente de la liste n'est pas une colonne nulle** : elle est laissée au défaut de
+/// la base — une séquence, un `now()`, une valeur par défaut déclarée. Poser `NULL` partout ferait
+/// échouer l'insertion sur la première colonne obligatoire, et volerait à la table ses défauts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub struct PendingInsertValue {
+    pub column: String,
+    /// La valeur saisie, ou `None` pour un `NULL` **demandé** — distinct d'une colonne absente.
+    pub value: Option<String>,
+}
+
+/// Une ligne à insérer, telle que le bouton « + » de la barre d'outils la retient.
+///
+/// **Aucune clé attendue, et c'est la différence avec `PendingUpdate`** : une insertion ne vise pas
+/// une ligne existante, elle n'a donc ni `WHERE` ni détection de conflit. La table peut d'ailleurs
+/// n'avoir aucune clé primaire — ce qui interdit la modification mais pas l'ajout.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub struct PendingInsert {
+    /// Les colonnes saisies, dans l'ordre de la table. Vide : la ligne est faite de défauts seuls.
+    pub values: Vec<PendingInsertValue>,
+}
+
 /// Ce qu'il faut pour prévisualiser — ou plus tard exécuter — une suite de modifications.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -143,8 +170,15 @@ pub struct UpdatePlan {
     /// La colonne qui identifie une ligne. **Fournie par l'écran**, qui la connaît par
     /// l'introspection : la redemander à la base à chaque prévisualisation coûterait un
     /// aller-retour pour une information déjà affichée.
+    ///
+    /// Vide quand la table n'en a pas : un plan qui ne porte que des insertions reste valide, seules
+    /// les modifications en exigent une.
     pub key_column: String,
     pub changes: Vec<PendingUpdate>,
+    /// Les lignes à ajouter. **`#[serde(default)]`** : un champ ajouté ne demande pas de cran de
+    /// migration, et un plan écrit par une version antérieure reste lisible.
+    #[serde(default)]
+    pub inserts: Vec<PendingInsert>,
 }
 
 /// Le résultat d'une requête libre de la console (`12c`).
@@ -305,6 +339,42 @@ pub struct RowWindow {
     pub sql: String,
     /// Durée de la requête, pour la barre d'état de `A5` (« 41 ms »).
     pub duration_ms: u32,
+}
+
+/// Ce que le patch inverse dit des insertions — **le même texte pour les quatre moteurs**.
+///
+/// **Une insertion ne se défait pas automatiquement, et c'est une conclusion.** La clé de la ligne
+/// écrite est décidée par la base — une séquence, un `uuid` par défaut, un `_id` — et DoraBase ne la
+/// relit pas : la relire supposerait une clé primaire, que la table peut ne pas avoir. Reste le
+/// `DELETE` sur les valeurs saisies, écarté parce qu'il emporterait aussi les lignes voisines
+/// identiques — un patch censé défaire trois ajouts en supprimerait trente.
+///
+/// Alors le patch le **dit**, en tête, plutôt que d'être silencieusement incomplet : c'est le même
+/// arbitrage que partout ailleurs — un refus qui se nomme vaut mieux qu'une garantie qui n'en est
+/// pas une. `None` quand il n'y a rien à annoncer.
+pub fn avertissement_insertions(compte: usize) -> Option<String> {
+    if compte == 0 {
+        return None;
+    }
+    Some(format!(
+        "-- {compte} ligne{s} ajoutée{s} : ce patch ne les défait pas. DoraBase ne connaît pas la clé\n\
+         -- que la base leur a donnée, et supprimer sur les valeurs saisies emporterait les lignes\n\
+         -- voisines identiques.",
+        s = if compte > 1 { "s" } else { "" }
+    ))
+}
+
+/// Le patch inverse complet : l'avertissement des insertions, puis les instructions qui défont.
+///
+/// **Assemblé ici et pas dans chaque adaptateur** : le texte des instructions est propre au moteur,
+/// sa mise en page ne l'est pas. Quatre copies divergeraient à la première retouche.
+pub fn patch_inverse(avertissement: Option<String>, instructions: Option<String>) -> String {
+    match (avertissement, instructions) {
+        (None, None) => String::new(),
+        (Some(texte), None) => texte,
+        (None, Some(sql)) => sql,
+        (Some(texte), Some(sql)) => format!("{texte}\n{sql}"),
+    }
 }
 
 #[cfg(test)]

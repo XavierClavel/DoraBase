@@ -196,10 +196,48 @@ pub fn valeur_de(brute: &MysqlValue, categorie: crate::engine::TypeCategory) -> 
 /// du `is not distinct from` de `11d` et du `is` de `17b`. Sans lui, une modification partant d'une
 /// cellule vide ne trouverait aucune ligne, et la transaction s'annulerait sans raison lisible.
 pub fn instructions_de(plan: &UpdatePlan) -> Vec<(String, Vec<Option<String>>)> {
-    plan.changes
+    let mut instructions: Vec<(String, Vec<Option<String>>)> = plan
+        .changes
         .iter()
         .map(|modification| instruction_de(plan, modification))
-        .collect()
+        .collect();
+    // Les insertions viennent après les modifications, dans la même transaction — l'ordre du panneau.
+    instructions.extend(
+        plan.inserts
+            .iter()
+            .map(|insertion| insertion_de(plan, insertion)),
+    );
+    instructions
+}
+
+/// L'`insert` d'une ligne saisie, paramétré comme les modifications.
+///
+/// **Les colonnes non saisies sont absentes**, pour que la base applique ses défauts —
+/// `AUTO_INCREMENT`, `DEFAULT CURRENT_TIMESTAMP`. Aucune valeur du tout donne `() values ()`, la
+/// forme MySQL d'une ligne entièrement faite de défauts.
+fn insertion_de(
+    plan: &UpdatePlan,
+    insertion: &crate::engine::PendingInsert,
+) -> (String, Vec<Option<String>>) {
+    let cible = format!("{}.{}", citer(&plan.schema), citer(&plan.table));
+    if insertion.values.is_empty() {
+        return (format!("insert into {cible} () values ()"), Vec::new());
+    }
+    let noms = insertion
+        .values
+        .iter()
+        .map(|valeur| citer(&valeur.column))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let places = vec!["?"; insertion.values.len()].join(", ");
+    (
+        format!("insert into {cible} ({noms}) values ({places})"),
+        insertion
+            .values
+            .iter()
+            .map(|valeur| valeur.value.clone())
+            .collect(),
+    )
 }
 
 fn instruction_de(
@@ -224,6 +262,8 @@ fn instruction_de(
 }
 
 /// Le patch inverse : valeur et attendue échangées, comme `11d` et `17b` le font.
+///
+/// **Les insertions n'y sont pas** — voir `engine::rows::avertissement_insertions`.
 pub fn instructions_inverses(plan: &UpdatePlan) -> Vec<(String, Vec<Option<String>>)> {
     plan.changes
         .iter()
@@ -260,6 +300,15 @@ pub fn texte_de(instructions: &[(String, Vec<Option<String>>)]) -> String {
     }
     lignes.push("COMMIT;".to_owned());
     lignes.join("\n")
+}
+
+/// Le patch inverse en texte : l'avertissement des insertions, puis les `update` qui défont.
+pub fn patch_inverse_de(plan: &UpdatePlan) -> String {
+    let instructions = instructions_inverses(plan);
+    crate::engine::rows::patch_inverse(
+        crate::engine::rows::avertissement_insertions(plan.inserts.len()),
+        (!instructions.is_empty()).then(|| texte_de(&instructions)),
+    )
 }
 
 /// Un littéral MySQL.
@@ -594,6 +643,7 @@ mod tests {
             schema: "dorabase_test".into(),
             table: "ateliers".into(),
             key_column: "id".into(),
+            inserts: Vec::new(),
             changes: vec![PendingUpdate {
                 key: "1".into(),
                 column: "ville".into(),
@@ -601,5 +651,65 @@ mod tests {
                 expected: attendue.map(str::to_owned),
             }],
         }
+    }
+
+    fn plan_qui_ajoute(valeurs: &[(&str, Option<&str>)]) -> UpdatePlan {
+        UpdatePlan {
+            schema: "dorabase_test".into(),
+            table: "ateliers".into(),
+            key_column: "id".into(),
+            changes: Vec::new(),
+            inserts: vec![crate::engine::PendingInsert {
+                values: valeurs
+                    .iter()
+                    .map(|(column, value)| crate::engine::PendingInsertValue {
+                        column: (*column).to_owned(),
+                        value: value.map(str::to_owned),
+                    })
+                    .collect(),
+            }],
+        }
+    }
+
+    #[test]
+    fn une_ligne_ajoutee_est_un_insert_parametre() {
+        let plan = plan_qui_ajoute(&[("ville", Some("Albi")), ("pays", None)]);
+        let instructions = instructions_de(&plan);
+        assert_eq!(instructions.len(), 1);
+        let (sql, parametres) = &instructions[0];
+        assert_eq!(
+            sql,
+            "insert into `dorabase_test`.`ateliers` (`ville`, `pays`) values (?, ?)"
+        );
+        // **Les valeurs restent des paramètres**, comme celles d'une modification : c'est le pilote
+        // qui les transporte, pas le texte.
+        assert_eq!(parametres, &vec![Some("Albi".to_owned()), None::<String>]);
+    }
+
+    #[test]
+    fn une_ligne_sans_valeur_prend_les_defauts() {
+        let (sql, parametres) = instructions_de(&plan_qui_ajoute(&[]))[0].clone();
+        // La forme MySQL d'une ligne entièrement faite de défauts — `AUTO_INCREMENT` compris.
+        assert_eq!(sql, "insert into `dorabase_test`.`ateliers` () values ()");
+        assert!(parametres.is_empty());
+    }
+
+    #[test]
+    fn le_texte_lisible_d_une_insertion_porte_ses_valeurs() {
+        let texte = texte_de(&instructions_de(&plan_qui_ajoute(&[
+            ("ville", Some("Albi")),
+            ("pays", None),
+        ])));
+        // Le texte montré est celui qui part, valeurs comprises : c'est la promesse du dernier
+        // écran avant écriture.
+        assert!(texte.contains("values ('Albi', NULL)"), "{texte}");
+    }
+
+    #[test]
+    fn le_patch_inverse_annonce_les_insertions_qu_il_ne_defait_pas() {
+        let patch = patch_inverse_de(&plan_qui_ajoute(&[("ville", Some("Albi"))]));
+        assert!(patch.starts_with("-- 1 ligne ajoutée"));
+        // Pas de transaction vide : il n'y a aucune modification à défaire.
+        assert!(!patch.contains("START TRANSACTION"));
     }
 }
