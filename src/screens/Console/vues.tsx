@@ -1,12 +1,12 @@
-import type { QueryPlan, QueryResult } from '../../domain/engine'
+import type { QueryResult } from '../../domain/engine'
 import { JsonColore } from '../TableView/JsonColore'
 import { texteBrutDe } from '../TableView/modifications'
 import styles from './vues.module.css'
 
 /**
- * Les trois vues qui ne sont pas la grille (`12e`) : JSON, Plan, Messages.
+ * Les deux vues qui ne sont pas la grille (`12e`) : JSON, Messages.
  *
- * Regroupées dans un fichier : chacune fait dix lignes, et trois fichiers de dix lignes se
+ * Regroupées dans un fichier : chacune fait dix lignes, et deux fichiers de dix lignes se
  * chercheraient plus longtemps qu'ils ne se liraient.
  */
 
@@ -36,29 +36,6 @@ export function VueJson({ resultat, rang }: { resultat: QueryResult; rang: numbe
   )
 
   return <JsonColore texte={JSON.stringify(objet, null, 2)} />
-}
-
-/**
- * Le plan d'exécution, **estimé**.
- *
- * `EXPLAIN` et non `EXPLAIN ANALYZE` : ce dernier exécute la requête pour la mesurer, et sur une
- * console où l'on écrit aussi, « Expliquer » deviendrait un bouton qui écrit. La vue le dit — un plan
- * dont on croirait les temps réels ferait prendre des décisions sur des chiffres qui n'en sont pas.
- */
-export function VuePlan({ plan, enCours }: { plan: QueryPlan | null; enCours: boolean }) {
-  if (enCours) return <p className={styles.invite}>Lecture du plan…</p>
-  if (!plan) {
-    return <p className={styles.invite}>Cliquez « Expliquer » pour voir le plan d’exécution.</p>
-  }
-
-  return (
-    <div className={styles.plan}>
-      <p className={styles.estime}>
-        Coûts <strong>estimés</strong> : la requête n’a pas été exécutée.
-      </p>
-      <pre className={styles.texte}>{plan.lines.join('\n')}</pre>
-    </div>
-  )
 }
 
 /**

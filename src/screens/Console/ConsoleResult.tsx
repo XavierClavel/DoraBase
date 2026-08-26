@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { QueryPlan, QueryResult, Value } from '../../domain/engine'
+import type { QueryResult, Value } from '../../domain/engine'
 import { formatInteger } from '../../ui/format'
 import { SegmentedControl } from '../../ui/SegmentedControl/SegmentedControl'
 import { type GridColumn, VirtualGrid } from '../../ui/VirtualGrid/VirtualGrid'
@@ -8,10 +8,10 @@ import type { Dialecte } from '../Workbench/onglets'
 import { ArbreJson } from './ArbreJson'
 import styles from './ConsoleResult.module.css'
 import { documentsDe } from './documents'
-import { VueJson, VueMessages, VuePlan } from './vues'
+import { VueJson, VueMessages } from './vues'
 
-/** Les quatre vues d'un résultat (`12e`). */
-export type VueResultat = 'resultat' | 'json' | 'plan' | 'messages'
+/** Les trois vues d'un résultat (`12e`). */
+export type VueResultat = 'resultat' | 'json' | 'messages'
 
 type ConsoleResultProps = {
   resultat: QueryResult | null
@@ -19,9 +19,6 @@ type ConsoleResultProps = {
   enCours: boolean
   vue?: VueResultat
   onVueChange?: (vue: VueResultat) => void
-  /** Le plan de la requête courante, ou `null` tant qu'il n'a pas été demandé. */
-  plan?: QueryPlan | null
-  planEnCours?: boolean
   /**
    * La langue de la console (`13a`).
    *
@@ -48,8 +45,6 @@ export function ConsoleResult({
   enCours,
   vue = 'resultat',
   onVueChange,
-  plan = null,
-  planEnCours = false,
   dialecte = 'sql',
   rowHeight,
 }: ConsoleResultProps) {
@@ -118,7 +113,6 @@ export function ConsoleResult({
           // **Pas d'onglet « JSON » en mongo** : la vue « Documents » *est* du JSON. Deux onglets
           // pour la même chose feraient chercher la différence.
           ...(mongo ? [] : [{ value: 'json' as const, label: 'JSON' }]),
-          { value: 'plan' as const, label: 'Plan' },
           { value: 'messages' as const, label: 'Messages' },
         ]}
         value={vue}
@@ -139,7 +133,7 @@ export function ConsoleResult({
             }
           />
         </div>
-        <Barre resultat={resultat} plan={plan} dialecte={dialecte} />
+        <Barre resultat={resultat} dialecte={dialecte} />
       </div>
     )
   }
@@ -150,10 +144,9 @@ export function ConsoleResult({
         {onglets}
         <div className={styles.panneau}>
           {vue === 'json' && <VueJson resultat={resultat} rang={rangChoisi} />}
-          {vue === 'plan' && <VuePlan plan={plan} enCours={planEnCours} />}
           {vue === 'messages' && <VueMessages resultat={resultat} />}
         </div>
-        <Barre resultat={resultat} plan={plan} dialecte={dialecte} />
+        <Barre resultat={resultat} dialecte={dialecte} />
       </div>
     )
   }
@@ -176,21 +169,13 @@ export function ConsoleResult({
           empty={<span>La requête n’a rendu aucune ligne.</span>}
         />
       </div>
-      <Barre resultat={resultat} plan={plan} dialecte={dialecte} />
+      <Barre resultat={resultat} dialecte={dialecte} />
     </div>
   )
 }
 
-/** La barre de chiffres, partagée par les quatre vues — ils décrivent la même exécution. */
-function Barre({
-  resultat,
-  plan,
-  dialecte,
-}: {
-  resultat: QueryResult
-  plan: QueryPlan | null
-  dialecte: Dialecte
-}) {
+/** La barre de chiffres, partagée par les trois vues — ils décrivent la même exécution. */
+function Barre({ resultat, dialecte }: { resultat: QueryResult; dialecte: Dialecte }) {
   // « 4 docs · 61 ms », le pied du mockup d'`A8`. Compter des « lignes » sous un arbre de documents
   // nommerait la mauvaise chose.
   const unite = dialecte === 'mongo' ? 'doc' : 'ligne'
@@ -202,14 +187,6 @@ function Barre({
       </span>
       <span>·</span>
       <span>{resultat.durationMs} ms</span>
-      {plan !== null && (
-        <>
-          <span>·</span>
-          {/* Le temps du plan, distinct de celui de la requête : le mockup les montre côte à côte,
-                et les confondre ferait croire qu'expliquer coûte le prix d'exécuter. */}
-          <span>plan {plan.durationMs} ms</span>
-        </>
-      )}
       {resultat.appliedLimit !== null && (
         <>
           <span>·</span>

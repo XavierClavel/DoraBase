@@ -12,7 +12,6 @@ import type {
   ConnectionState,
   ConnectionStateEntry,
   DatabaseKey,
-  QueryPlan,
   QueryResult,
   RowLimit,
   RowQuery,
@@ -179,16 +178,6 @@ export async function deleteConsole(request: ConsoleRequest): Promise<Project[]>
 /** Renomme une console. */
 export async function renameConsole(request: ConsoleRequest): Promise<Project[]> {
   return invoke<Project[]>('rename_console', { request })
-}
-
-/**
- * Le plan d'exécution d'une requête (`12e`), **sans l'exécuter**.
- *
- * `EXPLAIN` et non `EXPLAIN ANALYZE` : ce dernier exécute la requête pour la mesurer, et sur une
- * console où l'on écrit aussi, « Expliquer » deviendrait un bouton qui écrit.
- */
-export async function explainSql(key: DatabaseKey, sql: string): Promise<QueryPlan> {
-  return invoke<QueryPlan>('explain_sql', { key, sql })
 }
 
 /**

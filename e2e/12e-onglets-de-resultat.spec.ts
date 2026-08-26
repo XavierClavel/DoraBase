@@ -1,8 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { deplierUnEnvironnement, ouvrirUneConsole } from './pourLesTests'
 
-// Les quatre vues et leurs chiffres : de l'assemblage d'écran. Le plan lui-même est couvert par les
-// tests Rust, dont celui qui vérifie qu'`EXPLAIN` n'exécute rien.
+// Les trois vues et leurs chiffres : de l'assemblage d'écran.
 test.beforeEach(async ({ page }) => {
   await page.goto('/?demo')
   await deplierUnEnvironnement(page)
@@ -16,8 +15,8 @@ test.beforeEach(async ({ page }) => {
   await page.evaluate(() => document.fonts.ready)
 })
 
-test('les quatre vues existent, et « Résultat » porte le compte', async ({ page }) => {
-  for (const vue of ['Résultat', 'JSON', 'Plan', 'Messages']) {
+test('les trois vues existent, et « Résultat » porte le compte', async ({ page }) => {
+  for (const vue of ['Résultat', 'JSON', 'Messages']) {
     await expect(page.getByRole('radio', { name: new RegExp(vue) })).toBeVisible()
   }
   // Le compte est accolé au libellé, comme le segmenté de `A4` (`09a`).
@@ -25,25 +24,6 @@ test('les quatre vues existent, et « Résultat » porte le compte', async ({ pa
   // Le compte vit dans le libellé de la radio, pas dans un texte isolé : `getByText('Résultat')`
   // attrapait la légende du groupe (« Vue du résultat »).
   await expect(page.getByRole('radio', { name: /Résultat/ })).toHaveAccessibleName(/2/)
-})
-
-test('« Expliquer » montre le plan, et dit que la requête n’a pas été exécutée', async ({
-  page,
-}) => {
-  await page.getByRole('button', { name: /Expliquer/ }).click()
-
-  await expect(page.getByRole('radio', { name: /Plan/ })).toBeChecked()
-  await expect(page.getByText(/Coûts/)).toContainText('estimés')
-  // **Le fait qui compte** : un plan dont on croirait les temps réels ferait prendre des décisions sur
-  // des chiffres qui n'en sont pas.
-  await expect(page.getByText(/n’a pas été exécutée/)).toBeVisible()
-  // Le plan garde son indentation : elle porte l'arbre des nœuds.
-  const espaces = await page.evaluate(
-    () => getComputedStyle(document.querySelector('pre') as Element).whiteSpace,
-  )
-  expect(espaces).toBe('pre')
-  // Et la barre distingue le temps du plan de celui de la requête.
-  await expect(page.getByRole('status', { name: 'État du résultat' })).toContainText('plan 2 ms')
 })
 
 test('la vue JSON suit la ligne sélectionnée', async ({ page }) => {

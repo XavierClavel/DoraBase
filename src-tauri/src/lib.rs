@@ -55,7 +55,6 @@ pub fn run() {
             engine::commands::preview_updates,
             engine::commands::apply_changes,
             engine::commands::run_sql,
-            engine::commands::explain_sql,
             maj::check_update,
             maj::install_update
         ])
