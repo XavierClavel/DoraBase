@@ -313,15 +313,24 @@ mod tests {
              port, et que le service écoute",
         );
         let qualifie = qualifier_le_tls(brut, true);
-        assert!(qualifie.message.contains("accepte bien le TLS"), "{}", qualifie.message);
+        assert!(
+            qualifie.message.contains("accepte bien le TLS"),
+            "{}",
+            qualifie.message
+        );
         // La première piste reste : un hôte réellement injoignable donne la même erreur.
-        assert!(qualifie.message.contains("Vérifiez l'hôte"), "{}", qualifie.message);
+        assert!(
+            qualifie.message.contains("Vérifiez l'hôte"),
+            "{}",
+            qualifie.message
+        );
     }
 
     #[test]
     fn sans_tls_le_message_du_pilote_passe_intact() {
         // Contrôle négatif : sinon la phrase s'ajouterait à un échec en clair, où elle serait fausse.
-        let brut = EngineError::local("aucun serveur MongoDB n'a répondu : Server selection timeout");
+        let brut =
+            EngineError::local("aucun serveur MongoDB n'a répondu : Server selection timeout");
         assert_eq!(qualifier_le_tls(brut.clone(), false).message, brut.message);
     }
 
@@ -379,7 +388,11 @@ mod tests {
             let mut v = variante();
             v.ssl_mode = mode;
             let erreur = preparer(&v, None, None).expect_err("ce mode n'est pas exprimable");
-            assert!(erreur.message.contains("négocier le TLS"), "{}", erreur.message);
+            assert!(
+                erreur.message.contains("négocier le TLS"),
+                "{}",
+                erreur.message
+            );
             assert!(erreur.message.contains("disable"), "{}", erreur.message);
             assert!(erreur.message.contains("require"), "{}", erreur.message);
         }
