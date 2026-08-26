@@ -1258,7 +1258,6 @@ function TitleBarGallery() {
       <Sub title="A4 — projet, environnement, fil d’Ariane, lecture seule">
         <div data-testid="titlebar-a4">
           <TitleBar
-            showConsole
             center={
               <SelectionIndicator
                 projectName="Atelier Nord"
@@ -1296,7 +1295,7 @@ function TitleBarGallery() {
       </Sub>
       <Sub title="Rien de sélectionné — le centre est vide, et la barre ne bouge pas">
         <div data-testid="titlebar-vide">
-          <TitleBar showConsole />
+          <TitleBar />
         </div>
       </Sub>
       <Sub title="Connexion hors ligne">

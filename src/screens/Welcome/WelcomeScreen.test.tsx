@@ -4,7 +4,9 @@ import { WelcomeScreen } from './WelcomeScreen'
 
 test('les deux boutons appellent le même callback', async () => {
   const onNewProject = vi.fn()
-  render(<WelcomeScreen onNewProject={onNewProject} projectCount={0} />)
+  render(
+    <WelcomeScreen onNewProject={onNewProject} onOpenPreferences={() => {}} projectCount={0} />,
+  )
   const boutons = screen.getAllByRole('button', { name: /nouveau projet/i })
   expect(boutons).toHaveLength(2)
   for (const b of boutons) await userEvent.click(b)
@@ -17,14 +19,39 @@ test('les deux boutons appellent le même callback', async () => {
 // sans que le raccourci existe nulle part.
 test('cet écran n’écoute plus le clavier', async () => {
   const onNewProject = vi.fn()
-  render(<WelcomeScreen onNewProject={onNewProject} projectCount={0} />)
+  render(
+    <WelcomeScreen onNewProject={onNewProject} onOpenPreferences={() => {}} projectCount={0} />,
+  )
   await userEvent.keyboard('{Meta>}n{/Meta}')
   await userEvent.keyboard('n')
   expect(onNewProject).not.toHaveBeenCalled()
 })
 
 test('assemble la barre de titre, la barre d’état et le compteur de projets', () => {
-  render(<WelcomeScreen onNewProject={() => {}} projectCount={2} />)
+  render(<WelcomeScreen onNewProject={() => {}} onOpenPreferences={() => {}} projectCount={2} />)
   expect(screen.getByText('DoraBase')).toBeInTheDocument()
   expect(screen.getByText('2 projets')).toBeInTheDocument()
+})
+
+/*
+ * **L'engrenage de `A1` ouvre les préférences** (26 août 2026).
+ *
+ * Il ne faisait rien : `WelcomeScreen` montait la barre sans `onOpenPreferences`, donc `TitleBar`
+ * retombait sur son `disabled` — dont l'infobulle renvoyait vers l'écran de travail, qui n'existe
+ * pas tant qu'aucun projet n'est déclaré. Le premier écran du produit avait un réglage
+ * inatteignable.
+ */
+test('l’engrenage ouvre les préférences, et n’est pas désactivé', async () => {
+  const onOpenPreferences = vi.fn()
+  render(
+    <WelcomeScreen
+      onNewProject={() => {}}
+      onOpenPreferences={onOpenPreferences}
+      projectCount={0}
+    />,
+  )
+  const engrenage = screen.getByRole('button', { name: 'Préférences' })
+  expect(engrenage).toBeEnabled()
+  await userEvent.click(engrenage)
+  expect(onOpenPreferences).toHaveBeenCalledOnce()
 })

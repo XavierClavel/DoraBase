@@ -3,13 +3,14 @@ import { Icon } from '../../design/icons/Icon'
 import { cx } from '../../ui/cx'
 import styles from './TitleBar.module.css'
 
+/*
+ * **La barre n'a plus d'accès à la console** (26 août 2026). Le bouton était livré sans `onClick`
+ * depuis le premier assemblage : cliquable, inerte, donc lisible comme une panne — c'est exactement
+ * le défaut n° 36, dont l'engrenage voisin porte le remède en commentaire. Les consoles s'ouvrent
+ * depuis le menu d'une connexion, qui est le palier qui connaît son contexte ; un bouton de barre
+ * de titre aurait dû deviner pour laquelle. La prop `showConsole` part avec lui.
+ */
 type TitleBarProps = {
-  /**
-   * Affiche l'accès à la console, à gauche des préférences. Absent par défaut : l'écran
-   * d'accueil (A1) n'a que l'engrenage dans le mockup, les écrans de travail (A4 à A9) ont
-   * les deux. Un ajout inconditionnel casserait A1.
-   */
-  showConsole?: boolean
   /**
    * Ternit la barre quand une modale bloque la fenêtre — `A2` et `A3`.
    *
@@ -36,6 +37,11 @@ type TitleBarProps = {
   /**
    * Ouvre les préférences (`15a`). Absent, l'engrenage reste **désactivé avec sa raison** — la règle
    * de `09f` : un bouton cliquable et inerte se lit comme une panne (défaut n° 36).
+   *
+   * **Depuis le 26 août 2026, aucun écran du produit ne le laisse absent** : `A1` le passait pas, et
+   * son engrenage ne faisait rien. La galerie est le dernier appelant à monter la barre sans, d'où
+   * une infobulle qui ne nomme plus d'écran — celui qu'elle nommait n'existe pas quand `A1` est à
+   * l'écran. Un tel bouton désactivé dans le produit serait désormais un défaut.
    */
   onOpenPreferences?: () => void
 }
@@ -54,12 +60,7 @@ type TitleBarProps = {
 // focalisable se trouve sur le chemin. Cliquer la pastille projet ou l'engrenage active donc le
 // contrôle, sans déplacer la fenêtre — ce qui est le comportement voulu, et qu'il n'a pas fallu
 // écrire.
-export function TitleBar({
-  showConsole = false,
-  dimmed = false,
-  center,
-  onOpenPreferences,
-}: TitleBarProps) {
+export function TitleBar({ dimmed = false, center, onOpenPreferences }: TitleBarProps) {
   return (
     <div className={cx(styles.root, dimmed && styles.dimmed)} data-tauri-drag-region="deep">
       <div className={cx(styles.wordmark, dimmed && styles.wordmarkDimmed)}>
@@ -73,11 +74,6 @@ export function TitleBar({
           collerait au logo et se déplacerait avec la longueur du fil d'Ariane. */}
       <div className={styles.center}>{center}</div>
       <div className={styles.actions}>
-        {showConsole && (
-          <button type="button" className={styles.action} aria-label="Console">
-            <Icon name="term" size={15} strokeWidth={1.8} />
-          </button>
-        )}
         <button
           type="button"
           className={styles.action}
@@ -86,7 +82,7 @@ export function TitleBar({
           disabled={onOpenPreferences === undefined}
           title={
             onOpenPreferences === undefined
-              ? 'Les préférences s’ouvrent depuis l’écran de travail.'
+              ? 'Les préférences ne sont pas montées sur cet exemplaire de la barre.'
               : undefined
           }
         >
