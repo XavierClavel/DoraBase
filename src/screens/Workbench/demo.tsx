@@ -928,16 +928,14 @@ export function WorkbenchDemo() {
         // réelle, Playwright ne pilotant pas le pont Tauri.
         onEditDatabase={(projet, base) => setEdition({ project: projet, database: base })}
         onNewProject={() => setCreationOuverte({ etape: 'projet' })}
-        // La cible traverse quand le geste part d'un palier d'environnement (26 août 2026) ; sans
-        // elle — le raccourci clavier — la démo retombe sur son premier projet.
+        // La cible traverse, et il n'y a plus de cas sans elle (26 août 2026) : le geste ne part que
+        // d'un palier d'environnement, qui la connaît.
         onNewDatabase={(cible) =>
-          setCreationOuverte(
-            cible
-              ? { etape: 'connexion', projet: cible.project, environnement: cible.environment }
-              : projets[0]
-                ? { etape: 'connexion', projet: projets[0].name }
-                : { etape: 'projet' },
-          )
+          setCreationOuverte({
+            etape: 'connexion',
+            projet: cible.project,
+            environnement: cible.environment,
+          })
         }
         onCreateConsole={async (projet, base, environnement, nom) =>
           surConsoles(projet, base, environnement, (consoles) => [
