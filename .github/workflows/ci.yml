@@ -40,6 +40,10 @@ jobs:
       # justement le problème. Voir l'en-tête du script.
       - run: ./scripts/verifier-aucun-sabotage.sh
 
+      # Le fond de la fenêtre du `.dmg` est un bitmap committé : aucune compilation ne le relit,
+      # aucune ne comparerait ses cotes à celles que `tauri.conf.json` déclare.
+      - run: ./scripts/verifier-fond-dmg.sh
+
       # Les trois fichiers qui portent le numéro de version doivent dire la même chose. Rien
       # dans l'outillage ne les relie : `package.json` (que `tauri.conf.json` lit),
       # `Cargo.toml` et `Cargo.lock`. Relevés à la main dans deux sur trois, ils laissent la CI
@@ -100,7 +104,16 @@ jobs:
         working-directory: src-tauri
         run: cargo metadata --format-version 1 --no-deps | python3 ../scripts/verifier-default-run.py
 
+      # `TAURI_BUNDLER_DMG_IGNORE_CI` : **sans elle, le `.dmg` sort avec la vue Finder par
+      # défaut.** Le bundler DMG de Tauri ajoute `--skip-jenkins` dès qu'il voit `CI` dans
+      # l'environnement, et ce drapeau saute l'AppleScript qui pose le fond, la taille de
+      # fenêtre et la position des deux icônes. Rien n'échoue, rien ne l'annonce : la
+      # construction réussit et l'habillage a disparu. C'est le seul endroit du dépôt où une
+      # variable d'environnement décide de ce que voit l'utilisateur au téléchargement, d'où
+      # l'étape « la fenêtre d'installation est dans le .dmg » plus bas, qui le constate.
       - run: pnpm tauri build
+        env:
+          TAURI_BUNDLER_DMG_IGNORE_CI: true
 
       # La version affichée vient du build et elle est **figée sous Playwright** : sans quoi
       # chaque publication périmerait les captures de fidélité. La contrepartie est de vérifier
@@ -123,6 +136,13 @@ jobs:
           # aurait laissée : c'est tout l'objet du verrou.
           attendue=$(sed -n 's/^version *= *//p' src-tauri/cloud-sql-proxy.lock | head -1)
           "$app/Contents/MacOS/cloud-sql-proxy" --version | grep -F "$attendue"
+
+      # L'habillage de la fenêtre du volume (handoff « fenêtre d'installation DMG ») traverse
+      # une configuration déclarative, un script shell, un AppleScript et le Finder. Aucun de
+      # ces maillons ne rend d'erreur quand le fond n'arrive pas — le `.dmg` a l'air normal. Le
+      # script monte l'image et regarde.
+      - name: la fenêtre d'installation est dans le .dmg
+        run: ./scripts/verifier-dmg-monte.sh "$(ls src-tauri/target/release/bundle/dmg/*.dmg)"
 
       # **Le build de chaque commit, téléchargeable.** Jusqu'ici `tauri build` prouvait que le
       # bundle se construit, puis le jetait — or la question « est-ce que ça se lance ? » ne se

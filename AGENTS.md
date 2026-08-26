@@ -307,6 +307,40 @@ c'est le `.dmg` seul qui est rendu, pas le `.app` : `upload-artifact` réempaque
 qui perd les bits d'exécution et les liens symboliques du bundle, et un `.app` ainsi
 transporté ne se lance pas. Le `.dmg` est une image opaque, il traverse intact.
 
+**La fenêtre du volume est habillée, et c'est une image plus des coordonnées.** Le `.dmg`
+s'ouvre sur un décor peint et une carte qui dit le geste — glisser l'application sur
+`Applications`. Rien de tout cela n'est du code : `bundle.macOS.dmg` porte le fond, la taille
+de fenêtre et la position des deux icônes, et le Finder fait le reste. Quatre décisions à ne
+pas rejouer :
+
+- **aucun numéro de version dans l'image.** Le volume le porte déjà dans son nom ; le remettre
+  dans un bitmap ferait dépendre chaque relèvement d'un Chromium, et une image oubliée
+  annoncerait la version précédente pendant toute la vie de la suivante. L'image dit
+  « universel », et `scripts/verifier-fond-dmg.sh` refuse une source qui porte trois nombres.
+- **le fond est un TIFF multi-résolution**, `fond-dmg.tiff`, fondu par `tiffutil` depuis les
+  deux PNG. macOS ne lit pas la convention `@2x` dans un `.DS_Store` : un PNG 1× serait flou
+  sur Retina, un PNG 2× deux fois trop grand. Les trois fichiers sont committés — régénérer
+  demande un navigateur, ce que le workflow de publication n'a pas à exiger pour poser un tag.
+- **la source est `src-tauri/dmg/fond-dmg.html`**, rendue par `pnpm dmg:fond`. C'est du HTML
+  parce que le décor est du SVG filtré et les textes des jetons de `tokens.css` : le décrire
+  ailleurs qu'en page web aurait voulu dire le redessiner.
+- **les deux emplacements d'icônes restent vides dans l'image.** Le Finder y dessine l'icône
+  *et* le libellé, en police système ; l'alias `Applications` reçoit l'icône de dossier
+  d'Apple, qu'on ne cherche pas à remplacer. Et ces icônes font **128 pt**, pas les 96 du
+  handoff : la taille n'est exposée par aucune clef de configuration, le bundler la fixe en
+  dur. C'est la composition qui a cédé — les deux lignes mono sont descendues sous le libellé.
+  La reprendre par l'autre bout demanderait de poser le `.DS_Store` soi-même, donc de rouvrir
+  en écriture une image que Tauri vient de compresser en lecture seule.
+
+**`TAURI_BUNDLER_DMG_IGNORE_CI` décide de ce que voit l'utilisateur.** Le bundler DMG ajoute
+`--skip-jenkins` dès qu'il voit `CI` dans l'environnement, et ce drapeau saute **tout**
+l'AppleScript de mise en fenêtre : fond, taille, positions. Rien n'échoue, rien ne l'annonce —
+le `.dmg` se construit, se signe, se notarie et se publie, dépouillé. La variable est donc
+posée dans les deux workflows, `verifier-ci.py` en constate la présence dans l'`env:` des deux
+`tauri build`, et `scripts/verifier-dmg-monte.sh` monte l'image construite pour regarder ce
+qu'elle porte vraiment. C'est le seul réglage du dépôt dont l'oubli serait invisible partout
+sauf chez qui télécharge.
+
 **Baloo 2 restreinte au latin, Nunito et JetBrains Mono complètes.** Le critère n'est pas
 « ce sous-ensemble sert-il » mais « cette police rend-elle des données arbitraires ».
 Baloo 2 ne porte que du chrome applicatif. Les polices sont **embarquées**, jamais
@@ -385,6 +419,18 @@ manière de reprendre des données sans que `serde` les efface en silence.
   l'idempotence d'une fusion sur le **contenu** plutôt que sur la présence du fichier : un
   universel laissé par une version antérieure du verrou porterait le bon nom avec le mauvais
   binaire, et le bundle l'embarquerait sans rien remarquer.
+- **Le `.DS_Store` d'un volume monté se lit, et il dit ce que le bundler a vraiment posé.**
+  Les `bplist00` qu'il contient se chargent par `plistlib` : `WindowBounds`, `iconSize`,
+  `textSize`, `backgroundType` et l'alias du fond y sont en clair. C'est ce qui a montré que
+  les icônes du `.dmg` font 128 pt et non 96 — un fait qu'aucune configuration n'annonce et
+  qu'aucune capture n'était en mesure de mesurer.
+- **`bounds` d'une fenêtre Finder est la fenêtre entière, barre de titre comprise.** Mesuré :
+  `bounds {100,100,760,540}` donne une fenêtre de 660 × 440 dont la **zone de contenu** fait
+  660 × 408, à 32 pt du haut. C'est cette zone que le fond du `.dmg` remplit et dans laquelle
+  les positions d'icônes sont exprimées, d'où `windowSize.height` à **472** pour une image de
+  440 : lire le handoff au premier degré aurait rogné 32 pt du bas de l'image. Les 32 pt sont
+  ceux de macOS 26 sans barre d'outils ni barre d'état ; une autre version pourrait en
+  compter d'autres, et c'est la seule cote de l'habillage qui dépende du système.
 - **`cloud-sql-proxy` v2 écrit son journal courant sur la sortie standard**, pas sur la
   sortie d'erreur — et il ne compose avec l'instance qu'à la **première connexion** : un
   nom d'instance faux le laisse annoncer « prêt », puis échouer en restant vivant.
@@ -550,6 +596,12 @@ présenter comme vérifiées tant qu'un humain ne les a pas faites :
   la machine qui a construit. Ce qu'il reste à voir chez quelqu'un d'autre : que rien ne
   s'affiche du tout, et que l'application démarre. Un Mac Intel serait le meilleur essai, la
   tranche `x86_64` du bundle universel n'ayant jamais été exécutée.
+- **Ouvrir le `.dmg` publié, sur un écran Retina et sur un écran 1×.** Que le fond soit
+  *appliqué* se vérifie par script (`verifier-dmg-monte.sh` : le fichier est dans le volume et
+  le `.DS_Store` le référence) ; qu'il soit **net**, cadré, et que les deux icônes tombent bien
+  sur leurs emplacements ne se voit qu'à l'œil. Le TIFF multi-résolution n'a pas d'autre juge.
+  Ne pas chercher à le capturer par `screencapture` : la fenêtre du volume n'est pas
+  nécessairement au premier plan, et la capture attrape alors l'écran de quelqu'un.
 - **Régler « Afficher les barres de défilement : toujours »**, puis regarder la sidebar et
   la bande d'onglets. Chromium sans tête rend des barres en survol, qui n'occupent aucune
   place : la mesure vaut 0 avec comme sans la correction.
@@ -652,6 +704,8 @@ pnpm test:e2e       # Playwright, webServer auto
 pnpm typecheck      # tsc -b — le seul qui compile quelque chose
 pnpm lint           # Biome
 pnpm tokens:check   # garde-fou : échoue si tokens.css/ts ont été édités à la main
+pnpm dmg:fond       # régénère le fond de la fenêtre d'installation .dmg (Chromium + tiffutil)
+./scripts/verifier-dmg-monte.sh <fichier.dmg>          # monte une image et regarde son habillage
 ./scripts/version.sh correctif|fonction|majeur|X.Y.Z   # relève les 3 fichiers, committe, tag
                                                        # ne pousse rien ; le README décrit le flux
 pnpm domain:check   # idem pour les projections ts-rs (exige un arbre git propre)
@@ -659,6 +713,10 @@ pnpm domain:check   # idem pour les projections ts-rs (exige un arbre git propre
 cd src-tauri && cargo test --features db-tests   # avec les décors
 cd src-tauri && cargo test                       # sans décor
 ```
+
+`src-tauri/dmg/fond-dmg.png`, `fond-dmg@2x.png` et `fond-dmg.tiff` sont engendrés par
+`pnpm dmg:fond` depuis `fond-dmg.html`, et **committés** : le rendu demande un Chromium, que
+le workflow de publication n'a pas à installer pour poser un tag.
 
 **Fichiers générés, jamais édités à la main** : `src/design/tokens.css`,
 `src/design/tokens.ts` (depuis `tokens.json`) et `src/domain/*.ts` (depuis Rust, par

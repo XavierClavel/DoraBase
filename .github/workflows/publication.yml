@@ -101,6 +101,7 @@ jobs:
       # dans `ci.yml` : ils demandent un serveur et quatre décors, et ce job n'a pas à les
       # remonter pour la seconde fois.
       - run: ./scripts/verifier-aucun-sabotage.sh
+      - run: ./scripts/verifier-fond-dmg.sh
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
@@ -219,8 +220,15 @@ jobs:
       # Les variables `APPLE_*` sont lues par Tauri lui-même : présentes, il signe avec
       # l'identité, soumet à `notarytool`, attend le verdict et agrafe le ticket ; absentes, il
       # signe en ad hoc et l'annonce dans son log (« skipping app notarization »).
+      #
+      # `TAURI_BUNDLER_DMG_IGNORE_CI` : **sans elle, la version publiée sort avec la vue Finder
+      # par défaut.** Le bundler DMG ajoute `--skip-jenkins` dès qu'il voit `CI` dans
+      # l'environnement, et ce drapeau saute l'AppleScript qui pose le fond, la taille de
+      # fenêtre et la position des deux icônes — sans erreur, sans trace. Le `.dmg` se
+      # construit, se signe, se notarie et se publie, dépouillé.
       - run: pnpm tauri build --target universal-apple-darwin
         env:
+          TAURI_BUNDLER_DMG_IGNORE_CI: true
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -233,6 +241,17 @@ jobs:
       # chaque publication périmerait les captures de fidélité. La contrepartie est de vérifier
       # que le décor ne sort pas du décor — voir l'en-tête du script.
       - run: ./scripts/verifier-aucun-decor-de-version.sh
+
+      # C'est l'écran que voit qui télécharge : le fond, la taille de la fenêtre et les deux
+      # emplacements d'icônes. Rien en amont n'échoue quand ils manquent, d'où ce constat sur
+      # le volume réellement monté. Il vient **avant** la notarisation : celle-ci coûte une
+      # vingtaine de minutes d'attente, qu'il serait absurde de payer pour découvrir ensuite
+      # que l'image publiée est nue.
+      - name: la fenêtre d'installation est dans le .dmg
+        run: |
+          set -euo pipefail
+          dmg=$(ls src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg)
+          ./scripts/verifier-dmg-monte.sh "$dmg"
 
       # **Tauri notarie l'application, pas l'image.** Constaté à la 0.1.4 : l'app revient
       # « Accepted » et agrafée, et `stapler validate` sur le `.dmg` répond « does not have a
