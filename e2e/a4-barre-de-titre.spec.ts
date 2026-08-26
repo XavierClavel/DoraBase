@@ -163,22 +163,22 @@ test('la pastille porte la couleur déclarée de l’environnement', async ({ pa
 })
 
 /**
- * Le parcours clavier de la barre : **deux arrêts**, console et préférences.
+ * Le parcours clavier de la barre : **un seul arrêt**, les préférences.
  *
- * Il en comptait quatre — la pastille, le sélecteur et les deux icônes — ce qui invalide un critère
- * de `09c`. Deux contrôles partis, deux arrêts restent.
+ * Il en comptait quatre — la pastille, le sélecteur et les deux icônes —, puis deux, puis un depuis
+ * le retrait du bouton de console (26 août 2026), qui n'ouvrait rien.
  *
  * **Mesuré sur `/?demo` et non sur la galerie**, et ce n'est pas un détour : en galerie la barre est
  * montée sans `onOpenPreferences`, donc son engrenage est *désactivé avec sa raison* (`09f`) — un
  * bouton désactivé n'est pas un arrêt de tabulation, et le compte y vaudrait un. C'est l'état du
  * décor, pas celui du produit.
  */
-test('le parcours clavier de la barre compte deux arrêts', async ({ page }) => {
+test('le parcours clavier de la barre compte un arrêt', async ({ page }) => {
   await page.goto('/?demo')
   await page.waitForSelector('[role=tree]')
 
   const arrets: (string | null)[] = []
-  for (let i = 0; i < 3; i += 1) {
+  for (let i = 0; i < 2; i += 1) {
     await page.keyboard.press('Tab')
     arrets.push(
       await page.evaluate(() => {
@@ -189,7 +189,7 @@ test('le parcours clavier de la barre compte deux arrêts', async ({ page }) => 
       }),
     )
   }
-  expect(arrets).toEqual(['Console', 'Préférences', 'hors de la barre'])
+  expect(arrets).toEqual(['Préférences', 'hors de la barre'])
 })
 
 /**

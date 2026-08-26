@@ -132,3 +132,21 @@ test('A3 est conforme à la référence', async ({ page }) => {
   await page.evaluate(() => document.fonts.ready)
   await expect(page).toHaveScreenshot('a3-echec.png', { fullPage: true })
 })
+
+/**
+ * **L'engrenage de `A1` ouvre les préférences** (26 août 2026).
+ *
+ * Il ne faisait rien : `WelcomeScreen` montait la barre sans `onOpenPreferences`, donc `TitleBar`
+ * retombait sur son `disabled` — et l'infobulle renvoyait vers l'écran de travail, qui n'existe pas
+ * tant qu'aucun projet n'est déclaré. Le premier écran du produit avait un réglage inatteignable.
+ *
+ * **Et le test part de `/`**, non de la galerie : c'est exactement le défaut que la galerie ne peut
+ * pas voir — le composant était juste dans sa vitrine, c'est l'assemblage qui manquait.
+ */
+test('depuis l’accueil, l’engrenage ouvre les préférences', async ({ page }) => {
+  await page.goto('/')
+  const engrenage = page.getByRole('button', { name: 'Préférences' })
+  await expect(engrenage).toBeEnabled()
+  await engrenage.click()
+  await expect(page.getByRole('dialog', { name: 'Préférences' })).toBeVisible()
+})

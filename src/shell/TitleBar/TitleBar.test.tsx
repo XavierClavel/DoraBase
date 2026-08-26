@@ -12,20 +12,16 @@ test('affiche le wordmark et l’accès aux préférences', () => {
   expect(screen.getByRole('button', { name: /préférences/i })).toBeInTheDocument()
 })
 
-test('n’affiche pas la console sur cet écran', () => {
+test('n’a pas d’accès à la console', () => {
   render(<TitleBar />)
   expect(screen.queryByRole('button', { name: /console/i })).not.toBeInTheDocument()
 })
 
-test('affiche la console seulement si demandé', () => {
-  render(<TitleBar showConsole />)
-  expect(screen.getByRole('button', { name: /console/i })).toBeInTheDocument()
-})
-
-// Ordre relevé dans le mockup A4 (l. 349-351) : la console précède les préférences.
-test('place la console avant les préférences', () => {
-  render(<TitleBar showConsole />)
+// **Une seule action dans la barre**, l'engrenage. Le bouton de console est parti le 26 août 2026 :
+// il n'avait pas d'`onClick`, donc il se lisait comme une panne (défaut n° 36).
+test('n’a qu’une action, les préférences', () => {
+  render(<TitleBar />)
   const actions = screen.getAllByRole('button')
-  expect(actions[0]).toHaveAccessibleName(/console/i)
-  expect(actions[1]).toHaveAccessibleName(/préférences/i)
+  expect(actions).toHaveLength(1)
+  expect(actions[0]).toHaveAccessibleName(/préférences/i)
 })

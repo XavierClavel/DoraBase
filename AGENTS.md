@@ -136,6 +136,29 @@ qu'il portait et que le rendu ne dit pas.
   personne l'ait demandé. Le refus est **actif** (`preventDefault` sur `wheel` + `ctrlKey`) :
   s'abstenir laisserait la webview appliquer son propre pas, de dix à vingt-cinq pour cent.
   `⌘` + molette reste, à pas fin, et `⌘0` revient à l'origine.
+- **Et cet engrenage n'ouvrait rien sur `A1`** (26 août 2026). `WelcomeScreen` montait la barre sans
+  `onOpenPreferences`, donc le bouton retombait sur le `disabled` de `TitleBar` — dont l'infobulle
+  renvoyait vers *l'écran de travail*, qui n'existe précisément pas tant qu'aucun projet n'est
+  déclaré. Le premier écran du produit avait un réglage inatteignable, et un commentaire d'`App`
+  affirmait le contraire depuis que la modale y avait été montée « pour être atteignable depuis
+  `A1` ». Deux choses à en retenir : **un composant juste dans sa vitrine ne prouve rien de
+  l'assemblage** — le test qui manquait partait de `/` —, et **rien ne se voyait**, parce que
+  `.action` n'a aucun style `:disabled` : le bouton mort avait l'exacte apparence du vivant, et son
+  `disabled` avalait au passage l'infobulle qui aurait dit pourquoi (le piège n° 3
+  d'accessibilité). L'infobulle ne nomme plus d'écran ; la galerie est le dernier appelant à monter
+  la barre sans gestionnaire.
+- **La barre de titre n'a plus qu'une action, l'engrenage** (26 août 2026). Le bouton de console
+  qu'elle portait n'avait pas d'`onClick` depuis le premier assemblage : cliquable et inerte, donc
+  lisible comme une panne — le défaut n° 36, dont l'engrenage voisin portait déjà le remède. Et il
+  n'y avait pas d'`onClick` à lui donner : une console s'ouvre depuis le menu d'une connexion, qui
+  est le palier qui connaît son contexte, là où un bouton de barre aurait dû deviner pour laquelle.
+  C'est la même raison qui a fait partir le pied de la sidebar. La prop `showConsole` est partie
+  avec.
+- **L'engrenage était un soleil.** `i-gear` était un cercle et six rayons — le tracé d'un soleil, pas
+  d'un rouage —, et il annonçait les préférences dans la barre de titre comme dans l'en-tête de leur
+  modale. Redessiné en rouage à huit dents le 26 août 2026. Quatre captures de fidélité en
+  dépendaient : une icône du sprite est un décor partagé, et la changer périme tout écran qui la
+  montre.
 - **`esc` dans un champ rend le focus, il ne ferme pas la modale.** Un second `esc` ferme ;
   depuis un bouton, la fermeture est immédiate — il n'y a pas de saisie à abandonner.
 - **Aucune correction automatique dans les champs.** macOS transformait `localhost` en

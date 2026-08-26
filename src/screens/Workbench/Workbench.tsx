@@ -956,7 +956,6 @@ export function Workbench({
         />
       )}
       <TitleBar
-        showConsole
         onOpenPreferences={onOpenPreferences}
         // **Rien du tout quand rien n'est sélectionné** (`25b`), et aucune empreinte réservée : un
         // `.center` vide a une hauteur de zéro sans rien déplacer — la barre garde ses 40 px, le
