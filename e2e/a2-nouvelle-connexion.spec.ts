@@ -482,6 +482,20 @@ test('la phrase du projet créé passe sous la rangée de boutons', async ({ pag
   expect(mesures?.constat?.hauteur).toBeLessThan(20)
 })
 
+test('le pied replié garde du souffle entre le filet et les boutons', async ({ page }) => {
+  // **Le cas du pied qui se replie**, celui de l'étape 2 : une rangée de boutons *plus* la phrase du
+  // projet créé. La hauteur minimale de 57px protégeait le pied à une ligne et lui seul — dès que le
+  // contenu la dépassait, la rangée venait s'appuyer sur le filet du dessus, et la phrase sur le bord
+  // bas de la modale. C'est un remplissage qu'il fallait, pas une hauteur.
+  const mesures = await pied(page)
+  // Le filet fait 1px et vit dans la boîte (`border-box`) : le premier bouton commence donc au moins
+  // un remplissage plus bas. Le seuil est délibérément bas — ce qui est mesuré, c'est qu'il y a un
+  // écart, pas sa valeur exacte, qui appartient à l'échelle d'espacement.
+  expect(mesures?.boutonTester?.y ?? 0).toBeGreaterThanOrEqual(6)
+  // Et autant sous la phrase : sans elle, le remplissage n'aurait été qu'un demi-remède.
+  expect((mesures?.hauteur ?? 0) - (mesures?.constat?.bas ?? 0)).toBeGreaterThanOrEqual(6)
+})
+
 test('le verdict d’un test réussi tient sur une ligne, sans écraser les boutons', async ({
   page,
 }) => {
