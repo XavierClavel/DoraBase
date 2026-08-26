@@ -124,6 +124,26 @@ test('le formulaire ouvre vide, pas rempli des valeurs du mockup', () => {
   expect(screen.getByLabelText('Utilisateur')).toHaveValue('')
 })
 
+test('choisir un moteur amène son port', async () => {
+  monter([{ id: 'print', name: 'Atelier Nord', environments: TRIO_DE_TEST }])
+  await userEvent.click(screen.getByRole('radio', { name: 'MySQL' }))
+  expect(screen.getByLabelText('Port')).toHaveValue('3306')
+  await userEvent.click(screen.getByRole('radio', { name: 'MongoDB' }))
+  expect(screen.getByLabelText('Port')).toHaveValue('27017')
+})
+
+test('un port saisi à la main n’est pas emporté par le moteur', async () => {
+  monter([{ id: 'print', name: 'Atelier Nord', environments: TRIO_DE_TEST }])
+  const port = screen.getByLabelText('Port')
+  await userEvent.clear(port)
+  await userEvent.type(port, '6543')
+  await userEvent.click(screen.getByRole('radio', { name: 'MySQL' }))
+  // Le câblage, pas la règle : `portSuivant` est testé pour lui-même dans `engines.test.ts`. Ce qui
+  // se vérifie ici est que l'écran lui passe bien le moteur **précédent** — avec le nouveau, la
+  // comparaison se ferait contre 3306 et le port saisi serait jeté.
+  expect(screen.getByLabelText('Port')).toHaveValue('6543')
+})
+
 test('les valeurs préremplies sont celles qui sont vraies dans presque tous les cas', () => {
   // **Monté avec un projet, depuis `24c`.** Cet écran déclare une connexion *dans un projet* : sans
   // projet, il n'a aucun environnement à proposer, et ce test cherchait une radio « dev » qui

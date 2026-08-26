@@ -60,3 +60,44 @@ export const FILE_ENGINES: readonly Engine[] = ['sqlite']
 export function estUnFichier(engine: Engine): boolean {
   return FILE_ENGINES.includes(engine)
 }
+
+/**
+ * Le port d'écoute par défaut de chaque moteur.
+ *
+ * **Typé `Record<Engine, …>` pour la même raison que `ENGINES`** : un moteur ajouté en Rust fait
+ * refuser ce fichier tant que sa valeur n'est pas écrite, et le compilateur pose la question à notre
+ * place — « celui-là, sur quel port écoute-t-il ? »
+ *
+ * `null` veut dire **« ce moteur n'a pas de port »**, et non « on ne sait pas » : SQLite s'ouvre depuis
+ * un fichier (`FILE_ENGINES`), Snowflake et BigQuery depuis une URL de service. Préremplir 443 pour
+ * ces deux-là afficherait un port que personne ne saisit et que rien ne lit.
+ *
+ * Une chaîne et non un nombre : c'est la valeur d'un champ de saisie, et le brouillon garde le port en
+ * texte jusqu'à sa conversion par `draftToRequest`.
+ */
+export const PORT_PAR_DEFAUT: Record<Engine, string | null> = {
+  postgresql: '5432',
+  mysql: '3306',
+  sqlite: null,
+  mongodb: '27017',
+  redis: '6379',
+  snowflake: null,
+  bigquery: null,
+}
+
+/**
+ * Le port à afficher après un changement de moteur.
+ *
+ * **Une valeur saisie à la main survit au changement, le défaut de l'autre moteur non.** Remplacer
+ * systématiquement jetterait le port d'un serveur qui n'écoute pas sur le port usuel — la raison même
+ * pour laquelle le champ est saisissable. Ne jamais remplacer laisserait `5432` devant une connexion
+ * MySQL, ce qui échoue à l'ouverture sans dire pourquoi.
+ *
+ * Le partage se fait sur un seul critère : le port affiché **est-il encore celui du moteur qu'on
+ * quitte** ? Si oui, personne ne l'a choisi, et il suit. Un champ vide suit aussi — c'est ce que laisse
+ * un passage par SQLite.
+ */
+export function portSuivant(precedent: Engine, portAffiche: string, suivant: Engine): string {
+  const saisiALaMain = portAffiche !== '' && portAffiche !== PORT_PAR_DEFAUT[precedent]
+  return saisiALaMain ? portAffiche : (PORT_PAR_DEFAUT[suivant] ?? '')
+}
