@@ -3,14 +3,15 @@ import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { Value } from '../../domain/engine'
-import type { EnAttente } from './modifications'
+import type { LigneAjoutee, ModificationDeCellule } from './modifications'
 import { PendingPanel } from './PendingPanel'
 
 const SQL =
   'BEGIN;\nUPDATE "public"."orders" SET "status" = \'shipped\' WHERE "id" = \'184219\';\nCOMMIT;'
 
-function modification(over: Partial<EnAttente[number]> = {}): EnAttente[number] {
+function modification(over: Partial<ModificationDeCellule> = {}): ModificationDeCellule {
   return {
+    sorte: 'cellule',
     cle: '184219',
     rang: 2,
     column: 'status',
@@ -216,4 +217,38 @@ test('« Tout annuler » vide le modèle', async () => {
 test('le compte de l’en-tête suit le modèle', () => {
   monter({ attente: [modification(), modification({ cle: '2' }), modification({ cle: '3' })] })
   expect(screen.getByLabelText('Modifications en attente de la table')).toHaveTextContent('3')
+})
+
+function ligneAjoutee(over: Partial<LigneAjoutee> = {}): LigneAjoutee {
+  return {
+    sorte: 'ligne',
+    cle: 'nouvelle-1',
+    rang: 1,
+    valeurs: { status: { kind: 'texte', texte: 'pending' } },
+    ...over,
+  }
+}
+
+test('une ligne ajoutée se lit comme une liste de valeurs, sans diff', () => {
+  monter({ attente: [ligneAjoutee()] })
+  const carte = screen.getAllByRole('listitem')[0] as HTMLElement
+  // **Pas de clé à montrer** : celle de la base n'existe pas encore, et en inventer une ferait
+  // croire à une ligne déjà écrite.
+  expect(carte).toHaveTextContent('nouvelle ligne 1')
+  expect(carte).toHaveTextContent('status')
+  expect(carte).toHaveTextContent('pending')
+})
+
+test('une ligne ajoutée se retire entière, d’une seule croix', async () => {
+  const { onRetirer } = monter({ attente: [ligneAjoutee()] })
+  // Sa carte n'offre pas de retrait par colonne : il n'y a rien à retirer isolément d'une ligne
+  // qui n'existe pas encore.
+  await userEvent.click(screen.getByRole('button', { name: 'Retirer la nouvelle ligne 1' }))
+  expect(onRetirer).toHaveBeenCalledWith('nouvelle-1', '')
+})
+
+test('une ligne sans valeur dit que la base appliquera ses défauts', () => {
+  monter({ attente: [ligneAjoutee({ valeurs: {} })] })
+  // Une carte vide laisserait croire à une entrée perdue ; elle dit ce qui va se passer.
+  expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('la base appliquera ses défauts')
 })

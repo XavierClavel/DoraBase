@@ -33,7 +33,19 @@ export function ApplyConfirm({
   // Les lignes, pas les modifications : trois corrections sur la même ligne n'en touchent qu'une, et
   // c'est le nombre de lignes qui dit l'ampleur de ce qu'on écrit.
   const lignes = new Set(attente.map((modification) => modification.cle)).size
-  const colonnes = [...new Set(attente.map((modification) => modification.column))]
+  const colonnes = [
+    ...new Set(
+      attente.flatMap((modification) =>
+        modification.sorte === 'cellule'
+          ? [modification.column]
+          : Object.keys(modification.valeurs),
+      ),
+    ),
+  ]
+  // **Les deux verbes sont comptés séparément**, et c'est le dernier écran avant une écriture en
+  // production : « 3 UPDATE » sur un lot qui insère deux lignes dirait le contraire de ce qui part.
+  const ajouts = attente.filter((modification) => modification.sorte === 'ligne').length
+  const misesAJour = attente.length - ajouts
 
   return (
     <Modal title="Écrire en production" icon="warn" nested onClose={onClose}>
@@ -56,7 +68,7 @@ export function ApplyConfirm({
           </div>
           <div className={styles.entree}>
             <dt>Instructions</dt>
-            <dd>{attente.length} UPDATE, en une transaction</dd>
+            <dd>{resumeDesInstructions(misesAJour, ajouts)}, en une transaction</dd>
           </div>
         </dl>
         {/* Ce que `11d` livre vraiment : le patch inverse est rendu après l'écriture et copiable,
@@ -79,4 +91,12 @@ export function ApplyConfirm({
       </div>
     </Modal>
   )
+}
+
+/** « 2 UPDATE et 1 INSERT » — ce qui part vraiment, sans nommer un verbe absent. */
+function resumeDesInstructions(misesAJour: number, ajouts: number): string {
+  const morceaux: string[] = []
+  if (misesAJour > 0) morceaux.push(`${misesAJour} UPDATE`)
+  if (ajouts > 0) morceaux.push(`${ajouts} INSERT`)
+  return morceaux.join(' et ')
 }

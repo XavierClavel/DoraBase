@@ -1016,6 +1016,7 @@ export function Workbench({
       {table && (
         <EditBanner
           compte={attente.length}
+          ajouts={attente.filter((modification) => modification.sorte === 'ligne').length}
           table={`${table.schema}.${table.table}`}
           onToutAnnuler={() =>
             setAttentes((precedent) => ({ ...precedent, [idActif as string]: [] }))
@@ -1451,7 +1452,11 @@ function annotationsDe(
   }
   // **« modifié » prime** : c'est l'état le plus récent et le seul qui attend une action. Le mockup
   // de `A6` remplace bien « bpchar » et « tri ↓ » par « modifié » sur les colonnes touchées.
-  for (const modification of attente) annotations[modification.column] = 'modifié'
+  // Une **ligne ajoutée** n'annote rien : ses colonnes ne sont pas modifiées dans les lignes que
+  // la sidebar décrit, et les marquer ferait chercher un changement invisible dans la grille.
+  for (const modification of attente) {
+    if (modification.sorte === 'cellule') annotations[modification.column] = 'modifié'
+  }
   return annotations
 }
 

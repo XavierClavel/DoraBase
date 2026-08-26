@@ -211,6 +211,32 @@ export type ObjectCounts = { tables: number, views: number, functions: number, i
 export type ObjectKind = "table" | "view" | "function" | "index";
 
 /**
+ * Une ligne à insérer, telle que le bouton « + » de la barre d'outils la retient.
+ *
+ * **Aucune clé attendue, et c'est la différence avec `PendingUpdate`** : une insertion ne vise pas
+ * une ligne existante, elle n'a donc ni `WHERE` ni détection de conflit. La table peut d'ailleurs
+ * n'avoir aucune clé primaire — ce qui interdit la modification mais pas l'ajout.
+ */
+export type PendingInsert = { 
+/**
+ * Les colonnes saisies, dans l'ordre de la table. Vide : la ligne est faite de défauts seuls.
+ */
+values: Array<PendingInsertValue>, };
+
+/**
+ * Une valeur saisie dans une ligne à insérer.
+ *
+ * **Une colonne absente de la liste n'est pas une colonne nulle** : elle est laissée au défaut de
+ * la base — une séquence, un `now()`, une valeur par défaut déclarée. Poser `NULL` partout ferait
+ * échouer l'insertion sur la première colonne obligatoire, et volerait à la table ses défauts.
+ */
+export type PendingInsertValue = { column: string, 
+/**
+ * La valeur saisie, ou `None` pour un `NULL` **demandé** — distinct d'une colonne absente.
+ */
+value: string | null, };
+
+/**
  * Une modification en attente, telle que `A6` la retient (`11a`).
  *
  * **La valeur est du texte, ou `None` pour `NULL`.** C'est exactement ce que l'utilisateur a tapé :
@@ -396,8 +422,16 @@ export type UpdatePlan = { schema: string, table: string,
  * La colonne qui identifie une ligne. **Fournie par l'écran**, qui la connaît par
  * l'introspection : la redemander à la base à chaque prévisualisation coûterait un
  * aller-retour pour une information déjà affichée.
+ *
+ * Vide quand la table n'en a pas : un plan qui ne porte que des insertions reste valide, seules
+ * les modifications en exigent une.
  */
-keyColumn: string, changes: Array<PendingUpdate>, };
+keyColumn: string, changes: Array<PendingUpdate>, 
+/**
+ * Les lignes à ajouter. **`#[serde(default)]`** : un champ ajouté ne demande pas de cran de
+ * migration, et un plan écrit par une version antérieure reste lisible.
+ */
+inserts: Array<PendingInsert>, };
 
 /**
  * Une valeur de cellule, **typée** et non préformatée.

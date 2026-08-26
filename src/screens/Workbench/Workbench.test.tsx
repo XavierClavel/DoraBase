@@ -1194,6 +1194,40 @@ describe('mode édition', () => {
     expect(screen.queryByRole('dialog', { name: /production/i })).not.toBeInTheDocument()
   })
 
+  it('une ligne ajoutée depuis la barre d’outils part en `inserts`, pas en `changes`', async () => {
+    const utilisateur = userEvent.setup()
+    const ecrire = vi.fn(async () => ({ applied: 1, inverseSql: '' }))
+    monter({
+      projects: PROJETS_DEV,
+      passerellePreview: PREVIEW,
+      passerelleApply: { applyChanges: ecrire },
+    })
+    await ouvrirEtEditer(utilisateur)
+
+    // **Le geste entier, depuis l'écran assemblé** : le bouton de la barre, la saisie dans la
+    // grille, puis l'écriture. Un composant vérifié dans sa vitrine peut n'être atteignable
+    // nulle part.
+    await utilisateur.click(screen.getByRole('button', { name: 'Ajouter une ligne' }))
+    await utilisateur.click(await screen.findByRole('button', { name: 'Renseigner status' }))
+    const champ = screen.getByLabelText('Nouvelle valeur')
+    await utilisateur.type(champ, 'pending{Enter}')
+
+    // Le bandeau nomme ce qui attend : « modification » dirait le contraire de ce qui partira.
+    expect(await screen.findByText(/1 ligne ajoutée en attente sur/)).toBeInTheDocument()
+
+    const panneau = await screen.findByLabelText('Modifications en attente de la table')
+    await utilisateur.click(within(panneau).getByRole('button', { name: /Appliquer/ }))
+
+    await waitFor(() => expect(ecrire).toHaveBeenCalledOnce())
+    const [, plan] = ecrire.mock.calls[0] as unknown as [unknown, UpdatePlan]
+    // **Un `INSERT`, aucun `UPDATE`** : une ligne neuve envoyée en `changes` chercherait une ligne
+    // à mettre à jour qui n'existe pas, et son `WHERE` ne trouverait rien.
+    expect(plan.changes).toHaveLength(0)
+    expect(plan.inserts).toHaveLength(1)
+    // Et seule la colonne saisie part : les autres restent au défaut de la base.
+    expect(plan.inserts[0]?.values).toEqual([{ column: 'status', value: 'pending' }])
+  })
+
   it('le plan envoyé porte la valeur attendue, qui détecte le conflit', async () => {
     const utilisateur = userEvent.setup()
     const ecrire = vi.fn(async () => ({ applied: 1, inverseSql: '' }))

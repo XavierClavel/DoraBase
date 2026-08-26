@@ -1,16 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import type { ColumnInfo, Value } from '../../domain/engine'
 import {
+  ajouterUneLigne,
   annulerLaDerniere,
   estEditable,
+  estEditableALAjout,
   estIdentique,
+  lignesAjoutees,
   lignesModifiees,
   type Modification,
+  type ModificationDeCellule,
   modificationDe,
   raisonDuRefus,
   retenir,
   retirer,
+  saisirDansLaLigne,
   texteBrutDe,
+  valeurDeLaLigne,
 } from './modifications'
 
 const colonne = (name: string, over: Partial<ColumnInfo> = {}): ColumnInfo => ({
@@ -28,6 +34,14 @@ const colonne = (name: string, over: Partial<ColumnInfo> = {}): ColumnInfo => ({
 })
 
 const saisie = (texte: string) => ({ kind: 'texte' as const, texte })
+
+/** La modification de cellule attendue à ce rang — les assertions portent sur ses champs. */
+function cellule(modification: Modification | undefined): ModificationDeCellule {
+  if (modification === undefined || modification.sorte !== 'cellule') {
+    throw new Error('une modification de cellule était attendue')
+  }
+  return modification
+}
 const NUL = { kind: 'null' as const }
 
 function poser(
@@ -50,8 +64,8 @@ describe('retenir une modification', () => {
   it('retient une saisie qui change la valeur', () => {
     const a = poser([], '184217', 'status', { kind: 'text', value: 'paid' }, 'shipped')
     expect(a).toHaveLength(1)
-    expect(a[0]?.avant).toEqual({ kind: 'text', value: 'paid' })
-    expect(a[0]?.apres).toEqual(saisie('shipped'))
+    expect(cellule(a[0]).avant).toEqual({ kind: 'text', value: 'paid' })
+    expect(cellule(a[0]).apres).toEqual(saisie('shipped'))
   })
 
   it('retaper la valeur d’origine retire la modification', () => {
@@ -69,8 +83,8 @@ describe('retenir une modification', () => {
     a = poser(a, '184217', 'status', { kind: 'text', value: 'shipped' }, 'refunded')
 
     expect(a).toHaveLength(1)
-    expect(a[0]?.avant).toEqual({ kind: 'text', value: 'paid' })
-    expect(a[0]?.apres).toEqual(saisie('refunded'))
+    expect(cellule(a[0]).avant).toEqual({ kind: 'text', value: 'paid' })
+    expect(cellule(a[0]).apres).toEqual(saisie('refunded'))
   })
 
   it('l’ordre de saisie est conservé', () => {
@@ -91,7 +105,7 @@ describe('retirer et annuler', () => {
   it('retirer ne touche que la cellule visée', () => {
     let a = poser([], '1', 'status', { kind: 'text', value: 'a' }, 'z')
     a = poser(a, '1', 'note', { kind: 'text', value: 'b' }, 'y')
-    expect(retirer(a, '1', 'status').map((m) => m.column)).toEqual(['note'])
+    expect(retirer(a, '1', 'status').map((m) => cellule(m).column)).toEqual(['note'])
   })
 
   it('⌘Z retire la dernière retenue, pas la première', () => {
@@ -173,5 +187,97 @@ describe('les lignes modifiées', () => {
     expect(modificationDe(a, '1', 'status')?.apres).toEqual(saisie('z'))
     expect(modificationDe(a, '1', 'note')).toBeUndefined()
     expect(modificationDe(a, '2', 'status')).toBeUndefined()
+  })
+})
+
+describe('ajouter une ligne', () => {
+  it('chaque appel en ajoute une, numérotée dans l’ordre', () => {
+    let a = ajouterUneLigne([])
+    a = ajouterUneLigne(a)
+    expect(lignesAjoutees(a).map((ligne) => ligne.rang)).toEqual([1, 2])
+    // Deux lignes ajoutées sont deux entrées **distinctes** : leurs identités locales ne doivent pas
+    // se confondre, sans quoi une saisie dans l'une apparaîtrait dans l'autre.
+    expect(new Set(a.map((m) => m.cle)).size).toBe(2)
+  })
+
+  it('une ligne neuve n’a aucune valeur : tout est au défaut de la base', () => {
+    const [ligne] = lignesAjoutees(ajouterUneLigne([]))
+    expect(ligne?.valeurs).toEqual({})
+  })
+
+  it('un retrait libère son numéro, comme pour les consoles', () => {
+    let a = ajouterUneLigne(ajouterUneLigne([]))
+    const premiere = lignesAjoutees(a)[0]
+    a = retirer(a, premiere?.cle ?? '', '')
+    a = ajouterUneLigne(a)
+    // Le plus petit numéro libre, sinon les numéros affichés finiraient troués — « +2, +3 » après
+    // avoir retiré la première, alors qu'il n'y en a que deux.
+    expect(
+      lignesAjoutees(a)
+        .map((ligne) => ligne.rang)
+        .sort(),
+    ).toEqual([1, 2])
+  })
+
+  it('une ligne ajoutée compte pour une seule entrée, quelles que soient ses valeurs', () => {
+    let a = ajouterUneLigne([])
+    a = saisirDansLaLigne(a, 'nouvelle-1', 'status', saisie('pending'))
+    a = saisirDansLaLigne(a, 'nouvelle-1', 'note', saisie('urgent'))
+    // **Le compte est celui des écritures qui partiront** : deux cellules remplies dans une ligne
+    // neuve font un seul `INSERT`, et les compter deux annoncerait une écriture qui n'existe pas.
+    expect(a).toHaveLength(1)
+  })
+
+  it('retirer une ligne ajoutée l’enlève entière, quelle que soit la colonne passée', () => {
+    let a = ajouterUneLigne([])
+    a = saisirDansLaLigne(a, 'nouvelle-1', 'status', saisie('pending'))
+    // Sa carte ne porte qu'une croix : il n'y a pas de colonne à retirer isolément.
+    expect(retirer(a, 'nouvelle-1', 'peu importe')).toHaveLength(0)
+  })
+
+  it('⌘Z défait le dernier geste, ajout de ligne compris', () => {
+    let a = poser([], '1', 'status', { kind: 'text', value: 'a' }, 'z')
+    a = ajouterUneLigne(a)
+    a = annulerLaDerniere(a)
+    expect(lignesAjoutees(a)).toHaveLength(0)
+    expect(a).toHaveLength(1)
+  })
+})
+
+describe('saisir dans une ligne ajoutée', () => {
+  it('la valeur saisie se relit par sa colonne', () => {
+    const a = saisirDansLaLigne(ajouterUneLigne([]), 'nouvelle-1', 'status', saisie('pending'))
+    expect(valeurDeLaLigne(a, 'nouvelle-1', 'status')).toEqual(saisie('pending'))
+    expect(valeurDeLaLigne(a, 'nouvelle-1', 'note')).toBeUndefined()
+  })
+
+  it('vider une cellule la rend au défaut, et ce n’est pas la chaîne vide', () => {
+    let a = saisirDansLaLigne(ajouterUneLigne([]), 'nouvelle-1', 'note', saisie('x'))
+    a = saisirDansLaLigne(a, 'nouvelle-1', 'note', null)
+    // **Absente, pas vide** : une colonne absente laisse la base appliquer son défaut, une colonne à
+    // `''` écrit une chaîne vide. Les confondre volerait à la table ses valeurs par défaut.
+    expect(valeurDeLaLigne(a, 'nouvelle-1', 'note')).toBeUndefined()
+    expect(lignesAjoutees(a)[0]?.valeurs).toEqual({})
+  })
+
+  it('un NULL demandé reste une valeur', () => {
+    const a = saisirDansLaLigne(ajouterUneLigne([]), 'nouvelle-1', 'note', NUL)
+    expect(valeurDeLaLigne(a, 'nouvelle-1', 'note')).toEqual(NUL)
+  })
+
+  it('saisir dans une ligne ne touche pas les autres', () => {
+    let a = ajouterUneLigne(ajouterUneLigne([]))
+    a = saisirDansLaLigne(a, 'nouvelle-1', 'status', saisie('x'))
+    expect(valeurDeLaLigne(a, 'nouvelle-2', 'status')).toBeUndefined()
+  })
+
+  it('la clé primaire est saisissable à l’ajout, contrairement à la modification', () => {
+    const cle = colonne('id', { key: 'primary', category: 'number' })
+    // Il n'y a aucun `WHERE` à déplacer : refuser la clé interdirait d'ajouter une ligne à une table
+    // dont la clé est un code saisi.
+    expect(estEditable(cle)).toBe(false)
+    expect(estEditableALAjout(cle)).toBe(true)
+    // Le binaire reste refusé, pour la raison qui ne change pas.
+    expect(estEditableALAjout(colonne('blob', { category: 'binary' }))).toBe(false)
   })
 })

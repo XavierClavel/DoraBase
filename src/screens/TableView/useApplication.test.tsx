@@ -28,6 +28,7 @@ const COLONNES: ColumnInfo[] = [
 
 const ATTENTE: EnAttente = [
   {
+    sorte: 'cellule',
     cle: '184217',
     rang: 3,
     column: 'libelle',

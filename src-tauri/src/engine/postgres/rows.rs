@@ -597,12 +597,15 @@ pub struct Instruction {
 /// modification est une entrée. La lisibilité du dernier écran avant écriture passe devant la
 /// concision.
 pub fn instructions_de(plan: &crate::engine::UpdatePlan) -> Result<Vec<Instruction>, EngineError> {
-    if plan.changes.is_empty() {
+    if plan.changes.is_empty() && plan.inserts.is_empty() {
         return Err(EngineError::local(
             "aucune modification à appliquer".to_owned(),
         ));
     }
-    if plan.key_column.is_empty() {
+    // **La clé n'est exigée que par les modifications.** Une insertion ne vise aucune ligne : une
+    // table sans clé primaire refuse l'`UPDATE` et accepte l'`INSERT`, et confondre les deux
+    // interdirait d'ajouter une ligne là où c'est parfaitement possible.
+    if !plan.changes.is_empty() && plan.key_column.is_empty() {
         // Sans clé, le `WHERE` viserait toutes les lignes. Refuser plutôt que produire un SQL qui
         // récrirait la table entière.
         return Err(EngineError::local(
@@ -614,7 +617,7 @@ pub fn instructions_de(plan: &crate::engine::UpdatePlan) -> Result<Vec<Instructi
     let cible = format!("{}.{}", identifiant(&plan.schema), identifiant(&plan.table));
     let cle = identifiant(&plan.key_column);
 
-    Ok(plan
+    let mut instructions: Vec<Instruction> = plan
         .changes
         .iter()
         .map(|changement| {
@@ -635,7 +638,48 @@ pub fn instructions_de(plan: &crate::engine::UpdatePlan) -> Result<Vec<Instructi
                 ),
             }
         })
-        .collect())
+        .collect();
+
+    // **Les insertions viennent après**, dans la même transaction : une ligne ajoutée puis modifiée
+    // dans la même passe n'existe pas — le modèle de l'écran retient les deux séparément — mais
+    // l'ordre reste celui que le panneau montre, et il se lit du haut vers le bas.
+    for insertion in &plan.inserts {
+        instructions.push(Instruction {
+            sql: insert_saisi(&cible, insertion),
+        });
+    }
+
+    Ok(instructions)
+}
+
+/// L'`INSERT` d'une ligne saisie.
+///
+/// **Les colonnes non saisies sont absentes du SQL, pas posées à `NULL`.** C'est ce qui laisse la
+/// base appliquer ses défauts — une séquence, un `now()`, une valeur déclarée. Les poser à `NULL`
+/// ferait échouer l'insertion sur la première colonne obligatoire, et la ferait échouer en accusant
+/// l'utilisateur d'une valeur qu'il n'a pas saisie.
+///
+/// **Aucune valeur du tout donne `DEFAULT VALUES`**, la forme de PostgreSQL pour une ligne
+/// entièrement faite de défauts : `INSERT INTO t () VALUES ()` n'y est pas du SQL valide.
+fn insert_saisi(cible: &str, insertion: &crate::engine::PendingInsert) -> String {
+    if insertion.values.is_empty() {
+        return format!("INSERT INTO {cible} DEFAULT VALUES RETURNING 1");
+    }
+    let noms = insertion
+        .values
+        .iter()
+        .map(|valeur| identifiant(&valeur.column))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let litteraux = insertion
+        .values
+        .iter()
+        .map(|valeur| litteral_saisi(valeur.value.as_deref()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    // `RETURNING 1` pour la même raison que l'`UPDATE` : il donne le compte des lignes écrites sans
+    // second aller-retour, et il est montré parce qu'il est exécuté.
+    format!("INSERT INTO {cible} ({noms}) VALUES ({litteraux}) RETURNING 1")
 }
 
 /// Les instructions **inversées** : celles qui défont l'application (`11d`).
@@ -643,9 +687,16 @@ pub fn instructions_de(plan: &crate::engine::UpdatePlan) -> Result<Vec<Instructi
 /// Le patch inverse n'est pas un second générateur : c'est le même plan, valeurs et attendus
 /// échangés. Deux chemins de génération divergeraient — et un patch inverse qui ne défait pas
 /// exactement ce qui a été fait est pire qu'absent.
+/// **Les insertions n'y sont pas** : voir `engine::rows::avertissement_insertions`, qui dit pourquoi
+/// elles ne se défont pas et le fait dire au patch.
 pub fn instructions_inverses(
     plan: &crate::engine::UpdatePlan,
 ) -> Result<Vec<Instruction>, EngineError> {
+    if plan.changes.is_empty() {
+        // Un plan qui n'ajoute que des lignes n'a rien à inverser : rendre le vide plutôt que le
+        // refus d'`instructions_de`, qui parlerait d'un plan sans modification alors qu'il y en a.
+        return Ok(Vec::new());
+    }
     let inverse = crate::engine::UpdatePlan {
         schema: plan.schema.clone(),
         table: plan.table.clone(),
@@ -660,8 +711,18 @@ pub fn instructions_inverses(
                 expected: changement.value.clone(),
             })
             .collect(),
+        inserts: Vec::new(),
     };
     instructions_de(&inverse)
+}
+
+/// Le patch inverse en texte : l'avertissement des insertions, puis les `UPDATE` qui défont.
+pub fn patch_inverse_de(plan: &crate::engine::UpdatePlan) -> Result<String, EngineError> {
+    let instructions = instructions_inverses(plan)?;
+    Ok(crate::engine::rows::patch_inverse(
+        crate::engine::rows::avertissement_insertions(plan.inserts.len()),
+        (!instructions.is_empty()).then(|| texte_de(&instructions)),
+    ))
 }
 
 /// Les instructions encadrées par la transaction, pour l'affichage de `11c`.
@@ -967,6 +1028,7 @@ mod tests_previsualisation {
             schema: "public".into(),
             table: "orders".into(),
             key_column: "id".into(),
+            inserts: Vec::new(),
             changes,
         }
     }
@@ -1079,6 +1141,127 @@ mod tests_previsualisation {
     #[test]
     fn sans_modification_il_n_y_a_rien_a_previsualiser() {
         assert!(updates_de(&plan(Vec::new())).is_err());
+    }
+
+    fn insertion(valeurs: &[(&str, Option<&str>)]) -> crate::engine::PendingInsert {
+        crate::engine::PendingInsert {
+            values: valeurs
+                .iter()
+                .map(|(column, value)| crate::engine::PendingInsertValue {
+                    column: (*column).to_owned(),
+                    value: value.map(str::to_owned),
+                })
+                .collect(),
+        }
+    }
+
+    fn plan_avec_insertions(inserts: Vec<crate::engine::PendingInsert>) -> UpdatePlan {
+        let mut p = plan(Vec::new());
+        p.inserts = inserts;
+        p
+    }
+
+    #[test]
+    fn une_ligne_ajoutee_donne_un_insert_dans_la_transaction() {
+        let sql = updates_de(&plan_avec_insertions(vec![insertion(&[
+            ("status", Some("pending")),
+            ("note", Some("l'été")),
+        ])]))
+        .expect("prévisualisation");
+
+        let lignes: Vec<&str> = sql.lines().collect();
+        assert_eq!(lignes[0], "BEGIN;");
+        assert_eq!(lignes[lignes.len() - 1], "COMMIT;");
+        assert_eq!(lignes.len(), 3);
+        assert!(
+            lignes[1].starts_with(r#"INSERT INTO "public"."orders" ("status", "note") VALUES ("#)
+        );
+        // Même échappement que pour une modification : sans doublement, l'apostrophe fermerait la
+        // chaîne et la suite deviendrait du SQL.
+        assert!(lignes[1].contains("'pending', 'l''été'"));
+    }
+
+    #[test]
+    fn une_colonne_non_saisie_est_absente_de_l_insert() {
+        let sql = updates_de(&plan_avec_insertions(vec![insertion(&[(
+            "status",
+            Some("pending"),
+        )])]))
+        .expect("prévisualisation");
+        // **Absente, pas nulle** : c'est ce qui laisse la séquence de `id` et le `now()` de
+        // `created_at` s'appliquer. Les poser à `NULL` ferait échouer l'insertion sur la première
+        // colonne obligatoire.
+        assert!(!sql.contains(r#""id""#));
+        assert!(!sql.contains("NULL"));
+    }
+
+    #[test]
+    fn un_null_demande_reste_un_null_ecrit() {
+        let sql = updates_de(&plan_avec_insertions(vec![insertion(&[(
+            "shipped_at",
+            None,
+        )])]))
+        .expect("prévisualisation");
+        // Un `NULL` **demandé** est écrit, là où une colonne absente est laissée à son défaut : les
+        // deux se ressemblent à l'écran et ne veulent pas dire la même chose.
+        assert!(sql.contains(r#"("shipped_at") VALUES (NULL)"#));
+    }
+
+    #[test]
+    fn une_ligne_sans_aucune_valeur_prend_les_defauts_de_la_base() {
+        let sql =
+            updates_de(&plan_avec_insertions(vec![insertion(&[])])).expect("prévisualisation");
+        // `INSERT INTO t () VALUES ()` n'est pas du SQL valide en PostgreSQL : `DEFAULT VALUES` est
+        // la forme qui l'exprime.
+        assert!(sql.contains(r#"INSERT INTO "public"."orders" DEFAULT VALUES"#));
+    }
+
+    #[test]
+    fn une_table_sans_cle_primaire_accepte_une_insertion() {
+        let mut p = plan_avec_insertions(vec![insertion(&[("nom", Some("x"))])]);
+        p.key_column = String::new();
+        // **Une insertion ne vise aucune ligne** : elle n'a pas besoin du `WHERE` qui manque à la
+        // modification. Refuser les deux ensemble interdirait un ajout parfaitement possible.
+        assert!(updates_de(&p).is_ok());
+    }
+
+    #[test]
+    fn les_insertions_viennent_apres_les_modifications() {
+        let mut p = plan(vec![changement("1", "status", Some("x"))]);
+        p.inserts = vec![insertion(&[("status", Some("y"))])];
+        let sql = updates_de(&p).expect("prévisualisation");
+        let lignes: Vec<&str> = sql.lines().collect();
+        assert!(lignes[1].starts_with("UPDATE"));
+        assert!(lignes[2].starts_with("INSERT"));
+    }
+
+    #[test]
+    fn le_patch_inverse_annonce_les_insertions_qu_il_ne_defait_pas() {
+        let mut p = plan(vec![changement("1", "status", Some("x"))]);
+        p.inserts = vec![insertion(&[("status", Some("y"))])];
+        let patch = patch_inverse_de(&p).expect("patch");
+
+        // **Annoncé, jamais silencieux.** Le patch défait l'`UPDATE` et le dit pour l'insertion :
+        // un patch incomplet qui se tait laisserait croire que tout est réversible.
+        assert!(patch.starts_with("-- 1 ligne ajoutée"));
+        assert!(patch.contains("UPDATE"));
+        assert!(!patch.contains("INSERT"));
+        // Et il ne rejoue **pas** l'insertion : un patch inverse qui insère à nouveau doublerait
+        // la ligne qu'on voulait retirer.
+        assert!(!patch.contains("'y'"));
+    }
+
+    #[test]
+    fn un_patch_inverse_sans_modification_n_a_pas_de_transaction_vide() {
+        let patch = patch_inverse_de(&plan_avec_insertions(vec![insertion(&[(
+            "status",
+            Some("y"),
+        )])]))
+        .expect("patch");
+        // Un `BEGIN; COMMIT;` sans rien entre les deux serait un patch qui prétend défaire quelque
+        // chose : il ne reste que la phrase qui dit pourquoi il n'y a rien.
+        assert!(!patch.contains("BEGIN"));
+        assert!(patch.starts_with("-- 1 ligne ajoutée"));
     }
 }
 

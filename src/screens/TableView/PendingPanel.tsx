@@ -108,31 +108,68 @@ export function PendingPanel({
             patch inverse avec elle : l'utilisateur perdait le seul moyen d'annuler, à l'instant
             précis où il pouvait en avoir besoin. Trouvé par le test de relecture. */}
         <ul className={styles.cartes}>
-          {attente.map((modification) => (
-            <li key={`${modification.cle}::${modification.column}`} className={styles.carte}>
-              <div className={styles.carteEntete}>
-                {/* Le rang **et** la clé : le rang situe la ligne à l'écran, la clé l'identifie
-                    quand un tri l'aura déplacée (`11a`). */}
-                <span className={styles.position}>
-                  ligne {modification.rang} · {modification.cle}
-                </span>
-                <button
-                  type="button"
-                  className={styles.retirer}
-                  aria-label={`Retirer la modification de ${modification.column}`}
-                  onClick={() => onRetirer(modification.cle, modification.column)}
-                >
-                  <Icon name="x" size={11} strokeWidth={2.4} />
-                </button>
-              </div>
-              <div className={styles.colonne}>{modification.column}</div>
-              <div className={styles.diff}>
-                <Avant valeur={modification.avant} />
-                <Icon name="chevr" size={10} strokeWidth={2.4} className={styles.fleche} />
-                <Apres saisie={modification.apres} />
-              </div>
-            </li>
-          ))}
+          {attente.map((modification) =>
+            modification.sorte === 'ligne' ? (
+              <li key={modification.cle} className={styles.carte}>
+                <div className={styles.carteEntete}>
+                  {/* **Pas de clé à montrer** : celle de la base n'existe pas encore, et en inventer
+                      une ferait croire à une ligne déjà écrite. Le numéro d'ordre suffit à désigner
+                      celle dont on parle. */}
+                  <span className={styles.position}>nouvelle ligne {modification.rang}</span>
+                  <button
+                    type="button"
+                    className={styles.retirer}
+                    aria-label={`Retirer la nouvelle ligne ${modification.rang}`}
+                    onClick={() => onRetirer(modification.cle, '')}
+                  >
+                    <Icon name="x" size={11} strokeWidth={2.4} />
+                  </button>
+                </div>
+                {/* **Aucun diff : il n'y a pas d'avant.** Une ligne ajoutée se lit comme une liste de
+                    valeurs, et les colonnes absentes n'y figurent pas — ce sont celles que la base
+                    remplira, et les montrer vides les ferait passer pour nulles. */}
+                <ul className={styles.valeurs}>
+                  {Object.entries(modification.valeurs).map(([column, saisie]) => (
+                    <li key={column} className={styles.valeur}>
+                      <span className={styles.colonne}>{column}</span>
+                      <Apres saisie={saisie} />
+                    </li>
+                  ))}
+                  {Object.keys(modification.valeurs).length === 0 && (
+                    <li className={styles.valeur}>
+                      <span className={styles.vide}>
+                        aucune valeur saisie — la base appliquera ses défauts
+                      </span>
+                    </li>
+                  )}
+                </ul>
+              </li>
+            ) : (
+              <li key={`${modification.cle}::${modification.column}`} className={styles.carte}>
+                <div className={styles.carteEntete}>
+                  {/* Le rang **et** la clé : le rang situe la ligne à l'écran, la clé l'identifie
+                      quand un tri l'aura déplacée (`11a`). */}
+                  <span className={styles.position}>
+                    ligne {modification.rang} · {modification.cle}
+                  </span>
+                  <button
+                    type="button"
+                    className={styles.retirer}
+                    aria-label={`Retirer la modification de ${modification.column}`}
+                    onClick={() => onRetirer(modification.cle, modification.column)}
+                  >
+                    <Icon name="x" size={11} strokeWidth={2.4} />
+                  </button>
+                </div>
+                <div className={styles.colonne}>{modification.column}</div>
+                <div className={styles.diff}>
+                  <Avant valeur={modification.avant} />
+                  <Icon name="chevr" size={10} strokeWidth={2.4} className={styles.fleche} />
+                  <Apres saisie={modification.apres} />
+                </div>
+              </li>
+            ),
+          )}
         </ul>
 
         {!apresEcriture && (

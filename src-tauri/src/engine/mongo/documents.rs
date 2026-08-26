@@ -114,6 +114,35 @@ pub fn mise_a_jour(modification: &PendingUpdate) -> Document {
 /// **Les 24 caractères hexadécimaux redeviennent un `ObjectId`.** `18a` a fait d'un `ObjectId` un
 /// texte à l'affichage ; le chemin du retour doit le défaire, sans quoi `updateOne` chercherait la
 /// chaîne `"64b7…"` là où le document porte un identifiant binaire — et ne trouverait rien.
+/// Le document d'une ligne à insérer.
+///
+/// **Une colonne non saisie est absente du document ; un `NULL` demandé y est posé à `null`.** La
+/// distinction est native en MongoDB — un champ absent et un champ nul ne se filtrent pas pareil —
+/// et c'est exactement celle que le modèle de l'écran retient. La confondre poserait `null` sur tous
+/// les champs qu'on n'a pas remplis, et donnerait un document qui ne ressemble à aucun autre de la
+/// collection.
+///
+/// **Les valeurs restent du texte**, comme celles d'une modification : deviner un type à partir de
+/// la saisie — « 0012 est un nombre » — changerait la valeur avant de l'écrire.
+pub fn document_a_inserer(insertion: &crate::engine::PendingInsert) -> Document {
+    let mut document = Document::new();
+    for valeur in &insertion.values {
+        match &valeur.value {
+            Some(texte) => document.insert(valeur.column.clone(), texte.clone()),
+            None => document.insert(valeur.column.clone(), Bson::Null),
+        };
+    }
+    document
+}
+
+/// L'`insertOne` lisible d'une ligne à insérer — le pendant de `commande_lisible`.
+pub fn insertion_lisible(collection: &str, document: &Document) -> String {
+    format!(
+        "db.{collection}.insertOne(\n  {}\n);",
+        Bson::Document(document.clone()).into_relaxed_extjson()
+    )
+}
+
 pub fn valeur_de_cle(texte: &str) -> Bson {
     if let Ok(oid) = texte.parse::<mongodb::bson::oid::ObjectId>() {
         return Bson::ObjectId(oid);
@@ -306,6 +335,50 @@ mod tests {
                 }
             ]
         );
+    }
+
+    fn insertion(valeurs: &[(&str, Option<&str>)]) -> crate::engine::PendingInsert {
+        crate::engine::PendingInsert {
+            values: valeurs
+                .iter()
+                .map(|(column, value)| crate::engine::PendingInsertValue {
+                    column: (*column).to_owned(),
+                    value: value.map(str::to_owned),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn une_colonne_non_saisie_est_absente_du_document() {
+        let document = document_a_inserer(&insertion(&[("statut", Some("en_attente"))]));
+        // **Absente, et non posée à `null`.** Un champ absent et un champ nul ne se filtrent pas
+        // pareil en MongoDB : poser `null` partout donnerait un document qui ne ressemble à aucun
+        // autre de la collection.
+        assert_eq!(document.len(), 1);
+        assert!(!document.contains_key("reference"));
+    }
+
+    #[test]
+    fn un_null_demande_est_pose_a_null() {
+        let document = document_a_inserer(&insertion(&[("note", None)]));
+        assert_eq!(document.get("note"), Some(&Bson::Null));
+    }
+
+    #[test]
+    fn une_ligne_sans_valeur_donne_un_document_vide() {
+        // Toutes les valeurs viennent de la base — un `_id` qu'elle engendre, et rien d'autre.
+        assert!(document_a_inserer(&insertion(&[])).is_empty());
+    }
+
+    #[test]
+    fn l_insertion_lisible_nomme_la_collection_et_ses_valeurs() {
+        let texte = insertion_lisible(
+            "commandes",
+            &document_a_inserer(&insertion(&[("statut", Some("payee"))])),
+        );
+        assert!(texte.starts_with("db.commandes.insertOne("), "{texte}");
+        assert!(texte.contains("payee"), "{texte}");
     }
 
     fn colonne(nom: &str) -> ColumnInfo {

@@ -43,6 +43,20 @@
   color: var(--ink-5);
 }
 
+/* La gouttière d'une ligne ajoutée : `+1`, dans la teinte d'alerte des modifications en attente,
+   parce que c'en est une. */
+.gouttiereAjoutee {
+  color: var(--warn-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* « défaut » : ce que la base mettra dans une colonne qu'on n'a pas remplie. Atténué comme `NULL`,
+   et en italique pour qu'on ne le prenne pas pour une valeur qu'on aurait tapée. */
+.defaut {
+  color: var(--ink-3);
+  font-style: italic;
+}
+
 /* `NULL` écrit et atténué — jamais du vide, qui se confondrait avec la chaîne vide. */
 .nul {
   color: var(--ink-3);

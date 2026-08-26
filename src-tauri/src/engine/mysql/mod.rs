@@ -289,7 +289,7 @@ impl EngineAdapter for MysqlAdapter {
 
         Ok(ApplyOutcome {
             applied: appliquees,
-            inverse_sql: rows::texte_de(&rows::instructions_inverses(plan)),
+            inverse_sql: rows::patch_inverse_de(plan),
         })
     }
 
@@ -799,6 +799,7 @@ mod tests_db {
             schema: BASE.to_owned(),
             table: "ateliers".to_owned(),
             key_column: "nom".to_owned(),
+            inserts: Vec::new(),
             changes: vec![PendingUpdate {
                 key: reference.clone(),
                 column: "ville".to_owned(),
@@ -845,6 +846,7 @@ mod tests_db {
             schema: BASE.to_owned(),
             table: "ateliers".to_owned(),
             key_column: "nom".to_owned(),
+            inserts: Vec::new(),
             changes: vec![PendingUpdate {
                 key: reference.clone(),
                 column: "ville".to_owned(),
@@ -864,6 +866,7 @@ mod tests_db {
             schema: BASE.to_owned(),
             table: "ateliers".to_owned(),
             key_column: "nom".to_owned(),
+            inserts: Vec::new(),
             changes: vec![
                 PendingUpdate {
                     key: reference.clone(),
@@ -918,6 +921,7 @@ mod tests_db {
             schema: BASE.to_owned(),
             table: "journal_myisam".to_owned(),
             key_column: "id".to_owned(),
+            inserts: Vec::new(),
             changes: vec![PendingUpdate {
                 key: "99".to_owned(),
                 column: "message".to_owned(),
