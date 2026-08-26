@@ -1,7 +1,11 @@
-import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import { cx } from '../cx'
 import styles from './ListeDeroulante.module.css'
+
+/** L'écart entre le champ et son panneau, et la marge minimale au bord de la fenêtre. */
+const ECART = 3
+const MARGE = 8
 
 export type OptionDeListe<T extends string> = {
   value: T
@@ -88,6 +92,57 @@ export function ListeDeroulante<T extends string>({
         ),
       )
   }, [ouvert, options, value])
+
+  /**
+   * Place le panneau **en coordonnées de fenêtre**, sous le champ, et le replie vers le haut s'il n'y
+   * a pas la place dessous.
+   *
+   * **Mesuré, jamais calculé d'avance** : la hauteur du panneau dépend du nombre d'options et de la
+   * longueur des libellés, donc la connaître demanderait de mesurer du texte. Même contrepartie
+   * assumée que `MenuContextuel` et `Popover` — le panneau paraît à sa place au premier rendu qui suit
+   * l'ouverture.
+   *
+   * La largeur **minimale** est celle du champ, et non sa largeur imposée : une option plus longue que
+   * le champ doit pouvoir dépasser plutôt que se couper. C'est ce que faisait `min-width: 100%` du
+   * temps où le panneau était ancré dans le flux.
+   */
+  const placer = useCallback(() => {
+    const boite = panneau.current
+    const ancre = champ.current
+    if (!boite || !ancre) return
+    const cadre = ancre.getBoundingClientRect()
+    boite.style.minWidth = `${cadre.width}px`
+    const mesure = boite.getBoundingClientRect()
+    const dessous = cadre.bottom + ECART
+    // Vers le haut seulement s'il y a **plus** de place au-dessus : près d'un bord, mieux vaut un
+    // panneau écourté du bon côté qu'un panneau replié dans un espace encore plus petit.
+    const auDessusVautMieux =
+      dessous + mesure.height > window.innerHeight - MARGE &&
+      cadre.top > window.innerHeight - cadre.bottom
+    const haut = auDessusVautMieux ? cadre.top - ECART - mesure.height : dessous
+    boite.style.top = `${Math.max(MARGE, Math.min(haut, window.innerHeight - mesure.height - MARGE))}px`
+    boite.style.left = `${Math.max(MARGE, Math.min(cadre.left, window.innerWidth - mesure.width - MARGE))}px`
+  }, [])
+
+  // Placé à l'ouverture, **et replacé** à chaque fois que le champ peut avoir bougé : la fenêtre change
+  // de taille, ou un panneau défile sous le pointeur. Replacer plutôt que fermer, contrairement à
+  // `MenuContextuel` : celui-là est posé sur une valeur, celui-ci est attaché à un champ qui reste
+  // visible. Le défilement **du panneau lui-même** est écarté — il a sa propre barre au-delà de 240 px,
+  // et parcourir ses options n'a pas à le déplacer.
+  useEffect(() => {
+    if (!ouvert) return
+    placer()
+    function auDefilement(evenement: Event) {
+      if (panneau.current?.contains(evenement.target as Node)) return
+      placer()
+    }
+    window.addEventListener('resize', placer)
+    document.addEventListener('scroll', auDefilement, true)
+    return () => {
+      window.removeEventListener('resize', placer)
+      document.removeEventListener('scroll', auDefilement, true)
+    }
+  }, [ouvert, placer])
 
   useEffect(() => {
     if (!ouvert) return

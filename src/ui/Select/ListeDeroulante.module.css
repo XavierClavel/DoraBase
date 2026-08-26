@@ -65,14 +65,25 @@
   color: var(--ink-meta);
 }
 
+/*
+ * Le panneau : **`position: fixed`, et non `absolute`.**
+ *
+ * C'est le défaut n° 35 sous une autre forme, et la même réponse que `MenuContextuel`. Ancré dans le
+ * flux, le panneau était rogné par le premier ancêtre en `overflow: hidden` — la coquille de `Modal`,
+ * qui en porte un pour ses coins arrondis : le « Mode SSL » de `A2` vit en bas de la modale, et ses
+ * six options y perdaient les trois dernières. Rien ne s'en apercevait, le DOM étant juste et les
+ * options « visibles » au sens de Playwright.
+ *
+ * Le prix est que la géométrie ne peut plus venir du CSS : `top`, `left` et `min-width` sont posés au
+ * pixel par le composant, qui mesure le champ. C'est ce que le commentaire d'en-tête de ce fichier
+ * annonçait déjà pour le champ fermé — la géométrie appartient à l'appelant ; elle appartient
+ * maintenant au composant pour le panneau ouvert.
+ */
 .panneau {
-  position: absolute;
-  top: calc(100% + 3px);
-  left: 0;
+  position: fixed;
   z-index: 320;
   display: flex;
   flex-direction: column;
-  min-width: 100%;
   max-height: 240px;
   margin: 0;
   padding: 3px;
