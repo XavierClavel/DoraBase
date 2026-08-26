@@ -124,6 +124,28 @@ test('le formulaire ouvre vide, pas rempli des valeurs du mockup', () => {
   expect(screen.getByLabelText('Utilisateur')).toHaveValue('')
 })
 
+test('la cible préremplit le projet et l’environnement', () => {
+  render(
+    <>
+      <Sprite />
+      <NewConnection
+        onClose={() => {}}
+        projects={[
+          { id: 'Comptoir Sud', name: 'Comptoir Sud', environments: TRIO_DE_TEST },
+          { id: 'Atelier Nord', name: 'Atelier Nord', environments: TRIO_DE_TEST },
+        ]}
+        cible={{ project: 'Atelier Nord', environment: 'staging' }}
+      />
+    </>,
+  )
+  // **Le second projet de la liste, et non le premier.** Sans cible, l'effet d'alignement du
+  // sélecteur pose le premier projet ; c'est exactement ce qui rendait le geste faux quand il partait
+  // d'une ligne d'arbre — la modale s'ouvrait sur un autre projet que celui qu'on avait désigné.
+  expect(screen.getByRole('combobox', { name: 'Projet' })).toHaveTextContent('Atelier Nord')
+  // Et `staging`, non le `dev` par défaut.
+  expect(screen.getByRole('radio', { name: 'staging' })).toBeChecked()
+})
+
 test('choisir un moteur amène son port', async () => {
   monter([{ id: 'print', name: 'Atelier Nord', environments: TRIO_DE_TEST }])
   await userEvent.click(screen.getByRole('radio', { name: 'MySQL' }))

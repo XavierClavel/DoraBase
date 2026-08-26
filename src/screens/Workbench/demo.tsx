@@ -3,6 +3,7 @@ import type {
   Database,
   EnvironmentColor,
   EnvironmentDeclaration,
+  EnvironmentId,
   Preferences,
   Project,
 } from '../../domain/config'
@@ -605,7 +606,9 @@ export function WorkbenchDemo() {
   const [edition, setEdition] = useState<{ project: string; database: Database } | null>(null)
   /** Le parcours de création, quand il est ouvert (`24d`) — étape 1 ou étape 2 selon le geste. */
   const [creationOuverte, setCreationOuverte] = useState<
-    { etape: 'projet' } | { etape: 'connexion'; projet: string } | null
+    | { etape: 'projet' }
+    | { etape: 'connexion'; projet: string; environnement?: EnvironmentId }
+    | null
   >(null)
   // **Les requêtes de la démo vivent en mémoire.** Rien n'est persisté : le pont ne répond pas en
   // Chromium, et une démo qui écrirait sur le disque de l'utilisateur serait une mauvaise surprise.
@@ -912,9 +915,15 @@ export function WorkbenchDemo() {
         // réelle, Playwright ne pilotant pas le pont Tauri.
         onEditDatabase={(projet, base) => setEdition({ project: projet, database: base })}
         onNewProject={() => setCreationOuverte({ etape: 'projet' })}
-        onNewDatabase={() =>
+        // La cible traverse quand le geste part d'un palier d'environnement (26 août 2026) ; sans
+        // elle — le raccourci clavier — la démo retombe sur son premier projet.
+        onNewDatabase={(cible) =>
           setCreationOuverte(
-            projets[0] ? { etape: 'connexion', projet: projets[0].name } : { etape: 'projet' },
+            cible
+              ? { etape: 'connexion', projet: cible.project, environnement: cible.environment }
+              : projets[0]
+                ? { etape: 'connexion', projet: projets[0].name }
+                : { etape: 'projet' },
           )
         }
         onCreateConsole={async (projet, base, environnement, nom) =>
