@@ -310,12 +310,12 @@
   padding: var(--space-3) var(--space-5);
   border: none;
   border-radius: var(--radius-field);
-  background: var(--btn-strong-bg);
+  background: var(--success);
   cursor: pointer;
   font-family: var(--font-ui);
   font-size: var(--text-label);
   font-weight: var(--weight-bold);
-  color: var(--btn-strong-ink);
+  color: var(--ink-on-accent);
 }
 
 .appliquer:disabled {

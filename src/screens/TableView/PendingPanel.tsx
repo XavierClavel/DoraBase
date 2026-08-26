@@ -253,11 +253,8 @@ export function PendingPanel({
           </button>
         ) : (
           <>
-            {/* **« Tout annuler » existe aussi dans le bandeau de `11b`**, et le mockup montre bien les
-            deux. Ce n'est pas une duplication à corriger : le bandeau est visible quel que soit le
-            panneau ouvert, et le pied est là où l'on arrive après avoir relu le diff. Les deux font
-            exactement la même chose, ce qui rend l'homonymie sans danger — à la différence de deux
-            contrôles homonymes aux effets distincts, écartés en `08i`. */}
+            {/* Le pied est là où l'on arrive après avoir relu le diff : « Tout annuler » et
+            « Appliquer » vivent ensemble, à portée du geste qui suit la lecture. */}
             <button
               type="button"
               className={styles.annuler}
