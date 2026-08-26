@@ -71,6 +71,71 @@ test('un filtre actif produit un chip d’accent, distinct du chip de tri', asyn
   expect(fondFiltre).not.toBe(fondTri)
 })
 
+test.describe('beaucoup de filtres', () => {
+  const COLONNES = ['status', 'currency', 'coupon_code', 'external_ref', 'user_id']
+
+  async function poserCinqFiltres(page: import('@playwright/test').Page) {
+    for (const colonne of COLONNES) {
+      await page.getByLabel(`Filtrer ${colonne}`).fill('x')
+      await page.getByLabel(`Filtrer ${colonne}`).press('Enter')
+    }
+    // Rule 13 : la mesure ne vaut qu'après le rendu des cinq chips, pas après la dernière frappe.
+    await expect(page.getByRole('button', { name: /^Retirer le filtre/ })).toHaveCount(
+      COLONNES.length,
+    )
+  }
+
+  const bande = (page: import('@playwright/test').Page) =>
+    page.locator('[role=toolbar][aria-label="Outils de la table"] > [class*=chips]')
+
+  test('les chips défilent dans leur zone au lieu de pousser les contrôles dehors', async ({
+    page,
+  }) => {
+    await poserCinqFiltres(page)
+
+    const mesures = await page.evaluate(() => {
+      const barre = document.querySelector('[role=toolbar][aria-label="Outils de la table"]')
+      const zone = barre?.querySelector('[class*=chips]')
+      const sql = [...(barre?.querySelectorAll('button') ?? [])].find((b) =>
+        b.textContent?.includes('Voir le SQL'),
+      )
+      if (!barre || !zone || !sql) return null
+      const cadre = barre.getBoundingClientRect()
+      const boite = sql.getBoundingClientRect()
+      return {
+        deborde: zone.scrollWidth > zone.clientWidth,
+        // Le bouton reste **dans** la barre, sur une seule ligne : c'est le repli du libellé sur
+        // trois lignes qui était le symptôme visible du débordement.
+        hauteurSql: Math.round(boite.height),
+        droite: Math.round(boite.right),
+        droiteBarre: Math.round(cadre.right),
+        basSql: Math.round(boite.bottom),
+        basBarre: Math.round(cadre.bottom),
+      }
+    })
+
+    expect(mesures?.deborde).toBe(true)
+    expect(mesures?.hauteurSql).toBe(27)
+    expect(mesures?.droite).toBeLessThanOrEqual(mesures?.droiteBarre ?? 0)
+    expect(mesures?.basSql).toBeLessThanOrEqual(mesures?.basBarre ?? 0)
+  })
+
+  test('le geste vertical défile la zone horizontalement', async ({ page }) => {
+    await poserCinqFiltres(page)
+    await bande(page).hover()
+    await page.mouse.wheel(0, 300)
+
+    // Une lecture sèche daterait la mesure d'avant le défilement (règle 13).
+    await expect.poll(() => bande(page).evaluate((e) => e.scrollLeft)).toBeGreaterThan(0)
+
+    // Et la barre elle-même ne défile pas : c'est la zone qui a pris le geste.
+    const defilementBarre = await page
+      .locator('[role=toolbar][aria-label="Outils de la table"]')
+      .evaluate((e) => e.scrollLeft)
+    expect(defilementBarre).toBe(0)
+  })
+})
+
 // L'animation du bouton « Rafraîchir », mesurée dans la galerie : la démo répond
 // instantanément, donc l'état d'attente n'y est jamais observable, et jsdom ne calcule aucune
 // animation. C'est le seul endroit où cette garantie tient.
