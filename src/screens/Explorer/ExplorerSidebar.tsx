@@ -27,7 +27,14 @@ export type ExplorerSidebarProps = {
   selectedId?: string | null
   onToggle: (noeud: Noeud) => void
   onSelect: (noeud: Noeud) => void
-  onAddDatabase?: () => void
+  /**
+   * Ouvre la déclaration d'une connexion.
+   *
+   * **La cible est passée quand on la connaît** (26 août 2026) : le menu d'une ligne
+   * d'environnement sait de quel projet et de quel environnement il s'agit, et le dire évite à
+   * l'écran suivant de le redemander. Sans argument — le raccourci clavier — l'écran choisit.
+   */
+  onAddDatabase?: (cible?: { project: string; environment: EnvironmentId }) => void
   /**
    * Ouvre l'étape 1 du parcours de création (`24d`).
    *
@@ -212,6 +219,7 @@ export function ExplorerSidebar({
   const actionsDe = (noeud: Noeud): readonly EntreeDeMenu[] | undefined =>
     entreesDe(
       noeud,
+      onAddDatabase,
       onEditDatabase,
       onRenameDatabase !== undefined,
       onEditProject,
@@ -331,7 +339,9 @@ export function ExplorerSidebar({
             <SidebarFooterRow>
               <SidebarFooterButton
                 icon="plus"
-                onClick={onAddDatabase}
+                /* Sans cible : le pied ne sait pas de quel environnement il s'agit — c'est
+                   exactement ce que le menu d'une ligne d'environnement, lui, sait dire. */
+                onClick={onAddDatabase && (() => onAddDatabase())}
                 aria-label="Ajouter une connexion"
                 title="Ajouter une connexion (⇧⌘N)"
               >
@@ -593,6 +603,7 @@ export function filtrer(noeuds: readonly Noeud[], filtre: string): Noeud[] {
  */
 function entreesDe(
   noeud: Noeud,
+  onAddDatabase: ExplorerSidebarProps['onAddDatabase'],
   onEditDatabase: ExplorerSidebarProps['onEditDatabase'],
   /**
    * Un booléen et non la fonction : ce menu n'appelle pas le renommage, il **passe la ligne en
@@ -648,6 +659,30 @@ function entreesDe(
               })
           : undefined,
         raison: demanderLeRetrait ? undefined : RAISONS.retirerIndisponible,
+      },
+    ]
+  }
+
+  /*
+   * **Le menu d'un environnement** : y ajouter une connexion, et rien d'autre.
+   *
+   * Une connexion appartient à un environnement d'un projet (`23b`) : c'est l'endroit qui dit lequel,
+   * exactement comme le menu d'une connexion est l'endroit d'où l'on crée une console. Le pied de la
+   * sidebar, lui, devait deviner — et se tromper dès que deux projets étaient dépliés.
+   *
+   * Pas de « Retirer… » ni de « Renommer… » ici : les environnements d'un projet se déclarent
+   * ensemble, dans « Modifier le projet… » (`23e`), et l'identifiant d'un environnement est figé à sa
+   * création. Deux entrées de plus feraient croire à un geste qui n'existe pas.
+   */
+  if (noeud.kind === 'environment') {
+    const { project, environment } = noeud
+    if (project === undefined || environment === undefined) return undefined
+    return [
+      {
+        libelle: 'Ajouter une connexion…',
+        icone: 'plus',
+        onClick: onAddDatabase ? () => onAddDatabase({ project, environment }) : undefined,
+        raison: onAddDatabase ? undefined : RAISONS.ajoutIndisponible,
       },
     ]
   }
@@ -768,6 +803,7 @@ const RAISONS = {
   editionIndisponible: 'Cet écran n’est pas relié à la modale d’édition de projet.',
   rafraichirIndisponible: 'Cet écran ne charge pas l’arborescence.',
   consoleIndisponible: 'Cet écran n’est pas relié à la création de consoles.',
+  ajoutIndisponible: 'Cet écran n’est pas relié à la déclaration de connexions.',
 }
 
 /**

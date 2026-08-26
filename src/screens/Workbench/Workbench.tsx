@@ -82,7 +82,12 @@ type WorkbenchProps = {
   passerelleLignes?: PasserelleLignes
   /** Injectable comme les autres commandes : le pont ne répond pas hors de la webview (`08d`). */
   rowAsInsert?: typeof rowAsInsertTauri
-  onNewDatabase?: () => void
+  /**
+   * Déclarer une connexion. **La cible traverse** (26 août 2026) : le menu d'une ligne
+   * d'environnement sait de quel projet et de quel environnement il s'agit, et l'écran de création n'a
+   * donc pas à le redemander.
+   */
+  onNewDatabase?: (cible?: { project: string; environment: EnvironmentId }) => void
   /** Ouvre l'étape 1 du parcours de création, depuis le pied de la sidebar (`24d`). */
   onNewProject?: () => void
   /** Ouvre `A2` en mode édition sur cette base (`08g`). */

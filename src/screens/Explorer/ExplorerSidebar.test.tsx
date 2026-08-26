@@ -87,6 +87,7 @@ function Piloté({
   modificationsEnAttenteDe,
   onRefresh,
   consoles,
+  onAddDatabase,
   projets = PROJETS,
 }: {
   charge?: Charge
@@ -100,6 +101,7 @@ function Piloté({
   modificationsEnAttenteDe?: (cible: CibleDeSuppression) => number
   onRefresh?: () => void
   consoles?: ExplorerSidebarProps['consoles']
+  onAddDatabase?: ExplorerSidebarProps['onAddDatabase']
   projets?: Project[]
 }) {
   const [deplies, setDeplies] = useState(new Set(initial))
@@ -120,6 +122,7 @@ function Piloté({
         modificationsEnAttenteDe={modificationsEnAttenteDe}
         onRefresh={onRefresh}
         consoles={consoles}
+        onAddDatabase={onAddDatabase}
         onSelect={(n) => setChoisi(n.id)}
         onToggle={(n) => {
           onToggleSpy?.(n)
@@ -477,18 +480,50 @@ const AUCUN_RESIDU = { leftoverSecrets: [] }
 
 const TOUT_DEPLIE = [ID_PROJET, ID_PROD, ID_ANALYTICS, ID_PUBLIC]
 
-test('seules les lignes projet et base portent un « … »', () => {
+test('les lignes projet, environnement et base portent un « … »', () => {
   render(
     <Piloté
       initial={TOUT_DEPLIE}
       charge={{ ...RIEN, schemas: { ...RIEN.schemas }, objets: { ...RIEN.objets } }}
     />,
   )
-  // Les deux projets/bases visibles en ont un ; le second projet est absent du décor, donc on
-  // compte ce qui est là : un projet et deux bases.
+  // Un projet, ses trois environnements déclarés, ses deux bases. **L'environnement en porte un
+  // depuis le 26 août 2026** : c'est de là que part la déclaration d'une connexion, le palier étant
+  // le seul endroit qui sache dans quel environnement elle se déclare.
   expect(screen.getByRole('button', { name: 'Actions de Atelier Nord' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Actions de prod' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Actions de analytics' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Actions de shop' })).toBeInTheDocument()
+})
+
+test('« Ajouter une connexion… » part de l’environnement, avec ses coordonnées', async () => {
+  const vues: unknown[] = []
+  render(<Piloté initial={JUSQU_AUX_CONNEXIONS} onAddDatabase={(cible) => vues.push(cible)} />)
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de prod' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Ajouter une connexion…' }))
+  // **Le couple, pas le seul projet** : une connexion appartient à un environnement d'un projet
+  // (`23b`), et c'est ce couple que l'écran de création n'aura pas à redemander. Les coordonnées
+  // viennent du nœud, jamais d'une déduction sur le libellé — deux environnements peuvent porter le
+  // même libellé dans deux projets.
+  expect(vues).toEqual([{ project: 'Atelier Nord', environment: 'prod' }])
+})
+
+test('au clic droit sur un environnement, le même menu', async () => {
+  render(<Piloté initial={JUSQU_AUX_CONNEXIONS} onAddDatabase={() => {}} />)
+  fireEvent.contextMenu(ligne('prod', '2'))
+  // Une seule construction pour les deux ouvertures : deux listes d'entrées auraient divergé d'une
+  // action au premier ajout.
+  expect(screen.getByRole('menu', { name: 'Actions de prod' }).textContent).toContain(
+    'Ajouter une connexion…',
+  )
+})
+
+test('sans commande reliée, l’entrée est désactivée et dit pourquoi', async () => {
+  render(<Piloté initial={JUSQU_AUX_CONNEXIONS} />)
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de prod' }))
+  // Présente et désactivée, jamais absente ni cliquable-inerte : la règle de `09f` et le défaut
+  // n° 36. C'est le cas de la galerie, où aucune commande ne répond.
+  expect(screen.getByRole('button', { name: 'Ajouter une connexion…' })).toBeDisabled()
 })
 
 test('un schéma et une table n’en portent pas — il n’y a rien à y configurer', () => {

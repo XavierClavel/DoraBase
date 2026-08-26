@@ -1,5 +1,10 @@
 import { useState } from 'react'
-import type { CreateProjectRequest, EnvironmentDeclaration, Project } from '../../domain/config'
+import type {
+  CreateProjectRequest,
+  EnvironmentDeclaration,
+  EnvironmentId,
+  Project,
+} from '../../domain/config'
 import { NewConnection } from '../NewConnection/NewConnection'
 import { NewProject } from './NewProject'
 
@@ -15,7 +20,18 @@ type ParcoursDeCreationProps = {
         etape: 'projet' /** Voir `NewProject.raison` — le cas « aucun projet » de `24d`. */
         raison?: string
       }
-    | { etape: 'connexion'; projet: string }
+    | {
+        etape: 'connexion'
+        projet: string
+        /**
+         * L'environnement visé, quand le geste part d'un palier d'arbre (26 août 2026).
+         *
+         * Absent, l'étape 2 propose le défaut de `emptyDraft` — `dev`, le moins risqué. Présent, elle
+         * part sur l'environnement d'où l'on a cliqué : le redemander serait poser une question dont
+         * l'appelant connaissait déjà la réponse.
+         */
+        environnement?: EnvironmentId
+      }
   projets: readonly { id: string; name: string; environments: readonly EnvironmentDeclaration[] }[]
   onClose: () => void
   /** Les projets à jour, après création ou enregistrement. */
@@ -86,6 +102,9 @@ export function ParcoursDeCreation({
       // **Imposé, non choisi** : à l'étape 2, le projet est celui de l'étape 1 (`24c`). C'est ce qui
       // remplace le sélecteur par un constat et fait paraître la bande.
       projetImpose={projetCree}
+      {...(depart.etape === 'connexion' && depart.environnement !== undefined
+        ? { cible: { project: projetCree, environment: depart.environnement } }
+        : {})}
       onClose={onClose}
       onSaved={onProjets}
     />
