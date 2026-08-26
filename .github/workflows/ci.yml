@@ -1,5 +1,18 @@
 name: CI
-on: [push, pull_request]
+# **Une exécution par commit, pas deux.** `[push, pull_request]` faisait tourner la CI
+# entière deux fois sur toute branche ayant une PR ouverte : le push et la PR déclenchent
+# deux exécutions du même arbre, à la seconde près, pour un verdict identique. Le push est
+# donc restreint à `main` — hors de `main`, c'est la PR qui décide, et c'est aussi elle qui
+# porte le verdict affiché sur la fusion.
+#
+# Conséquence assumée : **une branche poussée sans PR ne construit plus rien**, donc pas
+# d'artefact `.dmg` pour ce commit. `workflow_dispatch` est là pour ce cas — le lancer à la
+# main sur la branche — plutôt que de payer deux exécutions à chaque fois pour l'obtenir.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
@@ -66,20 +79,7 @@ jobs:
 
       - run: pnpm test
 
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:e2e
-        env:
-          CI: true
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: playwright-report
-          # `test-results/` porte les captures réelle/attendue/diff produites par
-          # l'échec — c'est ce qu'on récupère pour committer la référence générée en
-          # CI. `playwright-report/` est le rapport HTML de navigation, utile en plus.
-          path: |
-            playwright-report/
-            test-results/
+      # Playwright a son propre job, `e2e` — voir son en-tête pour la raison.
 
       - run: cargo fmt --all --check
         working-directory: src-tauri
@@ -208,6 +208,63 @@ jobs:
           # Un artefact vide serait un piège : on le télécharge, il ne contient rien, et on
           # cherche la cause du côté du bundle.
           if-no-files-found: error
+
+  # **Playwright, dans son propre job et en tranches parallèles.** Les 247 tests d'alors prenaient
+  # six minutes en tête du job `build`, en un seul worker, et le bundle attendait derrière :
+  # la moitié du temps de mur de la CI pour des tests qui n'ont besoin ni de Rust, ni du
+  # proxy, ni du bundle — seulement d'un serveur Vite. Sorti de là, il ne rallonge plus rien,
+  # et `--shard` le découpe entre plusieurs runners.
+  #
+  # **Le job reste sur macOS**, et ce n'est pas un reste d'histoire : les captures de fidélité
+  # portent le suffixe de plateforme (`a1-accueil-darwin.png`). Sur Linux, Playwright
+  # chercherait des références `-linux` qui n'existent pas, et les *écrirait* — une suite verte
+  # qui ne compare rien.
+  #
+  # Le découpage se fait par fichier, équilibré au **nombre** de tests et non à leur durée, et
+  # les deux ne coïncident pas : mesuré en local, 131 tests en 1 min 48 contre 120 en 1 min 12.
+  # C'est la tranche qui porte `geometrie-reelle` et `a2-nouvelle-connexion` — 43 tests à elles
+  # deux, et les plus lents — qui décide du verdict. Deux tranches quand même : une minute de
+  # runner macOS se facture dix, et une troisième ne rognerait que sur la moitié rapide.
+  #
+  # `fail-fast: false` pour qu'une tranche rouge n'annule pas l'autre — on veut les deux
+  # verdicts, pas le premier.
+  e2e:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tranche: [1, 2]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # `--with-deps` n'installe des paquets système que sur Linux ; ici il ne fait rien.
+      - run: pnpm exec playwright install chromium
+
+      - run: pnpm test:e2e --shard=${{ matrix.tranche }}/2
+        env:
+          CI: true
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          # Un nom par tranche : deux tranches qui téléversent sous le même nom se
+          # refusent l'une l'autre, et l'échec du téléversement masque celui des tests.
+          name: playwright-report-tranche-${{ matrix.tranche }}
+          # `test-results/` porte les captures réelle/attendue/diff produites par
+          # l'échec — c'est ce qu'on récupère pour committer la référence générée en
+          # CI. `playwright-report/` est le rapport HTML de navigation, utile en plus.
+          path: |
+            playwright-report/
+            test-results/
 
   # Second job, sur Linux, dédié aux tests qui exigent une vraie base.
   #

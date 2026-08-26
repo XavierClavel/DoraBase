@@ -475,6 +475,23 @@ c'est le `.dmg` seul qui est rendu, pas le `.app` : `upload-artifact` réempaque
 qui perd les bits d'exécution et les liens symboliques du bundle, et un `.app` ainsi
 transporté ne se lance pas. Le `.dmg` est une image opaque, il traverse intact.
 
+**Une exécution de CI par commit, et Playwright à part.** `on: [push, pull_request]` faisait
+tourner la CI entière **deux fois** sur toute branche ayant une PR : deux exécutions du même
+arbre, lancées à la seconde près, pour un verdict identique. Le push est donc restreint à
+`main`, la PR décide partout ailleurs, et `workflow_dispatch` reste pour le cas qu'on perd —
+une branche poussée **sans** PR ne construit plus rien, donc n'a plus d'artefact `.dmg`.
+Quant aux 247 tests Playwright d'alors, ils prenaient six des quatorze minutes du job `build`, en
+**un seul worker** — le défaut de Playwright sous `CI`, que personne n'avait choisi — pendant
+que le bundle attendait derrière eux. Ils ont leur job, deux workers et deux tranches
+(`--shard`). Trois choses à ne pas rejouer : le job **reste sur macOS**, parce que les
+captures de fidélité portent le suffixe de plateforme (`-darwin.png`) et que sur Linux
+Playwright les **écrirait** au lieu de les comparer — une suite verte qui ne compare rien ;
+`fail-fast: false`, parce qu'on veut les deux verdicts et non le premier ; et un nom
+d'artefact par tranche, sans quoi le second téléversement échoue et masque l'échec des tests.
+`scripts/verifier-ci.py` tient les quatre — filtre de branches, `--shard`, `macos`, présence
+du job —, chacun vérifié par sabotage : aucun ne se remarquerait autrement qu'au chronomètre
+ou en comptant les exécutions.
+
 **La fenêtre du volume est habillée, et c'est une image plus des coordonnées.** Le `.dmg`
 s'ouvre sur un décor peint et une carte qui dit le geste — glisser l'application sur
 `Applications`. Rien de tout cela n'est du code : `bundle.macOS.dmg` porte le fond, la taille
