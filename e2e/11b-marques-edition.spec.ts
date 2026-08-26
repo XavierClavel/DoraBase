@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
   await page.evaluate(() => document.fonts.ready)
 })
 
-/** Modifie la deuxième ligne de `status`, et attend que le bandeau paraisse. */
+/** Modifie la deuxième ligne de `status`, et attend que la modification soit retenue. */
 async function modifier(page: Page) {
   // **La démo n'ouvre plus l'édition par un drapeau** : c'est `⌘E` qui l'ouvre, comme pour
   // l'utilisateur. Un décor déjà en édition n'aurait jamais montré que la bascule marche.
@@ -22,20 +22,11 @@ async function modifier(page: Page) {
   const champ = page.getByLabel('Nouvelle valeur')
   await champ.fill('shipped')
   await champ.press('Enter')
-  await page.waitForSelector('[aria-label="Modifications en attente"]')
+  // **Le bandeau de `11b` n'existe plus** : c'est le panneau de `11c` qui paraît à la première
+  // modification, et c'est donc lui qui atteste qu'elle est retenue. Attendre ici, et non mesurer
+  // sèchement après la frappe : la teinte et le coin de la cellule arrivent au rendu suivant.
+  await page.waitForSelector('[aria-label="Modifications en attente de la table"]')
 }
-
-test('le bandeau fait 34 px et n’existe qu’avec des modifications', async ({ page }) => {
-  // Un bandeau à « 0 modification » occuperait 34 px pour ne rien dire.
-  await expect(page.getByRole('status', { name: 'Modifications en attente' })).toHaveCount(0)
-
-  await modifier(page)
-  const hauteur = await page.evaluate(() => {
-    const b = document.querySelector('[aria-label="Modifications en attente"]')
-    return b ? getComputedStyle(b).height : null
-  })
-  expect(hauteur).toBe('34px')
-})
 
 test('la ligne et la cellule modifiées portent bien les teintes ambre du modèle', async ({
   page,
