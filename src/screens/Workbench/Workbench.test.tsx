@@ -1153,25 +1153,21 @@ describe('mode édition', () => {
     monter({ onDelete: async () => ({ leftoverSecrets: [] }) })
     await ouvrirEtEditer(utilisateur)
     await modifier(utilisateur)
-    expect(screen.getByRole('status', { name: 'Modifications en attente' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Modifications en attente de la table')).toBeInTheDocument()
 
     await utilisateur.click(screen.getByRole('button', { name: 'Actions de analytics' }))
     await utilisateur.click(screen.getByRole('button', { name: 'Retirer de DoraBase…' }))
     await utilisateur.click(screen.getByRole('button', { name: 'Retirer la connexion' }))
 
-    expect(
-      screen.queryByRole('status', { name: 'Modifications en attente' }),
-    ).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Modifications en attente de la table')).not.toBeInTheDocument()
 
     // **Et elles ne reviennent pas si l'on rouvre le même chemin.** C'est la vraie raison de purger
-    // l'état : la disparition du bandeau ne prouve rien, l'onglet actif ayant changé. Des
+    // l'état : la disparition du panneau ne prouve rien, l'onglet actif ayant changé. Des
     // modifications fantômes sur une base redéclarée s'appliqueraient à des lignes qu'on n'a jamais
     // vues.
     await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
     await screen.findByRole('grid')
-    expect(
-      screen.queryByRole('status', { name: 'Modifications en attente' }),
-    ).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Modifications en attente de la table')).not.toBeInTheDocument()
   })
 
   it('hors production, « Appliquer » écrit sans confirmation intermédiaire', async () => {
@@ -1212,8 +1208,8 @@ describe('mode édition', () => {
     const champ = screen.getByLabelText('Nouvelle valeur')
     await utilisateur.type(champ, 'pending{Enter}')
 
-    // Le bandeau nomme ce qui attend : « modification » dirait le contraire de ce qui partira.
-    expect(await screen.findByText(/1 ligne ajoutée en attente sur/)).toBeInTheDocument()
+    // Le panneau nomme ce qui attend : une ligne ajoutée ne se confond pas avec une modification.
+    expect(await screen.findByText('nouvelle ligne 1')).toBeInTheDocument()
 
     const panneau = await screen.findByLabelText('Modifications en attente de la table')
     await utilisateur.click(within(panneau).getByRole('button', { name: /Appliquer/ }))
@@ -1281,11 +1277,10 @@ describe('mode édition', () => {
     await waitFor(() => expect(readRows.mock.calls.length).toBeGreaterThan(lecturesAvant))
     // Et le modèle vidé fait disparaître toutes les marques de `11b` d'un coup.
     await waitFor(() =>
-      expect(
-        screen.queryByRole('status', { name: 'Modifications en attente' }),
-      ).not.toBeInTheDocument(),
+      expect(within(panneau).queryByText('Modifications en attente')).not.toBeInTheDocument(),
     )
     // À la place, de quoi défaire — et non un panneau vide.
+    expect(within(panneau).getByText('Écriture appliquée')).toBeInTheDocument()
     expect(screen.getByText(/SQL qui annule cette écriture/)).toBeInTheDocument()
   })
 
@@ -1309,7 +1304,7 @@ describe('mode édition', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('changé depuis la lecture')
     // **Les modifications restent** : les perdre sur un conflit obligerait à tout retaper, alors que
     // rien n'a été écrit.
-    expect(screen.getByRole('status', { name: 'Modifications en attente' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Modifications en attente de la table')).toBeInTheDocument()
   })
 
   it('en production, « Appliquer » demande une confirmation et n’écrit pas encore', async () => {
@@ -1346,7 +1341,7 @@ describe('mode édition', () => {
     await utilisateur.click(screen.getByRole('button', { name: 'Annuler' }))
     expect(ecrire).not.toHaveBeenCalled()
     // Les modifications survivent au renoncement : rien n'a été écrit, rien n'a été perdu.
-    expect(screen.getByRole('status', { name: 'Modifications en attente' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Modifications en attente de la table')).toBeInTheDocument()
 
     await utilisateur.click(within(panneau).getByRole('button', { name: /Appliquer/ }))
     await utilisateur.click(screen.getByRole('button', { name: 'Écrire en production' }))
@@ -1371,46 +1366,46 @@ describe('mode édition', () => {
     expect(screen.getAllByRole('button', { name: /Modifier/ }).length).toBeGreaterThan(0)
   })
 
-  it('sans modification, aucun bandeau', async () => {
+  it('sans modification, aucun panneau des modifications en attente', async () => {
     const utilisateur = userEvent.setup()
     monter()
     await ouvrirEtEditer(utilisateur)
-    // Un bandeau à « 0 modification » occuperait 34 px pour ne rien dire.
-    expect(screen.queryByText(/modification.* en attente sur/)).not.toBeInTheDocument()
+    // Un panneau à « 0 modification » n'aurait rien à montrer.
+    expect(screen.queryByLabelText('Modifications en attente de la table')).not.toBeInTheDocument()
   })
 
-  it('les quatre affichages du compte suivent le même modèle', async () => {
+  it('les trois affichages du compte suivent le même modèle', async () => {
     const utilisateur = userEvent.setup()
     monter()
     await ouvrirEtEditer(utilisateur)
     await modifier(utilisateur)
 
-    // 1. le bandeau
-    expect(await screen.findByText(/1 modification en attente sur/)).toBeInTheDocument()
-    // 2. la barre d'état
-    expect(screen.getByRole('status', { name: 'État de la table' })).toHaveTextContent(
+    // 1. la barre d'état
+    expect(await screen.findByRole('status', { name: 'État de la table' })).toHaveTextContent(
       '1 modification en attente',
     )
-    // 3. le badge de l'indicateur de la barre de titre — **du texte, plus un bouton** : la pastille
+    // 2. le badge de l'indicateur de la barre de titre — **du texte, plus un bouton** : la pastille
     //    projet était un `<button>`, l'indicateur de `25b` n'a rien de focalisable.
     expect(screen.getByText('Édition')).toBeInTheDocument()
-    // 4. la pastille de l'arbre, à la place du compte de lignes
+    // 3. la pastille de l'arbre, à la place du compte de lignes
     const ligne = screen.getByRole('treeitem', { name: /^orders/ })
     expect(ligne).toHaveTextContent('1')
   })
 
-  it('⌘Z retire la modification, et les quatre affichages suivent', async () => {
+  it('⌘Z retire la modification, et les trois affichages suivent', async () => {
     const utilisateur = userEvent.setup()
     monter()
     await ouvrirEtEditer(utilisateur)
     await modifier(utilisateur)
-    await screen.findByText(/1 modification en attente sur/)
+    await screen.findByLabelText('Modifications en attente de la table')
 
     await utilisateur.keyboard('{Meta>}z{/Meta}')
 
     // Un compteur tenu à part divergerait ici.
     await waitFor(() =>
-      expect(screen.queryByText(/modification.* en attente sur/)).not.toBeInTheDocument(),
+      expect(
+        screen.queryByLabelText('Modifications en attente de la table'),
+      ).not.toBeInTheDocument(),
     )
     expect(screen.queryByText('Édition')).not.toBeInTheDocument()
   })
@@ -1420,16 +1415,14 @@ describe('mode édition', () => {
     monter()
     await ouvrirEtEditer(utilisateur)
     await modifier(utilisateur)
-    await screen.findByText(/1 modification en attente sur/)
+    const panneau = await screen.findByLabelText('Modifications en attente de la table')
 
-    // **Deux boutons portent ce nom depuis `11c`** — celui du bandeau et celui du pied du panneau —
-    // et le mockup montre bien les deux. On cible celui du bandeau ; l'autre est couvert par les
-    // tests de `PendingPanel`.
-    const bandeau = screen.getByRole('status', { name: 'Modifications en attente' })
-    await utilisateur.click(within(bandeau).getByRole('button', { name: 'Tout annuler' }))
+    await utilisateur.click(within(panneau).getByRole('button', { name: 'Tout annuler' }))
 
     await waitFor(() =>
-      expect(screen.queryByText(/modification.* en attente sur/)).not.toBeInTheDocument(),
+      expect(
+        screen.queryByLabelText('Modifications en attente de la table'),
+      ).not.toBeInTheDocument(),
     )
   })
 
@@ -1438,12 +1431,12 @@ describe('mode édition', () => {
     monter()
     await ouvrirEtEditer(utilisateur)
     await modifier(utilisateur)
-    await screen.findByText(/1 modification en attente sur/)
+    await screen.findByLabelText('Modifications en attente de la table')
 
     await utilisateur.keyboard('{Meta>}e{/Meta}')
 
     // Les perdre sur une frappe serait le défaut qu'`esc` fermant une modale pleine a produit.
-    expect(screen.getByText(/1 modification en attente sur/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Modifications en attente de la table')).toBeInTheDocument()
     // Mais plus aucune cellule ne s'ouvre.
     expect(screen.queryByRole('button', { name: /Modifier/ })).not.toBeInTheDocument()
   })

@@ -29,7 +29,6 @@ import { type GestesEnvironnement, ProjectEditor } from '../Explorer/ProjectEdit
 import { DdlPanel } from '../Structure/DdlPanel'
 import { StructureStatusBar, StructureView } from '../Structure/StructureView'
 import { ApplyConfirm } from '../TableView/ApplyConfirm'
-import { EditBanner } from '../TableView/EditBanner'
 import { type EnAttente, retirer } from '../TableView/modifications'
 import { PendingPanel } from '../TableView/PendingPanel'
 import { RowPanel } from '../TableView/RowPanel'
@@ -1010,16 +1009,6 @@ export function Workbench({
           enCours={application.enCours}
           onClose={application.annulerLaConfirmation}
           onConfirmer={application.appliquer}
-        />
-      )}
-      {table && (
-        <EditBanner
-          compte={attente.length}
-          ajouts={attente.filter((modification) => modification.sorte === 'ligne').length}
-          table={`${table.schema}.${table.table}`}
-          onToutAnnuler={() =>
-            setAttentes((precedent) => ({ ...precedent, [idActif as string]: [] }))
-          }
         />
       )}
       <div className={styles.body}>
