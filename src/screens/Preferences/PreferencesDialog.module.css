@@ -317,3 +317,35 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* --- Mises à jour ------------------------------------------------------ */
+
+.maj {
+  margin: 0 0 var(--space-5);
+}
+
+/* Le verdict de la recherche : ce qu'on est venu lire, donc à l'encre pleine. */
+.majVerdict {
+  margin: 0;
+  font: var(--weight-medium) var(--text-label) / var(--leading-ui) var(--font-ui);
+  color: var(--ink);
+}
+
+.majTrouvee {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-5);
+}
+
+/* Les notes de la release, telles que le manifeste les porte : du texte libre, dont la longueur
+ * n'est pas décidée ici. Il défile plutôt que de pousser le pied de la modale hors de l'écran. */
+.majNotes {
+  max-height: 132px;
+  margin: 0;
+  overflow-y: auto;
+  overscroll-behavior: none;
+  white-space: pre-wrap;
+  font: var(--weight-medium) var(--text-label) / var(--leading-ui) var(--font-ui);
+  color: var(--ink-8);
+}

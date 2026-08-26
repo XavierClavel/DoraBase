@@ -143,17 +143,17 @@ test('la modale des préférences tient dans la fenêtre minimale', async ({ pag
   expect(tient?.dansLaHauteur).toBe(true)
 })
 
-test('les sept sections sont atteignables au clavier', async ({ page }) => {
+test('les huit sections sont atteignables au clavier', async ({ page }) => {
   await ouvrirLesPreferences(page)
   // **Porté sur la modale** : la bande d'onglets de l'écran de travail en a aussi, et une
   // assertion à l'échelle de la page les compterait ensemble.
   const modale = page.getByRole('dialog', { name: 'Préférences' })
   const onglets = modale.getByRole('tab')
-  await expect(onglets).toHaveCount(7)
+  await expect(onglets).toHaveCount(8)
 
   // `role="tablist"` **promet** la navigation aux flèches, il ne la fournit pas : un rôle ARIA
   // annonce une convention, et c'est au code de la tenir. Sans elle, un lecteur d'écran annonce
-  // « onglet 1 sur 7 » et les flèches ne font rien.
+  // « onglet 1 sur 8 » et les flèches ne font rien.
   await modale.getByRole('tab', { name: 'Général' }).focus()
   await page.keyboard.press('ArrowDown')
   await expect(modale.getByRole('tab', { name: 'Apparence' })).toBeFocused()
@@ -162,8 +162,9 @@ test('les sept sections sont atteignables au clavier', async ({ page }) => {
     'true',
   )
 
-  // Et le parcours boucle : depuis la première, la flèche haute mène à la dernière.
+  // Et le parcours boucle : depuis la première, la flèche haute mène à la dernière — « Mises à
+  // jour » depuis le 26 août 2026.
   await modale.getByRole('tab', { name: 'Général' }).click()
   await page.keyboard.press('ArrowUp')
-  await expect(modale.getByRole('tab', { name: 'Raccourcis' })).toBeFocused()
+  await expect(modale.getByRole('tab', { name: 'Mises à jour' })).toBeFocused()
 })
