@@ -17,7 +17,6 @@ import {
   PALETTE,
   PREFERENCES_PAR_DEFAUT,
   THEMES,
-  themeIncomplet,
 } from './preferences'
 
 type PreferencesDialogProps = {
@@ -251,18 +250,6 @@ function Apparence({
             </label>
           ))}
         </div>
-        {/* **Dit, et non caché.** `tokens.json` n'a qu'une valeur par jeton : le sombre demande une
-            seconde valeur pour chacun, ce qui est un travail de design que le handoff ne fournit
-            pas. C'est le seul endroit du projet où une préférence est livrée avant ce qu'elle
-            règle, et l'alternative — cacher le réglage — cacherait aussi la raison de son
-            absence. */}
-        {themeIncomplet(preferences.theme) && (
-          <p className={styles.reserve} role="status">
-            « Nuit » est <strong>incomplet</strong> : les jetons de design du projet n’ont
-            aujourd’hui qu’une valeur claire. Le mécanisme est livré, les couleurs sombres restent à
-            dessiner.
-          </p>
-        )}
       </section>
 
       <section className={styles.bloc}>

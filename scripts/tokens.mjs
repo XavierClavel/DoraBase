@@ -28,12 +28,51 @@ export function flatten(tree, prefix = []) {
   return result
 }
 
-/** Émet un bloc `:root { --token: valeur; }` trié par nom de token. */
-export function emitCss(flatTokens) {
-  const lines = Object.keys(flatTokens)
-    .sort()
-    .map((name) => `  --${name}: ${flatTokens[name]};`)
-  return `${GENERATED_HEADER}\n:root {\n${lines.join('\n')}\n}\n`
+/** Le nom de la clé de premier niveau qui porte les valeurs sombres. */
+export const CLE_NUIT = 'nuit'
+
+/**
+ * Sépare l'arbre en deux : les valeurs claires, et les redéfinitions de « Nuit ».
+ *
+ * **Une seule source, `tokens.json`** — la prohibition du projet porte sur le fichier, pas sur le
+ * nombre de thèmes. Un second fichier aurait mis des couleurs littérales hors de celui que
+ * `tokens:check` garde.
+ */
+export function separerThemes(tree) {
+  const { [CLE_NUIT]: nuit, ...clair } = tree
+  return { clair, nuit: nuit ?? {} }
+}
+
+/**
+ * Émet les blocs `:root` du thème clair, puis les redéfinitions de « Nuit ».
+ *
+ * **Trois blocs, et il en faut trois** : le clair sur `:root` nu, le sombre sur
+ * `[data-theme="nuit"]` — le thème choisi explicitement —, et le même sombre sous
+ * `prefers-color-scheme: dark` pour `:root:not([data-theme="cahier"])`, c'est-à-dire « Système ».
+ * `themeApplique` ne pose **aucun** attribut pour « Système » (voir `preferences.ts`) : c'est cette
+ * absence que la requête média rattrape, et le `:not` est ce qui empêche « Cahier » choisi
+ * explicitement de virer au sombre sur un macOS en sombre.
+ *
+ * Un jeton sombre dont le nom n'existe pas en clair **arrête le générateur** : il ne casserait
+ * rien de visible — ni TypeScript, ni Vitest, ni l'œil — et c'est exactement ce qui en fait un
+ * piège (voir la prohibition « un `var()` vers un jeton inexistant »).
+ */
+export function emitCss(flatTokens, flatNuit = {}) {
+  const inconnus = Object.keys(flatNuit).filter((name) => !(name in flatTokens))
+  if (inconnus.length > 0) {
+    throw new Error(`jetons de nuit sans équivalent clair : ${inconnus.sort().join(', ')}`)
+  }
+  const bloc = (tokens, indentation) =>
+    Object.keys(tokens)
+      .sort()
+      .map((name) => `${indentation}--${name}: ${tokens[name]};`)
+      .join('\n')
+
+  let css = `${GENERATED_HEADER}\n:root {\n${bloc(flatTokens, '  ')}\n}\n`
+  if (Object.keys(flatNuit).length === 0) return css
+  css += `\n:root[data-theme="nuit"] {\n${bloc(flatNuit, '  ')}\n}\n`
+  css += `\n@media (prefers-color-scheme: dark) {\n  :root:not([data-theme="cahier"]) {\n${bloc(flatNuit, '    ')}\n  }\n}\n`
+  return css
 }
 
 /** Émet un module TypeScript exposant `TokenName` et `tokens` (références `var()`). */

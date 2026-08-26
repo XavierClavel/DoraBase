@@ -52,7 +52,7 @@
   <symbol id="i-plan" viewBox="0 0 24 24"><path d="M12 3.5v4M12 11.5v3M6 20.5v-3M18 20.5v-3"/><rect x="9" y="7.5" width="6" height="4" rx="1"/><rect x="3" y="14.5" width="6" height="3" rx="1"/><rect x="15" y="14.5" width="6" height="3" rx="1"/><path d="M12 14.5H6M12 14.5h6"/></symbol>
   <symbol id="i-msg" viewBox="0 0 24 24"><path d="M4 5.5h16v11H12l-4 3.5v-3.5H4v-11Z"/></symbol>
   <symbol id="logo" viewBox="0 0 512 512">
-<rect width="512" height="512" rx="114" fill="#FBF7EF"/>
+<rect width="512" height="512" rx="114" fill="var(--logo-plate,#FBF7EF)"/>
 <g fill="none" stroke="#23201C" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
 <path d="M232 154q24-44 48 0"/>
 <path d="M210 156h92a64 64 0 0 1 64 64v114a64 64 0 0 1-64 64h-92a64 64 0 0 1-64-64V220a64 64 0 0 1 64-64z" fill="var(--accent,#F2653A)"/>

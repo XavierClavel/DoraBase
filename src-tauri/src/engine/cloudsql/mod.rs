@@ -468,15 +468,39 @@ mod tests {
     /// pilotage d'un sous-processus : attendre le bon moment, ne pas confondre « pas encore
     /// prêt » et « mort », tuer sans laisser d'orphelin. Un script shell exerce tout cela
     /// sans réseau, sans compte GCP, et en CI.
+    /// Écrit un faux `cloud-sql-proxy` exécutable, et le rend.
+    ///
+    /// **Le fichier est écrit par un sous-processus, et ce détour corrige une panne de CI**
+    /// (26 août 2026, sur `main` comme sur les branches, deux tests différents d'une exécution à
+    /// l'autre — la marque d'une course, pas d'un test faux).
+    ///
+    /// `std::fs::write` ouvre le fichier en écriture dans **notre** processus. Les tests tournent en
+    /// parallèle : si un autre fil lance un programme pendant ce temps, le `fork` qui précède son
+    /// `exec` duplique notre descripteur dans l'enfant, et Linux refuse d'exécuter un fichier qu'un
+    /// processus tient ouvert en écriture — `ETXTBSY`, « Text file busy ». Rust pose bien
+    /// `O_CLOEXEC`, donc la fenêtre se referme à l'`exec` de l'enfant ; elle dure quelques
+    /// microsecondes, et c'est assez.
+    ///
+    /// Écrit par `cp`, le descripteur n'existe **jamais** dans notre table : il vit dans le shell,
+    /// qui s'achève avant que cette fonction ne rende la main. La source, elle, peut être écrite
+    /// normalement — elle n'est jamais exécutée, et `ETXTBSY` porte sur l'inode qu'on exécute.
     fn faux_binaire(nom: &str, corps: &str) -> std::path::PathBuf {
-        use std::os::unix::fs::PermissionsExt;
-
         let base =
             std::env::temp_dir().join(format!("dorabase-cloudsql-{nom}-{}", std::process::id()));
         std::fs::create_dir_all(&base).expect("répertoire");
+        let source = base.join("source");
         let chemin = base.join("cloud-sql-proxy");
-        std::fs::write(&chemin, corps).expect("écriture");
-        std::fs::set_permissions(&chemin, std::fs::Permissions::from_mode(0o755)).expect("droits");
+        std::fs::write(&source, corps).expect("écriture de la source");
+
+        let statut = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(r#"cp "$1" "$2" && chmod 755 "$2""#)
+            .arg("sh")
+            .arg(&source)
+            .arg(&chemin)
+            .status()
+            .expect("installation du faux binaire");
+        assert!(statut.success(), "installation du faux binaire : {statut}");
         chemin
     }
 

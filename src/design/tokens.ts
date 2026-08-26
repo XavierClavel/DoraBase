@@ -8,6 +8,8 @@ export type TokenName =
   | 'border'
   | 'border-dashed'
   | 'border-field'
+  | 'btn-strong-bg'
+  | 'btn-strong-ink'
   | 'canvas'
   | 'danger'
   | 'danger-bg'
@@ -51,6 +53,7 @@ export type TokenName =
   | 'h-statusbar'
   | 'h-titlebar'
   | 'h-tree-row'
+  | 'hero-wash'
   | 'hover-bg'
   | 'hover-border'
   | 'hover-row'
@@ -75,10 +78,16 @@ export type TokenName =
   | 'leading-code-tight'
   | 'leading-grid'
   | 'leading-ui'
+  | 'logo-plate'
   | 'muted'
+  | 'on-dark'
   | 'paper'
   | 'paper-alt'
   | 'paper-bright'
+  | 'preview-dark-bar'
+  | 'preview-dark-paper'
+  | 'preview-light-bar'
+  | 'preview-light-paper'
   | 'radius-badge'
   | 'radius-badge-2'
   | 'radius-control'
@@ -98,6 +107,7 @@ export type TokenName =
   | 'shadow-accent-2'
   | 'shadow-cell'
   | 'shadow-focus'
+  | 'shadow-logo'
   | 'shadow-modal'
   | 'shadow-popover'
   | 'shadow-window'
@@ -154,6 +164,8 @@ export const tokens: Record<TokenName, string> = {
   'border': 'var(--border)',
   'border-dashed': 'var(--border-dashed)',
   'border-field': 'var(--border-field)',
+  'btn-strong-bg': 'var(--btn-strong-bg)',
+  'btn-strong-ink': 'var(--btn-strong-ink)',
   'canvas': 'var(--canvas)',
   'danger': 'var(--danger)',
   'danger-bg': 'var(--danger-bg)',
@@ -197,6 +209,7 @@ export const tokens: Record<TokenName, string> = {
   'h-statusbar': 'var(--h-statusbar)',
   'h-titlebar': 'var(--h-titlebar)',
   'h-tree-row': 'var(--h-tree-row)',
+  'hero-wash': 'var(--hero-wash)',
   'hover-bg': 'var(--hover-bg)',
   'hover-border': 'var(--hover-border)',
   'hover-row': 'var(--hover-row)',
@@ -221,10 +234,16 @@ export const tokens: Record<TokenName, string> = {
   'leading-code-tight': 'var(--leading-code-tight)',
   'leading-grid': 'var(--leading-grid)',
   'leading-ui': 'var(--leading-ui)',
+  'logo-plate': 'var(--logo-plate)',
   'muted': 'var(--muted)',
+  'on-dark': 'var(--on-dark)',
   'paper': 'var(--paper)',
   'paper-alt': 'var(--paper-alt)',
   'paper-bright': 'var(--paper-bright)',
+  'preview-dark-bar': 'var(--preview-dark-bar)',
+  'preview-dark-paper': 'var(--preview-dark-paper)',
+  'preview-light-bar': 'var(--preview-light-bar)',
+  'preview-light-paper': 'var(--preview-light-paper)',
   'radius-badge': 'var(--radius-badge)',
   'radius-badge-2': 'var(--radius-badge-2)',
   'radius-control': 'var(--radius-control)',
@@ -244,6 +263,7 @@ export const tokens: Record<TokenName, string> = {
   'shadow-accent-2': 'var(--shadow-accent-2)',
   'shadow-cell': 'var(--shadow-cell)',
   'shadow-focus': 'var(--shadow-focus)',
+  'shadow-logo': 'var(--shadow-logo)',
   'shadow-modal': 'var(--shadow-modal)',
   'shadow-popover': 'var(--shadow-popover)',
   'shadow-window': 'var(--shadow-window)',
