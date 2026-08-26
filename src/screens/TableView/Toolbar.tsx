@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type { ColumnInfo, Filter, RowLimit, SortKey } from '../../domain/engine'
 import { Chip } from '../../ui/Chip/Chip'
@@ -52,6 +53,44 @@ type ToolbarProps = {
 }
 
 /**
+ * La zone défilante des chips : le geste vertical y défile horizontalement.
+ *
+ * **Pourquoi un écouteur natif plutôt qu'`onWheel`.** React attache `wheel` à la racine en
+ * `passive: true` : `preventDefault` y est sans effet, et le refus est justement ce qui empêche
+ * l'ancêtre de défiler à notre place.
+ *
+ * **Seul l'axe vertical est traduit.** Un glissement horizontal du trackpad est déjà appliqué par la
+ * webview ; l'ajouter au nôtre doublerait le pas. Et `ctrlKey`/`metaKey` sont laissés à `useZoom`,
+ * qui refuse le pincement et applique le zoom fin — les intercepter ici ferait défiler la bande sur
+ * un geste de zoom.
+ *
+ * `preventDefault` **seulement si la position a bougé** : arrivé au bout, le geste doit redevenir
+ * celui de la page plutôt que d'être avalé par une bande qui ne défile plus.
+ */
+function useDefilementHorizontal() {
+  const zone = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const element = zone.current
+    if (!element) return
+    const bande = element
+
+    function auGeste(evenement: WheelEvent) {
+      if (evenement.ctrlKey || evenement.metaKey) return
+      if (Math.abs(evenement.deltaY) <= Math.abs(evenement.deltaX)) return
+      const avant = bande.scrollLeft
+      bande.scrollLeft = avant + evenement.deltaY
+      if (bande.scrollLeft !== avant) evenement.preventDefault()
+    }
+
+    element.addEventListener('wheel', auGeste, { passive: false })
+    return () => element.removeEventListener('wheel', auGeste)
+  }, [])
+
+  return zone
+}
+
+/**
  * La barre de 36 px au-dessus de la grille de `A5`.
  *
  * **Les chips lisent l'état, ils ne le possèdent pas.** Un chip qui garderait sa propre copie du
@@ -74,6 +113,7 @@ export function Toolbar({
 }: ToolbarProps) {
   const rang = PALIERS.indexOf(limite)
   const visibles = columns.length - masquees.size
+  const chips = useDefilementHorizontal()
 
   return (
     // `role="toolbar"` : un groupe de commandes qui agissent sur la même chose, et le motif ARIA
@@ -147,29 +187,36 @@ export function Toolbar({
         </button>
       )}
 
-      {filters.map((filtre) => (
-        <Chip
-          key={filtre.column}
-          variant="accent"
-          icon={<Icon name="filter" size={13} strokeWidth={1.9} />}
-          onRemove={() => onRemoveFilter(filtre.column)}
-          removeLabel={`Retirer le filtre sur ${filtre.column}`}
-        >
-          {libelleDeFiltre(filtre)}
-        </Chip>
-      ))}
+      {/* **Les chips vivent dans une zone bornée qui défile, pas dans le flux de la barre.**
+          Cinq filtres posés à la fois — un cas ordinaire dès qu'on cherche une ligne — poussaient
+          « Voir le SQL », le compte de colonnes et l'export hors de la barre : les libellés se
+          repliaient sur trois lignes et débordaient sous la grille. Constaté à l'écran le 26 août
+          2026. La zone prend la place restante — `flex: 1`, bornée par son `overflow` — et tient donc
+          aussi le rôle d'écarteur qu'un `<span>` jouait ici ; ce qui n'y tient pas se défile, à la
+          molette comme au glissement, plutôt que d'écraser les contrôles voisins. */}
+      <div className={styles.chips} ref={chips}>
+        {filters.map((filtre) => (
+          <Chip
+            key={filtre.column}
+            variant="accent"
+            icon={<Icon name="filter" size={13} strokeWidth={1.9} />}
+            onRemove={() => onRemoveFilter(filtre.column)}
+            removeLabel={`Retirer le filtre sur ${filtre.column}`}
+          >
+            {libelleDeFiltre(filtre)}
+          </Chip>
+        ))}
 
-      {sort.length > 0 && (
-        // Le chip de tri ne se clique jamais dans le handoff : il **affiche**. Le tri se règle
-        // sur les en-têtes, et lui donner une seconde commande dupliquerait l'état.
-        <Chip icon={<Icon name="desc" size={13} strokeWidth={1.9} />}>
-          {sort
-            .map((c) => `${c.column} ${c.direction === 'ascending' ? 'asc' : 'desc'}`)
-            .join(', ')}
-        </Chip>
-      )}
-
-      <span className={styles.espace} />
+        {sort.length > 0 && (
+          // Le chip de tri ne se clique jamais dans le handoff : il **affiche**. Le tri se règle
+          // sur les en-têtes, et lui donner une seconde commande dupliquerait l'état.
+          <Chip icon={<Icon name="desc" size={13} strokeWidth={1.9} />}>
+            {sort
+              .map((c) => `${c.column} ${c.direction === 'ascending' ? 'asc' : 'desc'}`)
+              .join(', ')}
+          </Chip>
+        )}
+      </div>
 
       {/* **Le SQL affiché est celui qui a tourné**, pas une chaîne reconstruite depuis l'état :
           la reconstruire donnerait une requête *plausible*, qui divergerait le jour où
