@@ -6,6 +6,7 @@ import type {
   SslMode,
   Tunnel,
 } from '../../domain/config'
+import { PORT_PAR_DEFAUT } from './engines'
 
 /**
  * L'état saisi dans `A2`, avant tout enregistrement.
@@ -148,9 +149,10 @@ export function emptyTunnel(kind: ProxyKind): TunnelDraft {
  * l'utilisateur à chaque ouverture.
  *
  * Ce qui est prérempli, en revanche, l'est parce que c'est vrai pour la quasi-totalité des
- * cas : `postgresql` est le seul moteur implémenté, `dev` est l'environnement le moins
- * risqué, `5432` est le port de PostgreSQL, et `prefer` est le mode SSL par défaut de `libpq`.
- * Ouvrir sur `prod` serait une invitation à l'accident.
+ * cas : `postgresql` est le premier moteur de l'ordre du handoff, `dev` est l'environnement le moins
+ * risqué, le port est celui du moteur choisi — lu dans `PORT_PAR_DEFAUT`, jamais recopié ici — et
+ * `prefer` est le mode SSL par défaut de `libpq`. Ouvrir sur `prod` serait une invitation à
+ * l'accident.
  */
 export function emptyDraft(): ConnectionDraft {
   return {
@@ -160,7 +162,8 @@ export function emptyDraft(): ConnectionDraft {
     newProjectName: '',
     environment: 'dev',
     host: '',
-    port: '5432',
+    // `?? ''` par nécessité du type : PostgreSQL a un port, mais la table en admet l'absence.
+    port: PORT_PAR_DEFAUT.postgresql ?? '',
     defaultDatabase: '',
     username: '',
     password: '',

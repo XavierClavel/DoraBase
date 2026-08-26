@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type {
   Database,
+  Engine,
   EnvironmentDeclaration,
   Project,
   UpdateVariantRequest,
@@ -22,7 +23,7 @@ import { ConnectionFailure } from './ConnectionFailure'
 import { ConnectionForm } from './ConnectionForm'
 import { draftToRequest } from './draftToRequest'
 import { EngineSelector } from './EngineSelector'
-import { ENGINES, IMPLEMENTED_ENGINES } from './engines'
+import { ENGINES, IMPLEMENTED_ENGINES, portSuivant } from './engines'
 import {
   draftToSaveRequest,
   draftToUpdateRequest,
@@ -204,6 +205,24 @@ export function NewConnection({
    * représentable (`Option<Tunnel>`), et c'est ce qui compte : `06b` refuse une variante
    * déclarant un proxy qu'on n'a pas ouvert.
    */
+  /**
+   * Changer de moteur emmène le port avec lui.
+   *
+   * **Le port par défaut appartient au moteur, pas au formulaire** : `5432` devant une connexion
+   * MySQL échoue à l'ouverture sans dire pourquoi, et le champ est le dernier endroit où l'on
+   * regarderait. `portSuivant` tranche le seul cas ambigu — un port saisi à la main reste.
+   *
+   * **`setDraft` et non `patch` en deux appels** : le port suivant se calcule sur le moteur
+   * *précédent*, donc les deux champs doivent changer dans la même transition d'état.
+   */
+  function changerMoteur(engine: Engine) {
+    setDraft((precedent) => ({
+      ...precedent,
+      engine,
+      port: portSuivant(precedent.engine, precedent.port, engine),
+    }))
+  }
+
   function changerProxy(proxy: ProxyDraft) {
     setDraft((previous) => ({
       ...previous,
@@ -419,7 +438,7 @@ export function NewConnection({
       {projetImpose !== undefined && (
         <Stepper etapes={[{ libelle: 'PROJET' }, { libelle: 'CONNEXION' }]} courante={1} />
       )}
-      <EngineSelector value={draft.engine} onValueChange={(engine) => patch({ engine })} />
+      <EngineSelector value={draft.engine} onValueChange={changerMoteur} />
       {/* **Le panneau passe avant le formulaire** (24 août 2026, à la demande). L'ordre dit
           quelque chose : par où l'on joint la base se décide avant ce qu'on y saisit, parce
           que ce choix **change** les champs qui suivent — avec un proxy Cloud SQL, l'hôte
