@@ -2,8 +2,8 @@
 /* biome-ignore-all format: fichier généré, mise en forme produite par le générateur */
 :root {
   --accent: #F2653A;
-  --accent-deep: #C9502A;
-  --accent-deeper: #A83F19;
+  --accent-deep: color-mix(in oklab, var(--accent) 85%, black);
+  --accent-deeper: color-mix(in oklab, var(--accent) 72%, black);
   --bar: #F5F0E6;
   --border: rgba(35,32,28,.14);
   --border-dashed: rgba(35,32,28,.2);
