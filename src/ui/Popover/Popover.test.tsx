@@ -95,6 +95,28 @@ describe('Popover', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
+  // **La décision, faute de mise en page** : jsdom ne calcule rien, donc ce qui est mesurable ici
+  // est le sens choisi, pas le panneau posé. Ce que ce sens *produit* — un panneau réellement dans
+  // la fenêtre — est hors de portée de Vitest, et hors de portée de Playwright pour le seul
+  // appelant concerné, `MiseAJour` ne rendant rien hors de la webview. C'est dit dans les réserves.
+  it('s’ouvre vers le bas par défaut', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    await utilisateur.click(screen.getByRole('button', { name: 'status' }))
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-ouverture', 'bas')
+  })
+
+  it('s’ouvre vers le haut quand l’appelant le demande — un déclencheur au bas de la fenêtre', async () => {
+    const utilisateur = userEvent.setup()
+    render(
+      <Popover title="Version 0.2.1" ouvertureVers="haut" content={<span>notes</span>}>
+        <button type="button">disponible</button>
+      </Popover>,
+    )
+    await utilisateur.click(screen.getByRole('button', { name: 'disponible' }))
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-ouverture', 'haut')
+  })
+
   it('le contenu peut refermer lui-même, et le focus revient', async () => {
     const utilisateur = userEvent.setup()
     render(
