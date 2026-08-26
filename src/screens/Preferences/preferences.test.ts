@@ -9,7 +9,6 @@ import {
   PALETTE,
   PREFERENCES_PAR_DEFAUT,
   themeApplique,
-  themeIncomplet,
 } from './preferences'
 
 function avec(partiel: Partial<Preferences>): Preferences {
@@ -95,15 +94,5 @@ describe('themeApplique', () => {
     expect(themeApplique(avec({ theme: 'systeme' }))).toBeNull()
     expect(themeApplique(avec({ theme: 'nuit' }))).toBe('nuit')
     expect(themeApplique(avec({ theme: 'cahier' }))).toBe('cahier')
-  })
-})
-
-describe('themeIncomplet', () => {
-  it('dit que « Nuit » est incomplet, et que les deux autres ne le sont pas', () => {
-    // `tokens.json` n'a qu'une valeur par jeton : le sombre demande un travail de design que le
-    // handoff ne fournit pas. Le taire laisserait découvrir un écran à moitié illisible.
-    expect(themeIncomplet('nuit')).toBe(true)
-    expect(themeIncomplet('cahier')).toBe(false)
-    expect(themeIncomplet('systeme')).toBe(false)
   })
 })

@@ -199,7 +199,7 @@
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-control);
   background: var(--dark);
-  color: var(--paper);
+  color: var(--on-dark);
   font-family: var(--font-mono);
   font-size: var(--text-label);
   line-height: 1.45;

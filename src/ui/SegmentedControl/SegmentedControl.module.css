@@ -59,10 +59,11 @@
 .active {
   border-color: transparent;
   background: var(--dark);
-  /* `--paper` et non `--ink-on-dark` : le mockup emploie `#FBF7EF` sur les huit fonds sombres
-   * qu'il contient, et `Button.dark` a déjà tranché ainsi en `02`. `--ink-on-dark` (#EDE7DA)
+  /* `--on-dark` porte le `#FBF7EF` que le mockup emploie sur ses huit fonds sombres — la valeur
+   * n'a pas bougé, seul son nom. Elle était écrite `--paper`, qui sous « Nuit » est devenu une
+   * *surface* sombre : l'encre disparaissait dans son fond. `--ink-on-dark` reste distinct, il
    * sert la barre d'état, dont le fond n'est pas le même. */
-  color: var(--paper);
+  color: var(--on-dark);
   font-weight: var(--weight-bold);
 }
 

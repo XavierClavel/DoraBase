@@ -134,12 +134,12 @@
 /* La pastille sombre du mockup d'`A9` : c'est ce qui dit laquelle des deux vues est à l'écran. */
 .vueActive {
   background: var(--dark);
-  color: var(--paper);
+  color: var(--on-dark);
 }
 
 .vueActive:hover {
   background: var(--dark);
-  color: var(--paper);
+  color: var(--on-dark);
 }
 
 .espace {

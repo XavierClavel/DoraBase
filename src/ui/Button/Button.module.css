@@ -74,9 +74,14 @@
   box-shadow: var(--shadow-accent);
 }
 
+/* **Sa propre paire, et non `--dark`/`--paper`.** C'est le bouton qui contraste le plus avec la
+ * page : le plus sombre sur du papier, donc le plus **clair** sur un fond de nuit. Les autres
+ * surfaces sombres — infobulle, segment actif, blocs de code — restent sombres et se contentent
+ * d'une encre lisible (`--on-dark`) ; celle-ci s'inverse. La variante garde son nom `dark` :
+ * renommer une API publique est une autre décision. Les valeurs claires sont inchangées. */
 .dark {
-  background: var(--dark);
-  color: var(--paper);
+  background: var(--btn-strong-bg);
+  color: var(--btn-strong-ink);
   font-weight: var(--weight-bold);
 }
 

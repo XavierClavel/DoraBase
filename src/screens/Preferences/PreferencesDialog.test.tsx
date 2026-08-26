@@ -98,19 +98,13 @@ describe('l’apparence (`15b`)', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ theme: 'nuit' }))
   })
 
-  it('dit que « Nuit » est incomplet, et ne le dit pas pour les autres', () => {
+  it('« Nuit » ne porte plus de réserve : les jetons sombres existent', () => {
+    // La mention « incomplet » a été retirée le 26 août 2026, en même temps que les 73 jetons
+    // sombres de `tokens.json`. Le test la garde **retirée** : la remettre demanderait d'abord de
+    // retirer les valeurs, et c'est ce que ce test rendrait rouge.
+    // **Le texte, et non `role="status"`** : la section « Mises à jour » en porte un légitime, et
+    // viser le rôle ferait tomber ce test sur un changement qui n'a rien à voir avec le thème.
     monter({ ...PREFERENCES_PAR_DEFAUT, theme: 'nuit' })
-    // **Dit, et non caché** : `tokens.json` n'a qu'une valeur par jeton. Cacher le réglage cacherait
-    // aussi la raison de son absence.
-    // **Le `role="status"` plutôt que le texte** : la phrase est coupée par un `<strong>`, donc un
-    // sélecteur de texte trouve à la fois le paragraphe et ses ancêtres. Et le rôle est ce qui
-    // compte — la réserve doit s'annoncer, pas seulement s'afficher.
-    const reserve = screen.getByRole('status')
-    expect(reserve.textContent).toMatch(/« Nuit » est\s+incomplet/)
-  })
-
-  it('le thème clair ne porte aucune réserve', () => {
-    monter()
     expect(screen.queryByText(/incomplet/)).toBeNull()
   })
 

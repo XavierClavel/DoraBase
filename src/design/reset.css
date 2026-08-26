@@ -25,6 +25,28 @@ body {
   overflow: hidden;
 }
 
+/*
+ * **`color-scheme` gouverne ce que le moteur dessine lui-même**, et aucun jeton ne l'atteint :
+ * barres de défilement, curseur de saisie, `input[type="range"]` des préférences, contour de focus
+ * natif. Sans cette déclaration, le thème « Nuit » laisserait des barres de défilement claires sur
+ * des panneaux sombres.
+ *
+ * Les trois sélecteurs reprennent ceux que `tokens.css` engendre — l'attribut **absent** est
+ * « Système » (voir `themeApplique`), donc `light dark` y laisse `prefers-color-scheme` décider,
+ * exactement comme les couleurs.
+ */
+:root {
+  color-scheme: light;
+}
+
+:root:not([data-theme]) {
+  color-scheme: light dark;
+}
+
+:root[data-theme="nuit"] {
+  color-scheme: dark;
+}
+
 #root {
   height: 100%;
 }
