@@ -1,0 +1,56 @@
+name: Release
+
+# Le geste de scripts/version.sh, mais déclenché depuis GitHub plutôt que depuis un poste :
+# Actions → Release → « Run workflow », un cran choisi dans une liste. Le reste ne change pas
+# — voir AGENTS.md, « La publication : un tag, et rien d'autre » — c'est le tag qui sort d'ici
+# qui déclenche publication.yml, pas ce workflow lui-même.
+#
+# Pourquoi un jeton dédié (secret RELEASE_PUSH_TOKEN) plutôt que GITHUB_TOKEN : GitHub
+# n'enchaîne pas les workflows sur un push fait par GITHUB_TOKEN, pour éviter les boucles.
+# Un tag poussé avec ce jeton-là ne déclencherait jamais publication.yml, en silence — le
+# job échouerait proprement s'il fallait committer, mais rien ne dirait que la release
+# attendue n'a jamais démarré. RELEASE_PUSH_TOKEN doit être un jeton personnel (classique ou
+# à granularité fine, permission Contents: Read and write sur ce dépôt) posé en secret du
+# dépôt par quelqu'un qui a ce droit.
+on:
+  workflow_dispatch:
+    inputs:
+      cran:
+        description: "Cran de version"
+        required: true
+        type: choice
+        options:
+          - correctif
+          - fonction
+          - majeur
+
+permissions:
+  contents: write
+
+jobs:
+  relever-et-taguer:
+    runs-on: macos-latest
+    # Rien ne se compile ici : relever trois fichiers, committer, taguer, pousser. Une minute
+    # de marge est déjà large.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          # scripts/version.sh compare HEAD à origin/main : il faut l'historique pour que
+          # `git fetch origin main` porte un sens, pas seulement le dernier commit.
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PUSH_TOKEN }}
+
+      - name: identité git pour le commit de relèvement
+        run: |
+          git config user.name "DoraBase Release"
+          git config user.email "actions@users.noreply.github.com"
+
+      - name: relever la version et poser le tag
+        run: ./scripts/version.sh ${{ inputs.cran }}
+
+      - name: pousser le commit et le tag
+        # C'est ce push, avec le jeton personnel plutôt que GITHUB_TOKEN, qui met le tag sur
+        # origin et déclenche publication.yml.
+        run: git push origin main --follow-tags
