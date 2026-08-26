@@ -47,7 +47,7 @@
   },
   "overrides": [
     {
-      "includes": ["src/domain/config.ts", "src/domain/engine.ts"],
+      "includes": ["src/domain/config.ts", "src/domain/engine.ts", "src/domain/maj.ts"],
       "formatter": {
         "enabled": false
       },

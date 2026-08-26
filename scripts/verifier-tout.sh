@@ -108,7 +108,7 @@ regeneration_sans_effet() {
 etape "jetons de design à jour" regeneration_sans_effet tokens:build \
   src/design/tokens.css src/design/tokens.ts
 etape "projections TypeScript à jour" regeneration_sans_effet domain:build \
-  src/domain/config.ts src/domain/engine.ts
+  src/domain/config.ts src/domain/engine.ts src/domain/maj.ts
 etape "typescript" pnpm typecheck
 etape "biome" pnpm lint
 etape "vitest" pnpm test
