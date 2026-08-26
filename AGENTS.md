@@ -368,6 +368,16 @@ personne. Le format de version est fermé pour la même raison : un suffixe de p
 traverserait `Info.plist`, le nom du `.dmg` et le nom du tag sans que quiconque ait tranché
 ce qu'il y devient.
 
+**Le geste peut partir de GitHub, pas seulement d'un poste** (26 août 2026) —
+`.github/workflows/release.yml`, un `workflow_dispatch` à un seul champ (le cran :
+correctif/fonction/majeur). Il rejoue `scripts/version.sh` sur un `main` fraîchement cloné,
+donc à jour et propre par construction, puis pousse. **Le push ne peut pas se faire avec
+`GITHUB_TOKEN`** : GitHub n'enchaîne pas les workflows sur un push que `GITHUB_TOKEN` a fait,
+pour éviter les boucles — le tag partirait sur `origin` sans jamais déclencher
+`publication.yml`, et rien ne le dirait, puisque le push lui-même réussirait. D'où un jeton
+personnel dédié, `RELEASE_PUSH_TOKEN`, posé en secret du dépôt. `publication.yml` n'a pas
+changé : il continue à ne réagir qu'à un tag `vX.Y.Z`, peu importe qui l'a poussé.
+
 **Le numéro de version vit à trois endroits qui ne se parlent pas** : `package.json` — le
 seul que `tauri.conf.json` lise, donc celui qui finit dans l'`Info.plist` et dans le nom du
 `.dmg` —, `src-tauri/Cargo.toml` et `src-tauri/Cargo.lock`. Rien dans l'outillage ne les

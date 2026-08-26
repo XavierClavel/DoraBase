@@ -111,6 +111,19 @@ Ce que le script refuse, et pourquoi : une branche autre que `main` (le tag dés
 travail en cours), une divergence avec `origin/main`, un numéro qui recule, un tag déjà
 publié. Il **ne pousse rien** : la commande est affichée, le geste reste humain.
 
+### Publier depuis GitHub, sans poste
+
+Le même geste, en bouton : [Actions → Release → *Run workflow*][release-workflow], un cran
+choisi dans la liste (correctif / fonction / majeur). Le workflow rejoue `scripts/version.sh`
+sur `main` à jour, committe, tague et pousse — le tag qui en sort déclenche `publication.yml`
+exactement comme depuis un poste local.
+
+Un secret `RELEASE_PUSH_TOKEN` doit être posé sur le dépôt (jeton personnel, permission
+*Contents: Read and write*) : un push fait avec `GITHUB_TOKEN` ne déclenche aucun autre
+workflow, donc le tag ne partirait jamais vers `publication.yml`.
+
+[release-workflow]: https://github.com/g3wis/DoraBase/actions/workflows/release.yml
+
 ### Les huit secrets
 
 `publication.yml` les contrôle **avant de compiler** : un secret vide vaut la chaîne vide, et
