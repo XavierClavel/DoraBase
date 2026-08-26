@@ -31,11 +31,10 @@ test('sans centre, la barre garde son wordmark et ses actions, et rien au centre
   const { container } = render(
     <>
       <Sprite />
-      <TitleBar showConsole onOpenPreferences={() => {}} />
+      <TitleBar onOpenPreferences={() => {}} />
     </>,
   )
   expect(screen.getByText('DoraBase')).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'Console' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Préférences' })).toBeInTheDocument()
 
   // Le centre est la deuxième zone de la barre — wordmark, centre, actions — et il est vide.
@@ -55,19 +54,18 @@ test('avec un centre, l’indicateur de sélection y est rendu', () => {
 })
 
 /*
- * **Le parcours clavier de la barre compte deux arrêts** : console, préférences.
+ * **Le parcours clavier de la barre compte un seul arrêt** : les préférences.
  *
  * Il en comptait quatre — la pastille projet et le sélecteur d'environnement occupaient les deux
- * premiers. Les deux contrôles partis, le centre n'a plus rien de focalisable, ce qui invalide un
- * critère de `09c` et rend au passage toute la bande glissable
+ * premiers —, puis deux, puis un depuis le retrait du bouton de console. Le centre n'a plus rien de
+ * focalisable, ce qui rend au passage toute la bande glissable
  * (`data-tauri-drag-region="deep"` ne s'arrête que sur les éléments focalisables).
  */
-test('le parcours clavier de la barre compte deux arrêts, et le centre n’en est pas', async () => {
+test('le parcours clavier de la barre compte un arrêt, et le centre n’en est pas', async () => {
   render(
     <>
       <Sprite />
       <TitleBar
-        showConsole
         center={
           <SelectionIndicator
             projectName="Atelier Nord"
@@ -80,11 +78,9 @@ test('le parcours clavier de la barre compte deux arrêts, et le centre n’en e
     </>,
   )
   await userEvent.tab()
-  expect(screen.getByRole('button', { name: 'Console' })).toHaveFocus()
-  await userEvent.tab()
   expect(screen.getByRole('button', { name: 'Préférences' })).toHaveFocus()
 
-  // Et il n'y a rien de plus : le troisième `Tab` sort de la barre.
+  // Et il n'y a rien de plus : le second `Tab` sort de la barre.
   await userEvent.tab()
   expect(screen.getByRole('button', { name: 'Préférences' })).not.toHaveFocus()
 })
@@ -110,10 +106,15 @@ test('sans gestionnaire, l’engrenage est désactivé et dit pourquoi', () => {
     </>,
   )
   // La règle de `09f`, et la leçon du défaut n° 36 : un bouton cliquable et inerte se lit comme une
-  // panne. Il est donc désactivé, avec l'infobulle qui dit où l'écran se trouve.
+  // panne. Il est donc désactivé, avec son infobulle.
+  //
+  // **Et elle ne nomme plus d'écran** (26 août 2026). Elle renvoyait vers l'écran de travail, qui
+  // n'existe pas tant qu'aucun projet n'est déclaré — c'est précisément l'état où `A1`, qui ne
+  // passait pas le gestionnaire, l'affichait. Aucun écran du produit ne monte plus la barre sans ;
+  // la galerie est le dernier appelant.
   const engrenage = screen.getByRole('button', { name: 'Préférences' })
   expect(engrenage).toBeDisabled()
-  expect(engrenage).toHaveAttribute('title', expect.stringContaining('écran de travail'))
+  expect(engrenage).toHaveAttribute('title', expect.stringContaining('exemplaire de la barre'))
 })
 
 test('avec un gestionnaire, l’engrenage l’appelle', async () => {

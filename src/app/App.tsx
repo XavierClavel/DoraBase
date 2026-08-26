@@ -314,6 +314,9 @@ export function App() {
             // « Nouveau projet » et ouvrait « Nouvelle connexion » : ce n'était pas une erreur
             // d'assemblage — `08f` créait le projet au passage — mais le geste s'est inversé.
             onNewProject={() => setProjetOuvert({})}
+            // **`A1` a un engrenage, donc il doit ouvrir quelque chose.** La modale est montée
+            // au-dessus du choix de l'écran pour cette raison exactement.
+            onOpenPreferences={() => setPreferencesOuvertes(true)}
             projectCount={projects.length}
             dimmed={connexionOuverte !== null || projetOuvert !== null}
           />
