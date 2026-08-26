@@ -851,9 +851,6 @@ export function Workbench({
           // **Une fonction, pas une valeur** : elle est lue au moment de la frappe, donc une
           // table ouverte après le montage de la console voit ses colonnes proposées.
           catalogue={catalogue}
-          onExpliquer={execution.expliquer}
-          plan={execution.plan}
-          planEnCours={execution.planEnCours}
           vue={execution.vue}
           onVueChange={execution.setVue}
           /* **« Enregistrer » donne un nom à un brouillon**, et le fait exister dans l'arbre. Sur un

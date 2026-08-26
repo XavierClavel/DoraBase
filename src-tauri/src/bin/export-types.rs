@@ -27,8 +27,8 @@ use dorabase_lib::engine::commands::{
 };
 use dorabase_lib::engine::registry::ConnectionState;
 use dorabase_lib::engine::{
-    ApplyOutcome, ConnectionProbe, EngineError, PendingUpdate, QueryPlan, QueryResult, RowQuery,
-    RowWindow, SchemaInfo, TableDetail, TableSummary, UpdatePlan,
+    ApplyOutcome, ConnectionProbe, EngineError, PendingUpdate, QueryResult, RowQuery, RowWindow,
+    SchemaInfo, TableDetail, TableSummary, UpdatePlan,
 };
 use dorabase_lib::maj::AvailableUpdate;
 use dorabase_lib::secrets::SecretMechanism;
@@ -91,7 +91,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     PendingUpdate::export_all(&config)?;
     ApplyOutcome::export_all(&config)?;
     QueryResult::export_all(&config)?;
-    QueryPlan::export_all(&config)?;
     RowWindow::export_all(&config)?;
 
     // Les deux types du pont IPC de `08d`. `ConnectionRequest` entraîne `ConnectionSettings`

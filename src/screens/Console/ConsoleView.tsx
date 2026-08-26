@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
-import type { QueryPlan, QueryResult } from '../../domain/engine'
+import type { QueryResult } from '../../domain/engine'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
 import type { Dialecte } from '../Workbench/onglets'
 import { ConsoleResult, type VueResultat } from './ConsoleResult'
@@ -26,10 +26,6 @@ type ConsoleViewProps = {
   erreur?: string | null
   /** Ce que l'autocomplétion propose (`12d`), lu au moment de la frappe. */
   catalogue?: () => Catalogue
-  /** Demande le plan de la requête (`12e`) — sans l'exécuter. */
-  onExpliquer?: (sql: string) => void
-  plan?: QueryPlan | null
-  planEnCours?: boolean
   vue?: VueResultat
   onVueChange?: (vue: VueResultat) => void
   /** Ouvre la modale d'enregistrement (`12f`) avec le texte courant. */
@@ -62,9 +58,6 @@ export function ConsoleView({
   resultat = null,
   erreur = null,
   catalogue,
-  onExpliquer,
-  plan = null,
-  planEnCours = false,
   vue,
   onVueChange,
   onEnregistrer,
@@ -82,18 +75,9 @@ export function ConsoleView({
       ? undefined
       : () => onExecuterLaSelection(selection.trim() === '' ? texte : selection)
 
-  const expliquer = onExpliquer === undefined ? undefined : () => onExpliquer(texte)
-
   const actions = ACTIONS.map((action) => {
-    // **« Expliquer » devient « explain() » en mongo**, et ce n'est pas qu'un libellé : MongoDB n'a
-    // pas d'`EXPLAIN` séparé, le plan s'obtient en appelant `.explain()` sur la requête. Le mot que
-    // l'utilisateur connaît est celui-là.
-    if (dialecte === 'mongo' && action.libelle === 'Expliquer') {
-      return { ...action, libelle: 'explain()', onClick: expliquer }
-    }
     if (action.libelle === 'Exécuter') return { ...action, onClick: executer }
     if (action.libelle === 'Sélection') return { ...action, onClick: executerLaSelection }
-    if (action.libelle === 'Expliquer') return { ...action, onClick: expliquer }
     if (action.libelle === 'Enregistrer') {
       return {
         ...action,
@@ -161,8 +145,6 @@ export function ConsoleView({
               enCours={enCours}
               vue={vue}
               onVueChange={onVueChange}
-              plan={plan}
-              planEnCours={planEnCours}
               dialecte={dialecte}
               rowHeight={rowHeight}
             />
@@ -176,7 +158,7 @@ export function ConsoleView({
 }
 
 /**
- * Les six actions de la toolbar du mockup, toutes désactivées à ce stade.
+ * Les quatre actions de la toolbar du mockup, toutes désactivées à ce stade.
  *
  * **Présentes et désactivées, pas absentes** : les cacher ferait croire qu'elles n'existeront pas,
  * les laisser cliquables et inertes ferait croire à une panne. Chacune porte sa raison.
@@ -195,11 +177,6 @@ const ACTIONS = [
     raison: 'Aucune base n’est ouverte : il n’y a rien à interroger.',
   },
   {
-    libelle: 'Expliquer',
-    icone: 'plan' as const,
-    raison: 'Aucune base n’est ouverte : il n’y a rien à expliquer.',
-  },
-  {
     libelle: 'Enregistrer',
     icone: 'save' as const,
     raison: 'Aucun projet n’est ouvert : il n’y a nulle part où enregistrer.',
@@ -212,7 +189,7 @@ const ACTIONS = [
   },
 ] satisfies readonly {
   libelle: string
-  icone?: 'play' | 'plan' | 'save'
+  icone?: 'play' | 'save'
   raccourci?: string
   principale?: boolean
   raison: string

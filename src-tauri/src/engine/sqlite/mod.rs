@@ -34,8 +34,8 @@ use rusqlite::Connection;
 use crate::config::ConnectionSettings;
 use crate::engine::proxy::EtatProxy;
 use crate::engine::{
-    ApplyOutcome, ConnectionProbe, EngineAdapter, EngineError, QueryPlan, QueryResult, RowCount,
-    RowLimit, RowQuery, RowWindow, SchemaInfo, TableDetail, TableSummary, UpdatePlan, Value,
+    ApplyOutcome, ConnectionProbe, EngineAdapter, EngineError, QueryResult, RowCount, RowLimit,
+    RowQuery, RowWindow, SchemaInfo, TableDetail, TableSummary, UpdatePlan, Value,
 };
 use crate::secrets::Secret;
 
@@ -275,36 +275,6 @@ impl EngineAdapter for SqliteAdapter {
             sql: borne,
             duration_ms: u64::try_from(debut.elapsed().as_millis()).unwrap_or(u64::MAX),
             applied_limit: ajoutee,
-        })
-    }
-
-    async fn explain_sql(&self, sql: &str) -> Result<QueryPlan, EngineError> {
-        let debut = Instant::now();
-        // **`EXPLAIN QUERY PLAN` et non `EXPLAIN`.** Le second rend le bytecode de la machine
-        // virtuelle de SQLite, illisible pour qui débogue une requête. Ni l'un ni l'autre n'exécute,
-        // ce qui respecte la règle de `12e` : sur une console où l'on écrit aussi, « Expliquer » ne
-        // doit pas devenir un bouton qui écrit.
-        let commande = format!("EXPLAIN QUERY PLAN {}", sql.trim().trim_end_matches(';'));
-        let a_executer = commande.clone();
-
-        let (_, lignes) = self
-            .avec(move |connexion| rows::lire(connexion, &a_executer, &[]))
-            .await?;
-
-        // La dernière colonne de chaque ligne porte la description ; les trois premières sont des
-        // identifiants de nœud, sans intérêt à l'écran.
-        let texte = lignes
-            .iter()
-            .map(|ligne| match ligne.last() {
-                Some(Value::Text { value }) => value.clone(),
-                autre => format!("{autre:?}"),
-            })
-            .collect();
-
-        Ok(QueryPlan {
-            lines: texte,
-            sql: commande,
-            duration_ms: u64::try_from(debut.elapsed().as_millis()).unwrap_or(u64::MAX),
         })
     }
 }
@@ -741,25 +711,6 @@ mod tests_fichier {
         // **La limite ajoutée est dite** : une limite tue ferait croire à une table de trois lignes.
         assert_eq!(resultat.applied_limit, Some(100));
         assert!(resultat.sql.ends_with("limit 100"), "{}", resultat.sql);
-    }
-
-    #[tokio::test]
-    async fn expliquer_rend_un_plan_lisible_et_n_execute_pas() {
-        let (_dossier, chemin) = decor();
-        let plan = adaptateur(&chemin)
-            .await
-            .explain_sql("select * from seances where atelier_id = 1")
-            .await
-            .unwrap();
-        // `EXPLAIN QUERY PLAN` rend des phrases ; `EXPLAIN` seul rendrait le bytecode de la machine
-        // virtuelle, illisible pour qui débogue.
-        let texte = plan.lines.join("\n");
-        assert!(texte.contains("seances"), "{texte}");
-        assert!(
-            texte.to_uppercase().contains("SCAN") || texte.to_uppercase().contains("SEARCH"),
-            "{texte}"
-        );
-        assert!(plan.sql.starts_with("EXPLAIN QUERY PLAN"), "{}", plan.sql);
     }
 
     #[tokio::test]

@@ -1,8 +1,8 @@
 /*
- * Les trois vues non tabulaires du résultat (`12e`) : JSON, Plan, Messages.
+ * Les deux vues non tabulaires du résultat (`12e`) : JSON, Messages.
  *
- * Elles partagent le remplissage et l'échelle du panneau de `10f` : trois vues d'un même résultat qui
- * ne se ressembleraient pas obligeraient à réapprendre chacune.
+ * Elles partagent le remplissage et l'échelle du panneau de `10f` : deux vues d'un même résultat
+ * qui ne se ressembleraient pas obligeraient à réapprendre chacune.
  */
 
 .invite {
@@ -13,41 +13,6 @@
   font-size: var(--text-label);
   font-weight: var(--weight-medium);
   color: var(--ink-meta);
-}
-
-.plan {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-6);
-}
-
-/* **Le fait le plus important de cette vue** : les coûts sont estimés. Un plan dont on croirait les
- * temps réels ferait prendre des décisions sur des chiffres qui n'en sont pas. */
-.estime {
-  margin: 0;
-  padding: var(--space-4) var(--space-5);
-  border-radius: var(--radius-field);
-  background: var(--warn-bg-2);
-  font-family: var(--font-ui);
-  font-size: var(--text-label);
-  font-weight: var(--weight-medium);
-  color: var(--warn-ink);
-}
-
-/* Le plan en mono, sans repli : son indentation porte l'arbre des nœuds, et la replier la
- * détruirait. Le défilement horizontal est donc assumé ici, contrairement au bloc SQL de `11c`. */
-.texte {
-  margin: 0;
-  overflow: auto;
-  /* Pas de rebond élastique aux extrémités sous WKWebView — voir la note de `reset.css`. */
-  overscroll-behavior: none;
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
-  font-weight: var(--weight-medium);
-  line-height: var(--leading-code-tight);
-  color: var(--ink);
-  white-space: pre;
 }
 
 .messages {

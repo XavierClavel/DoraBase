@@ -24,9 +24,6 @@ test('la console mongo annonce sa langue, pas celle du voisin', async ({ page })
   await expect(page.locator('[aria-label="Commande MongoDB"]')).toBeVisible()
   await expect(page.locator('[aria-label="Requête SQL"]')).toHaveCount(0)
 
-  // « Expliquer » devient « explain() » : MongoDB n'a pas d'`EXPLAIN` séparé, et le mot que
-  // l'utilisateur connaît est celui-là.
-  await expect(page.getByRole('button', { name: 'explain()' })).toBeVisible()
   // Et la limite automatique nomme un `$limit`, pas une clause SQL qui n'existe pas.
   await expect(page.getByText('auto-$limit 1000')).toBeVisible()
 })

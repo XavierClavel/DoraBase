@@ -29,9 +29,8 @@ use mysql_async::{Conn, Pool, Row, TxOpts};
 use crate::config::ConnectionSettings;
 use crate::engine::proxy::{EtatProxy, ProxyOuvert};
 use crate::engine::{
-    ApplyOutcome, ConnectionProbe, EngineAdapter, EngineError, QueryPlan, QueryResult, RowCount,
-    RowLimit, RowQuery, RowWindow, SchemaInfo, TableDetail, TableSummary, TypeCategory, UpdatePlan,
-    Value,
+    ApplyOutcome, ConnectionProbe, EngineAdapter, EngineError, QueryResult, RowCount, RowLimit,
+    RowQuery, RowWindow, SchemaInfo, TableDetail, TableSummary, TypeCategory, UpdatePlan, Value,
 };
 use crate::secrets::Secret;
 
@@ -331,70 +330,6 @@ impl EngineAdapter for MysqlAdapter {
             applied_limit: ajoutee,
         })
     }
-
-    async fn explain_sql(&self, sql: &str) -> Result<QueryPlan, EngineError> {
-        let debut = Instant::now();
-        // **`EXPLAIN FORMAT=TREE` quand le serveur le connaît, `EXPLAIN` sinon.** Jamais
-        // `EXPLAIN ANALYZE`, qui **exécute** la requête pour la mesurer : sur une console où l'on
-        // écrit aussi, « Expliquer » deviendrait un bouton qui écrit — la règle de `12e`.
-        let nu = sql.trim().trim_end_matches(';');
-        let arbre = format!("explain format=tree {nu}");
-        let simple = format!("explain {nu}");
-
-        let mut connexion = self.connexion().await?;
-        let (commande, lignes) = match connexion.query::<Row, _>(&arbre).await {
-            Ok(lignes) => (arbre, lignes),
-            // `FORMAT=TREE` demande MySQL 8.0.16 ; MariaDB ne le connaît pas du tout. Le repli est
-            // silencieux parce que la question « quelle forme le serveur accepte » n'intéresse pas
-            // l'utilisateur — seul le plan compte.
-            Err(_) => {
-                let lignes = connexion
-                    .query::<Row, _>(&simple)
-                    .await
-                    .map_err(|e| error::traduire(&e))?;
-                (simple, lignes)
-            }
-        };
-
-        Ok(QueryPlan {
-            lines: lignes.iter().map(ligne_de_plan).collect(),
-            sql: commande,
-            duration_ms: u64::try_from(debut.elapsed().as_millis()).unwrap_or(u64::MAX),
-        })
-    }
-}
-
-/// Une ligne de plan rendue lisible.
-///
-/// `FORMAT=TREE` rend une seule colonne, déjà mise en forme. `EXPLAIN` simple en rend douze, dont on
-/// assemble les utiles — les afficher toutes ferait une ligne de trois cents caractères.
-fn ligne_de_plan(ligne: &Row) -> String {
-    if ligne.columns_ref().len() == 1 {
-        return ligne
-            .get::<Option<String>, _>(0)
-            .flatten()
-            .unwrap_or_default();
-    }
-    let colonne = |nom: &str| -> String {
-        ligne
-            .get_opt::<Option<String>, _>(nom)
-            .and_then(Result::ok)
-            .flatten()
-            .unwrap_or_else(|| "—".to_owned())
-    };
-    format!(
-        "{} · type {} · clé {} · lignes {} · {}",
-        colonne("table"),
-        colonne("type"),
-        colonne("key"),
-        ligne
-            .get_opt::<Option<i64>, _>("rows")
-            .and_then(Result::ok)
-            .flatten()
-            .map(|n| n.to_string())
-            .unwrap_or_else(|| "—".to_owned()),
-        colonne("Extra")
-    )
 }
 
 /// La catégorie d'une colonne de résultat, depuis le type que le protocole annonce.
@@ -997,20 +932,6 @@ mod tests_db {
             "{:?}",
             resultat.rows[0][0]
         );
-    }
-
-    #[tokio::test]
-    async fn expliquer_rend_un_plan_et_n_execute_pas() {
-        let plan = adaptateur()
-            .await
-            .explain_sql("select * from seances where atelier_id = 1")
-            .await
-            .expect("plan");
-        let texte = plan.lines.join("\n");
-        assert!(!texte.is_empty(), "le plan doit dire quelque chose");
-        // **Jamais `ANALYZE`** : il exécuterait la requête pour la mesurer, et « Expliquer »
-        // deviendrait un bouton qui écrit sur une console où l'on écrit aussi (`12e`).
-        assert!(!plan.sql.to_lowercase().contains("analyze"), "{}", plan.sql);
     }
 
     #[tokio::test]
