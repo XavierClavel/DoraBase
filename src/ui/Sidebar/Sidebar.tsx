@@ -3,12 +3,18 @@ import { cx } from '../cx'
 import styles from './Sidebar.module.css'
 
 type SidebarProps = {
+  /**
+   * La bande d'actions, **au-dessus du filtre**. Un `SidebarToolbar` en pratique (26 août 2026).
+   *
+   * Optionnelle : une sidebar sans action de structure à offrir n'en rend pas.
+   * Au-dessus et non en dessous : on filtre ce qu'on voit, on agit sur le panneau — la bande
+   * appartient au panneau, la barre de filtre à sa liste.
+   */
+  toolbar?: ReactNode
   /** La barre de filtre, en haut. Un `SidebarFilterBar` en pratique. */
   filter: ReactNode
   /** L'arbre et sa section contextuelle, dans une zone défilante. */
   children: ReactNode
-  /** Pied optionnel — les sidebars de console (A7, A8) et celle de `A4` en ont un. */
-  footer?: ReactNode
   /**
    * Largeur de la colonne.
    *
@@ -32,12 +38,12 @@ type SidebarProps = {
 // modèle et place lui-même ses `TreeRow`, son `SidebarSectionTitle` et ses `ColumnRow` —
 // toute récursion est écartée tant qu'aucun écran
 // n'en impose la forme.
-export function Sidebar({ filter, children, footer, width = 'standard' }: SidebarProps) {
+export function Sidebar({ toolbar, filter, children, width = 'standard' }: SidebarProps) {
   return (
     <div className={cx(styles.root, styles[width])}>
+      {toolbar}
       {filter}
       <div className={styles.body}>{children}</div>
-      {footer}
     </div>
   )
 }

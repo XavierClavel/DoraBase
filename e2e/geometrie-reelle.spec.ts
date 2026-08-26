@@ -509,84 +509,53 @@ test('rien ne se sélectionne, sauf ce qui s’édite', async ({ page }) => {
   expect(await page.evaluate(() => document.getSelection()?.toString() ?? '')).toBe('')
 })
 
-test('les deux actions du pied de la sidebar tiennent sur une ligne', async ({ page }) => {
+/*
+ * **Les deux tests que ce bloc remplace mesuraient le pied de la sidebar**, retiré le 26 août 2026 :
+ * ses deux boutons sur une ligne, et l'ellipse d'un libellé allongé de force. Ils ne sont pas devenus
+ * faux, leur sujet a disparu — « Ajouter une connexion » vit dans le menu d'un environnement, et
+ * « Nouveau projet » dans la bande en tête, qui n'a pas de libellé à couper.
+ *
+ * Ce qui reste à mesurer est ce que la bande, elle, peut casser : une action qui sort de la colonne, ou
+ * une bande qui grandit sous son contenu.
+ */
+test('la bande d’actions tient dans la colonne, à hauteur fixe', async ({ page }) => {
   await page.goto('/?demo')
   await page.waitForSelector('[role=tree]')
   await page.evaluate(() => document.fonts.ready)
 
   const mesures = await page.evaluate(() => {
-    const noms = ['Ajouter une connexion', 'Nouveau projet']
-    const boutons = noms.map((nom) => document.querySelector(`button[aria-label="${nom}"]`))
-    if (boutons.some((bouton) => bouton === null)) return null
-    const pied = boutons[0]?.parentElement
-    if (!pied) return null
-    const boite = pied.getBoundingClientRect()
+    const bande = document.querySelector('[role=toolbar]') as HTMLElement | null
+    if (!bande) return null
+    const colonne = bande.parentElement
+    if (!colonne) return null
+    const b = bande.getBoundingClientRect()
+    const c = colonne.getBoundingClientRect()
+    const actions = [...bande.querySelectorAll('button')] as HTMLElement[]
     return {
-      // Une pastille qui a débordé de sa ligne est plus haute que ce qu'elle offre : c'est la même
-      // mesure que pour « SELECT dans console », appliquée ici.
-      debordements: boutons
-        .filter(
-          (bouton) => (bouton as HTMLElement).scrollHeight > (bouton as HTMLElement).clientHeight,
-        )
-        .map((bouton) => (bouton as HTMLElement).getAttribute('aria-label')),
-      // Chacune sur **la même ligne**, donc à la même ordonnée : un retour à la ligne les décalerait,
-      // et c'est exactement ce qui séparait chaque icône de son texte le 19 août 2026.
-      ordonnees: boutons.map((bouton) =>
-        Math.round((bouton as HTMLElement).getBoundingClientRect().top),
-      ),
-      hauteurDuPied: Math.round(boite.height),
-      // Rien ne sort du pied, ni par la droite ni par le bas.
-      dansLePied: boutons.every((bouton) => {
-        const b = (bouton as HTMLElement).getBoundingClientRect()
-        return b.right <= boite.right + 0.5 && b.bottom <= boite.bottom + 0.5
+      // 34 px de contenu plus son filet bas : la conversion habituelle de ce projet.
+      hauteur: Math.round(b.height),
+      // Aucune action ne sort de la bande, ni par la droite ni par le bas.
+      dansLaBande: actions.every((action) => {
+        const a = action.getBoundingClientRect()
+        return a.right <= b.right + 0.5 && a.bottom <= b.bottom + 0.5
       }),
+      // Et la bande ne sort pas de la colonne : c'est le pixel qui s'était propagé jusqu'au bord droit
+      // de la fenêtre le 18 août 2026, par un `content-box` de trop.
+      dansLaColonne: b.right <= c.right + 0.5,
+      carres: actions.map((action) => [
+        Math.round(action.getBoundingClientRect().width),
+        Math.round(action.getBoundingClientRect().height),
+      ]),
     }
   })
   const m = mesures as NonNullable<typeof mesures>
 
-  expect(m.debordements).toEqual([])
-  expect(new Set(m.ordonnees).size).toBe(1)
-  // La barre du handoff mesure 28 px et **ne grandit pas** : c'est au texte de céder, par l'ellipse.
-  expect(m.hauteurDuPied).toBe(28)
-  expect(m.dansLePied).toBe(true)
-})
-
-// **Le libellé est allongé de force**, et c'est tout l'objet de ce test. Les libellés livrés tiennent
-// en un mot — « Connexion », « Projet » — qu'aucun moteur de rendu ne peut couper : mesurer la barre
-// telle quelle ne mesure donc que la brièveté du texte du jour, pas la solidité de la mise en page. Le
-// premier jet de ce test passait sans `nowrap` ni ellipse, sabotage compris. En posant un libellé de
-// plusieurs mots, on mesure ce qui protège vraiment — et c'est exactement le texte qui débordait le
-// 19 août 2026.
-test('un libellé long cède par l’ellipse, sans revenir à la ligne', async ({ page }) => {
-  await page.goto('/?demo')
-  await page.waitForSelector('[role=tree]')
-  await page.evaluate(() => document.fonts.ready)
-
-  const mesures = await page.evaluate(() => {
-    const bouton = document.querySelector(
-      'button[aria-label="Ajouter une connexion"]',
-    ) as HTMLElement
-    if (!bouton) return null
-    const texte = bouton.querySelector('span') as HTMLElement
-    if (!texte) return null
-    const hauteurAvant = bouton.clientHeight
-    texte.textContent = 'Ajouter une connexion à ce projet'
-    return {
-      // Coupé, non replié : la hauteur du bouton ne bouge pas d'un pixel.
-      hauteurApres: bouton.clientHeight,
-      hauteurAvant,
-      replie: bouton.scrollHeight > bouton.clientHeight,
-      coupe: texte.scrollWidth > texte.clientWidth,
-      infobulle: bouton.getAttribute('title'),
-    }
-  })
-  const m = mesures as NonNullable<typeof mesures>
-
-  expect(m.replie).toBe(false)
-  expect(m.hauteurApres).toBe(m.hauteurAvant)
-  expect(m.coupe).toBe(true)
-  // Rien n'est perdu : l'infobulle porte le libellé entier, et `aria-label` le nom de l'action.
-  expect(m.infobulle).toContain('Ajouter une connexion')
+  expect(m.hauteur).toBe(35)
+  expect(m.dansLaBande).toBe(true)
+  expect(m.dansLaColonne).toBe(true)
+  // 22 px, la hauteur d'une ligne d'arbre : la bande n'introduit pas une troisième unité verticale
+  // dans une colonne qui en a déjà deux.
+  expect(m.carres).toEqual([[22, 22]])
 })
 
 /**

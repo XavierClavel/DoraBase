@@ -88,6 +88,7 @@ function Piloté({
   onRefresh,
   consoles,
   onAddDatabase,
+  onNewProject,
   projets = PROJETS,
 }: {
   charge?: Charge
@@ -102,6 +103,7 @@ function Piloté({
   onRefresh?: () => void
   consoles?: ExplorerSidebarProps['consoles']
   onAddDatabase?: ExplorerSidebarProps['onAddDatabase']
+  onNewProject?: () => void
   projets?: Project[]
 }) {
   const [deplies, setDeplies] = useState(new Set(initial))
@@ -123,6 +125,7 @@ function Piloté({
         onRefresh={onRefresh}
         consoles={consoles}
         onAddDatabase={onAddDatabase}
+        onNewProject={onNewProject}
         onSelect={(n) => setChoisi(n.id)}
         onToggle={(n) => {
           onToggleSpy?.(n)
@@ -443,16 +446,24 @@ test('le filtre affiche son compteur, et seulement quand il est actif', async ()
 
 // --- Le pied ---
 
-test('le pied porte les actions de création, et plus le rafraîchissement', () => {
-  render(<Piloté />)
-  // **« Ajouter une connexion », et non « une base »** (`24d`) : depuis `23b`, une base présente en dev
-  // et en prod fait deux connexions. Écart au handoff assumé, qui dit « base ».
-  expect(screen.getByRole('button', { name: /Ajouter une connexion/ })).toBeInTheDocument()
-  // **Le pied ne porte plus que des gestes de création** (20 août 2026). « Rafraîchir » y était la
-  // seule action qui ne créait rien, et la seule sans libellé ; elle vit maintenant dans le menu
-  // « … » d'une ligne projet, sous son nom long — voir le test qui suit, qui vérifie qu'elle n'a pas
-  // disparu du produit au passage.
+test('la colonne n’a plus de pied du tout', () => {
+  render(<Piloté onAddDatabase={() => {}} onNewProject={() => {}} />)
+  // **Le pied a disparu le 26 août 2026.** « Ajouter une connexion » y devait deviner l'environnement
+  // et vit désormais dans le menu du palier qui le sait ; « Nouveau projet » est monté dans la bande
+  // d'actions. Ce test est le garde-fou du retrait : sans lui, un pied réintroduit par mégarde
+  // reprendrait ses 78 px sur la hauteur de l'arbre sans que rien ne le dise.
+  expect(screen.queryByRole('button', { name: /Ajouter une connexion$/ })).toBeNull()
   expect(screen.queryByRole('button', { name: 'Rafraîchir' })).toBeNull()
+})
+
+test('la bande d’actions est en tête, avant le filtre', () => {
+  render(<Piloté onNewProject={() => {}} />)
+  const bande = screen.getByRole('toolbar', { name: /Actions de l’arborescence/ })
+  const bouton = screen.getByRole('button', { name: 'Nouveau projet' })
+  expect(bande).toContainElement(bouton)
+  // L'ordre du DOM est celui du parcours clavier : on agit sur le panneau avant de filtrer sa liste.
+  const champ = screen.getByRole('textbox')
+  expect(bande.compareDocumentPosition(champ)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
 })
 
 // **Le geste n'est pas supprimé, il est déplacé** — et ce test est ce qui l'atteste. `rafraichir`
@@ -466,11 +477,14 @@ test('« Rafraîchir l’arborescence » vit dans le menu d’une ligne projet',
   expect(rafraichir).toHaveBeenCalledOnce()
 })
 
-test('« Nouveau projet » n’est rendu que si le geste existe', () => {
+test('« Nouveau projet » n’est rendu que si le geste existe, et la bande avec lui', () => {
   render(<Piloté />)
   // Sans la prop, le bouton n'est **pas rendu** — et non rendu inerte : un contrôle qui ne fait rien
   // est pire qu'un contrôle absent (défaut n° 36). C'est le cas de la galerie.
   expect(screen.queryByRole('button', { name: /Nouveau projet/ })).toBeNull()
+  // Et la bande ne reste pas vide derrière lui : une bande d'un seul geste sans ce geste est une
+  // bande de rien, qui prendrait 35 px pour ne rien offrir.
+  expect(screen.queryByRole('toolbar')).toBeNull()
 })
 
 // --- Le menu « … » des lignes (`08h`) ---
