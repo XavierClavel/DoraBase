@@ -1040,10 +1040,13 @@ export function Workbench({
               // (`08g`) : deux chemins vers un seul écran, et c'est voulu — l'arbre est là où
               // l'utilisateur regarde ses bases, la pastille là où il regarde son projet.
               // La sidebar nomme la base ; le projet, lui, connaît son objet `Database`.
-              onEditDatabase={(nomProjet, nomBase) => {
+              onEditDatabase={(nomProjet, nomBase, environnement) => {
                 const base = projects
                   .find((projet) => projet.name === nomProjet)
-                  ?.databases.find((declaration) => declaration.name === nomBase)
+                  ?.databases.find(
+                    (declaration) =>
+                      declaration.name === nomBase && declaration.environment === environnement,
+                  )
                 if (base) onEditDatabase?.(nomProjet, base)
               }}
               onRenameDatabase={onRenameDatabase === undefined ? undefined : renommerUneConnexion}
