@@ -35,14 +35,39 @@ describe('le pas du zoom (`facteurSuivant`)', () => {
 })
 
 describe('le crochet (`useZoom`)', () => {
-  it('hors de Tauri, il ne touche pas au geste du navigateur', () => {
+  it('hors de Tauri, le zoom fin laisse le geste du navigateur tranquille', () => {
     const appliquer = vi.fn(async () => {})
     // Le zoom est une capacité de la coquille : dans un navigateur, il n'y a pas de webview à
     // piloter, et reprendre le geste pour ne rien en faire retirerait le zoom natif sans rien offrir.
     // Ce test tourne sous jsdom, donc précisément hors de Tauri.
     renderHook(() => useZoom({ appliquer }))
-    window.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, ctrlKey: true }))
+    const geste = new WheelEvent('wheel', { deltaY: 100, metaKey: true, cancelable: true })
+    window.dispatchEvent(geste)
     expect(appliquer).not.toHaveBeenCalled()
+    expect(geste.defaultPrevented).toBe(false)
+  })
+
+  it('le pincement du trackpad est refusé, et ne zoome pas', () => {
+    const appliquer = vi.fn(async () => {})
+    renderHook(() => useZoom({ appliquer }))
+    // Le pincement, c'est `ctrlKey` sans `metaKey` — la convention de WebKit comme de Chromium.
+    const pincement = new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, cancelable: true })
+    window.dispatchEvent(pincement)
+    // **Les deux moitiés de l'exigence.** Ne pas appliquer notre facteur ne suffit pas : sans
+    // `preventDefault`, la webview appliquerait le sien, de dix à vingt-cinq pour cent par cran. Le
+    // refus est actif.
+    expect(appliquer).not.toHaveBeenCalled()
+    expect(pincement.defaultPrevented).toBe(true)
+  })
+
+  it('le refus du pincement ne vaut pas refus de la molette', () => {
+    const appliquer = vi.fn(async () => {})
+    renderHook(() => useZoom({ appliquer }))
+    // Un défilement ordinaire ne porte aucun modificateur : le reprendre paralyserait toutes les
+    // grilles du produit.
+    const defilement = new WheelEvent('wheel', { deltaY: 100, cancelable: true })
+    window.dispatchEvent(defilement)
+    expect(defilement.defaultPrevented).toBe(false)
   })
 
   it('la passerelle de production parle bien à la webview', () => {
