@@ -1,5 +1,6 @@
 import { Icon } from '../../design/icons/Icon'
 import type { RowWindow } from '../../domain/engine'
+import { MiseAJour } from '../../shell/MiseAJour/MiseAJour'
 import { cx } from '../../ui/cx'
 import { formatInteger } from '../../ui/format'
 import styles from './TableStatusBar.module.css'
@@ -19,6 +20,13 @@ type TableStatusBarProps = {
 
 /**
  * La barre d'état de 26 px : `500 lignes · 41 ms · limit 500`, puis « lecture seule ».
+ *
+ * **Elle porte l'annonce de mise à jour, et c'est un correctif du 26 août 2026.** `MiseAJour` n'était
+ * monté que dans `shell/StatusBar`, que seul `WelcomeScreen` rend : dès qu'un onglet était ouvert —
+ * donc pendant toute une session de travail — l'annonce n'existait nulle part. Elle ne rend rien
+ * tant qu'aucune version n'est trouvée, et la recherche est rejetée hors de la webview : aucun
+ * décor, aucune capture de fidélité ne bouge. **Les deux sorties de cette fonction la portent** —
+ * celle du mode édition est exactement le genre de branche qu'on oublie.
  *
  * **Les chiffres viennent de `RowWindow`**, pas d'un recalcul : la durée est celle mesurée par le
  * moteur, et le compte est celui de la fenêtre reçue. Les recalculer côté front produirait des
@@ -50,6 +58,7 @@ export function TableStatusBar({
         <span>·</span>
         <span>transaction non ouverte</span>
         <span className={styles.espace} />
+        <MiseAJour />
         <span>⌘E quitte l’édition</span>
       </div>
     )
@@ -78,6 +87,7 @@ export function TableStatusBar({
         <span>Aucune lecture</span>
       )}
       <span className={styles.espace} />
+      <MiseAJour />
       {/* **Le rappel `⌘E` est enfin honoré.** `10c` l'avait retiré faute d'écran qui y réponde — un
           raccourci affiché qui ne répond pas est pire qu'un raccourci absent (`09e`). `11b` livre la
           bascule, donc il revient. */}

@@ -93,3 +93,54 @@ test('une installation qui rend la main est traitée comme un échec', async () 
   await utilisateur.click(screen.getByRole('button', { name: 'Installer et redémarrer' }))
   expect(await screen.findByText("l'installation n'a pas abouti")).toBeInTheDocument()
 })
+
+// **Le panneau s'ouvre vers le haut, et c'est la moitié du défaut du 26 août 2026.** Le
+// déclencheur vit dans la barre d'état, donc dans les 26 derniers pixels de la fenêtre : vers le
+// bas, le panneau était dessiné hors de la fenêtre, que `html, body { overflow: hidden }` ne
+// laisse pas défiler. L'état basculait — `aria-expanded` à `true`, le `dialog` dans le DOM — et il
+// ne se passait rien de visible. C'est pour cela que le test porte sur la **classe** et non sur la
+// présence du `dialog` : celle-ci était déjà vraie quand le défaut était là.
+test('le panneau s’ouvre vers le haut — sous la barre d’état, il n’y a plus de fenêtre', async () => {
+  const utilisateur = userEvent.setup()
+  render(<MiseAJour chercher={() => Promise.resolve({ version: '0.2.1', notes: null })} />)
+  await utilisateur.click(await screen.findByRole('button', { name: /disponible$/ }))
+  expect(screen.getByRole('dialog')).toHaveAttribute('data-ouverture', 'haut')
+})
+
+// **« Une seule recherche au démarrage » est une propriété du produit**, et trois barres d'état
+// la mettaient en jeu : le composant se démonte et se remonte à chaque changement d'onglet. Le
+// test compte les appels sur **deux montages simultanés**, ce que trois barres ne font jamais —
+// mais c'est la même mémoire qui répond, et un compteur est la seule mesure du chemin.
+test('deux montages ne cherchent qu’une fois', async () => {
+  let appels = 0
+  const chercher = () => {
+    appels += 1
+    return Promise.resolve({ version: '0.2.1', notes: null })
+  }
+  render(
+    <>
+      <MiseAJour chercher={chercher} />
+      <MiseAJour chercher={chercher} />
+    </>,
+  )
+  expect(await screen.findAllByRole('button', { name: /disponible$/ })).toHaveLength(2)
+  expect(appels).toBe(1)
+})
+
+// Le contrôle négatif du test précédent : deux fonctions distinctes gardent deux recherches
+// distinctes. Sans lui, une mémoire cassée qui rendrait *toujours* le premier résultat passerait.
+test('deux recherches différentes restent indépendantes', async () => {
+  let appels = 0
+  const compter = () => {
+    appels += 1
+    return Promise.resolve({ version: '0.2.1', notes: null })
+  }
+  render(
+    <>
+      <MiseAJour chercher={compter} />
+      <MiseAJour chercher={() => Promise.resolve(null)} />
+    </>,
+  )
+  expect(await screen.findByRole('button', { name: /disponible$/ })).toBeInTheDocument()
+  expect(appels).toBe(1)
+})

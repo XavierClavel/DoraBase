@@ -5,6 +5,38 @@ import { Button } from '../../ui/Button/Button'
 import { Popover } from '../../ui/Popover/Popover'
 import styles from './MiseAJour.module.css'
 
+/**
+ * La recherche, mémorisée par fonction de recherche.
+ *
+ * **« Une seule recherche au démarrage » est une propriété du produit**, et elle ne survivait pas
+ * à ce composant devenant présent sur plusieurs écrans : monté dans trois barres d'état, il se
+ * démonte et se remonte à chaque changement d'onglet, donc son `useEffect` repartait — une requête
+ * réseau par aller-retour entre une table et une structure. Une promesse mémorisée rend la
+ * propriété au produit sans état global à câbler : le premier montage lance l'appel, tous les
+ * autres relisent le même résultat.
+ *
+ * **La clef est la fonction**, et non une constante : `checkUpdate` est une référence de module,
+ * donc stable pour toute la session — un seul appel IPC. Les tests, eux, passent une fermeture
+ * neuve à chaque `render`, donc chacun garde sa propre recherche et son isolement.
+ *
+ * Un rejet reste mémorisé, et c'est voulu : hors ligne au démarrage, on ne réessaie pas — c'est
+ * exactement ce que « aucune recherche périodique » veut dire.
+ */
+const recherches = new WeakMap<
+  () => Promise<AvailableUpdate | null>,
+  Promise<AvailableUpdate | null>
+>()
+
+function rechercheUnique(
+  chercher: () => Promise<AvailableUpdate | null>,
+): Promise<AvailableUpdate | null> {
+  const dejaLancee = recherches.get(chercher)
+  if (dejaLancee !== undefined) return dejaLancee
+  const lancee = chercher()
+  recherches.set(chercher, lancee)
+  return lancee
+}
+
 type MiseAJourProps = {
   /** Injectées, comme tout ce qui touche à l'IPC : le pont ne répond pas hors de la webview. */
   chercher?: () => Promise<AvailableUpdate | null>
@@ -24,6 +56,18 @@ type MiseAJourProps = {
  * barre d'état est l'endroit du produit qui dit déjà quelle version tourne — c'est là que
  * « il y en a une autre » se lit sans interrompre.
  *
+ * **« La barre d'état » en est trois**, et l'avoir lu au singulier est le défaut du 26 août 2026 :
+ * monté dans `shell/StatusBar` seul, ce composant n'existait que sur l'écran d'accueil, le seul à
+ * rendre cette barre. Une session de travail se passe dans le Workbench, dont la bande du bas est
+ * `TableStatusBar` ou `StructureStatusBar` — donc l'annonce était invisible exactement pendant que
+ * l'application servait. Les trois barres la portent désormais, et `rechercheUnique` fait que les
+ * trois montages ne comptent que pour une requête.
+ *
+ * **Reste un trou, et il est nommé plutôt que tu** : un onglet de console n'a **aucune** barre au
+ * niveau de l'écran — son pied vit dans le panneau central, le mockup ne lui en donne pas
+ * d'autre. L'annonce n'y paraît donc pas. En ajouter une serait un changement de composition, pas
+ * un correctif, et il demande la maquette.
+ *
  * **Aucune recherche périodique.** Une fois au démarrage, et c'est tout : une session dure
  * l'après-midi, et une requête toutes les heures ne ferait qu'annoncer plus tôt une release
  * que le redémarrage suivant aurait trouvée de toute façon.
@@ -38,7 +82,7 @@ export function MiseAJour({ chercher = checkUpdate, installer = installUpdate }:
 
   useEffect(() => {
     monte.current = true
-    chercher()
+    rechercheUnique(chercher)
       .then((trouvee) => {
         if (monte.current) setDisponible(trouvee)
       })
@@ -69,6 +113,14 @@ export function MiseAJour({ chercher = checkUpdate, installer = installUpdate }:
     <Popover
       title={`Version ${disponible.version}`}
       align="end"
+      // **Vers le haut, et c'est le correctif du 26 août 2026.** Le déclencheur vit dans la barre
+      // d'état, donc dans les 26 derniers pixels de la fenêtre : ouvert vers le bas, le panneau
+      // était dessiné hors de la fenêtre, que `html, body { overflow: hidden }` ne laisse pas
+      // défiler. Le clic basculait bien l'état — `aria-expanded` passait à `true`, le `dialog`
+      // était dans le DOM — et il ne se passait *rien* de visible. Le mode de défaillance à
+      // retenir : un panneau flottant peut être « ouvert » et hors d'atteinte, et ni le DOM ni
+      // Playwright au sens de la visibilité ne le disent.
+      ouvertureVers="haut"
       content={
         <div className={styles.panneau}>
           {disponible.notes ? (
