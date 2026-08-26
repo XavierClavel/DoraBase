@@ -117,7 +117,7 @@ describe('modifier une connexion (08g)', () => {
     expect(screen.getByLabelText('Mot de passe')).toHaveValue('')
   })
 
-  it('les trois champs d’identité sont verrouillés, avec leur raison', () => {
+  it('les deux champs d’identité sont verrouillés, avec leur raison', () => {
     monter()
     const nom = screen.getByLabelText('Nom de la base')
     expect(nom).toBeDisabled()
@@ -125,8 +125,16 @@ describe('modifier une connexion (08g)', () => {
     // l'infobulle du nom **nomme le geste** au lieu de dire « supprimez et redéclarez » : le
     // renommage existe, dans le menu « … » de la ligne d'arbre.
     expect(nom).toHaveAttribute('title', expect.stringContaining('Renommer…'))
-    expect(screen.getByRole('combobox', { name: 'Projet' })).toBeDisabled()
     expect(screen.getByRole('radio', { name: /prod/ })).toBeDisabled()
+  })
+
+  it('le projet de la base modifiée s’annonce en tête, et ne se choisit pas', () => {
+    monter()
+    // **Deux, et non trois** (26 août 2026) : le projet était le troisième champ verrouillé de la
+    // rangée d'identité, avec sa raison en infobulle. Un champ verrouillé qui explique pourquoi il
+    // l'est reste un champ ; il est devenu ce qu'il a toujours été, le cadre du formulaire.
+    expect(screen.queryByRole('combobox', { name: 'Projet' })).toBeNull()
+    expect(screen.getByTestId('projet-de-la-modale')).toHaveTextContent('Atelier')
   })
 
   it('enregistrer envoie une mise à jour, jamais un ajout', async () => {

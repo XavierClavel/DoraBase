@@ -10,6 +10,16 @@ type ModalProps = {
   /** Icône de la pastille de l'en-tête. */
   icon: IconName
   onClose: () => void
+  /**
+   * Ce que la modale porte **à droite de son titre**, dans la bande d'en-tête (26 août 2026).
+   *
+   * Le cas qui l'a fait naître : le projet dans lequel une connexion se déclare. Il vivait dans le
+   * formulaire, sous une étiquette « Projet », à côté d'un sélecteur qui proposait de le changer —
+   * alors qu'il est **le cadre** du formulaire, pas un de ses champs. Un cadre s'annonce en tête.
+   *
+   * Un `ReactNode` et non une chaîne : c'est à l'appelant de décider s'il y met un glyphe, et lequel.
+   */
+  contexte?: ReactNode
   /** Contenu du pied. Absent, aucune bande de pied n'est rendue. */
   footer?: ReactNode
   /**
@@ -77,6 +87,7 @@ export function Modal({
   title,
   icon,
   onClose,
+  contexte,
   footer,
   nested = false,
   className,
@@ -200,6 +211,7 @@ export function Modal({
             <Icon name={icon} size={nested ? 17 : 15} strokeWidth={1.9} />
           </span>
           <span className={cx(styles.title, nested && styles.titleNested)}>{title}</span>
+          {contexte}
           <span className={styles.spacer} />
           {!nested && (
             <button type="button" className={styles.close} onClick={onClose} aria-label="Fermer">

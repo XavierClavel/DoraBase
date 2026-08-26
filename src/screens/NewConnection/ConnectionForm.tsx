@@ -48,25 +48,24 @@ type ConnectionFormProps = {
   draft: ConnectionDraft
   onChange: (patch: Partial<ConnectionDraft>) => void
   /**
-   * Les projets existants, **avec leurs environnements** (`23d`). Vide, `08e` désactivera
-   * l'enregistrement.
+   * Les environnements **déclarés par le projet** dans lequel cette connexion se déclare (`23d`).
+   *
+   * La liste elle-même, et non la liste des projets d'où la tirer : le formulaire ne choisit plus de
+   * projet, donc il n'a plus à en chercher un. Un projet à cinq environnements en montre cinq.
+   *
+   * **L'ancienne recherche était un défaut connu** : elle lisait `projetImpose ?? draft.project`, et
+   * l'oubli du premier terme avait rendu le groupe d'environnements vide à l'étape 2 — on ne pouvait
+   * plus déclarer de connexion. Recevoir la liste toute faite supprime la recherche, donc l'oubli.
    */
-  projects: readonly { id: string; name: string; environments: readonly EnvironmentDeclaration[] }[]
+  environnements: readonly EnvironmentDeclaration[]
   /**
-   * Verrouille les champs qui **désignent** la base : son nom, son projet, son environnement.
+   * Verrouille les champs qui **désignent** la base : son nom et son environnement.
    *
    * Le triplet `projet/base/environnement` est la clé du registre (`09b`) et la référence du secret
    * (`08e`) : en changer un élément demanderait de déplacer le secret et de fermer la connexion
    * ouverte. Voir `08g`.
    */
   verrouille?: boolean
-  /**
-   * Le nom du projet, quand il est **imposé** — l'étape 2 du parcours de création (`24c`).
-   *
-   * Présent, le sélecteur cède la place à un constat. Absent, le sélecteur liste les projets, ce qui
-   * est le cas de l'ajout d'une connexion à un projet existant.
-   */
-  projetImpose?: string
 }
 
 const OPTIONS_SSL = SSL_MODE_ORDER.map((mode) => ({ value: mode, label: SSL_MODES[mode].label }))
@@ -104,9 +103,8 @@ function optionsDEnvironnement(declarations: readonly EnvironmentDeclaration[]) 
 export function ConnectionForm({
   draft,
   onChange,
-  projects,
+  environnements,
   verrouille = false,
-  projetImpose,
 }: ConnectionFormProps) {
   const [passwordVisible, setPasswordVisible] = useState(false)
   // **Un moteur de fichier n'a pas de serveur** (`17a`) : cinq champs du formulaire ne veulent rien
@@ -130,34 +128,15 @@ export function ConnectionForm({
    */
   const parCloudSql = draft.tunnel?.proxy.kind === 'cloud-sql'
 
-  /*
-   * **« + Nouveau projet… » n'existe plus** (`24c`).
-   *
-   * C'était une option du sélecteur : « personne ne crée un projet vide, donc le déclarer et y mettre
-   * sa première base est un seul geste » (`08f`). Le geste s'est inversé — on déclare un projet, puis
-   * on lui propose sa première connexion (`24a`) — et l'entrée sentinelle rebouclerait vers l'étape
-   * qu'on vient de quitter. Le champ « Nom du nouveau projet » et le repli sur le trio par défaut
-   * partent avec elle : les environnements proposés sont désormais **toujours** ceux d'un projet
-   * réellement déclaré.
-   */
-  const optionsProjets = projects.map((p) => ({ value: p.id, label: p.name }))
-  /*
-   * Les environnements du projet **imposé s'il l'est**, du projet choisi sinon.
-   *
-   * **Le `projetImpose ??` manquait, et c'était un défaut.** À l'étape 2, l'effet qui ramène le
-   * brouillon sur un projet valable rend la main tout de suite — le projet étant imposé, il n'a rien à
-   * choisir. `draft.project` restait donc vide, aucun projet n'était trouvé, et le groupe
-   * d'environnements était **vide** : on ne pouvait pas déclarer une connexion à l'étape 2. Les tests
-   * unitaires ne l'ont pas vu — ils vérifiaient le constat, la bande et le libellé du bouton, jamais
-   * les radios. C'est une mesure de `08b`, qui compte les trois boutons, qui l'a attrapé.
-   */
-  const environnementsDuProjet =
-    projects.find((projet) => projet.id === (projetImpose ?? draft.project))?.environments ?? []
-
   return (
     <div className={styles.form}>
-      {/* Rangée pleine largeur : `1fr 196px auto`, alignée en bas — les étiquettes n'ont pas
-          toutes la même hauteur, et sans `align-items: end` les champs se décaleraient. */}
+      {/* Rangée pleine largeur : `1fr auto`, alignée en bas — les étiquettes n'ont pas
+          toutes la même hauteur, et sans `align-items: end` les champs se décaleraient.
+
+          **La piste de 196px a disparu avec le projet** (26 août 2026) : il vivait ici, entre le nom
+          de la base et les environnements, et il est monté dans l'en-tête de la modale. Il n'était pas
+          un champ du formulaire mais son **cadre** — et un sélecteur à côté proposait d'en changer,
+          c'est-à-dire de déplacer une connexion d'un projet à l'autre, geste qui n'existe pas. */}
       <div className={styles.rowIdentity}>
         {/* **Verrouillé en édition, et la raison est dite.** Un champ désactivé sans explication
             fait croire à un bug — la leçon de `09f`. Le `title` porte l'explication : `Field` n'a
@@ -170,39 +149,13 @@ export function ConnectionForm({
           title={verrouille ? RAISON_VERROU_NOM : undefined}
           onChange={(event) => onChange({ name: event.target.value })}
         />
-        {/* **Un constat, non un contrôle, quand le projet vient d'être créé** (`24c`).
-            Le sélecteur serait faux de deux façons : il proposerait de changer un choix que l'étape 1
-            vient de trancher, et son entrée « + Nouveau projet… » rebouclerait vers cette étape.
-            Du texte étiqueté, et **pas un `Chip`** : un chip est un contrôle partout ailleurs dans ce
-            produit, et un chip inerte se lit comme un contrôle en panne. */}
-        {projetImpose === undefined ? (
-          <Select
-            label="Projet"
-            icon={{ name: 'bag', color: 'var(--accent-deep)' }}
-            options={optionsProjets}
-            value={draft.project}
-            disabled={verrouille}
-            title={verrouille ? RAISON_VERROU : undefined}
-            onValueChange={(project) => onChange({ project })}
-          />
-        ) : (
-          <div className={styles.projetImpose}>
-            <div className={styles.label}>Projet</div>
-            {/* La hauteur est celle du sélecteur qu'il remplace : l'`align-items: end` de la rangée
-                d'identité est structurel, et un constat plus court désalignerait le nom de la base. */}
-            <div className={styles.projetImposeValeur} data-testid="projet-impose">
-              <Icon name="bag" size={13} strokeWidth={1.8} className={styles.projetIcone} />
-              {projetImpose}
-            </div>
-          </div>
-        )}
         <div>
           {/* « Environnement », et non plus « Variante d'environnement » : le mot décrivait le modèle
               à variantes, que `23b` a retiré. */}
           <div className={styles.label}>Environnement</div>
           <RadioGroup
             label="Environnement"
-            options={optionsDEnvironnement(environnementsDuProjet)}
+            options={optionsDEnvironnement(environnements)}
             value={draft.environment}
             disabled={verrouille}
             title={verrouille ? RAISON_VERROU : undefined}

@@ -66,27 +66,40 @@ type NewConnectionProps = {
   /** Appelle la commande `save_database`. Injectée pour la même raison que `onTest`. */
   onSave?: (request: ReturnType<typeof draftToSaveRequest>) => Promise<Project[]>
   /**
-   * Le nom du projet, quand il est **imposé** — l'étape 2 du parcours de création (`24c`).
+   * Le projet dans lequel la connexion se déclare. **Toujours connu, jamais choisi ici**
+   * (26 août 2026, à la demande).
    *
-   * Présent, le sélecteur cède la place à un constat, la bande de progression paraît, et « Annuler »
-   * devient « Plus tard » : à ce moment, « Annuler » mentirait, le projet étant déjà créé.
+   * Il vivait dans le formulaire, sous une étiquette « Projet », dans un sélecteur qui proposait d'en
+   * changer. Or changer de projet dans ce formulaire n'a jamais voulu dire ce que le contrôle laissait
+   * croire : le triplet `projet/base/environnement` est la clé du registre et la référence du secret,
+   * et déplacer une connexion d'un projet à l'autre est un geste qui **n'existe pas** — la
+   * confirmation de suppression se garde déjà de le proposer.
    *
-   * **`onCreateProject` a disparu avec la sentinelle.** Cet écran créait un projet au passage
-   * (`08f`) ; il ne crée plus rien — l'étape 1 le fait, et lui déclare une connexion.
+   * Le projet est donc le **cadre** du formulaire, non un de ses champs, et il s'annonce en tête de la
+   * modale. En édition, c'est celui de la base modifiée, qui fait foi.
+   *
+   * En création, l'appelant le désigne : le menu d'une ligne d'environnement le connaît, le parcours de
+   * création vient de le créer.
    */
-  projetImpose?: string
+  projet?: string
   /**
-   * Le projet et l'environnement dans lesquels la connexion se déclare, quand l'appelant les connaît
-   * (26 août 2026).
+   * L'environnement préréglé, quand l'appelant le connaît (26 août 2026).
    *
-   * C'est le cas du menu d'une ligne d'environnement : il sait de quel palier de l'arbre part le
-   * geste. Le brouillon part donc préréglé sur ce couple, plutôt que sur le premier projet de la
-   * liste et sur `dev` — deux valeurs qui, ici, seraient devinées alors qu'elles sont connues.
-   *
-   * Distinct de `projetImpose`, qui dit « ce projet vient d'être créé » et fait paraître la bande de
-   * progression : la cible ne fait que préremplir.
+   * Le menu d'une ligne d'environnement le connaît. Absent, le brouillon prend `dev` — le moins
+   * risqué. Le groupe de radios reste là : l'environnement, lui, est bien un champ de la connexion.
    */
-  cible?: { project: string; environment: EnvironmentId }
+  environnement?: EnvironmentId
+  /**
+   * Vrai quand cet écran est **l'étape 2 du parcours de création** (`24c`).
+   *
+   * La bande de progression paraît, « Annuler » devient « Plus tard » — à ce moment, « Annuler »
+   * mentirait, le projet étant déjà créé — et la phrase du pied dit ce qu'il advient de lui.
+   *
+   * **Distinct de « le projet est connu »**, qu'il était jusqu'ici sous le nom `projetImpose` : le
+   * projet est désormais *toujours* connu, et confondre les deux faisait paraître une bande de
+   * progression à deux étapes devant quelqu'un qui n'en avait franchi aucune.
+   */
+  venantDuParcours?: boolean
   /**
    * La base à modifier (`08g`). Absente, la modale **crée**.
    *
@@ -149,19 +162,28 @@ export function NewConnection({
   edition,
   onUpdate = mettreAJourLaVariante,
   onSaved,
-  projetImpose,
-  cible,
+  projet,
+  environnement,
+  venantDuParcours = false,
 }: NewConnectionProps) {
+  /**
+   * Le projet qui fait foi.
+   *
+   * **En édition, celui de la base**, jamais celui qu'on aurait passé à côté : la base modifiée dit
+   * dans quel projet elle vit, et deux sources pour un même nom finiraient par se contredire.
+   */
+  const projetCourant = edition?.project ?? projet ?? ''
   // En mode édition, le brouillon part des réglages enregistrés. `useState` avec initialiseur : le
   // recalculer à chaque rendu écraserait la saisie en cours.
   const [draft, setDraft] = useState<ConnectionDraft>(() =>
     edition
       ? draftDepuisLaVariante(edition.project, edition.database, varianteCible(edition))
-      : // La cible préremplit le couple projet/environnement quand l'appelant le connaît ; le reste du
-        // brouillon reste celui de `emptyDraft`.
-        {
+      : {
           ...emptyDraft(),
-          ...(cible ? { project: cible.project, environment: cible.environment } : {}),
+          // Le projet du brouillon **est** celui du cadre : plus personne ne peut le changer, donc il
+          // n'a plus à être aligné après coup — c'est tout l'effet qui suivait, et il disparaît.
+          project: projetCourant,
+          ...(environnement === undefined ? {} : { environment: environnement }),
         },
   )
   // Le panneau proxy est replié à l'ouverture : le mockup le montre déplié, mais il y montre
@@ -189,32 +211,12 @@ export function NewConnection({
     setDraft((previous) => ({ ...previous, ...changes }))
   }
 
-  /**
-   * Aligne le projet du brouillon sur ce que le `Select` **affiche**.
-   *
-   * **Le piège du select contrôlé.** Un `<select>` dont la `value` ne correspond à aucune de ses
-   * options affiche la première, sans que l'état en soit averti : l'écran montrait
-   * « Atelier Nord » tandis que le brouillon portait encore la chaîne vide, et
-   * l'enregistrement visait donc un projet inexistant. Trouvé par un test qui vérifiait le
-   * `project` de la requête, pas par l'œil — à l'écran, tout allait bien.
-   *
-   * Le même effet couvre le cas d'une sélection devenue invalide, si la liste des projets
-   * change sous les pieds de l'utilisateur.
+  /*
+   * **L'effet qui alignait le brouillon sur le sélecteur a disparu** (26 août 2026), avec le
+   * sélecteur : il n'y a plus de contrôle capable d'afficher un projet que l'état ne porte pas —
+   * c'était « le piège du select contrôlé », dont l'enregistrement visait un projet inexistant. Le
+   * projet du brouillon vient du cadre, une fois, à l'initialisation.
    */
-  useEffect(() => {
-    // En édition comme à l'étape 2 du parcours, le projet est **imposé** : il désigne la base à
-    // modifier, ou celui qu'on vient de créer.
-    if (edition || projetImpose) return
-    const premier = projects.at(0)
-    // **Plus de sentinelle** (`24c`) : « + Nouveau projet… » n'est plus une valeur du sélecteur, donc
-    // il n'y a plus de choix valable-mais-inexistant à préserver. Sans aucun projet, il n'y a rien à
-    // choisir non plus — et ce cas ne se produit plus, `24d` renvoyant vers l'étape 1.
-    if (!premier) return
-    const valide = projects.some((projet) => projet.id === draft.project)
-    // `setDraft` et non `patch` : `patch` est recréé à chaque rendu, donc le déclarer en
-    // dépendance relancerait l'effet en boucle. Le poseur d'état de React, lui, est stable.
-    if (!valide) setDraft((precedent) => ({ ...precedent, project: premier.id }))
-  }, [projects, draft.project, edition, projetImpose])
 
   /**
    * Toucher un champ du panneau **crée** le proxy s'il n'existe pas.
@@ -268,6 +270,20 @@ export function NewConnection({
     )
   }
 
+  /**
+   * Les environnements déclarés par le projet du cadre (`23d`).
+   *
+   * **Calculés ici, et passés tout faits au formulaire.** Le formulaire les cherchait lui-même sur
+   * `projetImpose ?? draft.project`, et l'oubli du premier terme avait rendu le groupe vide à l'étape 2
+   * — on ne pouvait plus déclarer de connexion. Une recherche en moins est un oubli en moins.
+   */
+  const environnementsDuProjet =
+    // **Par le nom, et non par l'`id`.** Un projet est identifié par son nom (`05a`) : c'est ce que
+    // porte la ligne d'arbre, ce que la requête d'enregistrement envoie, et ce que l'en-tête affiche.
+    // L'`id` du sélecteur était le seul endroit où les deux se distinguaient, et le sélecteur est
+    // parti.
+    projects.find((candidat) => candidat.name === projetCourant)?.environments ?? []
+
   const engineImplemented = IMPLEMENTED_ENGINES.includes(draft.engine)
 
   async function lancerLeTest() {
@@ -293,7 +309,11 @@ export function NewConnection({
   // écran ne sait plus créer de projet (`24c`), donc sans projet il n'a rien où enregistrer. Le cas
   // ne se produit plus dans l'application — `24d` renvoie vers l'étape 1 — mais la garde reste : un
   // appelant qui l'oublierait verrait un refus, non un enregistrement dans le vide.
-  const sansProjet = projetImpose === undefined && projects.length === 0
+  // **Sans projet, rien à enregistrer.** La garde de `08e` reste, sous une autre forme : le cadre est
+  // désormais une chaîne, et c'est son vide qui dit qu'aucun projet n'a été désigné. Le cas ne se
+  // produit plus dans l'application — `24d` renvoie vers l'étape 1 — mais un appelant qui l'oublierait
+  // verrait un refus, non un enregistrement dans le vide.
+  const sansProjet = projetCourant === ''
   const enregistrementBloque =
     test.phase === 'echoue' || sansProjet || enregistrement.phase === 'en-cours'
 
@@ -317,9 +337,8 @@ export function NewConnection({
       }
       // **Cet écran ne crée plus de projet** (`24c`). Il en créait un au passage, par la sentinelle
       // du sélecteur : deux commandes pour un geste. Le projet est désormais créé par l'étape 1, et
-      // arrive ici en `projetImpose` — une seule commande, un seul acte.
-      const nom = projetImpose ?? draft.project
-      const projets = await onSave(draftToSaveRequest({ ...draft, project: nom }))
+      // arrive ici dans le cadre — une seule commande, un seul acte.
+      const projets = await onSave(draftToSaveRequest({ ...draft, project: projetCourant }))
       onSaved?.(projets)
       // La modale se ferme : `08e` § Hors périmètre — « ouvrir » veut dire aller vers `A4`,
       // qui n'existe pas avant `09`. Ce scope enregistre et ferme ; `09` branchera la
@@ -334,10 +353,9 @@ export function NewConnection({
         // **Le message dit que le projet est gardé** (`24c`). Sans cette précision, l'utilisateur
         // ferme, recommence par « Nouveau projet », et se heurte à « ce nom est déjà pris » — le
         // défaut se produirait à coup sûr.
-        message:
-          projetImpose === undefined
-            ? messageDe(cause)
-            : `${messageDe(cause)} Le projet « ${projetImpose} » est créé ; la connexion n’a pas été enregistrée.`,
+        message: !venantDuParcours
+          ? messageDe(cause)
+          : `${messageDe(cause)} Le projet « ${projetCourant} » est créé ; la connexion n’a pas été enregistrée.`,
       })
     }
   }
@@ -360,6 +378,17 @@ export function NewConnection({
       title={edition ? `Modifier ${edition.database.name}` : 'Nouvelle connexion'}
       icon="db"
       onClose={onClose}
+      contexte={
+        /* **Le projet, en tête** (26 août 2026). Du texte et un glyphe, **pas un `Chip`** : un chip
+           est un contrôle partout ailleurs dans ce produit, et un chip inerte se lit comme un contrôle
+           en panne. Le sac est le glyphe du projet dans tout le produit. */
+        projetCourant === '' ? undefined : (
+          <span className={styles.projetDuTitre} data-testid="projet-de-la-modale">
+            <Icon name="bag" size={13} strokeWidth={1.8} className={styles.projetIcone} />
+            <span className={styles.projetDuTitreNom}>{projetCourant}</span>
+          </span>
+        )
+      }
       footer={
         <>
           <Button
@@ -426,7 +455,7 @@ export function NewConnection({
               moment, « Annuler » mentirait : le projet reste, et un bouton ne doit pas nommer un
               défaissement qui n'a pas lieu. C'est la règle de `08j` prise par l'autre bout. */}
           <Button variant="secondary" size="lg" onClick={onClose}>
-            {projetImpose === undefined ? 'Annuler' : 'Plus tard'}
+            {venantDuParcours ? 'Plus tard' : 'Annuler'}
           </Button>
           {/* `08e` le branchera, avec son raccourci ⌘↩. */}
           <Button
@@ -442,9 +471,9 @@ export function NewConnection({
               confirme l'écriture de l'étape 1, elle rend « Plus tard » sans conséquence, et elle nomme
               le chemin de retour. Sans elle, « Plus tard » demanderait de deviner ce qu'il advient du
               projet. */}
-          {projetImpose !== undefined && (
+          {venantDuParcours && (
             <p className={styles.projetCree} role="status">
-              Le projet <strong>{projetImpose}</strong> est créé. Vous pouvez déclarer sa première
+              Le projet <strong>{projetCourant}</strong> est créé. Vous pouvez déclarer sa première
               connexion maintenant, ou plus tard depuis la sidebar.
             </p>
           )}
@@ -454,7 +483,7 @@ export function NewConnection({
       {/* La bande de progression : **seulement à l'étape 2 du parcours** (`24b`). Ouvert pour un
           projet existant, cet écran n'a qu'une étape, et une bande à une seule étape utile
           affirmerait que cette modale a créé le projet. */}
-      {projetImpose !== undefined && (
+      {venantDuParcours && (
         <Stepper etapes={[{ libelle: 'PROJET' }, { libelle: 'CONNEXION' }]} courante={1} />
       )}
       <EngineSelector value={draft.engine} onValueChange={changerMoteur} />
@@ -475,9 +504,8 @@ export function NewConnection({
       <ConnectionForm
         draft={draft}
         onChange={patch}
-        projects={projects}
+        environnements={environnementsDuProjet}
         verrouille={!!edition}
-        projetImpose={projetImpose}
       />
 
       {echecOuvert && test.phase === 'echoue' && (
