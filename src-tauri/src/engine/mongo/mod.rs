@@ -13,8 +13,10 @@
 //!    équivalent, pas identique à ce qui a été tapé.
 //! 4. **Les types BSON entrent dans `Value` sans variante nouvelle** (`bson.rs`), au prix d'une
 //!    perte nommée sur `ObjectId`.
-//! 5. **Une transaction exige un jeu de réplicas** : sur un `mongod` isolé, l'écriture est refusée
-//!    avec sa raison plutôt que tentée sans filet.
+//! 5. **Une transaction exige un jeu de réplicas** : sur un `mongod` isolé, un **lot de plusieurs
+//!    écritures** est refusé avec sa raison plutôt que tenté sans filet. Une écriture seule n'a pas
+//!    besoin de ce filet — elle est déjà atomique par elle-même — et s'applique donc sans
+//!    transaction, jeu de réplicas ou non (`18f`, assoupli le 27 août 2026).
 //! 6. **`run_sql` garde son nom**, et reçoit une opération de collection. Dette assumée, inscrite
 //!    dans `18a`.
 
@@ -224,8 +226,14 @@ impl EngineAdapter for MongoAdapter {
     }
 
     async fn apply_updates(&self, plan: &UpdatePlan) -> Result<ApplyOutcome, EngineError> {
+        // **Une seule écriture n'a jamais besoin du filet transactionnel.** `updateOne`,
+        // `insertOne`, `deleteOne` sont chacune déjà atomiques par elles-mêmes, jeu de réplicas ou
+        // non — c'est ce que Compass et `mongosh` exploitent déjà contre un `mongod` isolé. Le
+        // refus ne porte donc que sur un **lot de plusieurs écritures**, où seule une transaction
+        // garantit qu'elles s'appliquent toutes ou aucune (`18f`).
+        let total = plan.changes.len() + plan.inserts.len() + plan.deletes.len();
         // **Le refus arrive avant le premier `updateOne`, jamais après le second** (`18f`).
-        if !self.deploiement.transactions_possibles() {
+        if total > 1 && !self.deploiement.transactions_possibles() {
             return Err(EngineError::local(
                 "ce serveur MongoDB est isolé : il ne sait pas ouvrir de transaction, donc \
                  plusieurs modifications pourraient s'appliquer à moitié. DoraBase n'écrit pas \
@@ -233,33 +241,51 @@ impl EngineAdapter for MongoAdapter {
             ));
         }
 
-        let mut session = self
-            .client
-            .start_session()
-            .await
-            .map_err(|e| mongo_error::traduire(&e))?;
-        session
-            .start_transaction()
-            .await
-            .map_err(|e| mongo_error::traduire(&e))?;
-
         let collection = self
             .client
             .database(&plan.schema)
             .collection::<Document>(&plan.table);
 
+        // `None` pour une écriture seule : rien à ouvrir, rien à annuler, rien à valider. Les trois
+        // boucles ci-dessous portent chacune l'écriture avec ou sans session — c'est la même
+        // opération, la seule différence est ce filet.
+        let mut session = if total > 1 {
+            let mut s = self
+                .client
+                .start_session()
+                .await
+                .map_err(|e| mongo_error::traduire(&e))?;
+            s.start_transaction()
+                .await
+                .map_err(|e| mongo_error::traduire(&e))?;
+            Some(s)
+        } else {
+            None
+        };
+
         let mut appliquees = 0u64;
         for (filtre, mise_a_jour) in commandes_de(plan) {
-            let issue = collection
-                .update_one(filtre.clone(), mise_a_jour.clone())
-                .session(&mut session)
-                .await;
+            let issue = match &mut session {
+                Some(s) => {
+                    collection
+                        .update_one(filtre.clone(), mise_a_jour.clone())
+                        .session(s)
+                        .await
+                }
+                None => {
+                    collection
+                        .update_one(filtre.clone(), mise_a_jour.clone())
+                        .await
+                }
+            };
             match issue {
                 Ok(resultat) if resultat.matched_count == 1 => appliquees += 1,
                 Ok(_) => {
                     // Zéro document trouvé : le document a changé depuis la lecture. **Toute** la
                     // transaction est annulée — pas un rapport partiel (`06a`).
-                    let _ = session.abort_transaction().await;
+                    if let Some(s) = &mut session {
+                        let _ = s.abort_transaction().await;
+                    }
                     return Err(EngineError::local(format!(
                         "le document {} a changé depuis la lecture : aucune modification n'a été \
                          écrite",
@@ -270,7 +296,9 @@ impl EngineAdapter for MongoAdapter {
                     )));
                 }
                 Err(erreur) => {
-                    let _ = session.abort_transaction().await;
+                    if let Some(s) = &mut session {
+                        let _ = s.abort_transaction().await;
+                    }
                     return Err(mongo_error::traduire(&erreur));
                 }
             }
@@ -281,10 +309,16 @@ impl EngineAdapter for MongoAdapter {
         // d'un lot annulé laisserait un document que personne n'a demandé.
         for insertion in &plan.inserts {
             let document = documents::document_a_inserer(insertion);
-            match collection.insert_one(document).session(&mut session).await {
+            let issue = match &mut session {
+                Some(s) => collection.insert_one(document).session(s).await,
+                None => collection.insert_one(document).await,
+            };
+            match issue {
                 Ok(_) => appliquees += 1,
                 Err(erreur) => {
-                    let _ = session.abort_transaction().await;
+                    if let Some(s) = &mut session {
+                        let _ = s.abort_transaction().await;
+                    }
                     return Err(mongo_error::traduire(&erreur));
                 }
             }
@@ -294,14 +328,16 @@ impl EngineAdapter for MongoAdapter {
         // changé — ou disparu — depuis la lecture : le même filet que pour les modifications.
         for suppression in &plan.deletes {
             let filtre = documents::filtre_de_suppression(&suppression.key, &plan.key_column);
-            match collection
-                .delete_one(filtre.clone())
-                .session(&mut session)
-                .await
-            {
+            let issue = match &mut session {
+                Some(s) => collection.delete_one(filtre.clone()).session(s).await,
+                None => collection.delete_one(filtre.clone()).await,
+            };
+            match issue {
                 Ok(resultat) if resultat.deleted_count == 1 => appliquees += 1,
                 Ok(_) => {
-                    let _ = session.abort_transaction().await;
+                    if let Some(s) = &mut session {
+                        let _ = s.abort_transaction().await;
+                    }
                     return Err(EngineError::local(format!(
                         "le document {} a changé depuis la lecture : aucune modification n'a été \
                          écrite",
@@ -312,16 +348,19 @@ impl EngineAdapter for MongoAdapter {
                     )));
                 }
                 Err(erreur) => {
-                    let _ = session.abort_transaction().await;
+                    if let Some(s) = &mut session {
+                        let _ = s.abort_transaction().await;
+                    }
                     return Err(mongo_error::traduire(&erreur));
                 }
             }
         }
 
-        session
-            .commit_transaction()
-            .await
-            .map_err(|e| mongo_error::traduire(&e))?;
+        if let Some(s) = &mut session {
+            s.commit_transaction()
+                .await
+                .map_err(|e| mongo_error::traduire(&e))?;
+        }
 
         Ok(ApplyOutcome {
             applied: appliquees,

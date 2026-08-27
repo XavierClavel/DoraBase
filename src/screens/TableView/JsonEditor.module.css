@@ -1,0 +1,12 @@
+/* Motif repris de `ConsoleView.module.css` : la boîte de CodeMirror n'est habillée que par
+ * `theme.ts` (police, couleurs, gouttière) — ici, seule la hauteur, que l'éditeur hérite de son
+ * hôte plutôt que de la calculer lui-même. */
+.hote {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.hote > * {
+  height: 100%;
+}

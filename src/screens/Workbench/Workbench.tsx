@@ -396,6 +396,18 @@ export function Workbench({
       }
     : null
 
+  /**
+   * Le moteur de la base ouverte, pour l'édition de document en JSON (`18g`) — **dérivé de la
+   * déclaration**, comme `dialecteDe`, jamais deviné depuis le contenu de l'écran.
+   */
+  const moteurActuel = contexte
+    ? projects
+        .find((p) => p.name === contexte.project)
+        ?.databases.find(
+          (d) => d.name === contexte.database && d.environment === contexte.environment,
+        )?.engine
+    : undefined
+
   // Le détail sert deux endroits : le panneau droit de `A4` (l'objet sélectionné) et la section
   // « Colonnes de *table* » de la sidebar (la table de l'onglet actif). Une seule lecture, deux
   // lecteurs — la table de l'onglet actif étant aussi celle qu'on vient de sélectionner.
@@ -410,7 +422,8 @@ export function Workbench({
    *
    * Deux compteurs et non un : le rafraîchissement d'après écriture (`11d`) relit les lignes et
    * seulement elles — la structure n'a pas bougé, et la relire ferait un aller-retour par
-   * enregistrement.
+   * enregistrement. **Sauf sur MongoDB** (`18g`), où la structure est déduite par échantillonnage
+   * et *peut* avoir bougé : `surSucces`, plus bas, la relit aussi dans ce seul cas.
    */
   const [relectureStructure, setRelectureStructure] = useState(0)
   const { detail, loading, error } = useDetailTable(
@@ -720,6 +733,13 @@ export function Workbench({
       // Un compteur qui descend jusqu'à la grille, plutôt qu'une fonction de relecture remontée
       // depuis elle : l'écriture part du panneau droit, la lecture vit dans le centre.
       setRafraichissement((tour) => tour + 1)
+      // **La structure aussi, mais seulement pour MongoDB** (`18g`) : ses colonnes sont *déduites*
+      // par échantillonnage, et un champ neuf qu'un document venait d'introduire — visible pendant
+      // l'édition grâce aux colonnes synthétiques de `TableView` — redevenait invisible sitôt
+      // `attente` vidée, alors qu'il existe bel et bien en base. SQL n'a pas ce problème : sa
+      // structure est déclarée, une ligne écrite ne la change jamais, et lui infliger un aller-retour
+      // par écriture serait le coût que le commentaire de `relectureStructure` refuse déjà.
+      if (moteurActuel === 'mongodb' && table) relireLaStructure(table.schema, table.table)
     },
   })
 
@@ -888,6 +908,7 @@ export function Workbench({
           cle={cle}
           schema={table.schema}
           table={table.table}
+          moteur={moteurActuel}
           columns={detail?.columns ?? []}
           passerelle={passerelleLignes}
           onEtatChange={setEtatRequete}

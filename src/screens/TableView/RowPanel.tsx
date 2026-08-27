@@ -6,6 +6,7 @@ import { cx } from '../../ui/cx'
 import { MenuContextuel } from '../../ui/MenuContextuel/MenuContextuel'
 import type { PasserelleDetail } from '../Workbench/useDetailTable'
 import { rendreValeur, texteDeValeur } from './cellule'
+import { documentJson } from './documentJson'
 import { JsonColore } from './JsonColore'
 import { relationDe, valeurDeCle } from './ligneLiee'
 import styles from './RowPanel.module.css'
@@ -229,11 +230,11 @@ export function RowPanel({
               className={styles.copierJson}
               aria-label={t('tableView.rowPanel.copyJson')}
               title={t('tableView.rowPanel.copyJson')}
-              onClick={() => void navigator.clipboard?.writeText(jsonDe(columns, ligne))}
+              onClick={() => void navigator.clipboard?.writeText(documentJson(columns, ligne))}
             >
               <Icon name="copy" size={12} strokeWidth={2.2} />
             </button>
-            <JsonColore texte={jsonDe(columns, ligne)} />
+            <JsonColore texte={documentJson(columns, ligne)} />
           </div>
         )}
 
@@ -321,48 +322,4 @@ export function RowPanel({
       )}
     </aside>
   )
-}
-
-/**
- * La ligne en objet JSON, pour la recopier.
- *
- * Les valeurs y gardent leur **type JSON** — un nombre reste un nombre, `NULL` devient `null` —
- * là où l'onglet Champs les rend pour l'œil. Un JSON dont tout serait chaîne ne se recollerait
- * nulle part.
- */
-function jsonDe(columns: readonly ColumnInfo[], ligne: readonly Value[]): string {
-  const objet: Record<string, unknown> = {}
-  columns.forEach((colonne, index) => {
-    objet[colonne.name] = brutDe(ligne[index])
-  })
-  return JSON.stringify(objet, null, 2)
-}
-
-function brutDe(valeur: Value | undefined): unknown {
-  if (!valeur) return null
-  switch (valeur.kind) {
-    case 'null':
-      return null
-    case 'bool':
-    case 'int':
-    case 'float':
-    case 'text':
-    case 'timestamp':
-      return valeur.value
-    // **En chaîne, et c'est voulu** : un décimal exact ne se représente pas en nombre JSON sans
-    // perte, et JSON n'a pas de type décimal. Le rendre en `number` transformerait `12345678.91`
-    // en `12345678.909999999`, dans un objet destiné à être recollé ailleurs.
-    case 'decimal':
-      return valeur.value
-    case 'json':
-      // Réinjecté tel quel quand il est analysable : imbriquer une chaîne de JSON dans du JSON
-      // produirait un objet doublement échappé, illisible et non recollable.
-      try {
-        return JSON.parse(valeur.value)
-      } catch {
-        return valeur.value
-      }
-    case 'binary':
-      return { base64: valeur.base64 }
-  }
 }

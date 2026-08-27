@@ -48,7 +48,14 @@ const LIGNES: Value[][] = [
   ],
 ]
 
-function monter(options: { columns?: ColumnInfo[]; edition?: boolean; lignes?: Value[][] } = {}) {
+function monter(
+  options: {
+    columns?: ColumnInfo[]
+    edition?: boolean
+    lignes?: Value[][]
+    moteur?: 'postgresql' | 'mongodb'
+  } = {},
+) {
   const readRows = vi.fn(async (_c: DatabaseKey, _r: RowQuery) => ({
     offset: 0,
     rows: options.lignes ?? LIGNES,
@@ -72,6 +79,7 @@ function monter(options: { columns?: ColumnInfo[]; edition?: boolean; lignes?: V
         cle={CLE}
         schema="public"
         table="orders"
+        moteur={options.moteur}
         columns={options.columns ?? COLONNES}
         edition={options.edition ?? true}
         attente={attente}
@@ -521,5 +529,146 @@ describe('supprimer une ligne', () => {
 
     await utilisateur.click(screen.getByRole('button', { name: 'Retirer la nouvelle ligne 1' }))
     expect(derniere()).toHaveLength(0)
+  })
+})
+
+/** L'éditeur CodeMirror de la modale JSON (`18g`) — un seul monté à la fois. */
+function contenuEditeurJson() {
+  return [...document.querySelectorAll('.cm-content > .cm-line')].map((l) => l.textContent ?? '')
+}
+
+/** Remplace le document entier : sélectionner tout, puis taper le nouveau texte.
+ *
+ * `userEvent.keyboard` ne donne un sens spécial qu'à `{` (`{Enter}`, `{Control>}`…, ouverture d'un
+ * descripteur) : seule l'accolade ouvrante doit être doublée (`{{`) pour être tapée comme un simple
+ * caractère. `}` seule, hors d'un descripteur ouvert, est déjà littérale.
+ */
+async function remplacerLeDocument(utilisateur: ReturnType<typeof userEvent.setup>, texte: string) {
+  const contenu = document.querySelector('.cm-content') as HTMLElement
+  await utilisateur.click(contenu)
+  await utilisateur.keyboard('{Control>}a{/Control}{Backspace}')
+  await utilisateur.keyboard(texte.replaceAll('{', '{{'))
+}
+
+describe('éditer un document en JSON (mongo, 18g)', () => {
+  it('l’icône n’apparaît que sur une base mongo', async () => {
+    monter({ moteur: 'postgresql' })
+    await attendreLaGrille()
+    expect(
+      screen.queryByRole('button', { name: 'Éditer la ligne 1 en JSON' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('hors mode édition, l’icône n’apparaît pas non plus', async () => {
+    monter({ moteur: 'mongodb', edition: false })
+    await attendreLaGrille()
+    expect(
+      screen.queryByRole('button', { name: 'Éditer la ligne 1 en JSON' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('ouvre le document courant, en JSON', async () => {
+    const utilisateur = userEvent.setup()
+    monter({ moteur: 'mongodb' })
+    await attendreLaGrille()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Éditer la ligne 1 en JSON' }))
+    expect(await screen.findByRole('dialog', { name: 'Éditer le document' })).toBeInTheDocument()
+    expect(contenuEditeurJson().join('\n')).toContain('"status": "paid"')
+  })
+
+  it('enregistrer un champ changé retient une modification de cellule, comme une saisie', async () => {
+    const utilisateur = userEvent.setup()
+    const { derniere } = monter({ moteur: 'mongodb' })
+    await attendreLaGrille()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Éditer la ligne 1 en JSON' }))
+    await screen.findByRole('dialog')
+    await remplacerLeDocument(utilisateur, '{"id": 184217, "status": "shipped", "note": null}')
+    await utilisateur.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(derniere()).toHaveLength(1))
+    expect(cellule(derniere()[0]).column).toBe('status')
+    expect(cellule(derniere()[0]).apres).toEqual({ kind: 'texte', texte: 'shipped' })
+    // La modale se referme, comme une cellule qui valide.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('un JSON invalide garde la modale ouverte et le dit, plutôt que de fermer sur une erreur', async () => {
+    const utilisateur = userEvent.setup()
+    monter({ moteur: 'mongodb' })
+    await attendreLaGrille()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Éditer la ligne 1 en JSON' }))
+    await screen.findByRole('dialog')
+    await remplacerLeDocument(utilisateur, '{invalide')
+    await utilisateur.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('JSON invalide')
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('changer la clé primaire est refusé, avec la même raison qu’une cellule', async () => {
+    const utilisateur = userEvent.setup()
+    monter({ moteur: 'mongodb' })
+    await attendreLaGrille()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Éditer la ligne 1 en JSON' }))
+    await screen.findByRole('dialog')
+    await remplacerLeDocument(utilisateur, '{"id": 999, "status": "paid", "note": null}')
+    await utilisateur.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('identifie la ligne')
+  })
+})
+
+describe('créer un document en JSON (mongo, 18g)', () => {
+  it('le + ouvre l’éditeur JSON plutôt qu’une ligne vide', async () => {
+    const utilisateur = userEvent.setup()
+    monter({ moteur: 'mongodb' })
+    await attendreLaGrille()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Nouveau document' }))
+    expect(await screen.findByRole('dialog', { name: 'Nouveau document' })).toBeInTheDocument()
+    expect(screen.queryByText('+1')).not.toBeInTheDocument()
+  })
+
+  it('enregistrer compose une ligne ajoutée avec les champs saisis', async () => {
+    const utilisateur = userEvent.setup()
+    const { derniere } = monter({ moteur: 'mongodb' })
+    await attendreLaGrille()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Nouveau document' }))
+    await screen.findByRole('dialog')
+    await remplacerLeDocument(utilisateur, '{"id": 42, "status": "new"}')
+    await utilisateur.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(derniere()).toHaveLength(1))
+    const ligne = derniere()[0]
+    expect(ligne?.sorte).toBe('ligne')
+    expect(ligne?.sorte === 'ligne' ? ligne.valeurs : undefined).toEqual({
+      id: { kind: 'texte', texte: '42' },
+      status: { kind: 'texte', texte: 'new' },
+    })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('un champ neuf, absent des colonnes déduites, apparaît dans la grille, teinté', async () => {
+    const utilisateur = userEvent.setup()
+    monter({ moteur: 'mongodb' })
+    const grille = await attendreLaGrille()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Nouveau document' }))
+    await screen.findByRole('dialog')
+    await remplacerLeDocument(utilisateur, '{"status": "new", "priorite": "haute"}')
+    await utilisateur.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    // La colonne n'existait pas au catalogue : sans elle, « priorite » serait invisible alors
+    // qu'elle part déjà dans le SQL prévu et dans le panneau des modifications en attente.
+    await waitFor(() => expect(within(grille).getByText('priorite')).toBeInTheDocument())
+    const cellule = within(grille).getByText('haute')
+    // Même teinte qu'une colonne connue remplie dans une ligne ajoutée (`--modified`, cf. AGENTS.md
+    // « le coin ambre dit ceci partira ») : rien qui distingue une colonne synthétique à l'œil.
+    expect(cellule.closest('[class*="modified"]')).not.toBeNull()
   })
 })
