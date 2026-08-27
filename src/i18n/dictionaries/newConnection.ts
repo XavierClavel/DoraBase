@@ -46,6 +46,8 @@ export const newConnectionFr: Dictionnaire = {
     sslModeLabel: 'Mode SSL',
     readOnlyLabel: 'Ouvrir en lecture seule',
     reconnectLabel: 'Se reconnecter au démarrage',
+    labelLabel: 'Libellé',
+    labelPlaceholder: 'vide : le nom de la base',
   },
   tunnel: {
     panelTitle: 'Proxy / tunnel',
@@ -133,6 +135,8 @@ export const newConnectionEn: Dictionnaire = {
     sslModeLabel: 'SSL mode',
     readOnlyLabel: 'Open read-only',
     reconnectLabel: 'Reconnect on startup',
+    labelLabel: 'Label',
+    labelPlaceholder: 'empty: the database name',
   },
   tunnel: {
     panelTitle: 'Proxy / tunnel',

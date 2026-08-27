@@ -119,7 +119,9 @@ pub fn mettre_a_jour(
         environment,
         reglages,
         password,
+        label,
     } = modification;
+    let label = label.map(str::trim).filter(|label| !label.is_empty());
 
     let index = projects
         .iter()
@@ -161,6 +163,7 @@ pub fn mettre_a_jour(
 
     let mut candidat = projects[index].clone();
     candidat.databases[base].connection = candidate;
+    candidat.databases[base].label = label.map(str::to_owned);
     validate(&candidat).map_err(SaveError::Model)?;
 
     let ancien = std::mem::replace(&mut projects[index], candidat);
@@ -676,6 +679,9 @@ pub struct Modification<'a> {
     pub reglages: &'a ConnectionSettings,
     /// `None` laisse le secret en place.
     pub password: Option<&'a Secret>,
+    /// Le libellé d'affichage, **la valeur définitive** — contrairement à `password`, il n'est pas
+    /// secret et le formulaire renvoie toujours ce qu'il contient, vide y compris pour l'effacer.
+    pub label: Option<&'a str>,
 }
 
 /// Ce qu'il y a à enregistrer.
@@ -692,6 +698,10 @@ pub struct NouvelleBase<'a> {
     pub environment: EnvironmentId,
     pub variant: ConnectionSettings,
     pub password: Option<&'a Secret>,
+    /// Le libellé d'affichage saisi en fin de formulaire (27 août 2026), vide s'il n'a pas été
+    /// rempli. `None` et une chaîne vide sont la même chose ici — c'est `enregistrer` qui garde
+    /// `label` à `None` plutôt que d'écrire une chaîne vide dans la configuration.
+    pub label: Option<&'a str>,
 }
 
 /// Ajoute un projet vide à la liste, ou dit pourquoi il ne peut pas l'être.
@@ -1177,7 +1187,11 @@ pub fn enregistrer(
         environment: environnement,
         mut variant,
         password,
+        label,
     } = nouvelle;
+    // Le vide et l'absence sont la même chose, comme pour le certificat d'autorité de `06f` : une
+    // chaîne blanche dans la configuration se lirait comme un libellé véritable.
+    let label = label.map(str::trim).filter(|label| !label.is_empty());
     let index = projects
         .iter()
         .position(|projet| projet.name == project_name)
@@ -1199,6 +1213,7 @@ pub fn enregistrer(
     // toujours avant d'avoir touché au magasin.
     let base = Database {
         name: database_name.to_owned(),
+        label: label.map(str::to_owned),
         engine,
         environment: environnement.clone(),
         connection: variant,
@@ -1527,6 +1542,7 @@ mod tests {
                 environment: EnvironmentId::brut("dev"),
                 variant: variante(),
                 password: Some(&Secret::new("s3cr3t")),
+                label: None,
             },
             m,
             &mut |_| {
@@ -1556,6 +1572,7 @@ mod tests {
                 environment: EnvironmentId::brut("dev"),
                 reglages: &reglages,
                 password: None,
+                label: None,
             },
             &m,
             &mut |_| Ok(()),
@@ -1590,6 +1607,7 @@ mod tests {
                 environment: EnvironmentId::brut("dev"),
                 reglages: &variante(),
                 password: None,
+                label: None,
             },
             &m,
             &mut |_| Ok(()),
@@ -1624,6 +1642,7 @@ mod tests {
                 environment: EnvironmentId::brut("dev"),
                 reglages: &variante(),
                 password: Some(&Secret::new("nouveau")),
+                label: None,
             },
             &m,
             &mut |_| Ok(()),
@@ -1656,6 +1675,7 @@ mod tests {
                 environment: EnvironmentId::brut("dev"),
                 reglages: &reglages,
                 password: None,
+                label: None,
             },
             &m,
             &mut |_| Ok(()),
@@ -1673,6 +1693,7 @@ mod tests {
                 environment: EnvironmentId::brut("prod"),
                 reglages: &reglages,
                 password: None,
+                label: None,
             },
             &m,
             &mut |_| Ok(()),
@@ -1702,6 +1723,7 @@ mod tests {
                 environment: EnvironmentId::brut("dev"),
                 reglages: &reglages,
                 password: None,
+                label: None,
             },
             &m,
             &mut |_| Err("disque plein".to_owned()),
@@ -1728,6 +1750,7 @@ mod tests {
                 environment: EnvironmentId::brut("dev"),
                 variant: variante(),
                 password: Some(&Secret::new("s3cr3t")),
+                label: None,
             },
             &m,
             &mut |_| {
@@ -1770,6 +1793,7 @@ mod tests {
                 environment: EnvironmentId::brut("dev"),
                 variant: variante(),
                 password: Some(&Secret::new(sentinelle)),
+                label: None,
             },
             &m,
             &mut |projets| {
@@ -1818,6 +1842,7 @@ mod tests {
                 environment: EnvironmentId::brut("dev"),
                 variant: variante(),
                 password: Some(&Secret::new("s3cr3t")),
+                label: None,
             },
             &m,
             &mut |_| Err("disque plein".to_owned()),
@@ -1857,6 +1882,7 @@ mod tests {
                 environment: EnvironmentId::brut("dev"),
                 variant: variante(),
                 password: None,
+                label: None,
             },
             &m,
             &mut |_| Err("disque plein".to_owned()),
@@ -1884,6 +1910,7 @@ mod tests {
                 environment: EnvironmentId::brut("dev"),
                 variant: variante(),
                 password: Some(&Secret::new("s3cr3t")),
+                label: None,
             },
             &m,
             &mut |_| Err("disque plein".to_owned()),
@@ -1918,6 +1945,7 @@ mod tests {
                 environment: EnvironmentId::brut("dev"),
                 variant: variante(),
                 password: Some(&Secret::new("s3cr3t")),
+                label: None,
             },
             &m,
             &mut |_| {
@@ -1946,6 +1974,7 @@ mod tests {
                 environment: EnvironmentId::brut("dev"),
                 variant: variante(),
                 password: None,
+                label: None,
             },
             &m,
             &mut |_| Ok(()),
@@ -1961,6 +1990,7 @@ mod tests {
                 environment: EnvironmentId::brut("dev"),
                 variant: variante(),
                 password: None,
+                label: None,
             },
             &m,
             &mut |_| panic!("rien ne doit être écrit"),
@@ -1988,6 +2018,7 @@ mod tests {
                 environment: EnvironmentId::brut("dev"),
                 variant: variante(),
                 password: None,
+                label: None,
             },
             &m,
             &mut |_| panic!("rien ne doit être écrit"),
@@ -2013,6 +2044,7 @@ mod tests {
                 environment: EnvironmentId::brut("dev"),
                 variant: variante(),
                 password: None,
+                label: None,
             },
             &m,
             &mut |_| Ok(()),
@@ -2094,6 +2126,7 @@ mod tests_parcours {
             queries: Vec::new(),
             databases: vec![crate::config::model::Database {
                 name: "analytics".to_owned(),
+                label: None,
                 engine: Engine::PostgreSql,
                 environment: EnvironmentId::brut("dev"),
                 connection: variante_de(1),
@@ -2109,6 +2142,7 @@ mod tests_parcours {
                 environment: EnvironmentId::brut("dev"),
                 reglages: &variante_de(bon),
                 password: secret.as_ref(),
+                label: None,
             },
             &tests::magasin(),
             &mut |_| Ok(()),
@@ -2173,6 +2207,7 @@ mod tests_renommage {
                 databases: vec![
                     Database {
                         name: "analytics".to_owned(),
+                        label: None,
                         engine: crate::config::model::Engine::PostgreSql,
                         environment: EnvironmentId::brut("dev"),
                         connection: variante(Some(reference_de("Halle", "analytics", "dev"))),
@@ -2180,6 +2215,7 @@ mod tests_renommage {
                     },
                     Database {
                         name: "analytics".to_owned(),
+                        label: None,
                         engine: crate::config::model::Engine::PostgreSql,
                         environment: EnvironmentId::brut("prod"),
                         connection: variante(Some(reference_de("Halle", "analytics", "prod"))),
@@ -2187,6 +2223,7 @@ mod tests_renommage {
                     },
                     Database {
                         name: "shop".to_owned(),
+                        label: None,
                         engine: crate::config::model::Engine::MySql,
                         environment: EnvironmentId::brut("prod"),
                         connection: variante(Some(reference_de("Halle", "shop", "prod"))),
@@ -2889,6 +2926,7 @@ mod tests_consoles {
     fn connexion(nom: &str, env: &str) -> Database {
         Database {
             name: nom.to_owned(),
+            label: None,
             engine: crate::config::model::Engine::PostgreSql,
             environment: EnvironmentId::brut(env),
             connection: crate::config::model::ConnectionSettings {

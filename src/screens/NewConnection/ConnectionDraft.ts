@@ -19,8 +19,24 @@ import { modeSslPourLeMoteur, PORT_PAR_DEFAUT } from './engines'
  */
 export type ConnectionDraft = {
   engine: Engine
-  /** Nom de la base, tel que `A4` l'affichera dans l'arbre. */
+  /**
+   * Nom de la base. **L'identité de la connexion**, avec l'environnement : c'est ce qui vit dans
+   * la clé du registre et la référence du secret (`05a`, `08e`).
+   *
+   * **Peut être laissé vide depuis le 27 août 2026** : `draftToSaveRequest` y substitue alors
+   * l'abréviation du moteur (« psql », « mongo »… ), tirée de `NOM_PAR_DEFAUT`. Le champ affiche
+   * ce défaut en `placeholder`, jamais en valeur — sinon l'utilisateur croirait l'avoir saisi.
+   */
   name: string
+  /**
+   * Le libellé d'affichage, optionnel, saisi en fin de formulaire (27 août 2026).
+   *
+   * **Un affichage, pas une identité** — le précédent est celui d'`EnvironmentDeclaration.label`,
+   * appliqué ici à la connexion : `name` reste seul dans la clé du registre et la référence du
+   * secret. Vide, `name` (ou son défaut) fait foi partout où l'arbre, le fil d'Ariane et la barre
+   * de titre affichent la base.
+   */
+  label: string
   /** Identifiant du projet d'accueil. `A2` choisit parmi les projets existants (`08e`). */
   project: string
   /**
@@ -165,6 +181,7 @@ export function emptyDraft(): ConnectionDraft {
   return {
     engine: 'postgresql',
     name: '',
+    label: '',
     project: '',
     newProjectName: '',
     environment: 'dev',
@@ -250,6 +267,7 @@ export function draftDepuisLaVariante(
   return {
     engine: database.engine,
     name: database.name,
+    label: database.label ?? '',
     project,
     newProjectName: '',
     // L'environnement vient de la **connexion**, non de ses réglages (`23b`).

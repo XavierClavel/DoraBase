@@ -259,11 +259,14 @@ export function ExplorerSidebar({
     }
 
     if (noeud.kind === 'database' && onRenameDatabase !== undefined) {
+      if (noeud.database === undefined) return
       const project = noeud.project
       const environment = noeud.environment
+      // **`database`, jamais `label`.** L'ancien nom envoyé au renommage est l'identité de la
+      // connexion — voir la note sur `label` ci-dessus, à l'endroit où `TreeRow` reçoit ses props.
       // Le refus et les réserves ne sont pas attendus par le champ, qui est déjà démonté : ils
       // arrivent dans le rapport, seul endroit où un renommage sur place peut parler.
-      void onRenameDatabase(project, noeud.label, environment, nouveau).then(
+      void onRenameDatabase(project, noeud.database, environment, nouveau).then(
         (issue) => {
           if (issue.missingSecrets.length > 0 || issue.leftoverSecrets.length > 0) {
             setRapport({ nom: nouveau, ...issue })
@@ -375,7 +378,17 @@ export function ExplorerSidebar({
                 aria-selected={noeud.id === selectedId}
                 aria-label={noeud.announce}
                 depth={noeud.depth}
-                label={noeud.label}
+                // **`label` nourrit aussi le champ d'édition sur place** (`TreeRow` y prend sa
+                // `valeurInitiale`). Une connexion qui « Renommer… » modifie son **identité**
+                // (`database`, `08i`), jamais son libellé d'affichage (`27a`) — donc pendant
+                // *son propre* renommage, la ligne bascule sur `database` plutôt que sur un
+                // libellé qui aurait pu diverger. Les autres nœuds n'ont pas cette divergence :
+                // ils gardent `label`.
+                label={
+                  enRenommage === noeud.id && noeud.kind === 'database'
+                    ? (noeud.database ?? noeud.label)
+                    : noeud.label
+                }
                 /* **Le double-clic déplie, ou renomme une console.**
 
                    Déplier : c'est la seconde voie du dépliage, à côté de la flèche, et le geste
@@ -702,7 +715,12 @@ function entreesDe(
 
   // Les coordonnées viennent du **nœud**, jamais d'une déduction sur son libellé : deux bases
   // peuvent porter le même nom dans deux projets, et c'est la clé d'identité de `05a`.
-  const { project, label, environment } = noeud
+  //
+  // **`database`, jamais `label`.** Depuis que `label` peut afficher un libellé distinct du nom
+  // réel (`27a`), c'est `database` — resté `base.name` dans `arbre.ts` — qui reste l'identité à
+  // envoyer aux commandes IPC. `label` divergerait dès qu'une connexion porte un libellé, et ces
+  // appels viseraient une base qui n'existe pas.
+  const { project, database, environment } = noeud
   const modifiable =
     onEditDatabase !== undefined && project !== undefined && environment !== undefined
 
@@ -714,8 +732,8 @@ function entreesDe(
       libelle: t('explorer.sidebar.menu.newConsole'),
       icone: 'term',
       onClick:
-        consoles && project !== undefined && environment !== undefined
-          ? () => consoles.onCreer(project, label, environment)
+        consoles && project !== undefined && database !== undefined && environment !== undefined
+          ? () => consoles.onCreer(project, database, environment)
           : undefined,
       raison: consoles ? undefined : RAISONS.consoleIndisponible,
     },
@@ -732,21 +750,22 @@ function entreesDe(
     {
       libelle: t('explorer.sidebar.menu.edit'),
       icone: 'pencil',
-      onClick: modifiable
-        ? () => onEditDatabase(project as string, label, environment as EnvironmentId)
-        : undefined,
+      onClick:
+        modifiable && database !== undefined
+          ? () => onEditDatabase(project as string, database, environment as EnvironmentId)
+          : undefined,
       raison: modifiable ? undefined : RAISONS.modifierIndisponible,
     },
     {
       libelle: t('explorer.sidebar.menu.removeFromDoraBase'),
       icone: 'trash',
       onClick:
-        demanderLeRetrait && project !== undefined
+        demanderLeRetrait && project !== undefined && database !== undefined
           ? () =>
               demanderLeRetrait({
                 kind: 'database',
                 project,
-                database: label,
+                database,
                 // L'environnement fait partie de l'identité de la connexion (`23b`) : sans lui, le
                 // retrait viserait la première connexion de ce nom, quel que soit l'environnement.
                 environment: environment as EnvironmentId,
