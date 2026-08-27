@@ -1,4 +1,5 @@
 import { consoleEn, consoleFr } from './console'
+import { dumpEn, dumpFr } from './dump'
 import { explorerEn, explorerFr } from './explorer'
 import { newConnectionEn, newConnectionFr } from './newConnection'
 import { newProjectEn, newProjectFr } from './newProject'
@@ -25,6 +26,7 @@ export const DICTIONNAIRES = {
     console: consoleFr,
     structure: structureFr,
     shell: shellFr,
+    dump: dumpFr,
     ui: uiFr,
   },
   en: {
@@ -37,6 +39,7 @@ export const DICTIONNAIRES = {
     console: consoleEn,
     structure: structureEn,
     shell: shellEn,
+    dump: dumpEn,
     ui: uiEn,
   },
 } as const

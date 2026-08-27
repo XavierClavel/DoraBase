@@ -22,6 +22,9 @@ use dorabase_lib::config::{
     RenameEnvironmentRequest, RenameProjectRequest, RenameResult, ReorderEnvironmentsRequest,
     SaveDatabaseRequest, SavedQuery, UpdateVariantRequest,
 };
+use dorabase_lib::dump::commands::{DumpFailure, DumpRequest};
+use dorabase_lib::dump::inspect::Inspection;
+use dorabase_lib::dump::DumpAvailability;
 use dorabase_lib::engine::commands::{
     ConnectionRequest, ConnectionStateEntry, ConnectionTest, DatabaseKey,
 };
@@ -102,6 +105,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     DatabaseKey::export_all(&config)?;
     ConnectionStateEntry::export_all(&config)?;
     ConnectionState::export_all(&config)?;
+
+    // L'export et l'import de dump (`22b`, `22c`). `DumpRequest` entraîne `DatabaseKey` et
+    // `EnvironmentVariant` avec lui ; `DumpAvailability` et `Inspection` sont les deux
+    // verdicts que les modales rendent.
+    DumpAvailability::export_all(&config)?;
+    Inspection::export_all(&config)?;
+    DumpRequest::export_all(&config)?;
+    DumpFailure::export_all(&config)?;
 
     println!("projections TypeScript écrites dans {REPERTOIRE_DOMAINE}");
     Ok(())

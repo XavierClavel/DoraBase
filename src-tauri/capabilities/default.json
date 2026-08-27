@@ -8,6 +8,6 @@
     "core:webview:default", "core:app:default", "core:resources:default",
     "core:window:allow-start-dragging",
     "core:webview:allow-set-webview-zoom",
-    "dialog:allow-open", "log:allow-log"
+    "dialog:allow-open", "dialog:allow-save", "log:allow-log"
   ]
 }
