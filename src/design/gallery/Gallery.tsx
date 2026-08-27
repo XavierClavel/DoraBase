@@ -760,7 +760,7 @@ function SidebarGallery() {
             }
             toolbar={
               <SidebarToolbar>
-                <SidebarToolbarButton icon="bag" label="Nouveau projet" onClick={() => {}} />
+                <SidebarToolbarButton icon="plus" label="Nouveau projet" onClick={() => {}} />
               </SidebarToolbar>
             }
           >
