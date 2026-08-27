@@ -111,6 +111,64 @@ describe('VirtualGrid', () => {
     expect(screen.getAllByRole('row')[3]).toHaveAttribute('aria-selected', 'true')
   })
 
+  it('Suppr sur la ligne sélectionnée appelle onDeleteKey avec cette ligne', async () => {
+    const utilisateur = userEvent.setup()
+    const supprimees: string[] = []
+
+    function Pilotee() {
+      const [selection, setSelection] = useState<string | null>(null)
+      return (
+        <VirtualGrid
+          label="Lignes"
+          columns={COLONNES}
+          rows={lignes(20)}
+          rowId={(l) => String(l.id)}
+          viewportHeight={260}
+          selectedId={selection}
+          onSelect={(l) => setSelection(String(l.id))}
+          onDeleteKey={(l) => supprimees.push(String(l.id))}
+        />
+      )
+    }
+    render(<Pilotee />)
+
+    await utilisateur.click(screen.getByText('ligne 2'))
+    await utilisateur.keyboard('{Delete}')
+    expect(supprimees).toEqual(['2'])
+
+    await utilisateur.keyboard('{Backspace}')
+    expect(supprimees).toEqual(['2', '2'])
+  })
+
+  it('Backspace dans un champ de filtre ne déclenche pas onDeleteKey', async () => {
+    const utilisateur = userEvent.setup()
+    const supprimees: string[] = []
+
+    function Pilotee() {
+      const [selection, setSelection] = useState<string | null>('2')
+      return (
+        <VirtualGrid
+          label="Lignes"
+          columns={COLONNES}
+          rows={lignes(20)}
+          rowId={(l) => String(l.id)}
+          viewportHeight={260}
+          filterRow
+          selectedId={selection}
+          onSelect={(l) => setSelection(String(l.id))}
+          onDeleteKey={(l) => supprimees.push(String(l.id))}
+        />
+      )
+    }
+    render(<Pilotee />)
+
+    // Une ligne est déjà sélectionnée, comme au clic — c'est le cas que la garde doit distinguer :
+    // le focus est sur le champ de filtre, pas sur la grille ni sur une `row`.
+    await utilisateur.click(screen.getByLabelText('filtre nom'))
+    await utilisateur.keyboard('{Backspace}')
+    expect(supprimees).toEqual([])
+  })
+
   it('sans onSelect, aucune ligne n’est annoncée sélectionnable', () => {
     grille({ rows: lignes(3) })
     expect(screen.getAllByRole('row')[1]).not.toHaveAttribute('aria-selected')

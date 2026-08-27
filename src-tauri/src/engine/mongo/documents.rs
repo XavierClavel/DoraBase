@@ -143,6 +143,23 @@ pub fn insertion_lisible(collection: &str, document: &Document) -> String {
     )
 }
 
+/// Le filtre qui désigne le document à supprimer.
+///
+/// **Juste la clé, aucune détection de conflit sur une ancienne valeur** : `PendingDelete` n'en
+/// porte pas (voir `rows.rs`) — une ligne n'a qu'une seule colonne qui l'identifie, contrairement à
+/// une modification qui vise une colonne précise.
+pub fn filtre_de_suppression(cle_valeur: &str, cle_champ: &str) -> Document {
+    doc! { cle_champ: valeur_de_cle(cle_valeur) }
+}
+
+/// Le `deleteOne` lisible — le pendant de `insertion_lisible`.
+pub fn suppression_lisible(collection: &str, filtre: &Document) -> String {
+    format!(
+        "db.{collection}.deleteOne(\n  {}\n);",
+        Bson::Document(filtre.clone()).into_relaxed_extjson()
+    )
+}
+
 pub fn valeur_de_cle(texte: &str) -> Bson {
     if let Ok(oid) = texte.parse::<mongodb::bson::oid::ObjectId>() {
         return Bson::ObjectId(oid);
@@ -379,6 +396,24 @@ mod tests {
         );
         assert!(texte.starts_with("db.commandes.insertOne("), "{texte}");
         assert!(texte.contains("payee"), "{texte}");
+    }
+
+    #[test]
+    fn le_filtre_de_suppression_ne_porte_que_la_cle() {
+        // Les trois formes que `valeur_de_cle` reconnaît, comme pour une modification.
+        assert_eq!(filtre_de_suppression("42", "_id"), doc! { "_id": 42_i64 });
+        assert_eq!(
+            filtre_de_suppression("CMD-0001", "reference"),
+            doc! { "reference": "CMD-0001" }
+        );
+    }
+
+    #[test]
+    fn la_suppression_lisible_nomme_la_collection_et_le_filtre() {
+        let texte =
+            suppression_lisible("commandes", &filtre_de_suppression("CMD-0001", "reference"));
+        assert!(texte.starts_with("db.commandes.deleteOne("), "{texte}");
+        assert!(texte.contains("CMD-0001"), "{texte}");
     }
 
     fn colonne(nom: &str) -> ColumnInfo {

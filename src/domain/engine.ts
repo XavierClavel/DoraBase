@@ -211,6 +211,16 @@ export type ObjectCounts = { tables: number, views: number, functions: number, i
 export type ObjectKind = "table" | "view" | "function" | "index";
 
 /**
+ * Une ligne **existante à supprimer**, telle que `Suppr` ou la croix au survol du numéro de ligne
+ * la retiennent — un `DELETE`.
+ *
+ * **Pas d'`expected`**, contrairement à `PendingUpdate` : une ligne n'a qu'une seule colonne qui
+ * l'identifie. Zéro ligne affectée par le `DELETE` porte déjà toute la détection de conflit dont on
+ * a besoin — la ligne a changé, ou disparu, depuis la lecture.
+ */
+export type PendingDelete = { key: string, };
+
+/**
  * Une ligne à insérer, telle que le bouton « + » de la barre d'outils la retient.
  *
  * **Aucune clé attendue, et c'est la différence avec `PendingUpdate`** : une insertion ne vise pas
@@ -411,14 +421,18 @@ export type UpdatePlan = { schema: string, table: string,
  * aller-retour pour une information déjà affichée.
  *
  * Vide quand la table n'en a pas : un plan qui ne porte que des insertions reste valide, seules
- * les modifications en exigent une.
+ * les modifications et les suppressions en exigent une.
  */
 keyColumn: string, changes: Array<PendingUpdate>, 
 /**
  * Les lignes à ajouter. **`#[serde(default)]`** : un champ ajouté ne demande pas de cran de
  * migration, et un plan écrit par une version antérieure reste lisible.
  */
-inserts: Array<PendingInsert>, };
+inserts: Array<PendingInsert>, 
+/**
+ * Les lignes à supprimer. `#[serde(default)]`, même raison que `inserts`.
+ */
+deletes: Array<PendingDelete>, };
 
 /**
  * Une valeur de cellule, **typée** et non préformatée.

@@ -144,6 +144,23 @@ export function PendingPanel({
                   )}
                 </ul>
               </li>
+            ) : modification.sorte === 'suppression' ? (
+              <li key={modification.cle} className={styles.carte}>
+                <div className={styles.carteEntete}>
+                  <span className={styles.position}>
+                    ligne {modification.rang} · {modification.cle}
+                  </span>
+                  <button
+                    type="button"
+                    className={styles.retirer}
+                    aria-label={`Annuler la suppression de la ligne ${modification.rang}`}
+                    onClick={() => onRetirer(modification.cle, '')}
+                  >
+                    <Icon name="x" size={11} strokeWidth={2.4} />
+                  </button>
+                </div>
+                <p className={styles.vide}>sera supprimée</p>
+              </li>
             ) : (
               <li key={`${modification.cle}::${modification.column}`} className={styles.carte}>
                 <div className={styles.carteEntete}>

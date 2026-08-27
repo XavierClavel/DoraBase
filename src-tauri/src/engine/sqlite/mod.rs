@@ -582,6 +582,7 @@ mod tests_fichier {
             table: "ateliers".into(),
             key_column: "id".into(),
             inserts: Vec::new(),
+            deletes: Vec::new(),
             changes: vec![PendingUpdate {
                 key: "1".into(),
                 column: "ville".into(),
@@ -635,6 +636,7 @@ mod tests_fichier {
             table: "ateliers".into(),
             key_column: "id".into(),
             inserts: Vec::new(),
+            deletes: Vec::new(),
             changes: vec![PendingUpdate {
                 key: "2".into(),
                 column: "divers".into(),
@@ -654,6 +656,7 @@ mod tests_fichier {
             table: "ateliers".into(),
             key_column: "id".into(),
             inserts: Vec::new(),
+            deletes: Vec::new(),
             changes: vec![
                 PendingUpdate {
                     key: "1".into(),

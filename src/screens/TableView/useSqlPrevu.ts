@@ -3,6 +3,7 @@ import { previewUpdates } from '../../data/commandes'
 import type {
   ColumnInfo,
   DatabaseKey,
+  PendingDelete,
   PendingInsert,
   PendingUpdate,
   UpdatePlan,
@@ -10,7 +11,9 @@ import type {
 import {
   type EnAttente,
   estUneLigneAjoutee,
+  estUneLigneSupprimee,
   type LigneAjoutee,
+  type LigneSupprimee,
   type ModificationDeCellule,
   texteBrutDe,
 } from './modifications'
@@ -129,7 +132,18 @@ export function insertionDe(ligne: LigneAjoutee): PendingInsert {
 }
 
 /**
- * Le plan complet d'un modèle — modifications **et** lignes ajoutées.
+ * Une ligne marquée pour suppression traduite pour le moteur.
+ *
+ * **Aucune valeur attendue** : contrairement à `planDe`, une ligne n'a qu'une seule colonne qui
+ * l'identifie. Zéro ligne affectée par le `DELETE` porte déjà toute la détection de conflit dont on
+ * a besoin — la ligne a changé, ou disparu, depuis la lecture.
+ */
+export function suppressionDe(ligne: LigneSupprimee): PendingDelete {
+  return { key: ligne.cle }
+}
+
+/**
+ * Le plan complet d'un modèle — modifications, lignes ajoutées **et** lignes supprimées.
  *
  * **Exportée, et c'est le point de `11d` étendu** : la prévisualisation et l'application partent de
  * la même traduction. Deux conversions divergeraient, et l'écart tomberait sur les cas rares — une
@@ -146,5 +160,6 @@ export function planDuModele(
     keyColumn: cleColonne,
     changes: attente.filter((m) => m.sorte === 'cellule').map(planDe),
     inserts: attente.filter(estUneLigneAjoutee).map(insertionDe),
+    deletes: attente.filter(estUneLigneSupprimee).map(suppressionDe),
   }
 }

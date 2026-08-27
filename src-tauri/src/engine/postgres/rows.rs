@@ -597,15 +597,15 @@ pub struct Instruction {
 /// modification est une entrée. La lisibilité du dernier écran avant écriture passe devant la
 /// concision.
 pub fn instructions_de(plan: &crate::engine::UpdatePlan) -> Result<Vec<Instruction>, EngineError> {
-    if plan.changes.is_empty() && plan.inserts.is_empty() {
+    if plan.changes.is_empty() && plan.inserts.is_empty() && plan.deletes.is_empty() {
         return Err(EngineError::local(
             "aucune modification à appliquer".to_owned(),
         ));
     }
-    // **La clé n'est exigée que par les modifications.** Une insertion ne vise aucune ligne : une
-    // table sans clé primaire refuse l'`UPDATE` et accepte l'`INSERT`, et confondre les deux
-    // interdirait d'ajouter une ligne là où c'est parfaitement possible.
-    if !plan.changes.is_empty() && plan.key_column.is_empty() {
+    // **La clé n'est exigée que par les modifications et les suppressions.** Une insertion ne vise
+    // aucune ligne : une table sans clé primaire refuse l'`UPDATE`/`DELETE` et accepte l'`INSERT`,
+    // et confondre les deux interdirait d'ajouter une ligne là où c'est parfaitement possible.
+    if (!plan.changes.is_empty() || !plan.deletes.is_empty()) && plan.key_column.is_empty() {
         // Sans clé, le `WHERE` viserait toutes les lignes. Refuser plutôt que produire un SQL qui
         // récrirait la table entière.
         return Err(EngineError::local(
@@ -649,6 +649,19 @@ pub fn instructions_de(plan: &crate::engine::UpdatePlan) -> Result<Vec<Instructi
         });
     }
 
+    // **Les suppressions viennent en dernier**, même raison que les insertions : l'ordre du panneau,
+    // qui se lit du haut vers le bas. Pas de valeur attendue dans le `WHERE` — `PendingDelete` n'en
+    // porte pas — mais `RETURNING 1` détecte quand même le conflit : zéro ligne rendue signifie que
+    // la ligne a déjà changé ou disparu depuis la lecture.
+    for suppression in &plan.deletes {
+        instructions.push(Instruction {
+            sql: format!(
+                "DELETE FROM {cible} WHERE {cle} = {} RETURNING 1",
+                litteral_saisi(Some(&suppression.key)),
+            ),
+        });
+    }
+
     Ok(instructions)
 }
 
@@ -687,8 +700,8 @@ fn insert_saisi(cible: &str, insertion: &crate::engine::PendingInsert) -> String
 /// Le patch inverse n'est pas un second générateur : c'est le même plan, valeurs et attendus
 /// échangés. Deux chemins de génération divergeraient — et un patch inverse qui ne défait pas
 /// exactement ce qui a été fait est pire qu'absent.
-/// **Les insertions n'y sont pas** : voir `engine::rows::avertissement_insertions`, qui dit pourquoi
-/// elles ne se défont pas et le fait dire au patch.
+/// **Les insertions ni les suppressions n'y sont pas** : voir `engine::rows::avertissements`, qui
+/// dit pourquoi elles ne se défont pas et le fait dire au patch.
 pub fn instructions_inverses(
     plan: &crate::engine::UpdatePlan,
 ) -> Result<Vec<Instruction>, EngineError> {
@@ -712,15 +725,17 @@ pub fn instructions_inverses(
             })
             .collect(),
         inserts: Vec::new(),
+        deletes: Vec::new(),
     };
     instructions_de(&inverse)
 }
 
-/// Le patch inverse en texte : l'avertissement des insertions, puis les `UPDATE` qui défont.
+/// Le patch inverse en texte : les avertissements d'insertions et de suppressions, puis les
+/// `UPDATE` qui défont.
 pub fn patch_inverse_de(plan: &crate::engine::UpdatePlan) -> Result<String, EngineError> {
     let instructions = instructions_inverses(plan)?;
     Ok(crate::engine::rows::patch_inverse(
-        crate::engine::rows::avertissement_insertions(plan.inserts.len()),
+        crate::engine::rows::avertissements(plan.inserts.len(), plan.deletes.len()),
         (!instructions.is_empty()).then(|| texte_de(&instructions)),
     ))
 }
@@ -1029,6 +1044,7 @@ mod tests_previsualisation {
             table: "orders".into(),
             key_column: "id".into(),
             inserts: Vec::new(),
+            deletes: Vec::new(),
             changes,
         }
     }
@@ -1262,6 +1278,83 @@ mod tests_previsualisation {
         // chose : il ne reste que la phrase qui dit pourquoi il n'y a rien.
         assert!(!patch.contains("BEGIN"));
         assert!(patch.starts_with("-- 1 ligne ajoutée"));
+    }
+
+    fn plan_avec_suppressions(deletes: Vec<crate::engine::PendingDelete>) -> UpdatePlan {
+        let mut p = plan(Vec::new());
+        p.deletes = deletes;
+        p
+    }
+
+    fn suppression(key: &str) -> crate::engine::PendingDelete {
+        crate::engine::PendingDelete { key: key.into() }
+    }
+
+    #[test]
+    fn une_ligne_marquee_donne_un_delete_dans_la_transaction() {
+        let sql = updates_de(&plan_avec_suppressions(vec![suppression("184219")]))
+            .expect("prévisualisation");
+        let lignes: Vec<&str> = sql.lines().collect();
+        assert_eq!(lignes[0], "BEGIN;");
+        assert_eq!(lignes[lignes.len() - 1], "COMMIT;");
+        assert_eq!(lignes.len(), 3);
+        // Pas de valeur attendue dans le `WHERE` — `PendingDelete` n'en porte pas — mais
+        // `RETURNING 1` détecte quand même le conflit : zéro ligne rendue signifie que la ligne a
+        // déjà changé ou disparu depuis la lecture.
+        assert_eq!(
+            lignes[1],
+            r#"DELETE FROM "public"."orders" WHERE "id" = '184219' RETURNING 1;"#
+        );
+    }
+
+    #[test]
+    fn les_suppressions_viennent_apres_les_modifications_et_les_insertions() {
+        let mut p = plan(vec![changement("1", "status", Some("x"))]);
+        p.inserts = vec![insertion(&[("status", Some("y"))])];
+        p.deletes = vec![suppression("2")];
+        let sql = updates_de(&p).expect("prévisualisation");
+        let lignes: Vec<&str> = sql.lines().collect();
+        assert!(lignes[1].starts_with("UPDATE"));
+        assert!(lignes[2].starts_with("INSERT"));
+        assert!(lignes[3].starts_with("DELETE"));
+    }
+
+    #[test]
+    fn sans_cle_primaire_une_suppression_est_refusee() {
+        let mut p = plan_avec_suppressions(vec![suppression("1")]);
+        p.key_column = String::new();
+        // Même raison que pour une modification : sans clé, le `WHERE` viserait toutes les lignes.
+        assert!(updates_de(&p).is_err());
+    }
+
+    #[test]
+    fn une_table_sans_cle_primaire_accepte_toujours_une_insertion_seule() {
+        // Une suppression exige une clé, une insertion non : les deux ne doivent pas se confondre
+        // dans le refus.
+        let mut p = plan_avec_insertions(vec![insertion(&[("nom", Some("x"))])]);
+        p.key_column = String::new();
+        assert!(updates_de(&p).is_ok());
+    }
+
+    #[test]
+    fn le_patch_inverse_annonce_les_suppressions_sans_les_defaire() {
+        let patch =
+            patch_inverse_de(&plan_avec_suppressions(vec![suppression("1")])).expect("patch");
+        // Même arbitrage que pour les insertions : DoraBase n'a gardé que la clé, pas le reste de
+        // la ligne, donc rien à réinsérer pour la restaurer.
+        assert!(patch.starts_with("-- 1 ligne supprimée"));
+        assert!(!patch.contains("INSERT"));
+        assert!(!patch.contains("BEGIN"));
+    }
+
+    #[test]
+    fn le_patch_inverse_annonce_les_deux_quand_il_y_a_insertions_et_suppressions() {
+        let mut p = plan(Vec::new());
+        p.inserts = vec![insertion(&[("status", Some("y"))])];
+        p.deletes = vec![suppression("1")];
+        let patch = patch_inverse_de(&p).expect("patch");
+        assert!(patch.contains("ligne ajoutée"));
+        assert!(patch.contains("ligne supprimée"));
     }
 }
 

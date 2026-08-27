@@ -50,6 +50,51 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Le conteneur de la gouttière : le numéro, et la croix de suppression qui le remplace au survol
+   (`A6`). `position: relative` en fait le référentiel de la croix, posée en absolu par-dessus. */
+.gouttiereWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* Motif repris de `TreeRow` : cachée par défaut, révélée au survol ou au focus — jamais un survol
+   inventé ailleurs que sur ce qui ouvre déjà un geste (voir AGENTS.md, « Aucun état de survol »). */
+.supprimerLigne {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  visibility: hidden;
+  background: var(--hover-row);
+  border: none;
+  color: var(--ink-4);
+  cursor: pointer;
+}
+
+.gouttiereWrap:hover .supprimerLigne,
+.supprimerLigne:focus-visible {
+  visibility: visible;
+}
+
+.gouttiereWrap:hover .gouttiere {
+  visibility: hidden;
+}
+
+/* Une ligne déjà marquée garde sa croix visible en permanence : la marque ne doit pas dépendre du
+   survol pour se voir. */
+.gouttiereSupprimee .supprimerLigne {
+  visibility: visible;
+}
+
+.gouttiereSupprimee .gouttiere {
+  visibility: hidden;
+}
+
 /* « défaut » : ce que la base mettra dans une colonne qu'on n'a pas remplie. Atténué comme `NULL`,
    et en italique pour qu'on ne le prenne pas pour une valeur qu'on aurait tapée. */
 .defaut {
