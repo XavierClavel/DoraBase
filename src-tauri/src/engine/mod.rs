@@ -42,8 +42,9 @@ pub use introspection::{
     RelationDirection, RowCount, SchemaInfo, TableDetail, TableSummary, TriggerInfo, TypeCategory,
 };
 pub use rows::{
-    ApplyOutcome, Filter, FilterOperator, PendingInsert, PendingInsertValue, PendingUpdate,
-    QueryResult, RowLimit, RowQuery, RowWindow, SortDirection, SortKey, UpdatePlan, Value,
+    ApplyOutcome, Filter, FilterOperator, PendingDelete, PendingInsert, PendingInsertValue,
+    PendingUpdate, QueryResult, RowLimit, RowQuery, RowWindow, SortDirection, SortKey, UpdatePlan,
+    Value,
 };
 
 /// Ce que chaque moteur doit savoir faire.

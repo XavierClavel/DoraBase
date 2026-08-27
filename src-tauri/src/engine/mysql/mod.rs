@@ -735,6 +735,7 @@ mod tests_db {
             table: "ateliers".to_owned(),
             key_column: "nom".to_owned(),
             inserts: Vec::new(),
+            deletes: Vec::new(),
             changes: vec![PendingUpdate {
                 key: reference.clone(),
                 column: "ville".to_owned(),
@@ -782,6 +783,7 @@ mod tests_db {
             table: "ateliers".to_owned(),
             key_column: "nom".to_owned(),
             inserts: Vec::new(),
+            deletes: Vec::new(),
             changes: vec![PendingUpdate {
                 key: reference.clone(),
                 column: "ville".to_owned(),
@@ -802,6 +804,7 @@ mod tests_db {
             table: "ateliers".to_owned(),
             key_column: "nom".to_owned(),
             inserts: Vec::new(),
+            deletes: Vec::new(),
             changes: vec![
                 PendingUpdate {
                     key: reference.clone(),
@@ -857,6 +860,7 @@ mod tests_db {
             table: "journal_myisam".to_owned(),
             key_column: "id".to_owned(),
             inserts: Vec::new(),
+            deletes: Vec::new(),
             changes: vec![PendingUpdate {
                 key: "99".to_owned(),
                 column: "message".to_owned(),

@@ -256,3 +256,12 @@
   border-bottom: 5px solid var(--warn);
   pointer-events: none;
 }
+
+/* Une ligne marquée pour suppression (`A6`) : grisée, en attente d'« Appliquer ». `opacity` et non
+   un `text-decoration: line-through` — un `<button>` de cellule (boîte inline atomique) n'hériterait
+   pas forcément d'un barré posé sur son ancêtre. Réutilise les jetons « grisé » du projet, pas de
+   nouvelle couleur. */
+.rowDeleted {
+  background: var(--muted);
+  opacity: 0.55;
+}

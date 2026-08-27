@@ -21,8 +21,10 @@ import {
   annulerLaDerniere,
   type EnAttente,
   estEditableALAjout,
+  estMarqueePourSuppression,
   lignesAjoutees,
   lignesModifiees,
+  marquerPourSuppression,
   modificationDe,
   raisonDuRefus,
   retenir,
@@ -305,12 +307,51 @@ export function TableView({
         width: LARGEUR_GOUTTIERE,
         // **`+2` plutôt qu'un rang** : une ligne ajoutée n'a pas de place dans la table, seulement
         // un ordre d'arrivée. Lui donner un rang la ferait passer pour la 501ᵉ ligne lue.
-        cell: (ligne) =>
-          ligne.sorte === 'ajoutee' ? (
-            <span className={cx(styles.gouttiere, styles.gouttiereAjoutee)}>+{ligne.rang}</span>
-          ) : (
-            <span className={styles.gouttiere}>{ligne.rang}</span>
-          ),
+        //
+        // **La croix de suppression remplace le numéro au survol**, motif repris de `TreeRow` :
+        // `visibility: hidden` par défaut, révélée par `:hover`/`:focus-within`. Une ligne déjà
+        // marquée la garde visible en permanence — la marque ne doit pas dépendre du survol pour se
+        // voir.
+        cell: (ligne) => {
+          const cle = cleDe(ligne)
+          const supprimee = cle !== null && estMarqueePourSuppression(attente, cle)
+          const surSuppression =
+            edition && onAttenteChange !== undefined && cle !== null
+              ? () => onAttenteChange(marquerPourSuppression(attente, cle, ligne.rang))
+              : undefined
+          return (
+            <span className={cx(styles.gouttiereWrap, supprimee && styles.gouttiereSupprimee)}>
+              <span
+                className={cx(
+                  styles.gouttiere,
+                  ligne.sorte === 'ajoutee' && styles.gouttiereAjoutee,
+                )}
+              >
+                {ligne.sorte === 'ajoutee' ? `+${ligne.rang}` : ligne.rang}
+              </span>
+              {surSuppression && (
+                <button
+                  type="button"
+                  className={styles.supprimerLigne}
+                  // **« Retirer la nouvelle ligne » pour une ligne ajoutée**, jamais « Supprimer » :
+                  // même vocabulaire que la croix du panneau (`PendingPanel`), et surtout un nom
+                  // distinct de celui d'une ligne lue — sans quoi une ligne ajoutée « +1 » et la
+                  // première ligne lue partageraient le même nom accessible « …la ligne 1 ».
+                  aria-label={
+                    ligne.sorte === 'ajoutee'
+                      ? `Retirer la nouvelle ligne ${ligne.rang}`
+                      : supprimee
+                        ? `Annuler la suppression de la ligne ${ligne.rang}`
+                        : `Supprimer la ligne ${ligne.rang}`
+                  }
+                  onClick={surSuppression}
+                >
+                  <Icon name="x" size={11} strokeWidth={2.4} />
+                </button>
+              )}
+            </span>
+          )
+        },
       },
       // Masquer une colonne ne change pas la requête : `SELECT *` reste, et la colonne est
       // retirée du **rendu**. Restreindre la projection rendrait le SQL affiché dépendant d'un
@@ -426,11 +467,14 @@ export function TableView({
               // clavier vient gratuitement — `Tab` pour parcourir, `↩` ou espace pour ouvrir — là
               // où un gestionnaire de double-clic n'a aucun équivalent au clavier.
               const refusDeLaColonne = raisonDuRefus(colonne)
-              if (refusDeLaColonne !== null || cle === null) {
+              const supprimee = cle !== null && estMarqueePourSuppression(attente, cle)
+              if (refusDeLaColonne !== null || cle === null || supprimee) {
                 const raison =
                   cle === null
                     ? 'Cette table n’a pas de clé primaire : DoraBase ne saurait pas quelle ligne mettre à jour.'
-                    : refusDeLaColonne
+                    : supprimee
+                      ? 'Cette ligne est marquée pour suppression : elle ne se modifie plus.'
+                      : refusDeLaColonne
                 return (
                   <span className={cx(classe, styles.nonEditable)} title={raison ?? undefined}>
                     {affichee}
@@ -513,14 +557,24 @@ export function TableView({
             rowId={(ligne) => (ligne.sorte === 'ajoutee' ? ligne.cle : String(ligne.rang))}
             {...(edition
               ? {
-                  // Les teintes de `11b` : une ligne qui porte une modification, une cellule qui en
-                  // est une. Elles lisent le **même** modèle que le compte du bandeau.
+                  // Les teintes de `11b`/`A6` : une ligne qui porte une modification, une marque de
+                  // suppression, une cellule modifiée. Elles lisent le **même** modèle que le compte
+                  // du bandeau. La marque de suppression prime — une fois marquée, une ligne n'a plus
+                  // de modification de cellule à côté (`marquerPourSuppression` les efface).
                   rowTint: (ligne: Ligne) => {
                     const cle = cleDe(ligne)
-                    return cle !== null && lignesModifiees(attente).has(cle)
-                      ? 'modified'
-                      : undefined
+                    if (cle === null) return undefined
+                    if (estMarqueePourSuppression(attente, cle)) return 'deleted'
+                    return lignesModifiees(attente).has(cle) ? 'modified' : undefined
                   },
+                  onDeleteKey:
+                    onAttenteChange !== undefined
+                      ? (ligne: Ligne) => {
+                          const cle = cleDe(ligne)
+                          if (cle === null) return
+                          onAttenteChange(marquerPourSuppression(attente, cle, ligne.rang))
+                        }
+                      : undefined,
                   cellTint: (ligne: Ligne, column: string) => {
                     const cle = cleDe(ligne)
                     if (cle === null) return undefined

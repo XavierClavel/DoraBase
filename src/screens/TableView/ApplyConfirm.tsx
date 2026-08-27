@@ -35,17 +35,20 @@ export function ApplyConfirm({
   const lignes = new Set(attente.map((modification) => modification.cle)).size
   const colonnes = [
     ...new Set(
-      attente.flatMap((modification) =>
-        modification.sorte === 'cellule'
-          ? [modification.column]
-          : Object.keys(modification.valeurs),
-      ),
+      attente.flatMap((modification) => {
+        if (modification.sorte === 'cellule') return [modification.column]
+        // Une suppression ne touche aucune colonne en particulier : elle emporte la ligne entière.
+        if (modification.sorte === 'suppression') return []
+        return Object.keys(modification.valeurs)
+      }),
     ),
   ]
-  // **Les deux verbes sont comptés séparément**, et c'est le dernier écran avant une écriture en
-  // production : « 3 UPDATE » sur un lot qui insère deux lignes dirait le contraire de ce qui part.
+  // **Les trois verbes sont comptés séparément**, et c'est le dernier écran avant une écriture en
+  // production : « 3 UPDATE » sur un lot qui insère deux lignes et en supprime une dirait le
+  // contraire de ce qui part.
   const ajouts = attente.filter((modification) => modification.sorte === 'ligne').length
-  const misesAJour = attente.length - ajouts
+  const suppressions = attente.filter((modification) => modification.sorte === 'suppression').length
+  const misesAJour = attente.length - ajouts - suppressions
 
   return (
     <Modal title="Écrire en production" icon="warn" nested onClose={onClose}>
@@ -68,7 +71,7 @@ export function ApplyConfirm({
           </div>
           <div className={styles.entree}>
             <dt>Instructions</dt>
-            <dd>{resumeDesInstructions(misesAJour, ajouts)}, en une transaction</dd>
+            <dd>{resumeDesInstructions(misesAJour, ajouts, suppressions)}, en une transaction</dd>
           </div>
         </dl>
         {/* Ce que `11d` livre vraiment : le patch inverse est rendu après l'écriture et copiable,
@@ -94,9 +97,10 @@ export function ApplyConfirm({
 }
 
 /** « 2 UPDATE et 1 INSERT » — ce qui part vraiment, sans nommer un verbe absent. */
-function resumeDesInstructions(misesAJour: number, ajouts: number): string {
+function resumeDesInstructions(misesAJour: number, ajouts: number, suppressions: number): string {
   const morceaux: string[] = []
   if (misesAJour > 0) morceaux.push(`${misesAJour} UPDATE`)
   if (ajouts > 0) morceaux.push(`${ajouts} INSERT`)
+  if (suppressions > 0) morceaux.push(`${suppressions} DELETE`)
   return morceaux.join(' et ')
 }
