@@ -15,9 +15,9 @@ use super::error::traduire;
 /// Le genre de déploiement, constaté à la connexion.
 ///
 /// **`18f` en dépend** : sans jeu de réplicas, MongoDB ne sait pas ouvrir de transaction, donc la
-/// promesse « tout ou rien » de `06a` est intenable. Le constater à l'ouverture permet de le dire
-/// avant qu'on édite une cellule, plutôt qu'au moment d'appliquer — la logique de « lecture seule »
-/// de `05a`.
+/// promesse « tout ou rien » de `06a` est intenable pour un **lot de plusieurs écritures**. Une
+/// écriture seule n'en a pas besoin — elle est déjà atomique par elle-même — et `18f` ne consulte
+/// donc `transactions_possibles()` que lorsqu'il y a plus d'une opération en attente.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Deploiement {
     /// Un `mongod` seul. **Pas de transaction.**

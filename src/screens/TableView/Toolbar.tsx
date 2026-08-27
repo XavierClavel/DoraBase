@@ -45,6 +45,11 @@ type ToolbarProps = {
    */
   onAjouterUneLigne?: () => void
   /**
+   * Le nom du geste du bouton `+` — « Ajouter une ligne » par défaut, « Nouveau document » sur une
+   * table NoSQL (`18g`), dont le `+` ouvre un éditeur JSON plutôt qu'une ligne vide.
+   */
+  libelleAjouter?: string
+  /**
    * Une relecture est en cours : le bouton tourne et devient inerte.
    *
    * **Les deux vont ensemble.** Un bouton qui tourne mais reste cliquable lance trois relectures dont
@@ -110,6 +115,7 @@ export function Toolbar({
   sql,
   onRefresh,
   onAjouterUneLigne,
+  libelleAjouter,
   enCours = false,
 }: ToolbarProps) {
   const t = useT()
@@ -183,7 +189,7 @@ export function Toolbar({
           type="button"
           className={styles.carre}
           onClick={onAjouterUneLigne}
-          aria-label={t('tableView.toolbar.addRow')}
+          aria-label={libelleAjouter ?? t('tableView.toolbar.addRow')}
         >
           <Icon name="plus" size={14} strokeWidth={2.1} />
         </button>

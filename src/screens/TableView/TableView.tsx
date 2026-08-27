@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
+import type { Engine } from '../../domain/config'
 import type {
   ColumnInfo,
   DatabaseKey,
@@ -15,6 +16,8 @@ import { useT } from '../../i18n/LanguageContext'
 import { cx } from '../../ui/cx'
 import { type GridColumn, VirtualGrid } from '../../ui/VirtualGrid/VirtualGrid'
 import { apercuDeLaSaisie, estNumerique, rendreValeur } from './cellule'
+import { DocumentJsonModal } from './DocumentJsonModal'
+import { diffCreation, diffDocument, documentDepuisTexte, documentJson } from './documentJson'
 import { EditableCell } from './EditableCell'
 import { FilterCell } from './FilterCell'
 import {
@@ -25,6 +28,7 @@ import {
   estMarqueePourSuppression,
   lignesAjoutees,
   lignesModifiees,
+  type Modification,
   marquerPourSuppression,
   modificationDe,
   raisonDuRefus,
@@ -48,6 +52,12 @@ type TableViewProps = {
   cle: DatabaseKey
   schema: string
   table: string
+  /**
+   * Le moteur de la base ouverte — pour la seule différence que le contrat n'absorbe pas :
+   * l'édition d'un document entier en JSON, propre au NoSQL (`18g`). Absent, la grille se comporte
+   * comme avant : aucune icône de plus, aucun geste de plus.
+   */
+  moteur?: Engine
   /** Les colonnes du catalogue — elles nomment les en-têtes et donnent l'ordre. */
   columns: readonly ColumnInfo[]
   passerelle?: PasserelleLignes
@@ -124,6 +134,11 @@ type LigneLue = { sorte: 'lue'; rang: number; valeurs: readonly Value[] }
 const LARGEUR_COLONNE = 130
 /** La gouttière `#`, à 30 px dans le mockup. */
 const LARGEUR_GOUTTIERE = 30
+/**
+ * La gouttière d'une table NoSQL (`18g`) : la croix de suppression et l'icône « éditer en JSON »
+ * doivent tenir côte à côte au survol, ce que 30 px ne permet pas.
+ */
+const LARGEUR_GOUTTIERE_MONGO = 48
 
 /**
  * `A5` : les lignes d'une table.
@@ -141,6 +156,7 @@ export function TableView({
   cle,
   schema,
   table,
+  moteur,
   columns,
   passerelle,
   onEtatChange,
@@ -165,6 +181,11 @@ export function TableView({
   // ensemble vide, quel que soit le nombre de colonnes qu'elle finira par avoir.
   const [masquees, setMasquees] = useState<ReadonlySet<string>>(new Set())
   const [enEdition, setEnEdition] = useState<EnEdition | null>(null)
+  // Le document ouvert dans l'éditeur JSON (`18g`) : une ligne existante à éditer, ou `'creer'` pour
+  // le geste du `+` sur une base NoSQL. Un seul état — les deux ne peuvent pas être ouverts ensemble.
+  const [documentJsonOuvert, setDocumentJsonOuvert] = useState<
+    { sorte: 'editer'; cle: string; rang: number } | { sorte: 'creer' } | null
+  >(null)
   const hauteur = useHauteurDisponible()
   // La sélection est **pilotée par l'écran** : le panneau de ligne et ses flèches vivent au-dessus
   // de cette vue, et deux copies du même rang divergeraient.
@@ -301,25 +322,80 @@ export function TableView({
     [rangDeLaCle],
   )
 
+  /** Le document JSON d'une ligne lue, retrouvée par sa clé — `null` si elle n'est plus dans la fenêtre. */
+  function documentDeLigne(cle: string): string | null {
+    const ligne = lignes.find((l) => cleDe(l) === cle)
+    return ligne ? documentJson(columns, ligne.valeurs) : null
+  }
+
+  /**
+   * Les colonnes réellement rendues : celles du catalogue, plus celles qu'une ligne ajoutée
+   * introduit et que l'échantillonnage n'avait pas vues (`18g`) — un champ neuf tapé dans
+   * l'éditeur JSON d'un document mongo n'existe encore dans aucun document échantillonné, donc
+   * `columns` ne le connaît pas. Sans cette extension, la valeur saisie serait invisible dans la
+   * grille alors qu'elle apparaît déjà dans le panneau « modifications en attente » et dans le
+   * SQL prévu — deux vérités qui divergeraient.
+   *
+   * **`columns` reste la référence partout ailleurs** — `rangDeLaCle`, `documentDeLigne`, le diff
+   * d'une ligne existante : ces colonnes synthétiques n'existent que pour l'ajout en cours, jamais
+   * pour un document déjà lu.
+   */
+  const colonnesEffectives: readonly ColumnInfo[] = useMemo(() => {
+    const connues = new Set(columns.map((colonne) => colonne.name))
+    const nouvelles: ColumnInfo[] = []
+    for (const ligne of lignesAjoutees(attente)) {
+      for (const nom of Object.keys(ligne.valeurs)) {
+        if (connues.has(nom) || nouvelles.some((colonne) => colonne.name === nom)) continue
+        nouvelles.push({
+          position: columns.length + nouvelles.length + 1,
+          name: nom,
+          typeName: 'mixed',
+          category: 'other',
+          nullable: true,
+          default: null,
+          identity: null,
+          key: null,
+          comment: null,
+          // `0`, pas `null` : `null` veut dire « la question ne se pose pas » (un moteur
+          // relationnel, où une colonne est déclarée pour toutes les lignes). Ici la question se
+          // pose, et la réponse est connue — aucun document lu n'a encore ce champ.
+          frequency: 0,
+        })
+      }
+    }
+    return nouvelles.length === 0 ? columns : [...columns, ...nouvelles]
+  }, [columns, attente])
+
   const colonnes: GridColumn<Ligne>[] = useMemo(
     () => [
       {
         key: '#',
         header: '#',
-        width: LARGEUR_GOUTTIERE,
+        width: moteur === 'mongodb' ? LARGEUR_GOUTTIERE_MONGO : LARGEUR_GOUTTIERE,
         // **`+2` plutôt qu'un rang** : une ligne ajoutée n'a pas de place dans la table, seulement
         // un ordre d'arrivée. Lui donner un rang la ferait passer pour la 501ᵉ ligne lue.
         //
-        // **La croix de suppression remplace le numéro au survol**, motif repris de `TreeRow` :
+        // **Les actions remplacent le numéro au survol**, motif repris de `TreeRow` :
         // `visibility: hidden` par défaut, révélée par `:hover`/`:focus-within`. Une ligne déjà
-        // marquée la garde visible en permanence — la marque ne doit pas dépendre du survol pour se
-        // voir.
+        // marquée pour suppression les garde visibles en permanence — la marque ne doit pas
+        // dépendre du survol pour se voir.
         cell: (ligne) => {
           const cle = cleDe(ligne)
           const supprimee = cle !== null && estMarqueePourSuppression(attente, cle)
           const surSuppression =
             edition && onAttenteChange !== undefined && cle !== null
               ? () => onAttenteChange(marquerPourSuppression(attente, cle, ligne.rang))
+              : undefined
+          // **Seulement une ligne lue, jamais une ligne ajoutée** : celle-ci se compose déjà en
+          // JSON depuis le `+` (`18g`), et n'a pas de document d'origine à comparer.
+          const surEditionJson =
+            moteur === 'mongodb' &&
+            edition &&
+            onAttenteChange !== undefined &&
+            ligne.sorte === 'lue' &&
+            cle !== null &&
+            !supprimee
+              ? () => setDocumentJsonOuvert({ sorte: 'editer', cle, rang: ligne.rang })
               : undefined
           return (
             <span className={cx(styles.gouttiereWrap, supprimee && styles.gouttiereSupprimee)}>
@@ -331,25 +407,40 @@ export function TableView({
               >
                 {ligne.sorte === 'ajoutee' ? `+${ligne.rang}` : ligne.rang}
               </span>
-              {surSuppression && (
-                <button
-                  type="button"
-                  className={styles.supprimerLigne}
-                  // **« Retirer la nouvelle ligne » pour une ligne ajoutée**, jamais « Supprimer » :
-                  // même vocabulaire que la croix du panneau (`PendingPanel`), et surtout un nom
-                  // distinct de celui d'une ligne lue — sans quoi une ligne ajoutée « +1 » et la
-                  // première ligne lue partageraient le même nom accessible « …la ligne 1 ».
-                  aria-label={
-                    ligne.sorte === 'ajoutee'
-                      ? t('tableView.grid.removeNewRow', { rang: ligne.rang })
-                      : supprimee
-                        ? t('tableView.grid.cancelDeletion', { rang: ligne.rang })
-                        : t('tableView.grid.deleteRow', { rang: ligne.rang })
-                  }
-                  onClick={surSuppression}
-                >
-                  <Icon name="x" size={11} strokeWidth={2.4} />
-                </button>
+              {(surSuppression || surEditionJson) && (
+                <span className={styles.actions}>
+                  {surEditionJson && (
+                    <button
+                      type="button"
+                      className={styles.editerDocument}
+                      aria-label={t('tableView.grid.editRowJson', { rang: ligne.rang })}
+                      onClick={surEditionJson}
+                    >
+                      <Icon name="json" size={11} strokeWidth={2.2} />
+                    </button>
+                  )}
+                  {surSuppression && (
+                    <button
+                      type="button"
+                      className={styles.supprimerLigne}
+                      // **« Retirer la nouvelle ligne » pour une ligne ajoutée**, jamais
+                      // « Supprimer » : même vocabulaire que la croix du panneau (`PendingPanel`), et
+                      // surtout un nom distinct de celui d'une ligne lue — sans quoi une ligne
+                      // ajoutée « +1 » et la première ligne lue partageraient le même nom accessible
+                      // « …la ligne 1 ».
+                      aria-label={
+                        ligne.sorte === 'ajoutee'
+                          ? t('tableView.grid.removeNewRow', { rang: ligne.rang })
+                          : supprimee
+                            ? t('tableView.grid.cancelDeletion', { rang: ligne.rang })
+                            : t('tableView.grid.deleteRow', { rang: ligne.rang })
+                      }
+                      onClick={surSuppression}
+                    >
+                      <Icon name="x" size={11} strokeWidth={2.4} />
+                    </button>
+                  )}
+                </span>
               )}
             </span>
           )
@@ -358,8 +449,11 @@ export function TableView({
       // Masquer une colonne ne change pas la requête : `SELECT *` reste, et la colonne est
       // retirée du **rendu**. Restreindre la projection rendrait le SQL affiché dépendant d'un
       // réglage d'affichage, ce qui est déroutant dans un client de bases. Le rang, lui, reste
-      // celui du catalogue — c'est l'indice de la valeur dans la ligne reçue.
-      ...columns
+      // celui du catalogue — c'est l'indice de la valeur dans la ligne reçue. Au-delà de
+      // `columns.length`, il ne désigne plus rien dans `ligne.valeurs` d'une ligne **lue** — une
+      // colonne synthétique de `colonnesEffectives` n'existe encore que pour l'ajout en cours, et
+      // `valeur === undefined` s'affiche déjà comme une cellule vide.
+      ...colonnesEffectives
         .map((colonne, rang) => ({ colonne, rang }))
         .filter(({ colonne }) => !masquees.has(colonne.name))
         .map(({ colonne, rang }) => {
@@ -498,7 +592,7 @@ export function TableView({
         }),
     ],
     [
-      columns,
+      colonnesEffectives,
       filters,
       sort,
       operateurs,
@@ -510,6 +604,7 @@ export function TableView({
       cleDe,
       onAttenteChange,
       t,
+      moteur,
     ],
   )
 
@@ -523,7 +618,7 @@ export function TableView({
         // un seul état, deux commandes.
         onRemoveFilter={(column) => setFilters((precedent) => poserFiltre(precedent, column, null))}
         sort={sort}
-        columns={columns}
+        columns={colonnesEffectives}
         masquees={masquees}
         onToggleColonne={(name) =>
           setMasquees((precedent) => {
@@ -534,11 +629,17 @@ export function TableView({
           })
         }
         sql={fenetre?.sql ?? null}
+        // **Le `+` s'adapte au moteur, il ne s'ajoute pas.** Sur MongoDB, poser une ligne vide
+        // éditée cellule par cellule n'a pas de sens sans colonnes déclarées : le geste ouvre
+        // directement l'éditeur JSON (`18g`), qui compose le document entier d'un coup.
         onAjouterUneLigne={
           edition && onAttenteChange !== undefined
-            ? () => onAttenteChange(ajouterUneLigne(attente))
+            ? moteur === 'mongodb'
+              ? () => setDocumentJsonOuvert({ sorte: 'creer' })
+              : () => onAttenteChange(ajouterUneLigne(attente))
             : undefined
         }
+        libelleAjouter={moteur === 'mongodb' ? t('tableView.documentJson.createTitle') : undefined}
         onRefresh={() => {
           relire()
           onRelireLaStructure?.()
@@ -606,6 +707,58 @@ export function TableView({
           />
         </div>
       </div>
+      {documentJsonOuvert && onAttenteChange !== undefined && (
+        <DocumentJsonModal
+          titre={
+            documentJsonOuvert.sorte === 'creer'
+              ? t('tableView.documentJson.createTitle')
+              : t('tableView.documentJson.editTitle')
+          }
+          texteInitial={
+            documentJsonOuvert.sorte === 'creer'
+              ? '{}'
+              : (documentDeLigne(documentJsonOuvert.cle) ?? '{}')
+          }
+          onFermer={() => setDocumentJsonOuvert(null)}
+          onEnregistrer={(texte) => {
+            const analyse = documentDepuisTexte(texte, t)
+            if (!analyse.ok) return analyse.erreur
+            if (documentJsonOuvert.sorte === 'creer') {
+              const diff = diffCreation(columns, analyse.valeur, t)
+              if (!diff.ok) return diff.erreur
+              const avecLaLigne = ajouterUneLigne(attente)
+              const nouvelle = lignesAjoutees(avecLaLigne).at(-1)
+              if (!nouvelle) return null
+              const complete = Object.entries(diff.valeurs).reduce<Modification[]>(
+                (courante, [colonne, saisie]) =>
+                  saisirDansLaLigne(courante, nouvelle.cle, colonne, saisie),
+                avecLaLigne,
+              )
+              onAttenteChange(complete)
+              setDocumentJsonOuvert(null)
+              return null
+            }
+            const ligne = lignes.find((l) => cleDe(l) === documentJsonOuvert.cle)
+            if (!ligne) return null
+            const diff = diffDocument(
+              columns,
+              ligne.valeurs,
+              ligne.rang,
+              documentJsonOuvert.cle,
+              analyse.valeur,
+              t,
+            )
+            if (!diff.ok) return diff.erreur
+            const complete = diff.modifications.reduce<EnAttente>(
+              (courante, modification) => retenir(courante, modification),
+              attente,
+            )
+            onAttenteChange(complete)
+            setDocumentJsonOuvert(null)
+            return null
+          }}
+        />
+      )}
     </div>
   )
 }

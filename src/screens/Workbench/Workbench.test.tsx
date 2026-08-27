@@ -234,6 +234,20 @@ const PROJETS_DEV: Project[] = PROJETS.map((projet) => ({
 }))
 
 /**
+ * Le même décor que `PROJETS_DEV`, mais `analytics` y est déclarée MongoDB.
+ *
+ * **Seul le moteur change** — la navigation (`ouvrirEtEditer`), les colonnes (`DETAIL`) et les
+ * lignes restent celles du décor générique : ce test ne porte pas sur ce que MongoDB introspecte
+ * vraiment (`18d`), seulement sur le fait que `describeTable` est bien rappelée après une écriture.
+ */
+const PROJETS_MONGO: Project[] = PROJETS_DEV.map((projet) => ({
+  ...projet,
+  databases: projet.databases.map((base) =>
+    base.name === 'analytics' ? { ...base, engine: 'mongodb' as const } : base,
+  ),
+}))
+
+/**
  * Applique un geste de console au décor, comme le cœur le ferait.
  *
  * **Le décor doit suivre**, sans quoi deux créations de suite porteraient le même nom : le nom par
@@ -1227,7 +1241,7 @@ describe('mode édition', () => {
       applied: 1,
       inverseSql: 'BEGIN;\nUPDATE inverse;\nCOMMIT;',
     }))
-    const { lignes } = monter({
+    const { lignes, structures } = monter({
       projects: PROJETS_DEV,
 
       passerellePreview: PREVIEW,
@@ -1237,6 +1251,8 @@ describe('mode édition', () => {
     await modifier(utilisateur)
     const readRows = lignes.readRows as unknown as ReturnType<typeof vi.fn>
     const lecturesAvant = readRows.mock.calls.length
+    const decrire = structures.describeTable as unknown as ReturnType<typeof vi.fn>
+    const structureAvant = decrire.mock.calls.length
 
     const panneau = await screen.findByLabelText('Modifications en attente de la table')
     await utilisateur.click(within(panneau).getByRole('button', { name: /Appliquer/ }))
@@ -1251,6 +1267,33 @@ describe('mode édition', () => {
     // À la place, de quoi défaire — et non un panneau vide.
     expect(within(panneau).getByText('Écriture appliquée')).toBeInTheDocument()
     expect(screen.getByText(/SQL qui annule cette écriture/)).toBeInTheDocument()
+    // **La structure SQL n'a pas bougé** (`18g`) : seule MongoDB, dont les colonnes sont déduites,
+    // la fait relire après une écriture. La relire ici serait l'aller-retour par enregistrement que
+    // le commentaire de `relectureStructure` refuse.
+    expect(decrire.mock.calls.length).toBe(structureAvant)
+  })
+
+  it('sur MongoDB, une écriture réussie relit aussi la structure déduite (`18g`)', async () => {
+    const utilisateur = userEvent.setup()
+    const ecrire = vi.fn(async () => ({ applied: 1, inverseSql: '' }))
+    const { structures } = monter({
+      projects: PROJETS_MONGO,
+      passerellePreview: PREVIEW,
+      passerelleApply: { applyChanges: ecrire },
+    })
+    await ouvrirEtEditer(utilisateur)
+    await modifier(utilisateur)
+    const decrire = structures.describeTable as unknown as ReturnType<typeof vi.fn>
+    const structureAvant = decrire.mock.calls.length
+
+    const panneau = await screen.findByLabelText('Modifications en attente de la table')
+    await utilisateur.click(within(panneau).getByRole('button', { name: /Appliquer/ }))
+    await waitFor(() => expect(ecrire).toHaveBeenCalled())
+
+    // **Un champ neuf, introduit par l'écriture, redeviendrait invisible sans cette relecture** :
+    // `colonnesEffectives` de `TableView` ne le montrait que tant que la modification était en
+    // attente, et l'attente est vidée par `surSucces` juste avant.
+    await waitFor(() => expect(decrire.mock.calls.length).toBeGreaterThan(structureAvant))
   })
 
   it('un refus s’affiche dans le panneau et ne vide pas le modèle', async () => {
