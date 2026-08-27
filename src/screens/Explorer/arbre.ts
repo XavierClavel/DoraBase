@@ -3,6 +3,7 @@ import type { EnvironmentId, Project } from '../../domain/config'
 import type { ConnectionState, SchemaInfo, TableSummary } from '../../domain/engine'
 import type { useT } from '../../i18n/LanguageContext'
 import { formatRowCount } from '../../ui/format'
+import { ENGINES } from '../NewConnection/engines'
 import { COULEURS_D_ENVIRONNEMENT } from '../NewConnection/environments'
 
 /**
@@ -289,19 +290,23 @@ export function aplatir(
         const idB = idBase(projet.name, base.environment, base.name)
         const baseDepliee = deplies.has(idB)
         const etat = etats(projet.name, base.name, base.environment)
+        // **Affichage seulement** : `label`, s'il est renseigné, remplace `name` partout où
+        // l'arbre le montre. `database`, quelques lignes plus bas, reste `base.name` — c'est
+        // l'identité, envoyée aux commandes IPC, et elle ne doit jamais suivre le libellé.
+        const libelle = base.label?.trim() || base.name
 
         noeuds.push({
           id: idB,
           kind: 'database',
           depth: 2,
-          label: base.name,
+          label: libelle,
           chevron: baseDepliee ? 'open' : 'closed',
-          icon: 'db',
+          icon: ENGINES[base.engine].icon ?? 'db',
           iconColor: `var(--engine-${abregeMoteur(base.engine)})`,
           badge: badgeEtat(t, etat),
           // L'état est **dans le nom accessible**, pas seulement dans une couleur : un point vert
           // et un point rouge sont indiscernables pour une part des utilisateurs.
-          announce: `${base.name} · ${resumeEtat(t, etat)}`,
+          announce: `${libelle} · ${resumeEtat(t, etat)}`,
           project: projet.name,
           database: base.name,
           environment: base.environment,

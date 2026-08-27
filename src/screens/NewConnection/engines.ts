@@ -1,3 +1,4 @@
+import type { IconName } from '../../design/icons/names'
 import type { Engine, SslMode } from '../../domain/config'
 import { SSL_MODE_ORDER } from './environments'
 
@@ -13,15 +14,43 @@ import { SSL_MODE_ORDER } from './environments'
  * **Snowflake et BigQuery n'ont pas de monogramme.** Les cinq premiers en ont un, coloré ;
  * les deux derniers portent leur seul libellé. Relevé sur le mockup, où le `<span>` du
  * monogramme est absent de ces deux boutons — ce n'est pas un oubli à combler.
+ *
+ * **`icon` remplace le monogramme des quatre moteurs adaptés** (27 août 2026) : un éléphant pour
+ * PostgreSQL, une feuille pour MongoDB, un dauphin pour MySQL, un fichier pour SQLite — le seul
+ * moteur sans serveur. Redis garde son monogramme texte, faute d'icône dessinée ; Snowflake et
+ * BigQuery gardent l'absence des deux.
  */
-export const ENGINES: Record<Engine, { label: string; monogram?: string; color?: string }> = {
-  postgresql: { label: 'PostgreSQL', monogram: 'Pg', color: 'var(--engine-pg)' },
-  mysql: { label: 'MySQL', monogram: 'My', color: 'var(--engine-my)' },
-  sqlite: { label: 'SQLite', monogram: 'Sq', color: 'var(--engine-sq)' },
-  mongodb: { label: 'MongoDB', monogram: 'Mg', color: 'var(--engine-mg)' },
+export const ENGINES: Record<
+  Engine,
+  { label: string; monogram?: string; icon?: IconName; color?: string }
+> = {
+  postgresql: { label: 'PostgreSQL', icon: 'pg', color: 'var(--engine-pg)' },
+  mysql: { label: 'MySQL', icon: 'mysql', color: 'var(--engine-my)' },
+  sqlite: { label: 'SQLite', icon: 'sqlite', color: 'var(--engine-sq)' },
+  mongodb: { label: 'MongoDB', icon: 'mongo', color: 'var(--engine-mg)' },
   redis: { label: 'Redis', monogram: 'Rd', color: 'var(--engine-rd)' },
   snowflake: { label: 'Snowflake' },
   bigquery: { label: 'BigQuery' },
+}
+
+/**
+ * Le nom qu'une base prend quand son champ « Nom » est laissé vide (27 août 2026).
+ *
+ * **Abrégé, pas le libellé complet** : « psql », pas « PostgreSQL ». C'est ce que `A2` substitue
+ * au moment d'enregistrer — voir `draftToSaveRequest` — jamais ce que le champ affiche pendant la
+ * saisie, qui reste un `placeholder`.
+ *
+ * `Record<Engine, …>` pour la raison d'`ENGINES` : un moteur ajouté fait échouer ce fichier tant
+ * que son abréviation n'est pas écrite.
+ */
+export const NOM_PAR_DEFAUT: Record<Engine, string> = {
+  postgresql: 'psql',
+  mysql: 'mysql',
+  sqlite: 'sqlite',
+  mongodb: 'mongo',
+  redis: 'redis',
+  snowflake: 'snowflake',
+  bigquery: 'bigquery',
 }
 
 /**

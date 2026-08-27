@@ -222,6 +222,20 @@ divergeraient. Corollaire : **l'identifiant d'un environnement est figé à sa c
 le renommer change son **libellé seulement**, et installe une divergence assumée entre ce
 qui s'affiche et ce qui désigne.
 
+**Et depuis le 27 août 2026, la base suit le même principe qu'un environnement : un
+identifiant, et un libellé optionnel qui peut en diverger.** Le nom d'une base — `Database.name`
+— portait un commentaire qui disait le contraire : « il n'y a pas d'étiquette libre ». La raison
+tombait avec le champ « Nom » devenu **optionnel** : une base sans nom saisi doit tout de même
+désigner quelque chose dans le registre, donc `A2` y substitue l'abréviation du moteur (« psql »,
+« mongo »…) avant d'enregistrer — jamais en valeur du champ, toujours en `placeholder`, sinon le
+vider ne rendrait plus le défaut. `Database.label: Option<String>` porte l'affichage libre, en
+toute fin du formulaire, jamais verrouillé par `verrouille` : contrairement à `name`, il ne fait
+partie ni de la clé du registre ni de la référence du secret, et un renommage sur place
+(« Renommer… ») continue d'éditer `name`, jamais `label`. Un défaut à surveiller si ce principe
+se redéfait : `ExplorerSidebar` faisait voyager `noeud.label` comme identité vers les commandes
+IPC (`onCreer`, `onEditDatabase`, `demanderLeRetrait`) — vrai tant que `label === name`, faux dès
+que l'un diverge de l'autre. C'est `noeud.database` qui doit y voyager.
+
 **L'arbre se lit sans réseau.** La configuration ne demande aucune connexion : l'arbre
 s'affiche immédiatement et chaque base porte son état. Une base injoignable reste
 **visible et marquée**, jamais masquée ni bloquante — attendre les connexions bloquerait

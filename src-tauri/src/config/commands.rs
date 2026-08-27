@@ -106,6 +106,9 @@ pub struct UpdateVariantRequest {
     pub variant: super::model::ConnectionSettings,
     /// `None` laisse le mot de passe en place — un champ vide veut dire « inchangé ».
     pub password: Option<String>,
+    /// Le libellé d'affichage (27 août 2026), **la valeur définitive** — contrairement au mot de
+    /// passe, il n'est pas secret : le formulaire le renvoie toujours, vide y compris pour l'effacer.
+    pub label: Option<String>,
 }
 
 fn chemin_configuration(app: &AppHandle) -> Result<std::path::PathBuf, String> {
@@ -200,6 +203,9 @@ pub struct SaveDatabaseRequest {
     pub environment: super::model::EnvironmentId,
     pub variant: super::model::ConnectionSettings,
     pub password: Option<String>,
+    /// Le libellé d'affichage, saisi en fin de formulaire (27 août 2026). Vide ou absent : `database`
+    /// fait foi partout où l'application l'affiche.
+    pub label: Option<String>,
 }
 
 /// Ce que `08i` envoie pour renommer un projet.
@@ -777,6 +783,7 @@ pub fn save_database(
             environment: request.environment.clone(),
             variant: request.variant,
             password: secret.as_ref(),
+            label: request.label.as_deref(),
         },
         magasin.store.as_ref(),
         &mut |projets| {
@@ -846,6 +853,7 @@ pub async fn update_variant(
                 environment: request.environment.clone(),
                 reglages: &request.variant,
                 password: secret.as_ref(),
+                label: request.label.as_deref(),
             },
             magasin.store.as_ref(),
             &mut |projets| {

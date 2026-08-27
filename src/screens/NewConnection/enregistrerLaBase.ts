@@ -13,6 +13,7 @@ import type {
 } from '../../domain/config'
 import type { ConnectionDraft } from './ConnectionDraft'
 import { baseDAuthentificationAEnvoyer } from './draftToRequest'
+import { NOM_PAR_DEFAUT } from './engines'
 import { tunnelDraftToTunnel } from './tunnelDraftToTunnel'
 
 /**
@@ -93,6 +94,7 @@ export function draftToUpdateRequest(
     environment: cible.environment,
     variant: complet.variant,
     password: draft.password === '' ? null : draft.password,
+    label: complet.label,
   }
 }
 
@@ -112,7 +114,10 @@ export function draftToSaveRequest(draft: ConnectionDraft): SaveDatabaseRequest 
 
   return {
     project: draft.project,
-    database: draft.name,
+    // **Vide, le nom devient l'abréviation du moteur** (27 août 2026) : « psql », « mongo »… — le
+    // champ « Nom » n'est plus obligatoire, et une base sans nom saisi doit tout de même désigner
+    // quelque chose dans le registre.
+    database: draft.name.trim() || NOM_PAR_DEFAUT[draft.engine],
     engine: draft.engine,
     // Hors des réglages : l'environnement appartient à la connexion (`23b`).
     environment: draft.environment,
@@ -132,6 +137,9 @@ export function draftToSaveRequest(draft: ConnectionDraft): SaveDatabaseRequest 
       tunnel: tunnelDraftToTunnel(draft.tunnel),
     },
     password: draft.password === '' ? null : draft.password,
+    // Le vide devient `null`, comme le certificat d'autorité juste au-dessus : une chaîne blanche
+    // dans la configuration se lirait comme un libellé véritable.
+    label: draft.label.trim() === '' ? null : draft.label.trim(),
   }
 }
 

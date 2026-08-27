@@ -49,6 +49,7 @@ mod tests {
     fn connexion(nom: &str, env: &str) -> Database {
         Database {
             name: nom.to_owned(),
+            label: None,
             engine: Engine::PostgreSql,
             environment: EnvironmentId::brut(env),
             connection: reglages(),

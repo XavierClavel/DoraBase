@@ -408,6 +408,21 @@ export function Workbench({
         )?.engine
     : undefined
 
+  /**
+   * Le libellé d'affichage de la base ouverte (27 août 2026), pour le fil d'Ariane du centre, la
+   * barre de titre et la confirmation d'exécution — **jamais** `contexte.database` telle quelle,
+   * qui reste l'identité (`table.key.database`, les comparaisons d'onglets…). Même dérivation que
+   * `moteurActuel` : depuis la déclaration, jamais devinée depuis ce que l'écran montre.
+   */
+  const libelleActuel = contexte
+    ? projects
+        .find((p) => p.name === contexte.project)
+        ?.databases.find(
+          (d) => d.name === contexte.database && d.environment === contexte.environment,
+        )
+        ?.label?.trim() || contexte.database
+    : undefined
+
   // Le détail sert deux endroits : le panneau droit de `A4` (l'objet sélectionné) et la section
   // « Colonnes de *table* » de la sidebar (la table de l'onglet actif). Une seule lecture, deux
   // lecteurs — la table de l'onglet actif étant aussi celle qu'on vient de sélectionner.
@@ -861,7 +876,7 @@ export function Workbench({
               }, DELAI_ECRITURE)
             }
           }}
-          contexte={contexte ? `${contexte.database} · ${contexte.schema}` : undefined}
+          contexte={contexte ? `${libelleActuel} · ${contexte.schema}` : undefined}
           onExecuter={execution.demander}
           onExecuterLaSelection={execution.demander}
           enCours={execution.enCours}
@@ -930,7 +945,8 @@ export function Workbench({
       ) : (
         <>
           <BreadcrumbBar
-            database={contexte?.database ?? '—'}
+            database={libelleActuel ?? '—'}
+            engine={moteurActuel}
             schema={contexte?.schema ?? '—'}
             counts={comptes(objets)}
             type={type}
@@ -991,7 +1007,7 @@ export function Workbench({
                       production: environnementIndique.production,
                     }
               }
-              breadcrumb={contexte ? `${contexte.database} · ${contexte.schema}` : undefined}
+              breadcrumb={contexte ? `${libelleActuel} · ${contexte.schema}` : undefined}
               connection={
                 contexte
                   ? etatDeBase(contexte.project, contexte.database, contexte.environment)
@@ -1009,7 +1025,7 @@ export function Workbench({
         <RunConfirm
           nature={execution.aConfirmer.nature}
           sansRestriction={execution.aConfirmer.sansWhere}
-          cible={contexte ? `${contexte.database} · ${contexte.schema}` : '—'}
+          cible={contexte ? `${libelleActuel} · ${contexte.schema}` : '—'}
           // **Le drapeau de production, non le libellé** (`23g`) : un environnement nommé « live » et
           // marqué production doit porter l'encart rouge, et un environnement nommé « prod » que
           // l'utilisateur n'a pas marqué ne doit pas. Comparer une chaîne rendrait la garantie fausse

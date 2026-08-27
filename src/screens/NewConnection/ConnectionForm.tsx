@@ -8,7 +8,7 @@ import { Field } from '../../ui/Field/Field'
 import { RadioGroup } from '../../ui/RadioGroup/RadioGroup'
 import { Select } from '../../ui/Select/Select'
 import type { ConnectionDraft } from './ConnectionDraft'
-import { authentifieParBase, estUnFichier, modesSslDisponibles } from './engines'
+import { authentifieParBase, estUnFichier, modesSslDisponibles, NOM_PAR_DEFAUT } from './engines'
 import { authentifie, SSL_MODES } from './environments'
 import styles from './NewConnection.module.css'
 import { ToggleWithLabel } from './ToggleWithLabel'
@@ -134,6 +134,10 @@ export function ConnectionForm({
           label={t('newConnection.form.nameLabel')}
           className={styles.nameField}
           value={draft.name}
+          // **Plus obligatoire** (27 août 2026) : vide, `draftToSaveRequest` substitue l'abréviation
+          // du moteur. Le repli s'affiche en `placeholder`, jamais en valeur — sinon l'utilisateur
+          // croirait l'avoir saisi, et le vider ne rendrait plus le défaut.
+          placeholder={NOM_PAR_DEFAUT[draft.engine]}
           disabled={verrouille}
           title={verrouille ? t('newConnection.form.reasons.lockName') : undefined}
           onChange={(event) => onChange({ name: event.target.value })}
@@ -307,6 +311,18 @@ export function ConnectionForm({
           />
         </div>
       </div>
+
+      {/* **Le libellé, en dernier** (27 août 2026) : un affichage, pas une identité. Il ne fait
+          jamais partie de la clé du registre ni de la référence du secret — `name`, au tout début
+          du formulaire, seul verrouillé par `verrouille`, garde ce rôle. Renseigné, il remplace
+          `name` (ou son défaut) partout où l'arbre, le fil d'Ariane et la barre de titre
+          affichent cette base ; vide, `name` fait foi comme avant ce champ. */}
+      <Field
+        label={t('newConnection.form.labelLabel')}
+        value={draft.label}
+        placeholder={t('newConnection.form.labelPlaceholder')}
+        onChange={(event) => onChange({ label: event.target.value })}
+      />
     </div>
   )
 }

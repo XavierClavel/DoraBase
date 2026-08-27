@@ -393,6 +393,7 @@ mod tests {
     fn connexion(nom: &str, environnement: &str, secret: Option<&str>) -> Database {
         Database {
             name: nom.to_owned(),
+            label: None,
             engine: Engine::PostgreSql,
             environment: EnvironmentId::brut(environnement),
             connection: crate::config::model::ConnectionSettings {

@@ -532,6 +532,7 @@ fn migration_v1_vers_v2(brut: &str) -> Result<(Vec<Project>, Preferences), serde
                         .into_iter()
                         .map(|variante| Database {
                             name: base.name.clone(),
+                            label: None,
                             engine: base.engine,
                             environment: EnvironmentId::brut(variante.environment),
                             connection: variante.reglages,
@@ -848,6 +849,7 @@ mod tests {
             databases: vec![
                 Database {
                     name: "analytics".to_owned(),
+                    label: None,
                     engine: Engine::PostgreSql,
                     environment: EnvironmentId::brut("dev"),
                     connection: variante(),
@@ -855,6 +857,7 @@ mod tests {
                 },
                 Database {
                     name: "analytics".to_owned(),
+                    label: None,
                     engine: Engine::PostgreSql,
                     environment: EnvironmentId::brut("prod"),
                     connection: variante(),
@@ -1685,6 +1688,7 @@ mod tests {
             queries: Vec::new(),
             databases: vec![Database {
                 name: "analytics".to_owned(),
+                label: None,
                 engine: Engine::PostgreSql,
                 environment: EnvironmentId::brut("dev"),
                 connection: connexion,
@@ -1724,6 +1728,7 @@ mod tests {
             queries: Vec::new(),
             databases: vec![Database {
                 name: "analytics".to_owned(),
+                label: None,
                 engine: Engine::PostgreSql,
                 environment: EnvironmentId::brut("dev"),
                 connection: variante_avec_reference,

@@ -149,10 +149,26 @@ environments: Array<EnvironmentDeclaration>, };
  * environnement et un seul. `analytics` en dev et `analytics` en prod sont deux connexions, ce qui
  * rend leur nom non unique dans un projet — il l'est dans le couple `(environnement, nom)`.
  *
- * Le nom reste celui de la base distante : il n'y a pas d'étiquette libre. Deux connexions homonymes
- * se distinguent par leur environnement, qui est affiché.
+ * Le nom reste celui de la base distante : c'est lui qui désigne la connexion — clé du registre et
+ * référence du secret (`05a`, `08e`). Deux connexions homonymes se distinguent par leur
+ * environnement, qui est affiché.
+ *
+ * **`label` est un affichage, pas une identité** (27 août 2026). `name` peut être laissé vide à la
+ * saisie — `A2` y substitue alors l'abréviation du moteur (« psql », « mongo »… ) avant
+ * d'enregistrer — et `label`, s'il est renseigné, **remplace** `name` partout où l'arbre, le fil
+ * d'Ariane et la barre de titre l'affichent. Rien de tout cela ne touche `name` : il reste seul dans
+ * la clé `(name, environment)` du registre et dans la référence du secret, exactement comme avant.
+ * Le précédent est celui d'`EnvironmentDeclaration` — un identifiant figé, un libellé qui ne l'est
+ * pas — appliqué ici à la connexion plutôt qu'à l'environnement.
  */
-export type Database = { name: string, engine: Engine, environment: EnvironmentId, connection: ConnectionSettings, 
+export type Database = { name: string, 
+/**
+ * Le nom d'affichage, quand il diffère de `name`. `None` ou vide : `name` fait foi.
+ *
+ * **`#[serde(default)]` : aucune migration.** Une configuration écrite avant ce champ n'en a
+ * simplement pas — `27a` en tient la règle.
+ */
+label?: string | null, engine: Engine, environment: EnvironmentId, connection: ConnectionSettings, 
 /**
  * Les consoles SQL de cette connexion, telles que l'arbre les montre sous elle.
  *
@@ -472,7 +488,12 @@ export type SaveDatabaseRequest = { project: string, database: string, engine: E
 /**
  * L'environnement choisi dans `A2`, parmi ceux du projet (`23d`).
  */
-environment: EnvironmentId, variant: ConnectionSettings, password: string | null, };
+environment: EnvironmentId, variant: ConnectionSettings, password: string | null, 
+/**
+ * Le libellé d'affichage, saisi en fin de formulaire (27 août 2026). Vide ou absent : `database`
+ * fait foi partout où l'application l'affiche.
+ */
+label: string | null, };
 
 /**
  * Une requête enregistrée (`12f`), **en transit** — voir `Project::queries`.
@@ -527,4 +548,9 @@ environment: EnvironmentId, variant: ConnectionSettings,
 /**
  * `None` laisse le mot de passe en place — un champ vide veut dire « inchangé ».
  */
-password: string | null, };
+password: string | null, 
+/**
+ * Le libellé d'affichage (27 août 2026), **la valeur définitive** — contrairement au mot de
+ * passe, il n'est pas secret : le formulaire le renvoie toujours, vide y compris pour l'effacer.
+ */
+label: string | null, };

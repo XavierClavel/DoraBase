@@ -53,19 +53,29 @@ test('PostgreSQL vient en premier et est choisi par défaut', () => {
   expect(screen.getByRole('radio', { name: 'PostgreSQL' })).toBeChecked()
 })
 
-test('deux moteurs n’ont pas de monogramme', () => {
-  // Vérifié sur le mockup : le `<span>` du monogramme est absent de Snowflake et BigQuery.
-  // Ce n'est pas un oubli à combler.
-  const sans = ENGINE_ORDER.filter((engine) => ENGINES[engine].monogram === undefined)
-  expect(sans).toEqual(['snowflake', 'bigquery'])
+test('quatre moteurs ont une icône, un a un monogramme, deux n’ont ni l’un ni l’autre', () => {
+  // Vérifié sur le mockup pour ces deux derniers : le `<span>` du monogramme est absent de
+  // Snowflake et BigQuery. Depuis le 27 août 2026, les quatre moteurs adaptés (`06`, `16`, `17`,
+  // `18`) portent une icône dessinée plutôt qu'un monogramme texte ; Redis, sans adaptateur, garde
+  // le sien faute d'icône.
+  const avecIcone = ENGINE_ORDER.filter((engine) => ENGINES[engine].icon !== undefined)
+  const avecMonogramme = ENGINE_ORDER.filter((engine) => ENGINES[engine].monogram !== undefined)
+  expect(avecIcone).toEqual(['postgresql', 'mysql', 'sqlite', 'mongodb'])
+  expect(avecMonogramme).toEqual(['redis'])
 })
 
-test('les cinq monogrammes sont visibles, et hors du nom accessible', () => {
+test('les icônes et le monogramme sont visibles, et hors du nom accessible', () => {
   monter()
   for (const engine of ENGINE_ORDER) {
-    const { monogram, label } = ENGINES[engine]
+    const { icon, monogram, label } = ENGINES[engine]
+    if (icon) {
+      const radio = screen.getByRole('radio', { name: label })
+      // `use[href]` plutôt qu'un rôle : le `<svg>` de `Icon` est `aria-hidden`, donc invisible à
+      // `getByRole` — c'est justement ce que la seconde moitié du test vérifie.
+      expect(radio.closest('label')?.querySelector(`use[href="#i-${icon}"]`)).toBeInTheDocument()
+    }
     if (monogram) expect(screen.getByText(monogram)).toBeInTheDocument()
-    // Le nom accessible est le seul libellé : le monogramme abrège un nom déjà présent.
+    // Le nom accessible est le seul libellé : l'icône ou le monogramme abrège un nom déjà présent.
     expect(screen.getByRole('radio', { name: label })).toBeInTheDocument()
   }
 })

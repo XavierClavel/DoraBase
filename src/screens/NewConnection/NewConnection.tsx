@@ -388,7 +388,11 @@ export function NewConnection({
     <Modal
       title={
         edition
-          ? t('newConnection.title.edit', { name: edition.database.name })
+          ? t('newConnection.title.edit', {
+              // L'affichage suit `label` quand il est renseigné, comme partout ailleurs (`27a`) —
+              // `edition.database.name` reste l'identité, inchangée par cette substitution.
+              name: edition.database.label?.trim() || edition.database.name,
+            })
           : t('newConnection.title.new')
       }
       icon="db"

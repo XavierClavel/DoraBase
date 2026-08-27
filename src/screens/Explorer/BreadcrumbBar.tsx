@@ -1,13 +1,18 @@
 import { Icon } from '../../design/icons/Icon'
+import type { Engine } from '../../domain/config'
 import { useT } from '../../i18n/LanguageContext'
 import { SANS_CORRECTION } from '../../ui/Field/Field'
 import { type Segment, SegmentedControl } from '../../ui/SegmentedControl/SegmentedControl'
+import { ENGINES } from '../NewConnection/engines'
 import styles from './BreadcrumbBar.module.css'
 
 export type TypeObjet = 'tables' | 'views' | 'functions' | 'indexes'
 
 type BreadcrumbBarProps = {
   database: string
+  /** Le moteur de la base ouverte (27 août 2026), pour l'icône devant `database`. Absent tant
+   * qu'aucune base n'est ouverte : l'icône générique `db` reste alors le repli. */
+  engine?: Engine
   schema: string
   /** Les quatre comptes, **issus des données** — jamais de constantes. */
   counts: Record<TypeObjet, number>
@@ -28,6 +33,7 @@ const ORDRE: readonly TypeObjet[] = ['tables', 'views', 'functions', 'indexes']
  */
 export function BreadcrumbBar({
   database,
+  engine,
   schema,
   counts,
   type,
@@ -53,7 +59,12 @@ export function BreadcrumbBar({
   return (
     <div className={styles.root}>
       <nav className={styles.breadcrumb} aria-label={t('explorer.breadcrumb.path')}>
-        <Icon name="db" size={13} strokeWidth={1.8} className={styles.dbIcon} />
+        <Icon
+          name={(engine && ENGINES[engine].icon) || 'db'}
+          size={13}
+          strokeWidth={1.8}
+          className={styles.dbIcon}
+        />
         {database}
         <Icon name="chevr" size={11} strokeWidth={2.4} className={styles.separator} />
         <span className={styles.current}>{schema}</span>

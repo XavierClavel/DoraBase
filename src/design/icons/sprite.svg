@@ -51,6 +51,13 @@
   <symbol id="i-code" viewBox="0 0 24 24"><path d="m9 8-4 4 4 4m6-8 4 4-4 4"/></symbol>
   <symbol id="i-plan" viewBox="0 0 24 24"><path d="M12 3.5v4M12 11.5v3M6 20.5v-3M18 20.5v-3"/><rect x="9" y="7.5" width="6" height="4" rx="1"/><rect x="3" y="14.5" width="6" height="3" rx="1"/><rect x="15" y="14.5" width="6" height="3" rx="1"/><path d="M12 14.5H6M12 14.5h6"/></symbol>
   <symbol id="i-msg" viewBox="0 0 24 24"><path d="M4 5.5h16v11H12l-4 3.5v-3.5H4v-11Z"/></symbol>
+  <!-- Les quatre icônes de moteur, en trait comme les autres : un éléphant pour PostgreSQL, une
+       feuille pour MongoDB, un dauphin pour MySQL (mascotte « Sakila »), un fichier pour SQLite —
+       le seul moteur sans serveur, qui s'ouvre depuis un fichier (`FILE_ENGINES`). -->
+  <symbol id="i-pg" viewBox="0 0 24 24"><path d="M14.5 4.5c3.8 0 6.5 3.3 6.5 7.3 0 3.6-1.8 6.6-4.3 7.8-.4.2-.6-.1-.5-.4.5-1.1.7-2 .6-2.9-1 .5-2.1.7-3.3.7-4.4 0-7.5-3.3-7.5-7.2 0-3 2-5.3 4.6-5.3.5 0 1 .1 1.4.3.7-.2 1.6-.3 2.5-.3Z"/><path d="M9.5 11.5c-2.5-.3-4 .8-4 2.6 0 1.6 1.3 2.6 2.9 2.4"/><path d="M8.5 19.5c-.3-1 0-1.8.8-2.3M13 19.7c.2-.7.1-1.4-.3-2" stroke-width="1.6"/><path d="M13.2 9.8h.01" stroke-width="2.6"/></symbol>
+  <symbol id="i-mongo" viewBox="0 0 24 24"><path d="M12 3.5c3.2 2.3 5.5 5.6 5.5 9.6 0 3.6-2.3 6.2-5.5 7.4-3.2-1.2-5.5-3.8-5.5-7.4 0-4 2.3-7.3 5.5-9.6Z"/><path d="M12 7v13.5"/></symbol>
+  <symbol id="i-mysql" viewBox="0 0 24 24"><path d="M3 15.5c2-3 3-6.5 3-9.5.8 1.6 1.2 3.3 1.2 5.2 3.5-.8 6.8.2 9.3 2.6 1.8 1.7 2.7 3.3 2.5 4.7-1.5-.9-3-1.1-4.3-.6.8.7 1.3 1.4 1.5 2.1-3.6.5-8.2-.3-11.2-2.5-1.2-.9-1.8-1.4-2-2Z"/><path d="M8 12.5c.5.5.8 1.1.9 1.8" stroke-width="1.6"/></symbol>
+  <symbol id="i-sqlite" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 19V5A1.5 1.5 0 0 1 7 3.5Z"/><path d="M14 3.5V8h4"/><path d="M9 13h6M9 16.3h6" stroke-width="1.6"/></symbol>
   <symbol id="logo" viewBox="0 0 512 512">
 <rect width="512" height="512" rx="114" fill="var(--logo-plate,#FBF7EF)"/>
 <g fill="none" stroke="#23201C" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
