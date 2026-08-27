@@ -6,10 +6,12 @@ import {
   estEditable,
   estEditableALAjout,
   estIdentique,
+  estMarqueePourSuppression,
   lignesAjoutees,
   lignesModifiees,
   type Modification,
   type ModificationDeCellule,
+  marquerPourSuppression,
   modificationDe,
   raisonDuRefus,
   retenir,
@@ -241,6 +243,45 @@ describe('ajouter une ligne', () => {
     a = annulerLaDerniere(a)
     expect(lignesAjoutees(a)).toHaveLength(0)
     expect(a).toHaveLength(1)
+  })
+})
+
+describe('marquer pour suppression', () => {
+  it('marque une ligne lue, comptée pour une entrée', () => {
+    const a = marquerPourSuppression([], '1', 3)
+    expect(a).toHaveLength(1)
+    expect(estMarqueePourSuppression(a, '1')).toBe(true)
+  })
+
+  it('le geste bascule : marquer une ligne déjà marquée annule la marque', () => {
+    let a = marquerPourSuppression([], '1', 3)
+    a = marquerPourSuppression(a, '1', 3)
+    expect(a).toHaveLength(0)
+    expect(estMarqueePourSuppression(a, '1')).toBe(false)
+  })
+
+  it('marquer efface les modifications de cellule en attente de cette ligne', () => {
+    let a = poser([], '1', 'status', { kind: 'text', value: 'a' }, 'z')
+    a = poser(a, '2', 'note', { kind: 'text', value: 'b' }, 'y')
+    a = marquerPourSuppression(a, '1', 1)
+    // La cellule de la ligne 1 a disparu, celle de la ligne 2 reste intacte.
+    expect(a.filter((m) => m.sorte === 'cellule').map((m) => m.cle)).toEqual(['2'])
+    expect(estMarqueePourSuppression(a, '1')).toBe(true)
+  })
+
+  it('marquer une ligne ajoutée, pas encore écrite, la retire entière', () => {
+    let a = ajouterUneLigne([])
+    a = saisirDansLaLigne(a, 'nouvelle-1', 'status', saisie('pending'))
+    a = marquerPourSuppression(a, 'nouvelle-1', 1)
+    // Rien à marquer, rien à écrire pour annuler : le même geste que la croix du panneau sur une
+    // carte « nouvelle ligne ».
+    expect(a).toHaveLength(0)
+    expect(lignesAjoutees(a)).toHaveLength(0)
+  })
+
+  it('retirer(cle, colonne) enlève aussi une marque de suppression', () => {
+    const a = marquerPourSuppression([], '1', 3)
+    expect(retirer(a, '1', '')).toHaveLength(0)
   })
 })
 

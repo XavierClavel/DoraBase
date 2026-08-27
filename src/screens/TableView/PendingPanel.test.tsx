@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { Value } from '../../domain/engine'
-import type { LigneAjoutee, ModificationDeCellule } from './modifications'
+import type { LigneAjoutee, LigneSupprimee, ModificationDeCellule } from './modifications'
 import { PendingPanel } from './PendingPanel'
 
 const SQL =
@@ -251,4 +251,24 @@ test('une ligne sans valeur dit que la base appliquera ses défauts', () => {
   monter({ attente: [ligneAjoutee({ valeurs: {} })] })
   // Une carte vide laisserait croire à une entrée perdue ; elle dit ce qui va se passer.
   expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('la base appliquera ses défauts')
+})
+
+function ligneSupprimee(over: Partial<LigneSupprimee> = {}): LigneSupprimee {
+  return { sorte: 'suppression', cle: '184219', rang: 2, ...over }
+}
+
+test('une ligne marquée pour suppression porte le rang, la clé, et dit ce qui va se passer', () => {
+  monter({ attente: [ligneSupprimee()] })
+  const carte = screen.getAllByRole('listitem')[0] as HTMLElement
+  expect(carte).toHaveTextContent('ligne 2')
+  expect(carte).toHaveTextContent('184219')
+  expect(carte).toHaveTextContent('sera supprimée')
+})
+
+test('la croix d’une ligne marquée annule la marque, sans colonne à retirer', async () => {
+  const { onRetirer } = monter({ attente: [ligneSupprimee()] })
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Annuler la suppression de la ligne 2' }),
+  )
+  expect(onRetirer).toHaveBeenCalledWith('184219', '')
 })

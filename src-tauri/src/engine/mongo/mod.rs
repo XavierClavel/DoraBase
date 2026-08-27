@@ -290,6 +290,34 @@ impl EngineAdapter for MongoAdapter {
             }
         }
 
+        // **Les suppressions en dernier**, même raison. Zéro document supprimé signifie qu'il a
+        // changé — ou disparu — depuis la lecture : le même filet que pour les modifications.
+        for suppression in &plan.deletes {
+            let filtre = documents::filtre_de_suppression(&suppression.key, &plan.key_column);
+            match collection
+                .delete_one(filtre.clone())
+                .session(&mut session)
+                .await
+            {
+                Ok(resultat) if resultat.deleted_count == 1 => appliquees += 1,
+                Ok(_) => {
+                    let _ = session.abort_transaction().await;
+                    return Err(EngineError::local(format!(
+                        "le document {} a changé depuis la lecture : aucune modification n'a été \
+                         écrite",
+                        filtre
+                            .get(&plan.key_column)
+                            .map(|v| v.to_string())
+                            .unwrap_or_default()
+                    )));
+                }
+                Err(erreur) => {
+                    let _ = session.abort_transaction().await;
+                    return Err(mongo_error::traduire(&erreur));
+                }
+            }
+        }
+
         session
             .commit_transaction()
             .await
@@ -298,7 +326,7 @@ impl EngineAdapter for MongoAdapter {
         Ok(ApplyOutcome {
             applied: appliquees,
             inverse_sql: crate::engine::rows::patch_inverse(
-                crate::engine::rows::avertissement_insertions(plan.inserts.len()),
+                crate::engine::rows::avertissements(plan.inserts.len(), plan.deletes.len()),
                 (!plan.changes.is_empty()).then(|| {
                     commandes_inverses_de(plan)
                         .iter()
@@ -358,6 +386,12 @@ fn apercu_de(plan: &UpdatePlan) -> String {
         .collect();
     lignes.extend(plan.inserts.iter().map(|insertion| {
         documents::insertion_lisible(&plan.table, &documents::document_a_inserer(insertion))
+    }));
+    lignes.extend(plan.deletes.iter().map(|suppression| {
+        documents::suppression_lisible(
+            &plan.table,
+            &documents::filtre_de_suppression(&suppression.key, &plan.key_column),
+        )
     }));
     lignes.join("\n")
 }
@@ -975,6 +1009,7 @@ mod tests_db {
             table: "commandes_essai".to_owned(),
             key_column: "reference".to_owned(),
             inserts: Vec::new(),
+            deletes: Vec::new(),
             changes: vec![PendingUpdate {
                 key: reference.to_owned(),
                 column: "statut".to_owned(),
@@ -1036,6 +1071,7 @@ mod tests_db {
             table: "commandes_essai".to_owned(),
             key_column: "reference".to_owned(),
             inserts: Vec::new(),
+            deletes: Vec::new(),
             changes: vec![PendingUpdate {
                 key: reference.to_owned(),
                 column: "note".to_owned(),
@@ -1058,6 +1094,7 @@ mod tests_db {
             table: "commandes_essai".to_owned(),
             key_column: "reference".to_owned(),
             inserts: Vec::new(),
+            deletes: Vec::new(),
             changes: vec![
                 PendingUpdate {
                     key: reference.to_owned(),

@@ -56,13 +56,32 @@ export type LigneAjoutee = {
   valeurs: Readonly<Record<string, Saisie>>
 }
 
-export type Modification = ModificationDeCellule | LigneAjoutee
+/**
+ * Une ligne **existante** marquée pour suppression — un `DELETE`, écrit seulement à « Appliquer ».
+ *
+ * **Un geste qui bascule** : marquer une ligne déjà marquée annule la marque, comme la retirer du
+ * panneau. Marquer efface au passage les modifications de cellule en attente de cette ligne — elles
+ * n'ont plus d'objet, la ligne allant disparaître — voir `marquerPourSuppression`.
+ */
+export type LigneSupprimee = {
+  sorte: 'suppression'
+  cle: string
+  /** Le rang au moment de la marque, pour l'affichage seul — comme `ModificationDeCellule.rang`. */
+  rang: number
+}
+
+export type Modification = ModificationDeCellule | LigneAjoutee | LigneSupprimee
 
 export type EnAttente = readonly Modification[]
 
-/** Vrai pour une ligne ajoutée — le garde de typage des deux sortes. */
+/** Vrai pour une ligne ajoutée — le garde de typage des trois sortes. */
 export function estUneLigneAjoutee(modification: Modification): modification is LigneAjoutee {
   return modification.sorte === 'ligne'
+}
+
+/** Vrai pour une ligne marquée pour suppression — le garde de typage des trois sortes. */
+export function estUneLigneSupprimee(modification: Modification): modification is LigneSupprimee {
+  return modification.sorte === 'suppression'
 }
 
 /** Identifie une cellule : une ligne et une colonne. */
@@ -106,8 +125,43 @@ export function retenir(
  */
 export function retirer(attente: EnAttente, cle: string, column: string): Modification[] {
   return attente.filter(
-    (m) => !memeCellule(m, cle, column) && !(m.sorte === 'ligne' && m.cle === cle),
+    (m) =>
+      !memeCellule(m, cle, column) &&
+      !(m.sorte === 'ligne' && m.cle === cle) &&
+      !(m.sorte === 'suppression' && m.cle === cle),
   )
+}
+
+/** Une ligne existante est-elle marquée pour suppression ? */
+export function estMarqueePourSuppression(attente: EnAttente, cle: string): boolean {
+  return attente.some((m) => estUneLigneSupprimee(m) && m.cle === cle)
+}
+
+/**
+ * Marque une ligne existante pour suppression, ou annule la marque si elle y est déjà — le geste
+ * bascule, que ce soit `Suppr` ou la croix révélée au survol du numéro de ligne.
+ *
+ * **Une ligne ajoutée, pas encore écrite, se retire entière** : il n'y a rien à marquer, rien à
+ * écrire pour annuler — le même geste que la croix d'une carte « nouvelle ligne » du panneau.
+ *
+ * **Marquer efface les modifications de cellule de cette ligne.** Une cellule modifiée sur une
+ * ligne qui va disparaître n'a plus d'objet, et les deux écritures — `UPDATE` puis `DELETE` —
+ * seraient redondantes. Démarquer ne les restaure pas : le même compromis, simple et prévisible,
+ * déjà assumé pour le patch inverse des insertions.
+ */
+export function marquerPourSuppression(
+  attente: EnAttente,
+  cle: string,
+  rang: number,
+): Modification[] {
+  if (attente.some((m) => estUneLigneAjoutee(m) && m.cle === cle)) {
+    return attente.filter((m) => !(m.sorte === 'ligne' && m.cle === cle))
+  }
+  if (estMarqueePourSuppression(attente, cle)) {
+    return attente.filter((m) => !(m.sorte === 'suppression' && m.cle === cle))
+  }
+  const sansSesCellules = attente.filter((m) => !(m.sorte === 'cellule' && m.cle === cle))
+  return [...sansSesCellules, { sorte: 'suppression', cle, rang }]
 }
 
 /**

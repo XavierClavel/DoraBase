@@ -67,13 +67,23 @@ type VirtualGridProps<Row> = {
   selectedId?: string | null
   onSelect?: (row: Row, index: number) => void
   /**
-   * Teinte une **ligne** entière — celles qui portent une modification en attente (`11b`).
+   * `Suppr`/`Backspace` sur la ligne sélectionnée, jamais posée en écoute globale.
    *
-   * Symétrique du `tint` de colonne : la grille connaît trois raisons de teinter, `filtered`,
-   * `sorted` et `modified`, toutes venues du handoff. Passer une classe CSS à la place ferait fuir
-   * l'habillage hors du module qui le porte.
+   * `Delete`/`Backspace` seuls sont ce qu'on tape en permanence dans n'importe quel champ texte — y
+   * compris la ligne de filtres de cette grille. La garde ne les laisse passer que depuis la grille
+   * elle-même ou depuis une `row` focalisée — la cible normale après un clic de sélection — jamais
+   * depuis un champ de filtre ou la boîte de saisie d'une cellule.
    */
-  rowTint?: (row: Row, index: number) => 'modified' | undefined
+  onDeleteKey?: (row: Row, index: number) => void
+  /**
+   * Teinte une **ligne** entière — celles qui portent une modification en attente (`11b`), ou une
+   * marque de suppression (`A6`).
+   *
+   * Symétrique du `tint` de colonne : la grille connaît les raisons de teinter, `filtered`, `sorted`,
+   * `modified` et `deleted`. Passer une classe CSS à la place ferait fuir l'habillage hors du module
+   * qui le porte.
+   */
+  rowTint?: (row: Row, index: number) => 'modified' | 'deleted' | undefined
   /** Teinte une **cellule**, et lui ajoute le coin ambre du mockup (`11b`). */
   cellTint?: (row: Row, column: string) => 'modified' | undefined
   /** Rendu à la place des lignes quand `rows` est vide. */
@@ -104,6 +114,7 @@ export function VirtualGrid<Row>({
   filterRow = false,
   selectedId = null,
   onSelect,
+  onDeleteKey,
   rowTint,
   cellTint,
   empty,
@@ -148,15 +159,35 @@ export function VirtualGrid<Row>({
   }, [selectedId, rows, rowId, rowHeight, viewportHeight])
 
   function deplacer(evenement: KeyboardEvent<HTMLDivElement>) {
-    if (!onSelect || (evenement.key !== 'ArrowDown' && evenement.key !== 'ArrowUp')) return
-    evenement.preventDefault()
-    const courante = rows.findIndex((row, rang) => rowId(row, rang) === selectedId)
-    const suivante =
-      evenement.key === 'ArrowDown'
-        ? Math.min(rows.length - 1, courante + 1)
-        : Math.max(0, courante === -1 ? 0 : courante - 1)
-    const row = rows[suivante]
-    if (row !== undefined) onSelect(row, suivante)
+    if (onSelect && (evenement.key === 'ArrowDown' || evenement.key === 'ArrowUp')) {
+      evenement.preventDefault()
+      const courante = rows.findIndex((row, rang) => rowId(row, rang) === selectedId)
+      const suivante =
+        evenement.key === 'ArrowDown'
+          ? Math.min(rows.length - 1, courante + 1)
+          : Math.max(0, courante === -1 ? 0 : courante - 1)
+      const row = rows[suivante]
+      if (row !== undefined) onSelect(row, suivante)
+      return
+    }
+    // La garde de cible : voir la doc de `onDeleteKey`. Sans elle, `Backspace` dans le champ de
+    // filtre d'une colonne supprimerait la ligne sélectionnée au lieu de corriger le filtre.
+    //
+    // **La cible valide est la grille elle-même, ou une `row`.** Un clic sélectionne une ligne en
+    // focalisant son `role="row"` (`tabIndex={-1}`, focalisable par script) — c'est la cible normale
+    // d'un `Suppr` sur la ligne choisie. Un champ de filtre ou la boîte de saisie d'une cellule sont
+    // de vrais éléments focalisables, sans ce rôle : la garde les exclut.
+    const cible = evenement.target as HTMLElement
+    if (
+      onDeleteKey &&
+      (evenement.key === 'Delete' || evenement.key === 'Backspace') &&
+      (cible === evenement.currentTarget || cible.getAttribute('role') === 'row')
+    ) {
+      evenement.preventDefault()
+      const courante = rows.findIndex((row, rang) => rowId(row, rang) === selectedId)
+      const row = rows[courante]
+      if (row !== undefined) onDeleteKey(row, courante)
+    }
   }
 
   return (
@@ -250,6 +281,7 @@ export function VirtualGrid<Row>({
                     // une ligne à la fois modifiée et sélectionnée doit se lire comme sélectionnée,
                     // c'est l'état que l'utilisateur vient de produire.
                     rowTint?.(row, index) === 'modified' && styles.rowModified,
+                    rowTint?.(row, index) === 'deleted' && styles.rowDeleted,
                     selectionnee && styles.selected,
                   )}
                   style={{

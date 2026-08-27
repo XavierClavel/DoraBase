@@ -154,7 +154,31 @@ pub fn instructions_de(plan: &UpdatePlan) -> Vec<(String, Vec<Option<String>>)> 
             .iter()
             .map(|insertion| insertion_de(plan, insertion)),
     );
+    // Les suppressions en dernier, même raison.
+    instructions.extend(
+        plan.deletes
+            .iter()
+            .map(|suppression| suppression_de(plan, suppression)),
+    );
     instructions
+}
+
+/// Le `delete` d'une ligne marquée, paramétré comme les modifications.
+///
+/// `is` et non `=` : l'égalité **sûre au nul** de SQLite, comme `instruction_de`. Pas de valeur
+/// attendue : `PendingDelete` n'en porte pas, voir `rows.rs`.
+fn suppression_de(
+    plan: &UpdatePlan,
+    suppression: &crate::engine::PendingDelete,
+) -> (String, Vec<Option<String>>) {
+    (
+        format!(
+            "delete from {} where {} is ?1",
+            citer(&plan.table),
+            citer(&plan.key_column)
+        ),
+        vec![Some(suppression.key.clone())],
+    )
 }
 
 /// L'`insert` d'une ligne saisie, paramétré comme les modifications.
@@ -213,7 +237,7 @@ fn instruction_de(
 }
 
 /// Le patch inverse : valeur et attendue échangées, comme `11d` le fait.
-/// **Les insertions n'y sont pas** — voir `engine::rows::avertissement_insertions`.
+/// **Les insertions ni les suppressions n'y sont pas** — voir `engine::rows::avertissements`.
 pub fn instructions_inverses(plan: &UpdatePlan) -> Vec<(String, Vec<Option<String>>)> {
     plan.changes
         .iter()
@@ -234,11 +258,12 @@ pub fn instructions_inverses(plan: &UpdatePlan) -> Vec<(String, Vec<Option<Strin
 /// **Les paramètres sont inscrits en clair ici, et seulement ici** : c'est un texte à lire, pas à
 /// exécuter — l'exécution passe par les paramètres. Les deux viennent de la même liste, donc ils ne
 /// peuvent pas décrire des écritures différentes.
-/// Le patch inverse en texte : l'avertissement des insertions, puis les `update` qui défont.
+/// Le patch inverse en texte : les avertissements d'insertions et de suppressions, puis les
+/// `update` qui défont.
 pub fn patch_inverse_de(plan: &UpdatePlan) -> String {
     let instructions = instructions_inverses(plan);
     crate::engine::rows::patch_inverse(
-        crate::engine::rows::avertissement_insertions(plan.inserts.len()),
+        crate::engine::rows::avertissements(plan.inserts.len(), plan.deletes.len()),
         (!instructions.is_empty()).then(|| texte_de(&instructions)),
     )
 }
@@ -443,6 +468,7 @@ mod tests {
             table: "commandes".into(),
             key_column: "id".into(),
             inserts: Vec::new(),
+            deletes: Vec::new(),
             changes: vec![PendingUpdate {
                 key: "7".into(),
                 column: "note".into(),
@@ -465,6 +491,7 @@ mod tests {
             table: "commandes".into(),
             key_column: "id".into(),
             inserts: Vec::new(),
+            deletes: Vec::new(),
             changes: vec![PendingUpdate {
                 key: "7".into(),
                 column: "statut".into(),
@@ -489,6 +516,7 @@ mod tests {
             table: "t".into(),
             key_column: "id".into(),
             inserts: Vec::new(),
+            deletes: Vec::new(),
             changes: vec![PendingUpdate {
                 key: "1".into(),
                 column: "nom".into(),
@@ -506,6 +534,7 @@ mod tests {
             table: "t".into(),
             key_column: "id".into(),
             inserts: Vec::new(),
+            deletes: Vec::new(),
             changes: vec![PendingUpdate {
                 key: "1".into(),
                 column: "statut".into(),
@@ -533,6 +562,7 @@ mod tests {
                     })
                     .collect(),
             }],
+            deletes: Vec::new(),
         }
     }
 
@@ -575,6 +605,46 @@ mod tests {
     fn le_patch_inverse_annonce_les_insertions_qu_il_ne_defait_pas() {
         let patch = patch_inverse_de(&plan_qui_ajoute(&[("nom", Some("Albi"))]));
         assert!(patch.starts_with("-- 1 ligne ajoutée"), "{patch}");
+        assert!(!patch.contains("BEGIN"), "{patch}");
+    }
+
+    fn plan_qui_supprime(cles: &[&str]) -> UpdatePlan {
+        UpdatePlan {
+            schema: "main".into(),
+            table: "t".into(),
+            key_column: "id".into(),
+            changes: Vec::new(),
+            inserts: Vec::new(),
+            deletes: cles
+                .iter()
+                .map(|cle| crate::engine::PendingDelete {
+                    key: (*cle).to_owned(),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn une_ligne_marquee_est_un_delete_parametre() {
+        let (sql, parametres) = instructions_de(&plan_qui_supprime(&["1"]))[0].clone();
+        // `is` : l'égalité sûre au nul de SQLite, même raison que pour une modification.
+        assert_eq!(sql, r#"delete from "t" where "id" is ?1"#);
+        assert_eq!(parametres, vec![Some("1".to_owned())]);
+    }
+
+    #[test]
+    fn les_suppressions_viennent_apres_les_insertions() {
+        let mut p = plan_qui_ajoute(&[("nom", Some("Albi"))]);
+        p.deletes = plan_qui_supprime(&["2"]).deletes;
+        let instructions = instructions_de(&p);
+        assert!(instructions[0].0.starts_with("insert"));
+        assert!(instructions[1].0.starts_with("delete"));
+    }
+
+    #[test]
+    fn le_patch_inverse_annonce_les_suppressions_sans_les_defaire() {
+        let patch = patch_inverse_de(&plan_qui_supprime(&["1"]));
+        assert!(patch.starts_with("-- 1 ligne supprimée"), "{patch}");
         assert!(!patch.contains("BEGIN"), "{patch}");
     }
 

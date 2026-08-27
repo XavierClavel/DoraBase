@@ -63,6 +63,9 @@ function monter(options: { columns?: ColumnInfo[]; edition?: boolean; lignes?: V
 
   function Pilotee() {
     const [attente, setAttente] = useState<EnAttente>([])
+    // La sélection est pilotée par l'écran (`rang`/`onRangChange`), comme `attente` — sans ce fil,
+    // un clic sur une ligne ne la sélectionnerait jamais, et `Suppr` n'aurait aucune ligne à viser.
+    const [rang, setRang] = useState<number | null>(null)
     return (
       <TableView
         cle={CLE}
@@ -75,6 +78,8 @@ function monter(options: { columns?: ColumnInfo[]; edition?: boolean; lignes?: V
           attentes.push(a)
           setAttente(a)
         }}
+        rang={rang}
+        onRangChange={setRang}
         passerelle={passerelle}
       />
     )
@@ -416,5 +421,102 @@ describe('ajouter une ligne', () => {
     // L'ajout, lui, ne vise aucune ligne — le refuser interdirait un geste possible.
     await utilisateur.click(screen.getByRole('button', { name: 'Ajouter une ligne' }))
     expect(await screen.findByRole('button', { name: 'Renseigner status' })).toBeInTheDocument()
+  })
+})
+
+describe('supprimer une ligne', () => {
+  /** Sélectionne la ligne qui porte ce texte, en cliquant la `row` elle-même — pas une cellule, qui
+   *  ouvrirait aussi une saisie et compliquerait l'assertion. */
+  async function selectionnerLaLigne(
+    utilisateur: ReturnType<typeof userEvent.setup>,
+    grille: HTMLElement,
+    texte: string,
+  ) {
+    const ligne = within(grille)
+      .getAllByRole('row')
+      .find((r) => within(r).queryByText(texte) !== null)
+    if (ligne === undefined) throw new Error(`aucune ligne ne porte « ${texte} »`)
+    await utilisateur.click(ligne)
+    return ligne
+  }
+
+  it('Suppr marque la ligne sélectionnée, et la remarque l’annule', async () => {
+    const utilisateur = userEvent.setup()
+    const { derniere } = monter()
+    const grille = await attendreLaGrille()
+
+    await selectionnerLaLigne(utilisateur, grille, 'cadeau')
+    await utilisateur.keyboard('{Delete}')
+
+    await waitFor(() => expect(derniere()).toHaveLength(1))
+    expect(derniere()[0]).toMatchObject({ sorte: 'suppression', cle: '184219' })
+    // Marquée, la ligne ne se modifie plus.
+    expect(
+      screen.getByRole('button', { name: 'Annuler la suppression de la ligne 2' }),
+    ).toBeInTheDocument()
+
+    // Le même geste bascule : la remarquer annule la marque.
+    await utilisateur.keyboard('{Delete}')
+    await waitFor(() => expect(derniere()).toHaveLength(0))
+  })
+
+  it('efface les modifications de cellule en attente de la ligne marquée', async () => {
+    const utilisateur = userEvent.setup()
+    const { derniere } = monter()
+    const grille = await attendreLaGrille()
+
+    await utilisateur.click(
+      screen.getAllByRole('button', { name: 'Modifier status' })[1] as HTMLElement,
+    )
+    const champ = screen.getByLabelText('Nouvelle valeur')
+    await utilisateur.clear(champ)
+    await utilisateur.type(champ, 'shipped{Enter}')
+    await waitFor(() => expect(derniere()).toHaveLength(1))
+
+    await selectionnerLaLigne(utilisateur, grille, 'cadeau')
+    await utilisateur.keyboard('{Delete}')
+
+    await waitFor(() => {
+      expect(derniere()).toEqual([{ sorte: 'suppression', cle: '184219', rang: 2 }])
+    })
+  })
+
+  it('la croix révélée au survol du numéro fait le même geste que Suppr', async () => {
+    const utilisateur = userEvent.setup()
+    const { derniere } = monter()
+    await attendreLaGrille()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Supprimer la ligne 1' }))
+    await waitFor(() => expect(derniere()).toHaveLength(1))
+    expect(derniere()[0]).toMatchObject({ sorte: 'suppression', cle: '184217' })
+
+    await utilisateur.click(
+      screen.getByRole('button', { name: 'Annuler la suppression de la ligne 1' }),
+    )
+    await waitFor(() => expect(derniere()).toHaveLength(0))
+  })
+
+  it('Backspace dans un champ de filtre ne supprime pas la ligne sélectionnée', async () => {
+    const utilisateur = userEvent.setup()
+    const { derniere } = monter()
+    const grille = await attendreLaGrille()
+
+    await selectionnerLaLigne(utilisateur, grille, 'cadeau')
+    await utilisateur.click(screen.getByRole('textbox', { name: 'Filtrer status' }))
+    await utilisateur.keyboard('{Backspace}')
+
+    expect(derniere()).toHaveLength(0)
+  })
+
+  it('une ligne ajoutée, pas encore écrite, se retire entière au lieu de se marquer', async () => {
+    const utilisateur = userEvent.setup()
+    const { derniere } = monter()
+    await attendreLaGrille()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Ajouter une ligne' }))
+    await waitFor(() => expect(derniere()).toHaveLength(1))
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Retirer la nouvelle ligne 1' }))
+    expect(derniere()).toHaveLength(0)
   })
 })

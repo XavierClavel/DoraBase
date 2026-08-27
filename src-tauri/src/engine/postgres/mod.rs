@@ -1156,6 +1156,7 @@ mod tests_db {
             table: "orders".into(),
             key_column: "id".into(),
             inserts: Vec::new(),
+            deletes: Vec::new(),
             changes: vec![crate::engine::PendingUpdate {
                 key: id.to_string(),
                 column: "status".into(),
@@ -1209,6 +1210,7 @@ mod tests_db {
             table: "orders".into(),
             key_column: "id".into(),
             inserts: Vec::new(),
+            deletes: Vec::new(),
             changes: vec![crate::engine::PendingUpdate {
                 key: id.to_string(),
                 column: colonne.into(),
@@ -1303,6 +1305,7 @@ mod tests_db {
                     },
                 ],
             }],
+            deletes: Vec::new(),
         };
 
         let issue = adaptateur

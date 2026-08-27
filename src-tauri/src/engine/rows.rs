@@ -160,6 +160,19 @@ pub struct PendingInsert {
     pub values: Vec<PendingInsertValue>,
 }
 
+/// Une ligne **existante à supprimer**, telle que `Suppr` ou la croix au survol du numéro de ligne
+/// la retiennent — un `DELETE`.
+///
+/// **Pas d'`expected`**, contrairement à `PendingUpdate` : une ligne n'a qu'une seule colonne qui
+/// l'identifie. Zéro ligne affectée par le `DELETE` porte déjà toute la détection de conflit dont on
+/// a besoin — la ligne a changé, ou disparu, depuis la lecture.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub struct PendingDelete {
+    pub key: String,
+}
+
 /// Ce qu'il faut pour prévisualiser — ou plus tard exécuter — une suite de modifications.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -172,13 +185,16 @@ pub struct UpdatePlan {
     /// aller-retour pour une information déjà affichée.
     ///
     /// Vide quand la table n'en a pas : un plan qui ne porte que des insertions reste valide, seules
-    /// les modifications en exigent une.
+    /// les modifications et les suppressions en exigent une.
     pub key_column: String,
     pub changes: Vec<PendingUpdate>,
     /// Les lignes à ajouter. **`#[serde(default)]`** : un champ ajouté ne demande pas de cran de
     /// migration, et un plan écrit par une version antérieure reste lisible.
     #[serde(default)]
     pub inserts: Vec<PendingInsert>,
+    /// Les lignes à supprimer. `#[serde(default)]`, même raison que `inserts`.
+    #[serde(default)]
+    pub deletes: Vec<PendingDelete>,
 }
 
 /// Le résultat d'une requête libre de la console (`12c`).
@@ -351,6 +367,34 @@ pub fn avertissement_insertions(compte: usize) -> Option<String> {
     ))
 }
 
+/// Ce que le patch inverse dit des suppressions — le même arbitrage que pour les insertions
+/// (`avertissement_insertions`), à l'envers : DoraBase n'a gardé que la **clé** de la ligne
+/// supprimée, jamais le reste de ses colonnes, donc rien à réinsérer pour la restaurer.
+pub fn avertissement_suppressions(compte: usize) -> Option<String> {
+    if compte == 0 {
+        return None;
+    }
+    Some(format!(
+        "-- {compte} ligne{s} supprimée{s} : ce patch ne les restaure pas. DoraBase n'a gardé que\n\
+         -- leur clé, pas le reste de la ligne.",
+        s = if compte > 1 { "s" } else { "" }
+    ))
+}
+
+/// Les deux avertissements du patch inverse, combinés — le point unique que les quatre moteurs
+/// appellent, pour ne pas répéter quatre fois la logique de jonction.
+pub fn avertissements(inserts: usize, deletes: usize) -> Option<String> {
+    match (
+        avertissement_insertions(inserts),
+        avertissement_suppressions(deletes),
+    ) {
+        (None, None) => None,
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (Some(a), Some(b)) => Some(format!("{a}\n{b}")),
+    }
+}
+
 /// Le patch inverse complet : l'avertissement des insertions, puis les instructions qui défont.
 ///
 /// **Assemblé ici et pas dans chaque adaptateur** : le texte des instructions est propre au moteur,
@@ -416,5 +460,25 @@ mod tests {
         assert!(requete.filters.is_empty());
         assert!(requete.sort.is_empty());
         assert_eq!(requete.offset, 0);
+    }
+
+    #[test]
+    fn avertissements_rend_none_quand_les_deux_comptes_sont_nuls() {
+        assert_eq!(avertissements(0, 0), None);
+    }
+
+    #[test]
+    fn avertissements_combine_les_deux_textes() {
+        let combine = avertissements(2, 3).expect("un avertissement attendu");
+        assert!(combine.contains("2 lignes ajoutées"));
+        assert!(combine.contains("3 lignes supprimées"));
+    }
+
+    #[test]
+    fn avertissements_ne_rend_que_celui_qui_s_applique() {
+        assert!(avertissements(1, 0).unwrap().contains("ajoutée"));
+        assert!(!avertissements(1, 0).unwrap().contains("supprimée"));
+        assert!(avertissements(0, 1).unwrap().contains("supprimée"));
+        assert!(!avertissements(0, 1).unwrap().contains("ajoutée"));
     }
 }
