@@ -24,6 +24,30 @@ pub enum Engine {
     BigQuery,
 }
 
+impl Engine {
+    /// Le nombre de moteurs du handoff. Employé par `tous()`, et par son garde-fou.
+    pub const TOTAL: usize = 7;
+
+    /// Tous les moteurs, dans l'ordre du handoff.
+    ///
+    /// Un tableau littéral ne peut pas être vérifié par le compilateur : oublier une
+    /// variante compilerait. Le garde-fou est le test `tous_porte_chaque_moteur`, dont le
+    /// `match` **exhaustif** casse la compilation à l'ajout d'un huitième moteur et dont
+    /// l'assertion tombe ensuite si ce moteur n'est pas entré ici. Les deux étapes sont
+    /// nécessaires ; l'une seule laisserait l'oubli passer.
+    pub fn tous() -> [Engine; Self::TOTAL] {
+        [
+            Engine::PostgreSql,
+            Engine::MySql,
+            Engine::Sqlite,
+            Engine::MongoDb,
+            Engine::Redis,
+            Engine::Snowflake,
+            Engine::BigQuery,
+        ]
+    }
+}
+
 /// L'identifiant **stable** d'un environnement, dans la portée d'un projet (`23a`).
 ///
 /// # Pourquoi un identifiant distinct du libellé
@@ -775,6 +799,31 @@ mod tests {
             databases: bases,
             queries: Vec::new(),
         }
+    }
+
+    /// Le rang d'un moteur, par un `match` **exhaustif** : ajouter une variante à `Engine`
+    /// casse la compilation ici, et c'est le premier étage du garde-fou de `tous()`.
+    fn rang(moteur: Engine) -> usize {
+        match moteur {
+            Engine::PostgreSql => 0,
+            Engine::MySql => 1,
+            Engine::Sqlite => 2,
+            Engine::MongoDb => 3,
+            Engine::Redis => 4,
+            Engine::Snowflake => 5,
+            Engine::BigQuery => 6,
+        }
+    }
+
+    #[test]
+    fn tous_porte_chaque_moteur() {
+        // Second étage : le rang du huitième moteur manquerait à cet ensemble tant qu'il
+        // n'est pas ajouté à `tous()`. Sans cette assertion, `tous()` pourrait en oublier
+        // un et `dump::DumpAvailability::pour_moteur` mentirait sur sa disponibilité sans
+        // que rien ne le dise.
+        let rangs: std::collections::BTreeSet<usize> =
+            Engine::tous().into_iter().map(rang).collect();
+        assert_eq!(rangs, (0..Engine::TOTAL).collect());
     }
 
     // --- L'identifiant, dérivé une fois puis figé (`23a`) ---

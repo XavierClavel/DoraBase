@@ -706,6 +706,74 @@ la suite Playwright et toutes les captures de fidélité mesurent le **clair** �
 seulement que le sombre n'a rien changé au clair. Un contraste faible, une bordure disparue ou une
 pastille illisible sous « Nuit » ne se voient qu'en regardant.
 
+### Le menu natif, l'export et l'import d'un dump
+
+**Le point d'entrée est le menu natif, et rien d'autre.** Le handoff ne maquette aucun bouton
+d'export ; en inventer un aurait été le premier pixel inventé du projet. `⇧⌘E` et `⇧⌘I` sont
+libres — les dix écrans réservent `⌘N`, `⌘K`, `⌘P`, `⌘Z`, `⌘↩` et `⌥↩`.
+
+**Remplacer le menu par défaut retire le menu Édition**, donc `⌘C` / `⌘V` meurent dans toute
+la webview. Le remplacement le reconstruit à l'identique ; c'est la seule raison pour laquelle
+`menu::MenuSpec` décrit des items prédéfinis qu'on ne voulait pas décrire. Un test garde la
+liste, et un autre garde qu'aucun libellé anglais de muda ne subsiste.
+
+**Le dump délègue à l'outil natif du moteur** — `pg_dump` pour l'export, `psql` pour l'import
+—, découvert sur la machine et non empaqueté. Un dump maison incomplet **présenté comme une
+sauvegarde** serait le pire défaut que cette feature puisse avoir ; la fidélité est donc
+acquise plutôt que promise. Contrepartie assumée : une dépendance externe, cherchée dans le
+`PATH` puis dans les emplacements usuels de Homebrew et de Postgres.app — une app lancée
+depuis le Finder n'hérite pas du `PATH` du shell.
+
+**Cinq verdicts de disponibilité, jamais un booléen.** « Indisponible » recouvre cinq
+situations dont deux se ressemblent sans être la même : `NotYetSupported` est une promesse à
+tenir, `NoLocalDump` une impossibilité de construction — Snowflake et BigQuery n'ont pas
+d'outil local, leur export sort vers un stockage cloud, ce qui heurte « aucune ressource
+réseau ». Les fondre dirait « pas encore » d'un cas qui ne viendra jamais. **L'entrée de menu
+reste active dans les cinq cas** : un item natif désactivé ne peut pas être cliqué, donc le
+motif serait inatteignable. C'est la modale qui délivre le verdict.
+
+**Le secret ne passe que par l'environnement du fils** (`PGPASSWORD`), jamais en argv — `ps`
+l'exposerait à tout utilisateur de la machine — et jamais journalisé, le plugin de log ciblant
+la webview en développement. Le processus est lancé par `std::process::Command` avec un argv
+direct, **jamais par un shell** : aucune surface de citation ni d'injection.
+
+**La progression est un nombre d'octets, sans total ni pourcentage.** `pg_dump --format=plain`
+n'émet aucune progression exploitable et la taille finale est inconnaissable avant la fin :
+afficher un pourcentage présenterait une estimation comme un fait.
+
+**À l'échec comme à l'annulation, le fichier partiel est supprimé.** Un dump tronqué qui
+ressemble à une sauvegarde est l'artefact dangereux de cette feature.
+
+**Un dump tronqué s'importe partiellement, en silence, avec `exit=0`** — et c'est mesuré.
+`psql --single-transaction --set ON_ERROR_STOP=on` ne suffit pas : `psql` lit les données d'un
+`COPY … FROM stdin` jusqu'au `\.` terminal, et en atteignant la fin de fichier avant, il
+traite l'EOF comme la **fin normale** des données. La `COPY` réussit, le script se termine, la
+transaction est **committée**, et `ON_ERROR_STOP` n'a aucune erreur sur laquelle se déclencher.
+Un dump de 102 083 lignes coupé à 60 000 a rendu `exit=0`, aucun message, et une base cible
+portant 59 646 lignes sur 100 000 dans une table et les cinq autres vides. Le remède est dans
+le fichier : `pg_dump --format=plain` termine par
+`-- PostgreSQL database dump complete`, absent d'un fichier tronqué, **lu avant de lancer
+`psql`**. Ce pied est le contrat entre l'export et l'import : l'un teste qu'il l'écrit, l'autre
+qu'il l'exige, et retirer le contrôle fait réussir l'import du fichier coupé. **Ne jamais
+« simplifier » ce contrôle en se fiant à la transaction.**
+
+**Le garde-fou de l'import, c'est la modale qui nomme la cible** : projet, base,
+environnement, chemin du fichier. Pas de case à cocher, pas de nom à recopier — l'erreur que
+cela empêche est de se tromper de cible, pas d'intention. Et `readOnly` refuse **avant** toute
+autre étape : avant la découverte du binaire, avant l'inspection, avant la question posée.
+
+**Une connexion tunnelée exige que la base soit ouverte.** Le tunnel ne vit que tant que la
+connexion est au registre, et son port local vient de là : sur une connexion tunnelée, l'hôte
+et le port passés à `pg_dump` sont `127.0.0.1` et ce port, jamais ceux de la connexion — qui
+décrivent la base **vue depuis le bastion**. Fermée, l'export le **dit** au lieu de rendre une
+erreur réseau brute.
+
+**La cible de `⇧⌘E` / `⇧⌘I` n'est résolue que si elle est sans ambiguïté** — un seul projet,
+une seule connexion. Le menu natif n'émet qu'un identifiant d'item, et rien ne transmet encore
+la sélection de l'arbre aux modales de dump. Sans cible unique, la modale le **dit** plutôt
+que de choisir : exporter la mauvaise base est sans conséquence, importer dans la mauvaise en
+a une. À reprendre quand la sélection sera transmise.
+
 ### La migration du format de configuration
 
 `VERSION_COURANTE` vaut **5**. Les crans successifs sont des passes sur du
@@ -861,7 +929,21 @@ anecdotes.
    Quand la contrainte porte sur le chemin, mesurer le chemin : un coût, un aller-retour
    réel.
 
-3. **Un décor de test trop régulier ne mesure que le décor.** Neuf défauts du premier
+3. **Un test calé sur une durée réelle est un tirage au sort.** Le plan de l'export voulait
+   annuler un dump de 100 000 lignes, « qui dure assez pour être annulé » : mesuré, ce dump
+   prend **0,136 s**, moins que deux tours de sondage. L'annulation est donc exercée contre un
+   faux outil lent — un script qui écrit une ligne toutes les 50 ms — sur exactement le même
+   chemin de code, et le binaire réel garde un test où l'annulation est demandée avant le
+   lancement. Chronométrer avant d'écrire le test, plutôt que croire un adjectif.
+
+4. **Une liste de tables ou de comptes écrite dans un test se périme en silence.** Celle des
+   tests de dump l'a fait deux fois : d'abord contre ce que le chantier annonçait, puis contre
+   le décor lui-même, qui avait grandi entre-temps. Les tables et leurs comptes sont désormais
+   **lus au serveur**, et le seul chiffre en dur est celui de la grande table — il sert de
+   contrôle positif, sans quoi « le dump dit la même chose que la base » passerait aussi sur
+   une base vide.
+
+5. **Un décor de test trop régulier ne mesure que le décor.** Neuf défauts du premier
    usage réel tenaient tous à une régularité : colonnes exotiques nulles **partout**,
    tables toutes analysées, numéros d'attribut qui coïncident par hasard entre deux
    tables, grille de démonstration plus étroite que son cadre. Avant d'écrire un test,
@@ -869,7 +951,7 @@ anecdotes.
    une table vide et une table jamais analysée, un chevauchement et une découpe par
    `overflow` — puis rendre les deux distinguables.
 
-4. **Une capture de fidélité fait partie du changement qui la périme.** Trois références de
+6. **Une capture de fidélité fait partie du changement qui la périme.** Trois références de
    `a1.spec.ts` sont restées trois commits en retard sur `AucuneSelection` : le fond derrière la
    modale avait changé de quelques valeurs sur toute la zone de travail, et `main` est resté
    rouge du 25 août au soir. Le diff de Playwright compte les pixels **au-dessus du seuil**, pas
@@ -877,7 +959,7 @@ anecdotes.
    chiffre comme un ordre de grandeur, puis regarder les deux images côte à côte — c'est ce qui
    dit si le rendu est faux ou si c'est la référence.
 
-5. **Ce qu'un écran affiche de son propre build, une capture de fidélité le fige.** La barre
+7. **Ce qu'un écran affiche de son propre build, une capture de fidélité le fige.** La barre
    d'état porte `DoraBase <version>`, donc chaque capture pleine page contient le numéro : la
    première publication a rendu rouges deux références, douze pixels, le dernier chiffre. Un
    flux de publication et des captures pleine page sont incompatibles tant que la valeur n'est
@@ -889,17 +971,17 @@ anecdotes.
    encore mordu : la CI et ce poste sont tous deux en `arm64`. Une référence capturée sur un
    Mac Intel divergerait.
 
-6. **Un composant vérifié pièce par pièce n'est pas un écran livré.** Un écran entier
+8. **Un composant vérifié pièce par pièce n'est pas un écran livré.** Un écran entier
    fidèle et testé n'avait jamais été vu **dans l'application** : tous ses tests visaient
    la galerie, qui donne la même image. Même motif pour trois couches complètes que
    personne ne franchissait. **Au moins un test doit partir de `/`.**
 
-7. **jsdom ne calcule aucune mise en page.** Toute exigence de hauteur, largeur, position
+9. **jsdom ne calcule aucune mise en page.** Toute exigence de hauteur, largeur, position
    ou superposition est structurellement hors de portée de Vitest et va dans `e2e/`. Et
    il faut mesurer la valeur **calculée**, pas le rectangle : celui-ci inclut les bordures
    et masque un écart derrière un arrondi.
 
-8. **Un niveau de test manque toujours : celui qui n'appartient à aucun écran.**
+10. **Un niveau de test manque toujours : celui qui n'appartient à aucun écran.**
    `e2e/geometrie-reelle.spec.ts` existe pour ça, à la taille de fenêtre réelle : rien ne
    franchit le bord droit **et** la racine ne défile pas horizontalement (les deux
    ensemble, un enfant coupé par un ancêtre en `overflow: hidden` échappant à la
@@ -907,7 +989,7 @@ anecdotes.
    dans leurs boutons. Chaque composant peut être juste dans sa vitrine et faux dès qu'un
    voisin décide sa largeur.
 
-9. **Les outils qui vérifient doivent eux-mêmes pouvoir échouer.** `cmd | tail` fait
+11. **Les outils qui vérifient doivent eux-mêmes pouvoir échouer.** `cmd | tail` fait
    porter le statut de sortie par `tail`, et « TOUT VERT » s'est affiché avec trois
    vérifications rouges — d'où `scripts/verifier-tout.sh`, qui ne tronque rien. Un garde
    écrit contre une famille de fichiers ne couvre pas celle qu'elle engendre. Un
@@ -915,23 +997,23 @@ anecdotes.
    `git checkout -- fichier` restaure depuis l'**index** : un sabotage qui y a été ajouté
    est réinstallé par la « restauration » censée l'enlever.
 
-10. **« ÉCHEC à l'étape X » ne dit pas que X a échoué pour la raison qu'on croit.** Lire
+12. **« ÉCHEC à l'étape X » ne dit pas que X a échoué pour la raison qu'on croit.** Lire
     `gh run view --log-failed`, pas seulement le nom de l'étape — la vraie cause est
     souvent en amont *dans* la même commande. Et tout échec de CI n'est pas un défaut du
     code : une panne de GitHub Actions se relance, elle ne se corrige pas.
 
-11. **Quand un scope ajoute une dépendance à un fichier absent du dépôt, la question n'est
+13. **Quand un scope ajoute une dépendance à un fichier absent du dépôt, la question n'est
     pas « le script qui le fabrique est-il appelé ? » mais « que voit un clone neuf ? ».**
     Un `externalBin` déclaré fait exiger le fichier par **toute** compilation — `cargo
     build`, `cargo test`, `clippy` —, pas seulement par le bundle. Rien ne l'avait vu parce
     que le binaire était présent sur la machine de développement depuis l'écriture du scope.
 
-12. **Ce qu'un double de test émet doit venir d'une observation de l'original** — et une
+14. **Ce qu'un double de test émet doit venir d'une observation de l'original** — et une
     observation faite avec `2>&1` ne dit rien de la séparation des flux. Un faux binaire
     en shell peut couvrir tout le pilotage d'un sous-processus et se tromper sur le seul
     point qui compte.
 
-13. **Une lecture sèche après une action asynchrone date la mesure du mauvais instant.**
+15. **Une lecture sèche après une action asynchrone date la mesure du mauvais instant.**
     `page.evaluate`, `getAttribute`, `boundingBox` ne réessaient pas : ils rendent l'état de
     l'appel, pas celui qui résulte du clic ou du défilement qui précède. Le rendu suivant arrive
     plus tard, et sur un runner chargé il arrive **après**. Le test échoue alors sur une exigence
@@ -942,7 +1024,7 @@ anecdotes.
     qu'après l'effet — l'en-tête qui « n'a pas bougé » —, la placer **après** l'attente qui
     prouve l'effet.
 
-14. **Un `match` à bras attrape-tout ne garantit plus rien, et le commentaire qui promet le
+16. **Un `match` à bras attrape-tout ne garantit plus rien, et le commentaire qui promet le
     contraire survit à la garantie.** `AnyEngine::connect_via` portait « le `match` rend l'oubli
     impossible : ajouter un moteur fait échouer la compilation ». Vrai à l'écriture ; faux dès
     qu'un bras `autre =>` a été ajouté pour donner un message aux moteurs non livrés. Il a
@@ -953,7 +1035,7 @@ anecdotes.
     test, le commentaire doit le dire, et le test doit toucher le sujet** : ici, joindre chaque
     moteur livré contre un port fermé et vérifier que l'échec n'est pas un refus.
 
-15. **Deux voies pour un même acte en laissent une en arrière.** « Tester la connexion » ouvrait
+17. **Deux voies pour un même acte en laissent une en arrière.** « Tester la connexion » ouvrait
     par `PostgresAdapter::connect`, l'ouverture réelle par le répartiteur — donc le test parlait
     PostgreSQL à tous les moteurs, et sa requête ne portait même pas le moteur. Contre un `mongod`,
     le pilote reste **pendu** : ni verdict, ni erreur, un bouton « Test en cours… » indéfini, ce
@@ -1005,6 +1087,17 @@ présenter comme vérifiées tant qu'un humain ne les a pas faites :
   sur leurs emplacements ne se voit qu'à l'œil. Le TIFF multi-résolution n'a pas d'autre juge.
   Ne pas chercher à le capturer par `screencapture` : la fenêtre du volume n'est pas
   nécessairement au premier plan, et la capture attrape alors l'écran de quelqu'un.
+- **Dérouler chaque menu de la barre, puis exercer le presse-papier.** Six menus en
+  français, et « Fichier » portant ses deux entrées de dump avec `⇧⌘E` / `⇧⌘I` ; puis `⌘N`,
+  taper dans un champ, `⌘A` `⌘C` `⌘V`. Le presse-papier est **la** régression que le
+  remplacement du menu par défaut peut introduire, et aucun test ne voit un menu natif.
+- **Déclencher `⇧⌘E` puis `⇧⌘I`.** Deux lignes distinctes doivent paraître dans la sortie de
+  `pnpm tauri dev`, côté Rust **et** côté front : c'est la seule vérification du pont menu →
+  React, `MenuEvent` ne portant qu'un identifiant.
+- **Exporter puis réimporter pour de vrai.** Le sélecteur de sauvegarde natif doit s'ouvrir et
+  un fichier non vide arriver au chemin choisi ; puis `⇧⌘I` sur ce fichier doit nommer projet,
+  base et environnement avant de laisser confirmer. Les sélecteurs de fichiers natifs ne sont
+  pas dans le DOM — même angle mort que « Parcourir… ».
 - **Régler « Afficher les barres de défilement : toujours »**, puis regarder la sidebar et
   la bande d'onglets. Chromium sans tête rend des barres en survol, qui n'occupent aucune
   place : la mesure vaut 0 avec comme sans la correction.

@@ -98,3 +98,14 @@ tauri-plugin-updater = "2"
 [dev-dependencies]
 tempfile = "3.27.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+# `MockRuntime`, seul moyen du projet de construire un menu natif pour de vrai et
+# d'inspecter le résultat (`Menu::items()`, `Submenu::items()`) — voir `menu/build.rs`.
+tauri = { version = "2.11.3", features = ["test"] }
+
+# `harness = false` : `tests/menu_build.rs` construit un vrai menu muda, qui sur macOS
+# exige le thread principal du **processus** — le harness `libtest` par défaut exécute
+# chaque `#[test]` sur un thread de travail qu'il spawn lui-même, jamais ce thread-là. Voir
+# la doc de tête de `src/menu/build.rs`.
+[[test]]
+name = "menu_build"
+harness = false

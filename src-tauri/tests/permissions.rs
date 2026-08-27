@@ -40,6 +40,10 @@ const ATTENDUES: &[(&str, &str)] = &[
         "le bouton « Parcourir… » de la clé privée (08c) — ouverture seule",
     ),
     (
+        "dialog:allow-save",
+        "le sélecteur de destination du dump (22b) — sauvegarde seule, pas `dialog:default`",
+    ),
+    (
         "log:allow-log",
         "les journaux du front, qui rendent le pont IPC observable (08d) — `log` seul",
     ),

@@ -10,6 +10,7 @@ import { useConfiguration } from '../data/useConfiguration'
 import { Sprite } from '../design/icons/Sprite'
 import type { Database, EnvironmentId, Preferences, Project } from '../domain/config'
 import { LanguageProvider, langueAppliquee } from '../i18n/LanguageContext'
+import { DumpDialogs, type SensDuDump } from '../screens/Dump/DumpDialogs'
 import {
   renommerLaConnexion,
   renommerLeProjet,
@@ -25,6 +26,7 @@ import { Workbench } from '../screens/Workbench/Workbench'
 import { useClicDroitDesactive } from '../shell/useClicDroit'
 import { useZoom } from '../shell/useZoom'
 import { BarresDeDefilement } from '../ui/BarresDeDefilement/BarresDeDefilement'
+import { brancherEvenementsDeMenu } from './menuEvents'
 import { useRaccourcisDeCreation } from './useRaccourcisDeCreation'
 
 // La galerie (`src/design/gallery/`) ne doit jamais partir dans le bundle livré : elle
@@ -102,6 +104,23 @@ export function App() {
    */
   const [preferences, setPreferences] = useState<Preferences>(PREFERENCES_PAR_DEFAUT)
   const [preferencesOuvertes, setPreferencesOuvertes] = useState(false)
+
+  /**
+   * Ce que `⇧⌘E` et `⇧⌘I` ouvrent (`22a`–`22c`).
+   *
+   * Les deux entrées du menu natif n'ont pas d'équivalent dans l'interface : le handoff ne
+   * maquette aucun bouton d'export, et c'est pour cette raison que `22a` a placé le point
+   * d'entrée dans le menu. L'abonnement est posé une seule fois — le repositionner à chaque
+   * rendu réarmerait l'écoute en boucle.
+   */
+  const [dump, setDump] = useState<SensDuDump | null>(null)
+
+  useEffect(() => {
+    brancherEvenementsDeMenu({
+      exporter: () => setDump('export'),
+      importer: () => setDump('import'),
+    })
+  }, [])
 
   // Les projets lus alimentent l'état local, que `08e` met ensuite à jour après chaque
   // enregistrement. Deux sources pour une même liste, mais dans le temps : le disque au
@@ -286,6 +305,7 @@ export function App() {
               return issue
             }}
           />
+          {dump && <DumpDialogs sens={dump} projects={projects} onClose={() => setDump(null)} />}
           {(connexionOuverte !== null || edition) && (
             <NewConnection
               onClose={() => {

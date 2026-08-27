@@ -1,0 +1,55 @@
+/*
+ * Les deux modales de dump — export (`22b`) et import (`22c`).
+ *
+ * **Le handoff ne maquette pas ces écrans.** Aucune métrique n'est donc relevée : les
+ * blocs reprennent celles de `A2` (remplissage 16 px, pied 56 px), et rien d'autre n'est
+ * inventé. Les valeurs viennent de l'échelle d'espacement, jamais d'un littéral.
+ */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-7) var(--space-8);
+}
+
+/* Projet · base · environnement : ce que la modale **nomme**, et le garde-fou de `22c`. */
+.cible {
+  font-family: var(--font-ui);
+  font-size: var(--text-body);
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+}
+
+.explication {
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  color: var(--ink-2);
+}
+
+.chemin {
+  font-family: var(--font-mono);
+  font-size: var(--text-dense);
+  color: var(--ink-6);
+  /* Un chemin est long, et le couper vaut mieux que d'élargir la modale. */
+  overflow-wrap: anywhere;
+}
+
+.progression {
+  font-family: var(--font-mono);
+  font-size: var(--text-dense);
+  color: var(--ink-6);
+}
+
+.echec {
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  color: var(--danger-ink);
+}
+
+.footer {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+  width: 100%;
+}
