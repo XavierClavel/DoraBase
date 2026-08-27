@@ -532,7 +532,9 @@ test('la bande d’actions tient dans la colonne, à hauteur fixe', async ({ pag
     const c = colonne.getBoundingClientRect()
     const actions = [...bande.querySelectorAll('button')] as HTMLElement[]
     return {
-      // 34 px de contenu plus son filet bas : la conversion habituelle de ce projet.
+      // 28 px de contenu plus son filet bas : la conversion habituelle de ce projet. Les deux
+      // bandes de tête ont quitté `--h-bar` le 27 août 2026 — 22 px de bouton et 3 px de part
+      // et d'autre — et cette mesure n'avait pas suivi.
       hauteur: Math.round(b.height),
       // Aucune action ne sort de la bande, ni par la droite ni par le bas.
       dansLaBande: actions.every((action) => {
@@ -550,7 +552,7 @@ test('la bande d’actions tient dans la colonne, à hauteur fixe', async ({ pag
   })
   const m = mesures as NonNullable<typeof mesures>
 
-  expect(m.hauteur).toBe(35)
+  expect(m.hauteur).toBe(29)
   expect(m.dansLaBande).toBe(true)
   expect(m.dansLaColonne).toBe(true)
   // 22 px, la hauteur d'une ligne d'arbre : la bande n'introduit pas une troisième unité verticale
