@@ -329,7 +329,9 @@ mod tests {
         // Un hôte qui ne répond pas : `pg_dump` existe, se lance, et échoue. C'est le
         // chemin d'erreur que la modale affichera le plus souvent.
         let outil = PostgresDumpTool;
-        let binaire = match crate::dump::discover::decouvrir("pg_dump", Version::new(17, 6)) {
+        // Version de serveur nulle : ce test mesure le **chemin d'erreur** du lancement, pas
+        // la règle de version — et le `pg_dump` du runner de CI est plus ancien que le décor.
+        let binaire = match crate::dump::discover::decouvrir("pg_dump", Version::new(0, 0)) {
             crate::dump::DumpAvailability::Ready { tool, .. } => tool,
             autre => panic!("pg_dump introuvable sur cette machine : {autre:?}"),
         };

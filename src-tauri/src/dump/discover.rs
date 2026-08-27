@@ -231,10 +231,21 @@ mod tests {
         );
     }
 
+    /// Une version de serveur qu'aucun outil ne peut précéder.
+    ///
+    /// **Les deux tests de découverte ne doivent pas dépendre de la version installée**, et
+    /// c'est la CI qui l'a montré : son runner porte `pg_dump` 16.15 face au décor 17.x, donc
+    /// `ToolTooOld` — un verdict juste, mais qui ne dit rien de la *découverte*. La règle de
+    /// version a son propre test, avec un faux binaire ; ici on ne mesure que « le binaire
+    /// est trouvé ».
+    const N_IMPORTE_QUEL_SERVEUR: Version = Version {
+        majeure: 0,
+        mineure: 0,
+    };
+
     #[test]
-    fn le_pg_dump_de_cette_machine_est_trouve_et_ready() {
-        // Mesuré : /opt/homebrew/opt/postgresql@17/bin/pg_dump, version 17.4.
-        let verdict = decouvrir("pg_dump", Version::new(17, 6));
+    fn le_pg_dump_de_cette_machine_est_trouve() {
+        let verdict = decouvrir("pg_dump", N_IMPORTE_QUEL_SERVEUR);
         assert!(
             matches!(verdict, DumpAvailability::Ready { .. }),
             "{verdict:?}"
@@ -245,7 +256,7 @@ mod tests {
     fn les_emplacements_connus_sont_cherches_meme_absents_du_path() {
         // Un `PATH` vide, mais les emplacements connus restent explorés — c'est le cas
         // d'une app lancée depuis le Finder, qui n'hérite pas du `PATH` du shell.
-        let verdict = decouvrir_dans(&[], EMPLACEMENTS_CONNUS, "pg_dump", Version::new(17, 6));
+        let verdict = decouvrir_dans(&[], EMPLACEMENTS_CONNUS, "pg_dump", N_IMPORTE_QUEL_SERVEUR);
         assert!(
             matches!(verdict, DumpAvailability::Ready { .. }),
             "{verdict:?}"

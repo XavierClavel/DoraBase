@@ -324,6 +324,50 @@ jobs:
           apt_reessaye install --no-install-recommends -y \
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
 
+      # **Le client PostgreSQL 17, et pas celui du runner.** L'export et l'import délèguent à
+      # `pg_dump` et `psql` : sans eux, ces tests ne mesurent rien. Et la version compte — le
+      # runner ships `pg_dump` 16.15, le décor est un `postgres:17`, et un outil plus ancien
+      # que le serveur refuse de le dumper. C'est le verdict `ToolTooOld`, juste mais stérile
+      # ici : il ferait échouer toute la famille pour une raison qui n'est pas le code.
+      #
+      # Le dépôt PGDG est donc ajouté, et la **majeure est épinglée** sur celle de l'image de
+      # `pg-test.sh`. Les deux doivent bouger ensemble ; l'étape suivante le constate plutôt
+      # que d'attendre l'échec de dix tests.
+      - name: le client PostgreSQL 17, pour les tests de dump
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          apt_reessaye() {
+            for tentative in 1 2 3; do
+              if sudo timeout 240 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=15 "$@"; then
+                return 0
+              fi
+              echo "::warning::apt-get $1 a échoué ou pendu (tentative $tentative/3)"
+              sleep 5
+            done
+            return 1
+          }
+          apt_reessaye update
+          apt_reessaye install --no-install-recommends -y postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      # Que le client trouvé soit bien le 17, et non celui de l'image du runner : `apt` peut
+      # avoir installé sans que le `PATH` change d'avis, et l'ordre décide.
+      - name: le pg_dump du PATH est bien celui du décor
+        run: |
+          set -euo pipefail
+          pg_dump --version
+          psql --version
+          pg_dump --version | grep -qE ' 17\.' || {
+            echo "::error::pg_dump n'est pas en 17 — le décor est un postgres:17"
+            exit 1
+          }
+
       - run: rustup show
         working-directory: src-tauri
 
