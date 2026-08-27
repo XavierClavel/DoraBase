@@ -1,4 +1,5 @@
 import { Icon } from '../../../design/icons/Icon'
+import { useT } from '../../../i18n/LanguageContext'
 import { Button } from '../../../ui/Button/Button'
 import styles from './WelcomeHero.module.css'
 
@@ -7,22 +8,20 @@ type WelcomeHeroProps = {
 }
 
 export function WelcomeHero({ onNewProject }: WelcomeHeroProps) {
+  const t = useT()
   return (
     <div className={styles.root}>
       <div className={styles.content}>
         <svg className={styles.logo} viewBox="0 0 512 512" aria-hidden="true">
           <use href="#logo" />
         </svg>
-        {/* Espace insécable avant le point d'interrogation, tel que le mockup le pose. */}
-        <h1 className={styles.title}>{'Prêt à explorer ?'}</h1>
-        <p className={styles.subtitle}>
-          Crée un projet, branche ses bases, puis bascule de dev à prod d'un seul clic. Pas d'IDE à
-          lancer.
-        </p>
+        {/* Espace insécable avant le point d'interrogation, porté par le dictionnaire lui-même. */}
+        <h1 className={styles.title}>{t('welcome.hero.title')}</h1>
+        <p className={styles.subtitle}>{t('welcome.hero.subtitle')}</p>
         <div className={styles.actions}>
           <Button variant="dark" size="xl" shortcut="⌘N" onClick={onNewProject}>
             <Icon name="plus" size={15} strokeWidth={2.2} />
-            Nouveau projet
+            {t('welcome.hero.newProject')}
           </Button>
         </div>
       </div>

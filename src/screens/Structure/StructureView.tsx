@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type { ColumnInfo, TableDetail } from '../../domain/engine'
+import { useT } from '../../i18n/LanguageContext'
 import { MiseAJour } from '../../shell/MiseAJour/MiseAJour'
 import { type Column, DataTable } from '../../ui/DataTable/DataTable'
 import { ABSENT, formatBytes, formatRowCount } from '../../ui/format'
@@ -33,6 +34,7 @@ export function StructureView({
   loading = false,
   error = null,
 }: StructureViewProps) {
+  const t = useT()
   const [filtre, setFiltre] = useState('')
 
   const visibles = useMemo(() => {
@@ -58,26 +60,26 @@ export function StructureView({
   if (loading)
     return (
       <div className={styles.root}>
-        <p className={styles.vide}>Lecture de la structure…</p>
+        <p className={styles.vide}>{t('structure.view.lecture')}</p>
       </div>
     )
   if (!detail)
     return (
       <div className={styles.root}>
-        <p className={styles.vide}>Ouvrez une table pour en voir la structure.</p>
+        <p className={styles.vide}>{t('structure.view.aucuneTable')}</p>
       </div>
     )
 
   const colonnes: Column<ColumnInfo>[] = [
     {
       key: 'position',
-      header: '#',
+      header: t('structure.view.entetes.rang'),
       width: '34px',
       cell: (colonne) => <span className={styles.rang}>{colonne.position}</span>,
     },
     {
       key: 'name',
-      header: 'colonne',
+      header: t('structure.view.entetes.colonne'),
       width: '150px',
       ui: true,
       cell: (colonne) => (
@@ -88,10 +90,15 @@ export function StructureView({
         </span>
       ),
     },
-    { key: 'type', header: 'type', width: '118px', cell: (colonne) => colonne.typeName },
+    {
+      key: 'type',
+      header: t('structure.view.entetes.type'),
+      width: '118px',
+      cell: (colonne) => colonne.typeName,
+    },
     {
       key: 'nullable',
-      header: 'null',
+      header: t('structure.view.entetes.nullable'),
       width: '54px',
       cell: (colonne) => (
         // `no` en rouge et `yes` en vert : le mockup l'assume, et ce n'est pas un jugement de
@@ -103,7 +110,7 @@ export function StructureView({
     },
     {
       key: 'default',
-      header: 'défaut',
+      header: t('structure.view.entetes.defaut'),
       width: '130px',
       cell: (colonne) => {
         const defaut = defautLisible(colonne)
@@ -118,11 +125,14 @@ export function StructureView({
     },
     {
       key: 'key',
-      header: 'clé',
+      header: t('structure.view.entetes.cle'),
       width: '70px',
       cell: (colonne) => {
         if (colonne.key === null) return null
-        const quoi = colonne.key === 'primary' ? 'clé primaire' : 'clé étrangère'
+        const quoi =
+          colonne.key === 'primary'
+            ? t('structure.view.clePrimaire')
+            : t('structure.view.cleEtrangere')
         // **Une cellule qui ne contient qu'une icône est muette.** `Icon` pose `aria-hidden`, à
         // raison — l'icône est décorative quand un texte voisin la nomme. Ici il n'y en a pas :
         // le mot est donc porté par un texte réservé aux lecteurs d'écran, et par l'infobulle
@@ -142,7 +152,7 @@ export function StructureView({
     },
     {
       key: 'comment',
-      header: 'commentaire',
+      header: t('structure.view.entetes.commentaire'),
       ui: true,
       cell: (colonne) => {
         const annotation = annotationDe(colonne, detail.relations, detail.constraints)
@@ -154,7 +164,9 @@ export function StructureView({
           <span
             className={annotation.deduit ? styles.deduit : undefined}
             title={
-              annotation.deduit ? 'déduit du catalogue par DoraBase' : 'commentaire de la colonne'
+              annotation.deduit
+                ? t('structure.view.colonneDeduite')
+                : t('structure.view.colonneCommentee')
             }
           >
             {annotation.texte}
@@ -170,14 +182,12 @@ export function StructureView({
         <div className={styles.comptes}>
           {/* Les trois comptes viennent de l'introspection, **pas d'un recalcul** : `detail` les
               porte, et les recompter ailleurs finirait par en donner deux versions. */}
-          <span>
-            {detail.columns.length} colonne{detail.columns.length > 1 ? 's' : ''}
-          </span>
+          <span>{t('structure.view.comptes.colonnes', { count: detail.columns.length })}</span>
           <span className={styles.barre} />
-          <span>{detail.indexes.length} index</span>
+          <span>{t('structure.view.comptes.index', { count: detail.indexes.length })}</span>
           <span className={styles.barre} />
           <span>
-            {detail.constraints.length} contrainte{detail.constraints.length > 1 ? 's' : ''}
+            {t('structure.view.comptes.contraintes', { count: detail.constraints.length })}
           </span>
           <span className={styles.espace} />
           <label className={styles.filtre}>
@@ -185,8 +195,8 @@ export function StructureView({
             <input
               type="text"
               value={filtre}
-              placeholder="Filtrer"
-              aria-label="Filtrer les colonnes par nom ou par type"
+              placeholder={t('structure.view.filtrerPlaceholder')}
+              aria-label={t('structure.view.filtrerAriaLabel')}
               onChange={(evenement) => setFiltre(evenement.target.value)}
             />
           </label>
@@ -194,17 +204,17 @@ export function StructureView({
 
         <div className={styles.tableau}>
           <DataTable
-            label={`Colonnes de ${schema}.${detail.name}`}
+            label={t('structure.view.colonnesTableLabel', { schema, table: detail.name })}
             columns={colonnes}
             rows={visibles}
             rowId={(colonne) => colonne.name}
-            empty={<span>Aucune colonne ne correspond à « {filtre} ».</span>}
+            empty={<span>{t('structure.view.aucuneColonneNeCorrespond', { filtre })}</span>}
           />
         </div>
 
         <div className={styles.panneaux}>
           <ListeDuCatalogue
-            titre="Index"
+            titre={t('structure.view.panneaux.titreIndex')}
             entrees={detail.indexes.map((index) => ({
               nom: index.name,
               detail: resumeDIndex(index.definition),
@@ -212,10 +222,10 @@ export function StructureView({
               accent: /unique/i.test(index.definition),
               complet: index.definition,
             }))}
-            vide="Aucun index."
+            vide={t('structure.view.panneaux.aucunIndex')}
           />
           <ListeDuCatalogue
-            titre="Contraintes & triggers"
+            titre={t('structure.view.panneaux.titreContraintes')}
             entrees={[
               ...detail.constraints.map((contrainte) => ({
                 nom: contrainte.name,
@@ -232,7 +242,7 @@ export function StructureView({
                 complet: declencheur.definition,
               })),
             ]}
-            vide="Aucune contrainte, aucun déclencheur."
+            vide={t('structure.view.panneaux.aucuneContrainte')}
           />
         </div>
       </div>
@@ -327,17 +337,18 @@ export function momentDuDeclencheur(definition: string): string {
  * d'horodater l'introspection. Les inventer serait pire que les taire.
  */
 export function StructureStatusBar({ detail }: { detail: TableDetail }) {
+  const t = useT()
   const taille = detail.sizeBytes === null ? null : formatBytes(detail.sizeBytes)
   const morceaux = [
-    `${detail.columns.length} colonnes`,
-    `${detail.indexes.length} index`,
-    `${detail.constraints.length} contraintes`,
-    `${formatRowCount(detail.rows)} lignes`,
+    t('structure.statusBar.colonnes', { count: detail.columns.length }),
+    t('structure.statusBar.index', { count: detail.indexes.length }),
+    t('structure.statusBar.contraintes', { count: detail.constraints.length }),
+    t('structure.statusBar.lignes', { count: formatRowCount(detail.rows) }),
     taille,
   ].filter((morceau): morceau is string => morceau !== null)
 
   return (
-    <div className={styles.pied} role="status" aria-label="État de la structure">
+    <div className={styles.pied} role="status" aria-label={t('structure.statusBar.ariaLabel')}>
       {morceaux.map((morceau, rang) => (
         <span key={morceau}>
           {rang > 0 && <span className={styles.piedPoint}>·</span>}

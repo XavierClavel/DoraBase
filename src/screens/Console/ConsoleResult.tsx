@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { QueryResult, Value } from '../../domain/engine'
+import { useT } from '../../i18n/LanguageContext'
 import { formatInteger } from '../../ui/format'
 import { SegmentedControl } from '../../ui/SegmentedControl/SegmentedControl'
 import { type GridColumn, VirtualGrid } from '../../ui/VirtualGrid/VirtualGrid'
@@ -48,6 +49,7 @@ export function ConsoleResult({
   dialecte = 'sql',
   rowHeight,
 }: ConsoleResultProps) {
+  const t = useT()
   // La ligne sélectionnée, pour la vue JSON : elle **suit la sélection**, comme le panneau de `10f`.
   // Sérialiser mille lignes pour l'affichage contredirait la contrainte transverse du projet.
   const [rangChoisi, setRangChoisi] = useState<number | null>(null)
@@ -69,7 +71,7 @@ export function ConsoleResult({
   if (enCours) {
     return (
       <div className={styles.root}>
-        <p className={styles.attente}>Exécution…</p>
+        <p className={styles.attente}>{t('console.resultat.enCours')}</p>
       </div>
     )
   }
@@ -77,7 +79,7 @@ export function ConsoleResult({
   if (resultat === null) {
     return (
       <div className={styles.root}>
-        <p className={styles.vide}>Aucun résultat : exécutez une requête.</p>
+        <p className={styles.vide}>{t('console.resultat.aucun')}</p>
       </div>
     )
   }
@@ -101,19 +103,19 @@ export function ConsoleResult({
   const onglets = onVueChange && (
     <div className={styles.vues}>
       <SegmentedControl
-        label="Vue du résultat"
+        label={t('console.resultat.vueLabel')}
         segments={[
           {
             value: 'resultat' as const,
             // « Documents » et non « Résultat » : c'est ce que la vue contient, et le mot dit du
             // même coup que ce n'est pas une grille de lignes.
-            label: mongo ? 'Documents' : 'Résultat',
+            label: mongo ? t('console.resultat.documents') : t('console.resultat.resultat'),
             count: resultat.rows.length,
           },
           // **Pas d'onglet « JSON » en mongo** : la vue « Documents » *est* du JSON. Deux onglets
           // pour la même chose feraient chercher la différence.
-          ...(mongo ? [] : [{ value: 'json' as const, label: 'JSON' }]),
-          { value: 'messages' as const, label: 'Messages' },
+          ...(mongo ? [] : [{ value: 'json' as const, label: t('console.resultat.json') }]),
+          { value: 'messages' as const, label: t('console.resultat.messages') },
         ]}
         value={vue}
         onValueChange={onVueChange}
@@ -157,16 +159,14 @@ export function ConsoleResult({
       <div className={styles.grille}>
         <VirtualGrid
           rowHeight={rowHeight}
-          label={`Résultat de la requête, ${resultat.rows.length} ligne${
-            resultat.rows.length > 1 ? 's' : ''
-          }`}
+          label={t('console.resultat.grilleLabel', { n: resultat.rows.length })}
           columns={colonnes}
           rows={resultat.rows}
           rowId={(_, index) => String(index)}
           selectedId={rangChoisi === null ? null : String(rangChoisi)}
           onSelect={(_, index) => setRangChoisi(index)}
           viewportHeight={320}
-          empty={<span>La requête n’a rendu aucune ligne.</span>}
+          empty={<span>{t('console.resultat.grilleVide')}</span>}
         />
       </div>
       <Barre resultat={resultat} dialecte={dialecte} />
@@ -176,15 +176,22 @@ export function ConsoleResult({
 
 /** La barre de chiffres, partagée par les trois vues — ils décrivent la même exécution. */
 function Barre({ resultat, dialecte }: { resultat: QueryResult; dialecte: Dialecte }) {
+  const t = useT()
   // « 4 docs · 61 ms », le pied du mockup d'`A8`. Compter des « lignes » sous un arbre de documents
   // nommerait la mauvaise chose.
-  const unite = dialecte === 'mongo' ? 'doc' : 'ligne'
+  const compte =
+    dialecte === 'mongo'
+      ? t('console.resultat.compteDocuments', {
+          n: resultat.rows.length,
+          texte: formatInteger(resultat.rows.length),
+        })
+      : t('console.resultat.compteLignes', {
+          n: resultat.rows.length,
+          texte: formatInteger(resultat.rows.length),
+        })
   return (
-    <div className={styles.barre} role="status" aria-label="État du résultat">
-      <span className={styles.compte}>
-        {formatInteger(resultat.rows.length)} {unite}
-        {resultat.rows.length > 1 ? 's' : ''}
-      </span>
+    <div className={styles.barre} role="status" aria-label={t('console.resultat.etatAriaLabel')}>
+      <span className={styles.compte}>{compte}</span>
       <span>·</span>
       <span>{resultat.durationMs} ms</span>
       {resultat.appliedLimit !== null && (
@@ -193,7 +200,9 @@ function Barre({ resultat, dialecte }: { resultat: QueryResult; dialecte: Dialec
           {/* **La limite ajoutée est dite.** Une limite silencieuse ferait croire à une table de
                 mille lignes — un mensonge sur les données, la pire catégorie de défaut pour cet
                 outil. Le mot « par DoraBase » distingue cette limite de celle qu'on aurait écrite. */}
-          <span className={styles.limite}>limité à {resultat.appliedLimit} par DoraBase</span>
+          <span className={styles.limite}>
+            {t('console.resultat.limite', { n: resultat.appliedLimit })}
+          </span>
         </>
       )}
     </div>

@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { expect, test, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { TableDetail } from '../../domain/engine'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { StructureStatusBar } from '../../screens/Structure/StructureView'
 import { TableStatusBar } from '../../screens/TableView/TableStatusBar'
 import { StatusBar } from '../StatusBar/StatusBar'
@@ -40,16 +41,20 @@ const DETAIL: TableDetail = {
 }
 
 test("la barre d'état de l'accueil porte l'annonce", () => {
-  render(<StatusBar projectCount={2} />)
+  render(
+    <LanguageProvider preferences={{ language: 'fr' }}>
+      <StatusBar projectCount={2} />
+    </LanguageProvider>,
+  )
   expect(screen.getByText('0.9.9 disponible')).toBeInTheDocument()
 })
 
 test("la barre d'état d'une table porte l'annonce", () => {
   render(
-    <>
+    <LanguageProvider preferences={{ language: 'fr' }}>
       <Sprite />
       <TableStatusBar fenetre={null} loading={false} error={null} />
-    </>,
+    </LanguageProvider>,
   )
   const barre = screen.getByRole('status', { name: 'État de la table' })
   expect(barre).toHaveTextContent('0.9.9 disponible')
@@ -59,10 +64,10 @@ test("la barre d'état d'une table porte l'annonce", () => {
 // exactement le défaut qu'on corrige : la barre en attente de modifications rend un autre bloc.
 test("la barre d'une table en édition porte l'annonce aussi", () => {
   render(
-    <>
+    <LanguageProvider preferences={{ language: 'fr' }}>
       <Sprite />
       <TableStatusBar fenetre={null} loading={false} error={null} pendingChanges={3} />
-    </>,
+    </LanguageProvider>,
   )
   const barre = screen.getByRole('status', { name: 'État de la table' })
   expect(barre).toHaveTextContent('3 modifications en attente')
@@ -70,7 +75,11 @@ test("la barre d'une table en édition porte l'annonce aussi", () => {
 })
 
 test("la barre d'état d'une structure porte l'annonce", () => {
-  render(<StructureStatusBar detail={DETAIL} />)
+  render(
+    <LanguageProvider preferences={{ language: 'fr' }}>
+      <StructureStatusBar detail={DETAIL} />
+    </LanguageProvider>,
+  )
   const barre = screen.getByRole('status', { name: 'État de la structure' })
   expect(barre).toHaveTextContent('0.9.9 disponible')
 })

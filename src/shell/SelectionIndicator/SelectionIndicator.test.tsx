@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Sprite } from '../../design/icons/Sprite'
 import type { ConnectionState } from '../../domain/engine'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { libelleDeConnexion, SelectionIndicator } from './SelectionIndicator'
 
 /**
@@ -25,10 +26,10 @@ const ATELIER = { label: 'Atelier', color: 'green', production: true } as const
 
 function monter(props: Partial<Parameters<typeof SelectionIndicator>[0]> = {}) {
   return render(
-    <>
+    <LanguageProvider preferences={{ language: 'fr' }}>
       <Sprite />
       <SelectionIndicator projectName="Atelier Nord" {...props} />
-    </>,
+    </LanguageProvider>,
   )
 }
 

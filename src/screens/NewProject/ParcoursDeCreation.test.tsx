@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { CreateProjectRequest, EnvironmentDeclaration, Project } from '../../domain/config'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { ParcoursDeCreation } from './ParcoursDeCreation'
 
 /** Un projet rendu par la création, avec les deux environnements que l'étape 2 doit proposer. */
@@ -24,13 +25,15 @@ function monter(depart: Parameters<typeof ParcoursDeCreation>[0]['depart']) {
   render(
     <>
       <Sprite />
-      <ParcoursDeCreation
-        depart={depart}
-        projets={[]}
-        onClose={() => {}}
-        onProjets={() => {}}
-        onCreate={onCreate}
-      />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <ParcoursDeCreation
+          depart={depart}
+          projets={[]}
+          onClose={() => {}}
+          onProjets={() => {}}
+          onCreate={onCreate}
+        />
+      </LanguageProvider>
     </>,
   )
   return { onCreate }

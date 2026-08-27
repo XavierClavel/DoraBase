@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type { CreateProjectRequest, EnvironmentDeclaration, Project } from '../../domain/config'
+import { useT } from '../../i18n/LanguageContext'
 import { Button } from '../../ui/Button/Button'
 import { cx } from '../../ui/cx'
 import { Field } from '../../ui/Field/Field'
@@ -85,6 +86,7 @@ export function NewProject({
   onCreated,
   raison,
 }: NewProjectProps) {
+  const t = useT()
   const [nom, setNom] = useState('')
   const [lignes, setLignes] = useState<LigneEnv[]>(() =>
     TRIO_PAR_DEFAUT.map((declaration) => ({
@@ -113,13 +115,13 @@ export function NewProject({
    */
   const empeche =
     nomRogne === ''
-      ? 'Donnez un nom au projet.'
+      ? t('newProject.errors.nameRequired')
       : deja
-        ? `Un projet s’appelle déjà « ${nomRogne} ».`
+        ? t('newProject.errors.nameTaken', { name: nomRogne })
         : vides
-          ? 'Chaque environnement a besoin d’un libellé.'
+          ? t('newProject.errors.labelRequired')
           : doublons.length > 0
-            ? `Deux environnements s’appellent « ${doublons[0]} ».`
+            ? t('newProject.errors.duplicateLabel', { label: doublons[0] ?? '' })
             : null
 
   function modifier(index: number, patch: Partial<LigneEnv>) {
@@ -156,7 +158,7 @@ export function NewProject({
 
   return (
     <Modal
-      title="Nouveau projet"
+      title={t('newProject.title')}
       icon="bag"
       onClose={onClose}
       footer={
@@ -174,7 +176,7 @@ export function NewProject({
             {refus ?? empeche}
           </span>
           <Button variant="secondary" size="lg" onClick={onClose}>
-            Annuler
+            {t('newProject.cancel')}
           </Button>
           <Button
             variant="accent"
@@ -184,7 +186,7 @@ export function NewProject({
             shortcut="⌘↩"
             onClick={() => void creer()}
           >
-            Continuer
+            {t('newProject.continueButton')}
           </Button>
         </div>
       }
@@ -194,7 +196,13 @@ export function NewProject({
           abstraction faite d'avance. `Modal.body` porte `padding: 0`, décision déjà documentée
           précisément pour qu'un écran pose ses propres marges, donc la bande est pleine largeur sans
           rien à compenser. */}
-      <Stepper etapes={[{ libelle: 'PROJET' }, { libelle: 'CONNEXION' }]} courante={0} />
+      <Stepper
+        etapes={[
+          { libelle: t('newProject.stepper.project') },
+          { libelle: t('newProject.stepper.connection') },
+        ]}
+        courante={0}
+      />
       <div className={styles.form}>
         {/* Au-dessus du nom, parce qu'elle explique l'écran entier et non le champ. `role="status"` :
             l'écran vient d'apparaître sans que la voix n'ait de raison de le lire. */}
@@ -208,77 +216,75 @@ export function NewProject({
           </p>
         )}
         <Field
-          label="Nom du projet"
+          label={t('newProject.nameLabel')}
           value={nom}
-          placeholder="Atelier Nord"
+          placeholder={t('newProject.namePlaceholder')}
           onChange={(evenement) => setNom(evenement.target.value)}
         />
         {/* La phrase du handoff, reprise mot pour mot de la sidebar vide de `A1` : elle dit à quoi sert
             un projet, au moment exact où l'on en crée un. */}
-        <p className={styles.note}>
-          Un projet regroupe plusieurs bases ; chacune se déclare dans un environnement.
-        </p>
+        <p className={styles.note}>{t('newProject.note')}</p>
 
         <div className={styles.bloc}>
-          <div className={styles.blocTitre}>Environnements</div>
+          <div className={styles.blocTitre}>{t('newProject.environmentsTitle')}</div>
           <ul className={styles.liste}>
-            {lignes.map((ligne, index) => (
-              <li key={ligne.cle} className={styles.ligne}>
-                <span
-                  className={styles.pastille}
-                  style={{ background: COULEURS_D_ENVIRONNEMENT[ligne.color] }}
-                  aria-hidden="true"
-                />
-                {/* **Pas de `Field`, et c'est son contrat qui le dit** : son étiquette est
+            {lignes.map((ligne, index) => {
+              const nomEnv =
+                ligne.label || t('newProject.environmentFallback', { index: index + 1 })
+              return (
+                <li key={ligne.cle} className={styles.ligne}>
+                  <span
+                    className={styles.pastille}
+                    style={{ background: COULEURS_D_ENVIRONNEMENT[ligne.color] }}
+                    aria-hidden="true"
+                  />
+                  {/* **Pas de `Field`, et c'est son contrat qui le dit** : son étiquette est
                     obligatoire *et visible*, « jamais décorative ». Sur une ligne d'environnement, une
                     étiquette visible par ligne répéterait « Libellé » trois fois sous un titre qui dit
                     déjà « Environnements ». L'entrée porte donc son nom par `aria-label`, et la
                     boîte reprend l'habillage de `Field sm` — voir la feuille. */}
-                <input
-                  className={styles.libelle}
-                  type="text"
-                  value={ligne.label}
-                  aria-label={`Libellé de l’environnement ${index + 1}`}
-                  spellCheck={false}
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  onChange={(evenement) => modifier(index, { label: evenement.target.value })}
-                />
-                {/* **Pas un `<label>`** : `Toggle` rend un `<button role="switch">`, et un `<label>`
+                  <input
+                    className={styles.libelle}
+                    type="text"
+                    value={ligne.label}
+                    aria-label={t('newProject.environmentLabel', { index: index + 1 })}
+                    spellCheck={false}
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    onChange={(evenement) => modifier(index, { label: evenement.target.value })}
+                  />
+                  {/* **Pas un `<label>`** : `Toggle` rend un `<button role="switch">`, et un `<label>`
                     ne s'associe pas à un bouton — il n'aurait donc rendu le mot cliquable pour
                     personne, tout en le promettant. L'interrupteur porte son nom par `aria-label`
                     (« Production pour dev »), donc le mot est une légende, et le contrôle est à
                     côté. */}
-                <div className={styles.production}>
-                  <Toggle
-                    label={`Production pour ${ligne.label || `l’environnement ${index + 1}`}`}
-                    checked={ligne.production}
-                    onCheckedChange={(production) => modifier(index, { production })}
-                  />
-                  <span className={cx(styles.productionTexte, ligne.production && styles.actif)}>
-                    Production
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className={styles.retirer}
-                  aria-label={`Retirer ${ligne.label || `l’environnement ${index + 1}`}`}
-                  // **Le dernier ne se retire pas**, et le bouton dit pourquoi : `23a` refuse un projet
-                  // sans environnement, une connexion appartenant désormais à l'un d'eux.
-                  disabled={lignes.length === 1}
-                  title={
-                    lignes.length === 1
-                      ? 'Un projet a besoin d’au moins un environnement.'
-                      : undefined
-                  }
-                  onClick={() =>
-                    setLignes((precedentes) => precedentes.filter((_, rang) => rang !== index))
-                  }
-                >
-                  <Icon name="trash" size={12} strokeWidth={1.9} />
-                </button>
-              </li>
-            ))}
+                  <div className={styles.production}>
+                    <Toggle
+                      label={t('newProject.productionFor', { label: nomEnv })}
+                      checked={ligne.production}
+                      onCheckedChange={(production) => modifier(index, { production })}
+                    />
+                    <span className={cx(styles.productionTexte, ligne.production && styles.actif)}>
+                      {t('newProject.productionText')}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.retirer}
+                    aria-label={t('newProject.remove', { label: nomEnv })}
+                    // **Le dernier ne se retire pas**, et le bouton dit pourquoi : `23a` refuse un projet
+                    // sans environnement, une connexion appartenant désormais à l'un d'eux.
+                    disabled={lignes.length === 1}
+                    title={lignes.length === 1 ? t('newProject.removeLastTitle') : undefined}
+                    onClick={() =>
+                      setLignes((precedentes) => precedentes.filter((_, rang) => rang !== index))
+                    }
+                  >
+                    <Icon name="trash" size={12} strokeWidth={1.9} />
+                  </button>
+                </li>
+              )
+            })}
           </ul>
           <Button
             variant="secondary"
@@ -295,7 +301,7 @@ export function NewProject({
               ])
             }
           >
-            + Ajouter un environnement
+            {t('newProject.addEnvironment')}
           </Button>
         </div>
       </div>

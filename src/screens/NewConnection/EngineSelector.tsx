@@ -1,4 +1,5 @@
 import type { Engine } from '../../domain/config'
+import { useT } from '../../i18n/LanguageContext'
 import { RadioGroup } from '../../ui/RadioGroup/RadioGroup'
 import { ENGINE_ORDER, ENGINES } from './engines'
 import styles from './NewConnection.module.css'
@@ -10,6 +11,8 @@ type EngineSelectorProps = {
 
 /** Le sélecteur de moteur de `A2` : sept boutons, cinq monogrammes. */
 export function EngineSelector({ value, onValueChange }: EngineSelectorProps) {
+  const t = useT()
+  const titre = t('newConnection.engine.title')
   const options = ENGINE_ORDER.map((engine) => {
     const { label, monogram, color } = ENGINES[engine]
     return {
@@ -26,8 +29,8 @@ export function EngineSelector({ value, onValueChange }: EngineSelectorProps) {
 
   return (
     <div className={styles.engineBlock}>
-      <div className={styles.blockTitle}>Moteur</div>
-      <RadioGroup label="Moteur" options={options} value={value} onValueChange={onValueChange} />
+      <div className={styles.blockTitle}>{titre}</div>
+      <RadioGroup label={titre} options={options} value={value} onValueChange={onValueChange} />
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { Icon } from '../../design/icons/Icon'
+import { useT } from '../../i18n/LanguageContext'
 import type { EntreeDeMenu } from '../../ui/MenuContextuel/MenuContextuel'
 import { Popover } from '../../ui/Popover/Popover'
 import styles from './RowMenu.module.css'
@@ -28,9 +29,10 @@ type RowMenuProps = {
  * test de `08h` interroge donc `elementFromPoint`, jamais `toBeVisible()` seul.
  */
 export function RowMenu({ cible, entrees }: RowMenuProps) {
+  const t = useT()
   return (
     <Popover
-      title="Actions"
+      title={t('explorer.rowMenu.title')}
       align="end"
       /* **Sortir de la ligne ferme le menu** (`26`). Ce n'était pas qu'un confort : le panneau vit
          dans la gouttière `.actions`, que `TreeRow` repasse en `visibility: hidden` hors survol. Le
@@ -65,7 +67,11 @@ export function RowMenu({ cible, entrees }: RowMenuProps) {
           s'écarter de la source de vérité du design pour un glyphe que la typographie rend déjà.
           `aria-hidden` sur les points : leur sens est dans le nom du bouton, et « ··· » lu à voix
           haute ne dit rien. */}
-      <button type="button" className={styles.declencheur} aria-label={`Actions de ${cible}`}>
+      <button
+        type="button"
+        className={styles.declencheur}
+        aria-label={t('explorer.rowMenu.actionsFor', { cible })}
+      >
         <span aria-hidden="true">···</span>
       </button>
     </Popover>

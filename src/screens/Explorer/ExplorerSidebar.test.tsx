@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Sprite } from '../../design/icons/Sprite'
 import type { EnvironmentId, Project } from '../../domain/config'
 import type { ColumnInfo, ConnectionState, SchemaInfo, TableSummary } from '../../domain/engine'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { REGLAGES, TRIO_DE_TEST } from '../NewConnection/pourLesTests'
 import { type Charge, idBase, idEnvironnement, idProjet, idSchema, type Noeud } from './arbre'
 import type { CibleDeSuppression } from './DeleteConnectionDialog'
@@ -111,32 +112,34 @@ function Piloté({
   return (
     <>
       <Sprite />
-      <ExplorerSidebar
-        projects={projets}
-        deplies={deplies}
-        charge={charge}
-        etatDe={() => etat}
-        selectedId={choisi}
-        onEditDatabase={onEditDatabase}
-        onRenameDatabase={onRenameDatabase}
-        onEditProject={onEditProject}
-        onDelete={onDelete}
-        modificationsEnAttenteDe={modificationsEnAttenteDe}
-        onRefresh={onRefresh}
-        consoles={consoles}
-        onAddDatabase={onAddDatabase}
-        onNewProject={onNewProject}
-        onSelect={(n) => setChoisi(n.id)}
-        onToggle={(n) => {
-          onToggleSpy?.(n)
-          setDeplies((precedent) => {
-            const suivant = new Set(precedent)
-            if (suivant.has(n.id)) suivant.delete(n.id)
-            else suivant.add(n.id)
-            return suivant
-          })
-        }}
-      />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <ExplorerSidebar
+          projects={projets}
+          deplies={deplies}
+          charge={charge}
+          etatDe={() => etat}
+          selectedId={choisi}
+          onEditDatabase={onEditDatabase}
+          onRenameDatabase={onRenameDatabase}
+          onEditProject={onEditProject}
+          onDelete={onDelete}
+          modificationsEnAttenteDe={modificationsEnAttenteDe}
+          onRefresh={onRefresh}
+          consoles={consoles}
+          onAddDatabase={onAddDatabase}
+          onNewProject={onNewProject}
+          onSelect={(n) => setChoisi(n.id)}
+          onToggle={(n) => {
+            onToggleSpy?.(n)
+            setDeplies((precedent) => {
+              const suivant = new Set(precedent)
+              if (suivant.has(n.id)) suivant.delete(n.id)
+              else suivant.add(n.id)
+              return suivant
+            })
+          }}
+        />
+      </LanguageProvider>
     </>
   )
 }
@@ -720,16 +723,18 @@ describe('la section contextuelle : colonnes déclarées ou schéma déduit (`13
     render(
       <>
         <Sprite />
-        <ExplorerSidebar
-          projects={[]}
-          deplies={new Set<string>()}
-          charge={RIEN}
-          etatDe={() => ({ kind: 'never' })}
-          selectedId={null}
-          onSelect={() => {}}
-          onToggle={() => {}}
-          columns={{ table: 'evenements', columns: colonnes }}
-        />
+        <LanguageProvider preferences={{ language: 'fr' }}>
+          <ExplorerSidebar
+            projects={[]}
+            deplies={new Set<string>()}
+            charge={RIEN}
+            etatDe={() => ({ kind: 'never' })}
+            selectedId={null}
+            onSelect={() => {}}
+            onToggle={() => {}}
+            columns={{ table: 'evenements', columns: colonnes }}
+          />
+        </LanguageProvider>
       </>,
     )
   }

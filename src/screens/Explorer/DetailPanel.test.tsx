@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Sprite } from '../../design/icons/Sprite'
 import type { ColumnInfo, TableDetail } from '../../domain/engine'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { DetailPanel } from './DetailPanel'
 
 const colonne = (name: string, over: Partial<ColumnInfo> = {}): ColumnInfo => ({
@@ -37,7 +38,9 @@ function monter(props: Partial<Parameters<typeof DetailPanel>[0]> = {}) {
   return render(
     <>
       <Sprite />
-      <DetailPanel detail={detail()} schema="public" {...props} />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <DetailPanel detail={detail()} schema="public" {...props} />
+      </LanguageProvider>
     </>,
   )
 }

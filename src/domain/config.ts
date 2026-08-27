@@ -287,6 +287,16 @@ refuseUnrestrictedWrites: boolean,
 keepInversePatch: boolean, };
 
 /**
+ * La langue de l'interface (26 août 2026).
+ *
+ * **Le même mécanisme que `Theme`** : une variante `Systeme` que l'écran résout lui-même,
+ * plutôt qu'un défaut Rust deviné. La détection — `navigator.language` — vit dans la
+ * webview, qui la porte déjà sans dépendance Rust ni appel IPC ; le cœur ne connaît que
+ * le réglage choisi, jamais la langue résolue.
+ */
+export type Language = "fr" | "en" | "systeme";
+
+/**
  * Les préférences de l'application (`15a`).
  *
  * **Pas des propriétés de projet.** `05b` persiste `{ version, projects }` ; celles-ci s'ajoutent à
@@ -295,6 +305,10 @@ keepInversePatch: boolean, };
  * les valeurs par défaut. Pas de migration.
  */
 export type Preferences = { theme: Theme, 
+/**
+ * La langue de l'interface (26 août 2026), défaut `Systeme`.
+ */
+language: Language, 
 /**
  * L'accent, pris dans la palette **fermée** du handoff.
  *

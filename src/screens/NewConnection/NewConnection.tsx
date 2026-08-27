@@ -9,6 +9,7 @@ import type {
   UpdateVariantRequest,
 } from '../../domain/config'
 import type { ConnectionRequest, ConnectionTest } from '../../domain/engine'
+import { useT } from '../../i18n/LanguageContext'
 import { Button } from '../../ui/Button/Button'
 import { Modal } from '../../ui/Modal/Modal'
 import { Stepper } from '../../ui/Stepper/Stepper'
@@ -166,6 +167,7 @@ export function NewConnection({
   environnement,
   venantDuParcours = false,
 }: NewConnectionProps) {
+  const t = useT()
   /**
    * Le projet qui fait foi.
    *
@@ -384,7 +386,11 @@ export function NewConnection({
 
   return (
     <Modal
-      title={edition ? `Modifier ${edition.database.name}` : 'Nouvelle connexion'}
+      title={
+        edition
+          ? t('newConnection.title.edit', { name: edition.database.name })
+          : t('newConnection.title.new')
+      }
       icon="db"
       onClose={onClose}
       contexte={
@@ -409,7 +415,7 @@ export function NewConnection({
             {/* La fiole est verte dans le mockup, seule icône du pied à ne pas prendre la
                 couleur de son texte. */}
             <Icon name="flask" size={14} strokeWidth={2} className={styles.flask} />
-            {libelleDuBouton(test.phase)}
+            {libelleDuBouton(test.phase, t)}
           </Button>
 
           {/* **Une seule fente souple entre les deux groupes de boutons**, et c'est elle qui les
@@ -423,9 +429,12 @@ export function NewConnection({
               <span className={styles.testOk}>
                 <Icon name="check" size={14} strokeWidth={2.4} className={styles.testOkIcon} />
                 <span className={styles.testOkTexte}>
-                  Connecté en {test.resultat.latencyMs} ms · {test.resultat.serverVersion}
+                  {t('newConnection.footer.connected', {
+                    latencyMs: test.resultat.latencyMs,
+                    serverVersion: test.resultat.serverVersion,
+                  })}
                   {test.resultat.tunnelLocalPort !== null &&
-                    ` · tunnel :${test.resultat.tunnelLocalPort}`}
+                    t('newConnection.footer.tunnelPort', { port: test.resultat.tunnelLocalPort })}
                   {test.resultat.tlsUnverified && (
                     // **Laid et honnête.** `06b` emploie `NoTls` : un test en `verify-ca` ou
                     // `verify-full` réussit sans que l'identité du serveur ait été contrôlée.
@@ -434,7 +443,9 @@ export function NewConnection({
                     // côté, le pied en faisait un second item flex, coupé pour son compte.
                     // L'espace avant le point médian est dans la chaîne : la mention était un
                     // item flex, et c'est l'écart du conteneur qui l'espaçait.
-                    <span className={styles.testWarn}> · TLS non vérifié</span>
+                    <span className={styles.testWarn}>
+                      {t('newConnection.footer.tlsUnverified')}
+                    </span>
                   )}
                 </span>
               </span>
@@ -456,7 +467,7 @@ export function NewConnection({
               // croire que le produit ne le prévoit pas ; le laisser muet ferait croire que
               // « Tester » est cassé.
               <span className={styles.unsupported}>
-                {ENGINES[draft.engine].label} n’a pas encore d’adaptateur
+                {t('newConnection.footer.unsupported', { engine: ENGINES[draft.engine].label })}
               </span>
             )}
           </span>
@@ -464,7 +475,7 @@ export function NewConnection({
               moment, « Annuler » mentirait : le projet reste, et un bouton ne doit pas nommer un
               défaissement qui n'a pas lieu. C'est la règle de `08j` prise par l'autre bout. */}
           <Button variant="secondary" size="lg" onClick={onClose}>
-            {venantDuParcours ? 'Plus tard' : 'Annuler'}
+            {venantDuParcours ? t('newConnection.footer.later') : t('newConnection.footer.cancel')}
           </Button>
           {/* `08e` le branchera, avec son raccourci ⌘↩. */}
           <Button
@@ -474,7 +485,7 @@ export function NewConnection({
             onClick={() => void enregistrer()}
           >
             <Icon name="save" size={14} strokeWidth={2.2} />
-            {edition ? 'Enregistrer les modifications' : <>Enregistrer &amp; ouvrir</>}
+            {edition ? t('newConnection.footer.saveEdit') : t('newConnection.footer.saveNew')}
           </Button>
           {/* **Dite avant le clic, non après** (`24c`). Elle fait trois choses en une phrase : elle
               confirme l'écriture de l'étape 1, elle rend « Plus tard » sans conséquence, et elle nomme
@@ -482,8 +493,8 @@ export function NewConnection({
               projet. */}
           {venantDuParcours && (
             <p className={styles.projetCree} role="status">
-              Le projet <strong>{projetCourant}</strong> est créé. Vous pouvez déclarer sa première
-              connexion maintenant, ou plus tard depuis la sidebar.
+              {t('newConnection.footer.projectCreatedPrefix')} <strong>{projetCourant}</strong>{' '}
+              {t('newConnection.footer.projectCreatedSuffix')}
             </p>
           )}
         </>
@@ -493,7 +504,13 @@ export function NewConnection({
           projet existant, cet écran n'a qu'une étape, et une bande à une seule étape utile
           affirmerait que cette modale a créé le projet. */}
       {venantDuParcours && (
-        <Stepper etapes={[{ libelle: 'PROJET' }, { libelle: 'CONNEXION' }]} courante={1} />
+        <Stepper
+          etapes={[
+            { libelle: t('newConnection.stepper.project') },
+            { libelle: t('newConnection.stepper.connection') },
+          ]}
+          courante={1}
+        />
       )}
       <EngineSelector value={draft.engine} onValueChange={changerMoteur} />
       {/* **Le panneau passe avant le formulaire** (24 août 2026, à la demande). L'ordre dit
@@ -536,8 +553,8 @@ export function NewConnection({
  * maquetté : « Test en cours… » est le minimum défendable, sans animation inventée. La question
  * d'un indicateur de progression est consignée dans `AGENTS.md`.
  */
-function libelleDuBouton(phase: EtatDuTest['phase']): string {
-  if (phase === 'en-cours') return 'Test en cours…'
-  if (phase === 'echoue') return 'Retester'
-  return 'Tester la connexion'
+function libelleDuBouton(phase: EtatDuTest['phase'], t: ReturnType<typeof useT>): string {
+  if (phase === 'en-cours') return t('newConnection.footer.testButton.testing')
+  if (phase === 'echoue') return t('newConnection.footer.testButton.retry')
+  return t('newConnection.footer.testButton.idle')
 }

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Icon } from '../../design/icons/Icon'
+import { useT } from '../../i18n/LanguageContext'
 import { cx } from '../../ui/cx'
 import styles from './TitleBar.module.css'
 
@@ -61,6 +62,7 @@ type TitleBarProps = {
 // contrôle, sans déplacer la fenêtre — ce qui est le comportement voulu, et qu'il n'a pas fallu
 // écrire.
 export function TitleBar({ dimmed = false, center, onOpenPreferences }: TitleBarProps) {
+  const t = useT()
   return (
     <div className={cx(styles.root, dimmed && styles.dimmed)} data-tauri-drag-region="deep">
       <div className={cx(styles.wordmark, dimmed && styles.wordmarkDimmed)}>
@@ -77,12 +79,12 @@ export function TitleBar({ dimmed = false, center, onOpenPreferences }: TitleBar
         <button
           type="button"
           className={styles.action}
-          aria-label="Préférences"
+          aria-label={t('shell.titleBar.preferences')}
           onClick={onOpenPreferences}
           disabled={onOpenPreferences === undefined}
           title={
             onOpenPreferences === undefined
-              ? 'Les préférences ne sont pas montées sur cet exemplaire de la barre.'
+              ? t('shell.titleBar.preferencesDisabledTitle')
               : undefined
           }
         >

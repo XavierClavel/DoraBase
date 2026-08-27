@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { ColumnInfo, DatabaseKey, RowQuery } from '../../domain/engine'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { TableView } from './TableView'
 import type { PasserelleLignes } from './useLignes'
 
@@ -42,14 +43,16 @@ function monter(over: Partial<Parameters<typeof TableView>[0]> = {}) {
   render(
     <>
       <Sprite />
-      <TableView
-        cle={CLE}
-        schema="public"
-        table="orders"
-        columns={COLONNES}
-        passerelle={{ readRows } satisfies PasserelleLignes}
-        {...over}
-      />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <TableView
+          cle={CLE}
+          schema="public"
+          table="orders"
+          columns={COLONNES}
+          passerelle={{ readRows } satisfies PasserelleLignes}
+          {...over}
+        />
+      </LanguageProvider>
     </>,
   )
   return { readRows }
@@ -188,14 +191,16 @@ describe('rafraîchir relit tout ce que l’écran montre', () => {
     render(
       <>
         <Sprite />
-        <TableView
-          cle={CLE}
-          schema="public"
-          table="orders"
-          columns={COLONNES}
-          passerelle={{ readRows: vi.fn(async () => ({ ...FENETRE_VIDE })) } as PasserelleLignes}
-          structureEnCours
-        />
+        <LanguageProvider preferences={{ language: 'fr' }}>
+          <TableView
+            cle={CLE}
+            schema="public"
+            table="orders"
+            columns={COLONNES}
+            passerelle={{ readRows: vi.fn(async () => ({ ...FENETRE_VIDE })) } as PasserelleLignes}
+            structureEnCours
+          />
+        </LanguageProvider>
       </>,
     )
 
@@ -214,13 +219,15 @@ describe('rafraîchir relit tout ce que l’écran montre', () => {
     render(
       <>
         <Sprite />
-        <TableView
-          cle={CLE}
-          schema="public"
-          table="orders"
-          columns={COLONNES}
-          passerelle={{ readRows } as unknown as PasserelleLignes}
-        />
+        <LanguageProvider preferences={{ language: 'fr' }}>
+          <TableView
+            cle={CLE}
+            schema="public"
+            table="orders"
+            columns={COLONNES}
+            passerelle={{ readRows } as unknown as PasserelleLignes}
+          />
+        </LanguageProvider>
       </>,
     )
     await waitFor(() => expect(readRows).toHaveBeenCalledTimes(1))

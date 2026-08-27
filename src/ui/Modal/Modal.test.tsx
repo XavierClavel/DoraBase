@@ -1,7 +1,12 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { Modal } from './Modal'
+
+function monter(ui: React.ReactNode) {
+  return render(<LanguageProvider preferences={{ language: 'fr' }}>{ui}</LanguageProvider>)
+}
 
 /**
  * L'ordre des focalisables d'une modale montée avec ce décor est, dans le DOM :
@@ -38,7 +43,7 @@ function Simple({ onClose = () => {} }: { onClose?: () => void }) {
 }
 
 test('s’annonce comme une boîte de dialogue modale, nommée par son titre', () => {
-  render(<Simple />)
+  monter(<Simple />)
   expect(screen.getByRole('dialog', { name: 'Nouvelle connexion' })).toHaveAttribute(
     'aria-modal',
     'true',
@@ -47,14 +52,14 @@ test('s’annonce comme une boîte de dialogue modale, nommée par son titre', (
 
 test('esc ferme', async () => {
   const onClose = vi.fn()
-  render(<Simple onClose={onClose} />)
+  monter(<Simple onClose={onClose} />)
   await userEvent.keyboard('{Escape}')
   expect(onClose).toHaveBeenCalledOnce()
 })
 
 test('esc dans un champ rend le focus à la modale, il ne la ferme pas', async () => {
   const onClose = vi.fn()
-  render(
+  monter(
     <Modal title="Nouvelle connexion" icon="db" onClose={onClose}>
       <input aria-label="Hôte" defaultValue="localhost" />
     </Modal>,
@@ -77,7 +82,7 @@ test('esc dans un champ rend le focus à la modale, il ne la ferme pas', async (
 
 test('esc depuis un bouton ferme sans détour', async () => {
   const onClose = vi.fn()
-  render(<Simple onClose={onClose} />)
+  monter(<Simple onClose={onClose} />)
 
   // Un bouton n'a pas de saisie à abandonner : exiger deux `esc` serait une friction sans raison.
   screen.getByRole('button', { name: 'champ' }).focus()
@@ -87,14 +92,14 @@ test('esc depuis un bouton ferme sans détour', async () => {
 
 test('la croix ferme', async () => {
   const onClose = vi.fn()
-  render(<Simple onClose={onClose} />)
+  monter(<Simple onClose={onClose} />)
   await userEvent.click(screen.getByRole('button', { name: 'Fermer' }))
   expect(onClose).toHaveBeenCalledOnce()
 })
 
 test('un clic sur le voile ferme', async () => {
   const onClose = vi.fn()
-  render(<Simple onClose={onClose} />)
+  monter(<Simple onClose={onClose} />)
   await userEvent.click(screen.getByTestId('veil'))
   expect(onClose).toHaveBeenCalledOnce()
 })
@@ -103,7 +108,7 @@ test('un clic sur le voile ferme', async () => {
 // chaque clic *dans* la coquille, par propagation. C'est le défaut classique de ce motif.
 test('un clic dans la coquille ne ferme pas', async () => {
   const onClose = vi.fn()
-  render(<Simple onClose={onClose} />)
+  monter(<Simple onClose={onClose} />)
   await userEvent.click(screen.getByRole('dialog'))
   await userEvent.click(screen.getByRole('button', { name: 'champ' }))
   expect(onClose).not.toHaveBeenCalled()
@@ -118,13 +123,13 @@ test('un clic dans la coquille ne ferme pas', async () => {
 // aussitôt — et l'utilisateur qui voulait remplir un formulaire recommence. Le corps
 // d'abord est le seul choix défendable.
 test('1. le focus va au premier champ du corps, pas à la croix', async () => {
-  render(<Ouvrable />)
+  monter(<Ouvrable />)
   await userEvent.click(screen.getByRole('button', { name: 'Ouvrir' }))
   expect(screen.getByRole('button', { name: 'premier' })).toHaveFocus()
 })
 
 test('2. Tab depuis le dernier focalisable revient au premier de la modale', async () => {
-  render(<Ouvrable />)
+  monter(<Ouvrable />)
   await userEvent.click(screen.getByRole('button', { name: 'Ouvrir' }))
 
   await userEvent.tab() // premier → dernier
@@ -134,7 +139,7 @@ test('2. Tab depuis le dernier focalisable revient au premier de la modale', asy
 })
 
 test('2b. Shift+Tab depuis le premier focalisable va au dernier', async () => {
-  render(<Ouvrable />)
+  monter(<Ouvrable />)
   await userEvent.click(screen.getByRole('button', { name: 'Ouvrir' }))
 
   await userEvent.tab({ shift: true }) // premier → croix
@@ -144,7 +149,7 @@ test('2b. Shift+Tab depuis le premier focalisable va au dernier', async () => {
 })
 
 test('3. le focus revient à son origine à la fermeture', async () => {
-  render(<Ouvrable />)
+  monter(<Ouvrable />)
   const declencheur = screen.getByRole('button', { name: 'Ouvrir' })
   await userEvent.click(declencheur)
   await userEvent.keyboard('{Escape}')
@@ -161,7 +166,7 @@ test('3. le focus revient à son origine à la fermeture', async () => {
 // La version qui mord : après **chaque** tabulation, le focus doit être dans la coquille.
 // Le piège retiré, il en sort dès la troisième.
 test('le focus reste dans la coquille à chaque tabulation', async () => {
-  render(
+  monter(
     <>
       <button type="button">avant</button>
       <Modal title="T" icon="db" onClose={() => {}}>
@@ -181,7 +186,7 @@ test('le focus reste dans la coquille à chaque tabulation', async () => {
 test('une modale sans corps focalisable met le focus sur sa croix', async () => {
   // Le repli : sans lui le focus resterait sur `<body>`, hors de la modale, et le piège
   // n'aurait rien à retenir.
-  render(
+  monter(
     <Modal title="T" icon="db" onClose={() => {}}>
       <p>rien de focalisable</p>
     </Modal>,
@@ -190,7 +195,7 @@ test('une modale sans corps focalisable met le focus sur sa croix', async () => 
 })
 
 test('le pied est rendu quand il est fourni', () => {
-  render(
+  monter(
     <Modal title="T" icon="db" onClose={() => {}} footer={<button type="button">Annuler</button>}>
       <p>corps</p>
     </Modal>,
@@ -199,7 +204,7 @@ test('le pied est rendu quand il est fourni', () => {
 })
 
 test('sans pied, aucune bande de pied n’est rendue', () => {
-  render(
+  monter(
     <Modal title="T" icon="db" onClose={() => {}}>
       <p>corps</p>
     </Modal>,
@@ -216,7 +221,7 @@ test('sans pied, aucune bande de pied n’est rendue', () => {
 test('esc ne ferme que la modale du dessus', async () => {
   const fermerDessous = vi.fn()
   const fermerDessus = vi.fn()
-  render(
+  monter(
     <>
       <Modal title="Dessous" icon="db" onClose={fermerDessous}>
         <button type="button">champ</button>
@@ -249,7 +254,7 @@ test('après la fermeture du dessus, esc ferme celle du dessous', async () => {
       </>
     )
   }
-  render(<Superposees />)
+  monter(<Superposees />)
 
   await userEvent.keyboard('{Escape}') // ferme celle du dessus
   await userEvent.keyboard('{Escape}') // doit maintenant atteindre celle du dessous

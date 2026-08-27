@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Sprite } from '../../design/icons/Sprite'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { choisirDansLaListe, optionsDeLaListe } from '../../ui/Select/pourLesTests'
 import { ENGINE_ORDER, ENGINES } from './engines'
 import { SSL_MODE_ORDER } from './environments'
@@ -24,7 +25,9 @@ function monter(
   return render(
     <>
       <Sprite />
-      <NewConnection onClose={() => {}} projects={projects} projet={projects.at(0)?.name ?? ''} />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <NewConnection onClose={() => {}} projects={projects} projet={projects.at(0)?.name ?? ''} />
+      </LanguageProvider>
     </>,
   )
 }
@@ -196,15 +199,17 @@ test('le projet du cadre s’annonce en tête, et l’environnement désigné es
   render(
     <>
       <Sprite />
-      <NewConnection
-        onClose={() => {}}
-        projects={[
-          { id: 'Comptoir Sud', name: 'Comptoir Sud', environments: TRIO_DE_TEST },
-          { id: 'Atelier Nord', name: 'Atelier Nord', environments: TRIO_DE_TEST },
-        ]}
-        projet="Atelier Nord"
-        environnement="staging"
-      />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <NewConnection
+          onClose={() => {}}
+          projects={[
+            { id: 'Comptoir Sud', name: 'Comptoir Sud', environments: TRIO_DE_TEST },
+            { id: 'Atelier Nord', name: 'Atelier Nord', environments: TRIO_DE_TEST },
+          ]}
+          projet="Atelier Nord"
+          environnement="staging"
+        />
+      </LanguageProvider>
     </>,
   )
   // **Le second projet de la liste, et non le premier** : c'est celui que l'appelant désigne. Le
@@ -364,7 +369,9 @@ test('« Annuler » ferme la modale', async () => {
   render(
     <>
       <Sprite />
-      <NewConnection onClose={onClose} />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <NewConnection onClose={onClose} />
+      </LanguageProvider>
     </>,
   )
   await userEvent.click(screen.getByRole('button', { name: 'Annuler' }))
@@ -376,7 +383,9 @@ test('esc ferme la modale', async () => {
   render(
     <>
       <Sprite />
-      <NewConnection onClose={onClose} />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <NewConnection onClose={onClose} />
+      </LanguageProvider>
     </>,
   )
   await userEvent.keyboard('{Escape}')

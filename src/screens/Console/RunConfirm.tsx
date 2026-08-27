@@ -1,3 +1,4 @@
+import { useT } from '../../i18n/LanguageContext'
 import { Button } from '../../ui/Button/Button'
 import { Modal } from '../../ui/Modal/Modal'
 import type { Nature } from './nature'
@@ -36,12 +37,13 @@ export function RunConfirm({
   onConfirmer,
   enCours = false,
 }: RunConfirmProps) {
+  const t = useT()
   const schema = nature.kind === 'schema'
   const instruction = nature.kind === 'lecture' ? '' : nature.instruction
 
   return (
     <Modal
-      title={schema ? 'Modifier la structure' : 'Écrire dans la base'}
+      title={t(schema ? 'console.runConfirm.titreSchema' : 'console.runConfirm.titreEcriture')}
       icon="warn"
       nested
       onClose={onClose}
@@ -52,47 +54,45 @@ export function RunConfirm({
             serait le noyer. */}
         {sansRestriction && (
           <p className={styles.alerte}>
-            Cette requête n’a pas de <strong>WHERE</strong> : elle touchera{' '}
-            <strong>toutes les lignes</strong> de la table.
+            {t('console.runConfirm.sansRestrictionAvant')}
+            <strong>WHERE</strong>
+            {t('console.runConfirm.sansRestrictionMilieu')}
+            <strong>{t('console.runConfirm.toutesLesLignes')}</strong>
+            {t('console.runConfirm.sansRestrictionApres')}
           </p>
         )}
-        {schema && (
-          <p className={styles.alerte}>
-            Une modification de structure ne se défait pas par une autre requête.
-          </p>
-        )}
+        {schema && <p className={styles.alerte}>{t('console.runConfirm.alerteSchema')}</p>}
         <dl className={styles.recap}>
           <div className={styles.entree}>
-            <dt>Instruction</dt>
+            <dt>{t('console.runConfirm.instruction')}</dt>
             <dd className={styles.mono}>{instruction}</dd>
           </div>
           <div className={styles.entree}>
-            <dt>Base</dt>
+            <dt>{t('console.runConfirm.base')}</dt>
             <dd className={styles.mono}>{cible}</dd>
           </div>
           {production && (
             <div className={styles.entree}>
-              <dt>Environnement</dt>
-              <dd className={styles.prod}>production</dd>
+              <dt>{t('console.runConfirm.environnement')}</dt>
+              <dd className={styles.prod}>{t('console.runConfirm.production')}</dd>
             </div>
           )}
         </dl>
         {/* Ce que DoraBase ne fera pas : il n'y a ni patch inverse ni transaction ici, contrairement
             à `11d`. Le dire est le minimum honnête — laisser croire à un filet qui n'existe pas
             serait pire que de ne rien annoncer. */}
-        <p className={styles.rappel}>
-          DoraBase exécute la requête telle qu’elle est écrite, sans transaction et sans patch
-          inverse.
-        </p>
+        <p className={styles.rappel}>{t('console.runConfirm.rappel')}</p>
       </div>
       <div className={styles.pied}>
         <Button variant="secondary" size="md" onClick={onClose} disabled={enCours}>
-          Annuler
+          {t('console.runConfirm.annuler')}
         </Button>
         {/* Le verbe du geste, comme en `08j` et `11d` : un bouton qui nomme son acte est la dernière
             chance de lire ce qu'on fait. */}
         <Button variant="dark" size="md" onClick={onConfirmer} disabled={enCours}>
-          {enCours ? 'Exécution…' : `Exécuter ce ${instruction}`}
+          {enCours
+            ? t('console.runConfirm.enCours')
+            : t('console.runConfirm.confirmer', { instruction })}
         </Button>
       </div>
     </Modal>

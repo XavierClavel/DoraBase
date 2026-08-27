@@ -1,7 +1,14 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactElement } from 'react'
 import { expect, test, vi } from 'vitest'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { SqlEditor } from './SqlEditor'
+
+/** Le français forcé, comme dans `PreferencesDialog.test.tsx` : ce fichier ne teste pas la langue. */
+function monter(element: ReactElement) {
+  return render(<LanguageProvider preferences={{ language: 'fr' }}>{element}</LanguageProvider>)
+}
 
 /**
  * La ligne que CodeMirror insère pour mesurer la largeur des caractères.
@@ -33,7 +40,7 @@ async function saisir(utilisateur: ReturnType<typeof userEvent.setup>, texte: st
 }
 
 test('le texte initial est affiché, et la gouttière porte les numéros', () => {
-  render(<SqlEditor texteInitial={'select 1\nfrom orders'} onTexteChange={() => {}} />)
+  monter(<SqlEditor texteInitial={'select 1\nfrom orders'} onTexteChange={() => {}} />)
   expect(texteAffiche()).toBe('select 1\nfrom orders')
   // Les numéros vivent dans leur propre gouttière : sans elle, une erreur SQL annoncée « ligne 4 »
   // serait à compter à la main.
@@ -48,7 +55,7 @@ test('le texte initial est affiché, et la gouttière porte les numéros', () =>
 test('chaque frappe remonte le texte entier, sans en perdre', async () => {
   const utilisateur = userEvent.setup()
   const vus: string[] = []
-  render(<SqlEditor texteInitial="" onTexteChange={(t) => vus.push(t)} />)
+  monter(<SqlEditor texteInitial="" onTexteChange={(t) => vus.push(t)} />)
 
   await saisir(utilisateur, 'select 1')
 
@@ -61,7 +68,7 @@ test('chaque frappe remonte le texte entier, sans en perdre', async () => {
 
 test('un caractère accentué composé s’insère correctement', async () => {
   const utilisateur = userEvent.setup()
-  render(<SqlEditor texteInitial="" onTexteChange={() => {}} />)
+  monter(<SqlEditor texteInitial="" onTexteChange={() => {}} />)
   // Une des quatre raisons de ne pas écrire cet éditeur à la main. `é` ne se tape pas en une touche
   // sur un clavier américain, et un éditeur maison le perd ou le double.
   await saisir(utilisateur, "where nom = 'été'")
@@ -71,7 +78,7 @@ test('un caractère accentué composé s’insère correctement', async () => {
 test('⌘↩ exécute, et n’insère pas de ligne', async () => {
   const utilisateur = userEvent.setup()
   const executer = vi.fn()
-  render(<SqlEditor texteInitial="select 1" onTexteChange={() => {}} onExecuter={executer} />)
+  monter(<SqlEditor texteInitial="select 1" onTexteChange={() => {}} onExecuter={executer} />)
 
   await utilisateur.click(document_() as HTMLElement)
   // **`Mod` est `Cmd` sur macOS et `Ctrl` ailleurs**, et jsdom ne se présente pas comme un Mac : le
@@ -88,7 +95,7 @@ test('⌘↩ exécute, et n’insère pas de ligne', async () => {
 test('⌥↩ demande l’exécution de la sélection', async () => {
   const utilisateur = userEvent.setup()
   const selection = vi.fn()
-  render(
+  monter(
     <SqlEditor
       texteInitial="select 1"
       onTexteChange={() => {}}
@@ -102,7 +109,7 @@ test('⌥↩ demande l’exécution de la sélection', async () => {
 
 test('sans rappel branché, ⌘↩ n’insère toujours pas de ligne', async () => {
   const utilisateur = userEvent.setup()
-  render(<SqlEditor texteInitial="select 1" onTexteChange={() => {}} />)
+  monter(<SqlEditor texteInitial="select 1" onTexteChange={() => {}} />)
   await utilisateur.click(document_() as HTMLElement)
   await utilisateur.keyboard('{Control>}{Enter}{/Control}')
   // La touche est **consommée** même sans destinataire : le contraire ferait qu'une console sans
@@ -112,7 +119,7 @@ test('sans rappel branché, ⌘↩ n’insère toujours pas de ligne', async () 
 
 test('l’annulation rend le texte d’avant', async () => {
   const utilisateur = userEvent.setup()
-  render(<SqlEditor texteInitial="select 1" onTexteChange={() => {}} />)
+  monter(<SqlEditor texteInitial="select 1" onTexteChange={() => {}} />)
   await saisir(utilisateur, ' where id = 2')
   await utilisateur.keyboard('{Control>}z{/Control}')
   // L'historique d'annulation est l'une des quatre raisons de la dépendance. Il est fourni par
@@ -121,6 +128,6 @@ test('l’annulation rend le texte d’avant', async () => {
 })
 
 test('l’éditeur porte un nom accessible', () => {
-  render(<SqlEditor texteInitial="" onTexteChange={() => {}} />)
+  monter(<SqlEditor texteInitial="" onTexteChange={() => {}} />)
   expect(screen.getByLabelText('Requête SQL')).toBeInTheDocument()
 })

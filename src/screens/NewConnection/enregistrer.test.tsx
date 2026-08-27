@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Sprite } from '../../design/icons/Sprite'
 import type { Project, SaveDatabaseRequest } from '../../domain/config'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { emptyDraft } from './ConnectionDraft'
 import { draftToSaveRequest } from './enregistrerLaBase'
 import { NewConnection } from './NewConnection'
@@ -36,26 +37,28 @@ function monter(
   render(
     <>
       <Sprite />
-      <NewConnection
-        onClose={options.onClose ?? (() => {})}
-        projects={options.projects ?? PROJETS}
-        onBrowseKey={async () => null}
-        onTest={async () => {
-          throw new Error('non employé dans ces tests')
-        }}
-        onSave={
-          options.onSave ??
-          (async (request) => {
-            espion.requetes.push(request)
-            return APRES
-          })
-        }
-        // Par défaut, le projet du décor : le cadre est désormais toujours désigné par l'appelant, et
-        // un décor sans projet ne mesurerait que le refus de la garde de `08e`.
-        projet={options.projet ?? 'Atelier Nord'}
-        venantDuParcours={options.venantDuParcours ?? false}
-        onSaved={(projets) => espion.projets.push(projets)}
-      />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <NewConnection
+          onClose={options.onClose ?? (() => {})}
+          projects={options.projects ?? PROJETS}
+          onBrowseKey={async () => null}
+          onTest={async () => {
+            throw new Error('non employé dans ces tests')
+          }}
+          onSave={
+            options.onSave ??
+            (async (request) => {
+              espion.requetes.push(request)
+              return APRES
+            })
+          }
+          // Par défaut, le projet du décor : le cadre est désormais toujours désigné par l'appelant, et
+          // un décor sans projet ne mesurerait que le refus de la garde de `08e`.
+          projet={options.projet ?? 'Atelier Nord'}
+          venantDuParcours={options.venantDuParcours ?? false}
+          onSaved={(projets) => espion.projets.push(projets)}
+        />
+      </LanguageProvider>
     </>,
   )
   return espion
