@@ -320,12 +320,18 @@ export function ExplorerSidebar({
 
              **Ce que le pied coûtait** : 78 px pris sur la hauteur de l'arbre, pour deux boutons à
              libellé qui devaient s'annoncer parce qu'ils vivaient seuls en bas d'une colonne. En tête,
-             la bande coûte 35 px, vit là où l'on cherche les actions d'un panneau, et peut porter des
-             icônes seules — le sac est le glyphe du projet dans tout le produit. */
+             la bande coûte moins, vit là où l'on cherche les actions d'un panneau, et peut porter des
+             icônes seules.
+
+             **`plus`, pas `bag`** (27 août 2026) : le sac reste le glyphe du *projet* — celui de
+             chaque ligne de l'arbre — mais ce bouton ne désigne pas un projet, il **en crée un**. Une
+             icône nue sans « + » se lisait comme un raccourci vers un projet déjà là, pas comme un
+             geste d'ajout — la même confusion que le `+` de la grille (`AGENTS.md`) écarte pour une
+             ligne. */
           onNewProject && (
             <SidebarToolbar>
               <SidebarToolbarButton
-                icon="bag"
+                icon="plus"
                 label={t('explorer.sidebar.newProject')}
                 title={t('explorer.sidebar.newProjectTitle')}
                 onClick={onNewProject}

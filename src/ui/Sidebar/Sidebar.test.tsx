@@ -8,7 +8,7 @@ test('assemble la bande, le filtre et le contenu', () => {
     <Sidebar
       toolbar={
         <SidebarToolbar>
-          <SidebarToolbarButton icon="bag" label="Nouveau projet" onClick={vi.fn()} />
+          <SidebarToolbarButton icon="plus" label="Nouveau projet" onClick={vi.fn()} />
         </SidebarToolbar>
       }
       filter={<SidebarFilterBar value="" onChange={vi.fn()} />}
@@ -37,7 +37,7 @@ test('rend la bande avant le filtre, et le filtre avant le contenu', () => {
     <Sidebar
       toolbar={
         <SidebarToolbar>
-          <SidebarToolbarButton icon="bag" label="Nouveau projet" onClick={vi.fn()} />
+          <SidebarToolbarButton icon="plus" label="Nouveau projet" onClick={vi.fn()} />
         </SidebarToolbar>
       }
       filter={<SidebarFilterBar value="" onChange={vi.fn()} />}

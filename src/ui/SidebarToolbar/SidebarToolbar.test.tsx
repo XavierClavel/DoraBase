@@ -8,7 +8,7 @@ function monter(props: Partial<Parameters<typeof SidebarToolbarButton>[0]> = {})
     <>
       <Sprite />
       <SidebarToolbar>
-        <SidebarToolbarButton icon="bag" label="Nouveau projet" {...props} />
+        <SidebarToolbarButton icon="plus" label="Nouveau projet" {...props} />
       </SidebarToolbar>
     </>,
   )

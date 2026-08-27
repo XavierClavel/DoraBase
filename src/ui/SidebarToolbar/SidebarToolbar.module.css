@@ -1,16 +1,22 @@
 /*
  * La barre d'actions en tête de sidebar (26 août 2026).
  *
- * Même facture que `SidebarFilterBar`, qu'elle surmonte : même hauteur de contenu (`--h-bar`), même
+ * Même facture que `SidebarFilterBar`, qu'elle surmonte : même hauteur de contenu, même
  * remplissage horizontal, même filet bas, et le même `content-box` — les hauteurs de ce projet
  * désignent le contenu, le filet s'ajoutant par-dessus. Deux bandes empilées qui ne se ressembleraient
  * pas donneraient l'impression de deux produits, et c'est l'argument qui a déjà refondu le pied.
+ *
+ * **28px, pas `--h-bar` (27 août 2026)** : les deux bandes de tête de sidebar sont plus basses que le
+ * reste des barres qui partagent ce jeton (onglets, fil d'Ariane…) — trop hautes pour ce qu'elles
+ * portent, deux rangées d'icônes nues au-dessus d'un arbre dense. 28px, c'est `.bouton` (22px, la
+ * hauteur d'une ligne d'arbre) plus 3px de chaque côté — un cran de l'échelle d'espacement, pas une
+ * valeur choisie à l'œil.
  */
 .root {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  height: var(--h-bar);
+  height: 28px;
   padding: 0 9px; /* hors échelle `--space-*`, la valeur de `SidebarFilterBar` */
   border-bottom: 1px solid var(--divider-2);
   box-sizing: content-box;
