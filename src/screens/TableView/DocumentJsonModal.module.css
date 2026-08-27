@@ -1,0 +1,29 @@
+/* La modale d'édition JSON (`18g`), à la même échelle que `ApplyConfirm` (`11d`) : le corps de
+ * `Modal` n'a aucun remplissage (`08a`), donc c'est ici qu'il se pose. */
+.corps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-7);
+}
+
+/* La boîte de CodeMirror : un cadre au ton d'un champ (`--border-field`, `--radius-field`), une
+ * hauteur fixe plutôt que « toute la place restante » — la modale, elle, n'a pas de hauteur propre
+ * à distribuer. */
+.editeur {
+  height: 360px;
+  border: 1px solid var(--border-field);
+  border-radius: var(--radius-field);
+  overflow: hidden;
+}
+
+.refus {
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-field);
+  background: var(--danger-bg);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  color: var(--danger-ink);
+}

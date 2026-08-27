@@ -128,6 +128,19 @@ export const tableViewFr: Dictionnaire = {
     // `modifications.ts`, `raisonDuRefus` — pourquoi une cellule refuse l'édition, en `title=`.
     primaryKeyColumnReason: (p) =>
       `${p.column} identifie la ligne : la modifier déplacerait la ligne à mettre à jour.`,
+    editRowJson: (p) => `Éditer la ligne ${p.rang} en JSON`,
+  },
+  // L'édition d'un document NoSQL en JSON (`18g`) : l'icône de gouttière, le `+` d'une table
+  // MongoDB, et la modale qu'ils ouvrent.
+  documentJson: {
+    createTitle: 'Nouveau document',
+    editTitle: 'Éditer le document',
+    editorLabel: 'Document JSON',
+    cancel: 'Annuler',
+    save: 'Enregistrer',
+    // `documentJson.ts`, `documentDepuisTexte`.
+    invalidJson: (p) => `JSON invalide : ${p.message}`,
+    mustBeObject: 'Le document doit être un objet JSON, entre accolades.',
   },
 }
 
@@ -253,5 +266,15 @@ export const tableViewEn: Dictionnaire = {
     fillColumn: (p) => `Fill in ${p.column}`,
     primaryKeyColumnReason: (p) =>
       `${p.column} identifies the row: editing it would move the row being updated.`,
+    editRowJson: (p) => `Edit row ${p.rang} as JSON`,
+  },
+  documentJson: {
+    createTitle: 'New document',
+    editTitle: 'Edit document',
+    editorLabel: 'JSON document',
+    cancel: 'Cancel',
+    save: 'Save',
+    invalidJson: (p) => `Invalid JSON: ${p.message}`,
+    mustBeObject: 'The document must be a JSON object, between curly braces.',
   },
 }

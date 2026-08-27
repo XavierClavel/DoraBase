@@ -61,23 +61,38 @@
   height: 100%;
 }
 
-/* Motif repris de `TreeRow` : cachée par défaut, révélée au survol ou au focus — jamais un survol
-   inventé ailleurs que sur ce qui ouvre déjà un geste (voir AGENTS.md, « Aucun état de survol »). */
-.supprimerLigne {
+/* Le conteneur des actions de la ligne — la croix de suppression, et depuis `18g` l'icône
+   « éditer en JSON » d'une table NoSQL. Motif repris de `TreeRow` : cachées par défaut, révélées
+   au survol ou au focus — jamais un survol inventé ailleurs que sur ce qui ouvre déjà un geste
+   (voir AGENTS.md, « Aucun état de survol »). Les deux actions partagent le même conteneur plutôt
+   que chacune son propre calque : une gouttière plus large n'a qu'un survol à gérer, pas deux. */
+.actions {
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 2px;
   visibility: hidden;
   background: var(--hover-row);
+}
+
+.supprimerLigne,
+.editerDocument {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
   border: none;
+  border-radius: var(--radius-badge);
+  background: none;
   color: var(--ink-4);
   cursor: pointer;
 }
 
-.gouttiereWrap:hover .supprimerLigne,
-.supprimerLigne:focus-visible {
+.gouttiereWrap:hover .actions,
+.actions:focus-within {
   visibility: visible;
 }
 
@@ -85,9 +100,9 @@
   visibility: hidden;
 }
 
-/* Une ligne déjà marquée garde sa croix visible en permanence : la marque ne doit pas dépendre du
-   survol pour se voir. */
-.gouttiereSupprimee .supprimerLigne {
+/* Une ligne déjà marquée garde ses actions visibles en permanence : la marque ne doit pas dépendre
+   du survol pour se voir. */
+.gouttiereSupprimee .actions {
   visibility: visible;
 }
 
