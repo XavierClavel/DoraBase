@@ -757,6 +757,14 @@ le fichier : `pg_dump --format=plain` termine par
 qu'il l'exige, et retirer le contrôle fait réussir l'import du fichier coupé. **Ne jamais
 « simplifier » ce contrôle en se fiant à la transaction.**
 
+**Le pied n'est pas forcément la dernière ligne du fichier.** `pg_dump` 17.6 termine par
+`\unrestrict <jeton>` — une méta-commande `psql` ajoutée par les correctifs d'août 2025 pour
+qu'un dump ne puisse pas changer l'état de la session qui le rejoue. Le contrôle porte donc
+sur la **présence** du pied dans la queue du fichier, jamais sur la fin exacte. Trouvé par la
+CI : sa machine porte 17.6 quand celle de développement porte 17.4, et un test écrit en
+`ends_with` a rougi sur une différence de version *mineure* du client. C'est la leçon
+générale — un test plus strict que le contrat qu'il garde finit par mesurer la machine.
+
 **Le garde-fou de l'import, c'est la modale qui nomme la cible** : projet, base,
 environnement, chemin du fichier. Pas de case à cocher, pas de nom à recopier — l'erreur que
 cela empêche est de se tromper de cible, pas d'intention. Et `readOnly` refuse **avant** toute

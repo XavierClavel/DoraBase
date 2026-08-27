@@ -172,20 +172,50 @@ pub fn compter_lignes_de_copy(contenu: &str, table: &str) -> usize {
     lignes
 }
 
-/// Le pied que `pg_dump --format=plain` écrit en dernier, et que `22c` exige.
+/// Le pied que `pg_dump --format=plain` écrit en fin de fichier, et que l'import exige.
 pub const PIED_DE_COMPLETUDE: &str = "-- PostgreSQL database dump complete";
+
+/// Combien de lignes de queue le pied a le droit d'occuper.
+///
+/// **Le pied n'est plus forcément la dernière ligne**, et c'est la CI qui l'a montré :
+/// `pg_dump` 17.6 termine par `\unrestrict <jeton>`, une méta-commande `psql` ajoutée par les
+/// versions correctives d'août 2025 pour empêcher un dump de changer l'état de la session.
+/// La machine de développement porte 17.4 et ne l'écrit pas ; le runner porte 17.6 et
+/// l'écrit. Un test qui exigeait que le fichier **se termine** par le pied a donc rougi sur
+/// une différence de version mineure du client.
+///
+/// Le contrôle réel — celui de `inspect.rs` — a toujours cherché la **présence** du pied dans
+/// les huit derniers kio, jamais la fin du fichier : c'est le test qui était plus strict que
+/// le contrat, pas le contrat qui a bougé.
+const QUEUE_DU_PIED: usize = 10;
 
 #[tokio::test]
 async fn le_dump_porte_le_pied_de_completude() {
-    // Le contrat avec 22c : sans ce pied, son contrôle de complétude n'a rien à lire.
+    // Le contrat avec l'import : sans ce pied, son contrôle de complétude n'a rien à lire.
     let (_dossier, fichier) = exporter_dorabase_test().await;
     let contenu = std::fs::read_to_string(&fichier).unwrap();
+    let queue: Vec<&str> = contenu
+        .lines()
+        .rev()
+        .take(QUEUE_DU_PIED)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+
     assert!(
-        contenu
-            .trim_end()
-            .ends_with(&format!("{PIED_DE_COMPLETUDE}\n--")),
-        "le pied de complétude manque : {:?}",
-        contenu.lines().rev().take(4).collect::<Vec<_>>()
+        queue.iter().any(|ligne| *ligne == PIED_DE_COMPLETUDE),
+        "le pied de complétude manque : {queue:?}"
+    );
+    // Contrôle positif de la fenêtre : le pied doit être en **queue** de fichier, pas
+    // n'importe où. Sans cette borne, un `contains` sur tout le fichier passerait sur un dump
+    // tronqué dont le corps citerait la phrase — un `COPY` de commentaires, par exemple.
+    assert!(
+        !contenu
+            .lines()
+            .take(contenu.lines().count().saturating_sub(QUEUE_DU_PIED))
+            .any(|ligne| ligne == PIED_DE_COMPLETUDE),
+        "le pied apparaît ailleurs que dans la queue : la fenêtre ne mesure plus rien"
     );
 }
 
