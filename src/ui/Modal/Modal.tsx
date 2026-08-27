@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useRef } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type { IconName } from '../../design/icons/names'
+import { useT } from '../../i18n/LanguageContext'
 import { cx } from '../cx'
 import styles from './Modal.module.css'
 
@@ -93,6 +94,7 @@ export function Modal({
   className,
   children,
 }: ModalProps) {
+  const t = useT()
   const coquille = useRef<HTMLDivElement>(null)
   const corps = useRef<HTMLDivElement>(null)
   // Une identité par instance, stable entre les rendus.
@@ -214,7 +216,12 @@ export function Modal({
           {contexte}
           <span className={styles.spacer} />
           {!nested && (
-            <button type="button" className={styles.close} onClick={onClose} aria-label="Fermer">
+            <button
+              type="button"
+              className={styles.close}
+              onClick={onClose}
+              aria-label={t('ui.modal.close')}
+            >
               <Icon name="x" size={16} strokeWidth={1.9} />
             </button>
           )}

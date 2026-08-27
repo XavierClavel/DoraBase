@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { ColumnInfo, DatabaseKey, RowWindow, Value } from '../../domain/engine'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { estNumerique, rendreValeur } from './cellule'
 import { TableView } from './TableView'
 import type { PasserelleLignes } from './useLignes'
@@ -52,13 +53,15 @@ function monter(resultat: RowWindow | Promise<never>, colonnes = COLONNES) {
   render(
     <>
       <Sprite />
-      <TableView
-        cle={CLE}
-        schema="public"
-        table="orders"
-        columns={colonnes}
-        passerelle={passerelle}
-      />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <TableView
+          cle={CLE}
+          schema="public"
+          table="orders"
+          columns={colonnes}
+          passerelle={passerelle}
+        />
+      </LanguageProvider>
     </>,
   )
   return passerelle
@@ -109,13 +112,15 @@ describe('TableView', () => {
     render(
       <>
         <Sprite />
-        <TableView
-          cle={CLE}
-          schema="public"
-          table="orders"
-          columns={COLONNES}
-          passerelle={passerelle}
-        />
+        <LanguageProvider preferences={{ language: 'fr' }}>
+          <TableView
+            cle={CLE}
+            schema="public"
+            table="orders"
+            columns={COLONNES}
+            passerelle={passerelle}
+          />
+        </LanguageProvider>
       </>,
     )
 

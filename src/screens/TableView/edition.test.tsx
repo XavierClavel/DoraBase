@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { ColumnInfo, DatabaseKey, RowQuery, Value } from '../../domain/engine'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import type { EnAttente, Modification, ModificationDeCellule } from './modifications'
 import { TableView } from './TableView'
 import type { PasserelleLignes } from './useLignes'
@@ -88,7 +89,9 @@ function monter(options: { columns?: ColumnInfo[]; edition?: boolean; lignes?: V
   render(
     <>
       <Sprite />
-      <Pilotee />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <Pilotee />
+      </LanguageProvider>
     </>,
   )
   return { readRows, attentes, derniere: () => attentes[attentes.length - 1] ?? [] }

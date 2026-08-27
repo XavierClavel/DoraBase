@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { DeleteEnvironmentResult } from '../../domain/config'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { DeleteEnvironmentDialog } from './DeleteEnvironmentDialog'
 
 const ISSUE: DeleteEnvironmentResult = {
@@ -18,13 +19,15 @@ function monter(
   render(
     <>
       <Sprite />
-      <DeleteEnvironmentDialog
-        projet="Atelier Nord"
-        libelle="vitrine"
-        connexions={options.connexions ?? ['catalogue', 'reservations']}
-        onClose={onClose}
-        onDelete={options.onDelete ?? (async () => ISSUE)}
-      />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <DeleteEnvironmentDialog
+          projet="Atelier Nord"
+          libelle="vitrine"
+          connexions={options.connexions ?? ['catalogue', 'reservations']}
+          onClose={onClose}
+          onDelete={options.onDelete ?? (async () => ISSUE)}
+        />
+      </LanguageProvider>
     </>,
   )
   return { onClose }

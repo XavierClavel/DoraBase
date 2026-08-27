@@ -11,6 +11,7 @@ import type {
   SortKey,
   Value,
 } from '../../domain/engine'
+import { useT } from '../../i18n/LanguageContext'
 import { cx } from '../../ui/cx'
 import { type GridColumn, VirtualGrid } from '../../ui/VirtualGrid/VirtualGrid'
 import { apercuDeLaSaisie, estNumerique, rendreValeur } from './cellule'
@@ -153,6 +154,7 @@ export function TableView({
   attente = [],
   onAttenteChange,
 }: TableViewProps) {
+  const t = useT()
   const [filters, setFilters] = useState<readonly Filter[]>([])
   const [sort, setSort] = useState<readonly SortKey[]>([])
   // L'opérateur choisi par colonne, y compris pour un filtre pas encore appliqué. Séparé des
@@ -339,10 +341,10 @@ export function TableView({
                   // première ligne lue partageraient le même nom accessible « …la ligne 1 ».
                   aria-label={
                     ligne.sorte === 'ajoutee'
-                      ? `Retirer la nouvelle ligne ${ligne.rang}`
+                      ? t('tableView.grid.removeNewRow', { rang: ligne.rang })
                       : supprimee
-                        ? `Annuler la suppression de la ligne ${ligne.rang}`
-                        : `Supprimer la ligne ${ligne.rang}`
+                        ? t('tableView.grid.cancelDeletion', { rang: ligne.rang })
+                        : t('tableView.grid.deleteRow', { rang: ligne.rang })
                   }
                   onClick={surSuppression}
                 >
@@ -378,7 +380,7 @@ export function TableView({
                     basculerTri(precedent, colonne.name, evenement.metaKey || evenement.ctrlKey),
                   )
                 }
-                aria-label={`Trier par ${colonne.name}`}
+                aria-label={t('tableView.grid.sortBy', { column: colonne.name })}
               >
                 {colonne.name}
                 {critere && (
@@ -466,14 +468,14 @@ export function TableView({
               // **Un `<button>` qui remplit la cellule**, et non un `div` à double-clic : le
               // clavier vient gratuitement — `Tab` pour parcourir, `↩` ou espace pour ouvrir — là
               // où un gestionnaire de double-clic n'a aucun équivalent au clavier.
-              const refusDeLaColonne = raisonDuRefus(colonne)
+              const refusDeLaColonne = raisonDuRefus(colonne, t)
               const supprimee = cle !== null && estMarqueePourSuppression(attente, cle)
               if (refusDeLaColonne !== null || cle === null || supprimee) {
                 const raison =
                   cle === null
-                    ? 'Cette table n’a pas de clé primaire : DoraBase ne saurait pas quelle ligne mettre à jour.'
+                    ? t('tableView.grid.noPrimaryKeyReason')
                     : supprimee
-                      ? 'Cette ligne est marquée pour suppression : elle ne se modifie plus.'
+                      ? t('tableView.grid.deletedRowReason')
                       : refusDeLaColonne
                 return (
                   <span className={cx(classe, styles.nonEditable)} title={raison ?? undefined}>
@@ -485,7 +487,7 @@ export function TableView({
                 <button
                   type="button"
                   className={cx(classe, styles.editable)}
-                  aria-label={`Modifier ${colonne.name}`}
+                  aria-label={t('tableView.grid.modifyColumn', { column: colonne.name })}
                   onClick={() => setEnEdition({ cle, rang: ligne.rang, column: colonne.name })}
                 >
                   {affichee}
@@ -507,6 +509,7 @@ export function TableView({
       edition,
       cleDe,
       onAttenteChange,
+      t,
     ],
   )
 
@@ -548,7 +551,7 @@ export function TableView({
         <div className={styles.grille}>
           <VirtualGrid
             rowHeight={rowHeight}
-            label={`Lignes de ${schema}.${table}`}
+            label={t('tableView.grid.gridLabel', { schema, table })}
             columns={colonnes}
             rows={toutesLesLignes}
             // L'identité locale d'une ligne ajoutée, jamais son rang : `+1` et la première ligne
@@ -599,7 +602,7 @@ export function TableView({
             onSelect={(ligne) => {
               if (ligne.sorte === 'lue') setChoisie(String(ligne.rang))
             }}
-            empty={<span>{messageVide(loading, error, schema, table)}</span>}
+            empty={<span>{messageVide(t, loading, error, schema, table)}</span>}
           />
         </div>
       </div>
@@ -637,6 +640,7 @@ function CelluleAjoutee({
   onFermer: () => void
   onSaisir: (saisie: Saisie | null) => void
 }) {
+  const t = useT()
   const saisie = valeurDeLaLigne(attente, cle, colonne.name)
 
   if (ouverte) {
@@ -661,7 +665,7 @@ function CelluleAjoutee({
       // **Dit, pas deviné** : une cellule vide dans une ligne neuve ne veut pas dire « vide », elle
       // veut dire « la base décidera ». Les confondre ferait attendre un `NULL` là où une séquence
       // ou un `now()` va s'appliquer.
-      <span className={styles.defaut}>défaut</span>
+      <span className={styles.defaut}>{t('tableView.grid.defaultValue')}</span>
     ) : (
       apercuDeLaSaisie(saisie)
     )
@@ -670,7 +674,7 @@ function CelluleAjoutee({
     return (
       <span
         className={cx(classe, styles.nonEditable)}
-        title={`${colonne.name} est binaire : sa valeur ne se saisit pas au clavier.`}
+        title={t('tableView.grid.binaryReason', { column: colonne.name })}
       >
         {affichee}
       </span>
@@ -681,7 +685,7 @@ function CelluleAjoutee({
     <button
       type="button"
       className={cx(classe, styles.editable)}
-      aria-label={`Renseigner ${colonne.name}`}
+      aria-label={t('tableView.grid.fillColumn', { column: colonne.name })}
       onClick={onOuvrir}
     >
       {affichee}
@@ -690,16 +694,17 @@ function CelluleAjoutee({
 }
 
 function messageVide(
+  t: ReturnType<typeof useT>,
   loading: boolean,
   error: string | null,
   schema: string,
   table: string,
 ): string {
   if (error) return error
-  if (loading) return 'Lecture des lignes…'
+  if (loading) return t('tableView.grid.loadingRows')
   // Vide **lu** n'est pas vide **non lu** : une table sans ligne est un état normal, et ne rien
   // dire laisserait croire que la lecture n'a pas abouti.
-  return `${schema}.${table} ne contient aucune ligne.`
+  return t('tableView.grid.noRows', { schema, table })
 }
 
 /**

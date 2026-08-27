@@ -40,6 +40,16 @@ export default defineConfig({
     // relèvement. La raison longue est dans `vite.config.ts`, au `define`.
     env: { DORABASE_VERSION_DECOR: '9.9.9' },
   },
-  use: { baseURL: `http://localhost:${port}`, viewport: { width: 1360, height: 814 } },
+  use: {
+    baseURL: `http://localhost:${port}`,
+    viewport: { width: 1360, height: 814 },
+    // **Figée, comme la version** (voir `DORABASE_VERSION_DECOR` ci-dessus) — même raison, un
+    // symptôme différent : depuis que « Système » résout `navigator.language` (26 août 2026), la
+    // langue affichée par défaut suivrait le Chromium de la machine qui exécute la suite. Une CI et
+    // un poste de développement n'ont pas la même locale système, ce qui aurait fait dépendre les
+    // captures de fidélité et les assertions de texte — toutes en français — de la machine plutôt
+    // que du code.
+    locale: 'fr-FR',
+  },
   expect: { toHaveScreenshot: { maxDiffPixelRatio: 0 } },
 })

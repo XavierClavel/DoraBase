@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type { QueryResult } from '../../domain/engine'
+import { useT } from '../../i18n/LanguageContext'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
 import type { Dialecte } from '../Workbench/onglets'
 import { ConsoleResult, type VueResultat } from './ConsoleResult'
@@ -64,6 +65,7 @@ export function ConsoleView({
   dialecte = 'sql',
   rowHeight,
 }: ConsoleViewProps) {
+  const t = useT()
   // La sélection courante, publiée par l'éditeur : « Sélection » l'exécute, et se replie sur la
   // requête entière quand il n'y a rien de sélectionné — un bouton qui ne ferait rien sur une
   // sélection vide se lirait comme une panne.
@@ -76,9 +78,9 @@ export function ConsoleView({
       : () => onExecuterLaSelection(selection.trim() === '' ? texte : selection)
 
   const actions = ACTIONS.map((action) => {
-    if (action.libelle === 'Exécuter') return { ...action, onClick: executer }
-    if (action.libelle === 'Sélection') return { ...action, onClick: executerLaSelection }
-    if (action.libelle === 'Enregistrer') {
+    if (action.id === 'executer') return { ...action, onClick: executer }
+    if (action.id === 'selection') return { ...action, onClick: executerLaSelection }
+    if (action.id === 'enregistrer') {
       return {
         ...action,
         onClick: onEnregistrer === undefined ? undefined : () => onEnregistrer(texte),
@@ -92,18 +94,24 @@ export function ConsoleView({
       {/* `role="toolbar"`, comme celle de `A5` (`10e`) : un groupe de commandes qui agissent sur la
           même chose. Le nom la distingue — « Exécuter » ici et une action homonyme ailleurs
           s'annonceraient à l'identique sans lui. */}
-      <div className={styles.toolbar} role="toolbar" aria-label="Actions de la console">
+      <div className={styles.toolbar} role="toolbar" aria-label={t('console.toolbar.ariaLabel')}>
         {actions.map((action) => (
           <button
-            key={action.libelle}
+            key={action.id}
             type="button"
             className={action.principale ? styles.principale : styles.action}
             onClick={'onClick' in action ? action.onClick : undefined}
             disabled={!('onClick' in action) || action.onClick === undefined || enCours}
-            title={'onClick' in action && action.onClick !== undefined ? undefined : action.raison}
+            title={
+              'onClick' in action && action.onClick !== undefined
+                ? undefined
+                : t(`console.toolbar.actions.${action.id}.raison`)
+            }
           >
             {action.icone && <Icon name={action.icone} size={12} strokeWidth={2.1} />}
-            {enCours && action.principale ? 'Exécution…' : action.libelle}
+            {enCours && action.principale
+              ? t('console.toolbar.enCours')
+              : t(`console.toolbar.actions.${action.id}.libelle`)}
             {action.raccourci && <span className={styles.raccourci}>{action.raccourci}</span>}
           </button>
         ))}
@@ -114,7 +122,9 @@ export function ConsoleView({
             **En mongo, le mot change** : ce n'est pas un `LIMIT` SQL mais un `$limit` ajouté en fin
             de pipeline (`18g`). Garder « LIMIT » ferait chercher une clause qui n'existe pas. */}
         <span className={styles.limite}>
-          {dialecte === 'mongo' ? 'auto-$limit 1000' : 'auto-LIMIT 1000'}
+          {dialecte === 'mongo'
+            ? t('console.toolbar.autoLimitMongo')
+            : t('console.toolbar.autoLimitSql')}
         </span>
       </div>
 
@@ -165,32 +175,27 @@ export function ConsoleView({
  */
 const ACTIONS = [
   {
-    libelle: 'Exécuter',
+    id: 'executer',
     icone: 'play' as const,
     raccourci: '⌘↩',
     principale: true,
-    raison: 'Aucune base n’est ouverte : il n’y a rien à interroger.',
   },
   {
-    libelle: 'Sélection',
+    id: 'selection',
     raccourci: '⌥↩',
-    raison: 'Aucune base n’est ouverte : il n’y a rien à interroger.',
   },
   {
-    libelle: 'Enregistrer',
+    id: 'enregistrer',
     icone: 'save' as const,
-    raison: 'Aucun projet n’est ouvert : il n’y a nulle part où enregistrer.',
   },
   {
-    libelle: 'Formater',
     // **La seule action qui n'a pas de spec**, et sa raison le dit : formater du SQL demande un
     // formateur, qui est une décision de dépendance à part entière — pas un détail d'écran.
-    raison: 'Formater demande un formateur SQL : aucune dépendance n’a encore été choisie.',
+    id: 'formater',
   },
 ] satisfies readonly {
-  libelle: string
+  id: 'executer' | 'selection' | 'enregistrer' | 'formater'
   icone?: 'play' | 'save'
   raccourci?: string
   principale?: boolean
-  raison: string
 }[]

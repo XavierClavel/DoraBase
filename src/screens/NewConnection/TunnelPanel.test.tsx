@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Sprite } from '../../design/icons/Sprite'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { choisirDansLaListe, optionsDeLaListe } from '../../ui/Select/pourLesTests'
 import { NewConnection } from './NewConnection'
 
@@ -8,7 +9,9 @@ function monter(onBrowseKey?: () => Promise<string | null>) {
   return render(
     <>
       <Sprite />
-      <NewConnection onClose={() => {}} onBrowseKey={onBrowseKey ?? (async () => null)} />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <NewConnection onClose={() => {}} onBrowseKey={onBrowseKey ?? (async () => null)} />
+      </LanguageProvider>
     </>,
   )
 }

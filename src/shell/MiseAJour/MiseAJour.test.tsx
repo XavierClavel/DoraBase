@@ -1,23 +1,30 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { MiseAJour } from './MiseAJour'
+
+function monter(props: Parameters<typeof MiseAJour>[0]) {
+  return render(
+    <LanguageProvider preferences={{ language: 'fr' }}>
+      <MiseAJour {...props} />
+    </LanguageProvider>,
+  )
+}
 
 // **Le cas nominal est de ne rien afficher.** C'est aussi celui de tous les autres tests du
 // produit, de la galerie et de Playwright : hors de la webview, la recherche est rejetée.
 test("ne rend rien quand la recherche échoue — le pont ne répond pas hors de l'application", async () => {
-  const { container } = render(
-    <MiseAJour chercher={() => Promise.reject(new Error('pont absent'))} />,
-  )
+  const { container } = monter({ chercher: () => Promise.reject(new Error('pont absent')) })
   await waitFor(() => expect(container).toBeEmptyDOMElement())
 })
 
 test("ne rend rien quand il n'y a pas de version plus récente", async () => {
-  const { container } = render(<MiseAJour chercher={() => Promise.resolve(null)} />)
+  const { container } = monter({ chercher: () => Promise.resolve(null) })
   await waitFor(() => expect(container).toBeEmptyDOMElement())
 })
 
 test('annonce la version trouvée, et elle seule', async () => {
-  render(<MiseAJour chercher={() => Promise.resolve({ version: '0.2.0', notes: null })} />)
+  monter({ chercher: () => Promise.resolve({ version: '0.2.0', notes: null }) })
   // Motif **ancré** : sans les bornes, « 0.2.0 disponible » compterait aussi pour un futur
   // « 0.2.0 disponible dans une heure ».
   expect(await screen.findByRole('button', { name: /^0\.2\.0 disponible$/ })).toBeInTheDocument()
@@ -25,11 +32,9 @@ test('annonce la version trouvée, et elle seule', async () => {
 
 test("les notes de la release s'affichent, et le panneau tient sans elles", async () => {
   const utilisateur = userEvent.setup()
-  render(
-    <MiseAJour
-      chercher={() => Promise.resolve({ version: '0.2.0', notes: 'Deux moteurs de plus.' })}
-    />,
-  )
+  monter({
+    chercher: () => Promise.resolve({ version: '0.2.0', notes: 'Deux moteurs de plus.' }),
+  })
   await utilisateur.click(await screen.findByRole('button', { name: /disponible$/ }))
   expect(screen.getByText('Deux moteurs de plus.')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Installer et redémarrer' })).toBeEnabled()
@@ -37,7 +42,7 @@ test("les notes de la release s'affichent, et le panneau tient sans elles", asyn
 
 test('sans notes, le panneau le dit plutôt que de laisser un vide', async () => {
   const utilisateur = userEvent.setup()
-  render(<MiseAJour chercher={() => Promise.resolve({ version: '0.2.0', notes: null })} />)
+  monter({ chercher: () => Promise.resolve({ version: '0.2.0', notes: null }) })
   await utilisateur.click(await screen.findByRole('button', { name: /disponible$/ }))
   expect(screen.getByText("Cette version n'a pas de notes.")).toBeInTheDocument()
 })
@@ -48,15 +53,13 @@ test('sans notes, le panneau le dit plutôt que de laisser un vide', async () =>
 test("le bouton lance l'installation et se désactive pendant", async () => {
   const utilisateur = userEvent.setup()
   let appels = 0
-  render(
-    <MiseAJour
-      chercher={() => Promise.resolve({ version: '0.2.0', notes: null })}
-      installer={() => {
-        appels += 1
-        return new Promise(() => {})
-      }}
-    />,
-  )
+  monter({
+    chercher: () => Promise.resolve({ version: '0.2.0', notes: null }),
+    installer: () => {
+      appels += 1
+      return new Promise(() => {})
+    },
+  })
   await utilisateur.click(await screen.findByRole('button', { name: /disponible$/ }))
   await utilisateur.click(screen.getByRole('button', { name: 'Installer et redémarrer' }))
   expect(appels).toBe(1)
@@ -66,12 +69,10 @@ test("le bouton lance l'installation et se désactive pendant", async () => {
 
 test("un échec d'installation est dit, et le bouton redevient cliquable", async () => {
   const utilisateur = userEvent.setup()
-  render(
-    <MiseAJour
-      chercher={() => Promise.resolve({ version: '0.2.0', notes: null })}
-      installer={() => Promise.reject(new Error("l'installation a échoué : disque plein"))}
-    />,
-  )
+  monter({
+    chercher: () => Promise.resolve({ version: '0.2.0', notes: null }),
+    installer: () => Promise.reject(new Error("l'installation a échoué : disque plein")),
+  })
   await utilisateur.click(await screen.findByRole('button', { name: /disponible$/ }))
   await utilisateur.click(screen.getByRole('button', { name: 'Installer et redémarrer' }))
   expect(await screen.findByText("l'installation a échoué : disque plein")).toBeInTheDocument()
@@ -83,12 +84,10 @@ test("un échec d'installation est dit, et le bouton redevient cliquable", async
 // toujours, ce qui est le pire des deux messages possibles.
 test('une installation qui rend la main est traitée comme un échec', async () => {
   const utilisateur = userEvent.setup()
-  render(
-    <MiseAJour
-      chercher={() => Promise.resolve({ version: '0.2.0', notes: null })}
-      installer={() => Promise.resolve()}
-    />,
-  )
+  monter({
+    chercher: () => Promise.resolve({ version: '0.2.0', notes: null }),
+    installer: () => Promise.resolve(),
+  })
   await utilisateur.click(await screen.findByRole('button', { name: /disponible$/ }))
   await utilisateur.click(screen.getByRole('button', { name: 'Installer et redémarrer' }))
   expect(await screen.findByText("l'installation n'a pas abouti")).toBeInTheDocument()
@@ -102,7 +101,7 @@ test('une installation qui rend la main est traitée comme un échec', async () 
 // présence du `dialog` : celle-ci était déjà vraie quand le défaut était là.
 test('le panneau s’ouvre vers le haut — sous la barre d’état, il n’y a plus de fenêtre', async () => {
   const utilisateur = userEvent.setup()
-  render(<MiseAJour chercher={() => Promise.resolve({ version: '0.2.1', notes: null })} />)
+  monter({ chercher: () => Promise.resolve({ version: '0.2.1', notes: null }) })
   await utilisateur.click(await screen.findByRole('button', { name: /disponible$/ }))
   expect(screen.getByRole('dialog')).toHaveAttribute('data-ouverture', 'haut')
 })
@@ -118,10 +117,10 @@ test('deux montages ne cherchent qu’une fois', async () => {
     return Promise.resolve({ version: '0.2.1', notes: null })
   }
   render(
-    <>
+    <LanguageProvider preferences={{ language: 'fr' }}>
       <MiseAJour chercher={chercher} />
       <MiseAJour chercher={chercher} />
-    </>,
+    </LanguageProvider>,
   )
   expect(await screen.findAllByRole('button', { name: /disponible$/ })).toHaveLength(2)
   expect(appels).toBe(1)
@@ -136,10 +135,10 @@ test('deux recherches différentes restent indépendantes', async () => {
     return Promise.resolve({ version: '0.2.1', notes: null })
   }
   render(
-    <>
+    <LanguageProvider preferences={{ language: 'fr' }}>
       <MiseAJour chercher={compter} />
       <MiseAJour chercher={() => Promise.resolve(null)} />
-    </>,
+    </LanguageProvider>,
   )
   expect(await screen.findByRole('button', { name: /disponible$/ })).toBeInTheDocument()
   expect(appels).toBe(1)

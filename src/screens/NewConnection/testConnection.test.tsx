@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Sprite } from '../../design/icons/Sprite'
 import type { ConnectionRequest, ConnectionTest } from '../../domain/engine'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { NewConnection } from './NewConnection'
 import { TRIO_DE_TEST } from './pourLesTests'
 import { codeDe, messageDe } from './testerLaConnexion'
@@ -21,15 +22,17 @@ function monter(onTest: (request: ConnectionRequest) => Promise<ConnectionTest>)
   return render(
     <>
       <Sprite />
-      <NewConnection
-        onClose={() => {}}
-        projects={PROJETS}
-        // Le cadre : depuis le 26 août 2026, c'est l'appelant qui désigne le projet, et sans lui
-        // l'enregistrement est refusé — ce qui masquerait ce que ce fichier mesure.
-        projet={PROJETS[0]?.name ?? ''}
-        onBrowseKey={async () => null}
-        onTest={onTest}
-      />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <NewConnection
+          onClose={() => {}}
+          projects={PROJETS}
+          // Le cadre : depuis le 26 août 2026, c'est l'appelant qui désigne le projet, et sans lui
+          // l'enregistrement est refusé — ce qui masquerait ce que ce fichier mesure.
+          projet={PROJETS[0]?.name ?? ''}
+          onBrowseKey={async () => null}
+          onTest={onTest}
+        />
+      </LanguageProvider>
     </>,
   )
 }

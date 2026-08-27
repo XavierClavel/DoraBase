@@ -1,4 +1,4 @@
-import type { Accent, Preferences, Theme } from '../../domain/config'
+import type { Accent, Language, Preferences, Theme } from '../../domain/config'
 
 /**
  * Ce que les préférences règlent, en fonctions **pures** (`15a` → `15d`).
@@ -10,6 +10,8 @@ import type { Accent, Preferences, Theme } from '../../domain/config'
 /** Les valeurs par défaut, **les mêmes que côté Rust**. Voir `PREFERENCES_PAR_DEFAUT` ci-dessous. */
 export const PREFERENCES_PAR_DEFAUT: Preferences = {
   theme: 'cahier',
+  // 'systeme' : la langue de macOS, anglais en repli — voir `langueAppliquee` (`src/i18n`).
+  language: 'systeme',
   accent: 'terracotta',
   rowHeight: 26,
   codeFontTenths: 125,
@@ -28,20 +30,37 @@ export const PREFERENCES_PAR_DEFAUT: Preferences = {
  * (`accent.options` de son script de démonstration) — pas d'un choix fait ici. Un sélecteur de
  * couleur libre permettrait un accent illisible sur le fond du produit.
  */
-export const PALETTE: readonly { valeur: Accent; couleur: string; nom: string }[] = [
-  { valeur: 'terracotta', couleur: '#F2653A', nom: 'terracotta' },
-  { valeur: 'framboise', couleur: '#DB3753', nom: 'framboise' },
-  { valeur: 'brique', couleur: '#E4573F', nom: 'brique' },
-  { valeur: 'sauge', couleur: '#2E9E6B', nom: 'sauge' },
-  { valeur: 'ardoise', couleur: '#3B82C4', nom: 'ardoise' },
-  { valeur: 'violette', couleur: '#7C5CD6', nom: 'violette' },
+// **Sans nom** : le nom de chaque teinte vient du dictionnaire (clé `accents.<valeur>`), pour
+// suivre la langue de l'interface.
+export const PALETTE: readonly { valeur: Accent; couleur: string }[] = [
+  { valeur: 'terracotta', couleur: '#F2653A' },
+  { valeur: 'framboise', couleur: '#DB3753' },
+  { valeur: 'brique', couleur: '#E4573F' },
+  { valeur: 'sauge', couleur: '#2E9E6B' },
+  { valeur: 'ardoise', couleur: '#3B82C4' },
+  { valeur: 'violette', couleur: '#7C5CD6' },
 ]
 
-/** Les trois thèmes, avec le nom que le mockup leur donne. */
-export const THEMES: readonly { valeur: Theme; nom: string; detail: string }[] = [
-  { valeur: 'cahier', nom: 'Cahier', detail: 'le thème clair du handoff' },
-  { valeur: 'nuit', nom: 'Nuit', detail: 'le thème sombre' },
-  { valeur: 'systeme', nom: 'Système', detail: 'suit le réglage de macOS' },
+/**
+ * Les trois thèmes, dans l'ordre du mockup.
+ *
+ * **Sans nom ni détail** : ces textes viennent désormais du dictionnaire (`i18n/dictionaries/
+ * preferences.ts`, clé `themes.<valeur>`), pour qu'ils suivent la langue de l'interface.
+ */
+export const THEMES: readonly { valeur: Theme }[] = [
+  { valeur: 'cahier' },
+  { valeur: 'nuit' },
+  { valeur: 'systeme' },
+]
+
+/**
+ * Les trois réglages de langue (26 août 2026), même mécanisme que `THEMES` : « Système » est
+ * résolu à l'écran (`langueAppliquee`, `src/i18n/LanguageContext.tsx`), jamais en Rust.
+ */
+export const LANGUES: readonly { valeur: Language }[] = [
+  { valeur: 'fr' },
+  { valeur: 'en' },
+  { valeur: 'systeme' },
 ]
 
 /** Les bornes de `10a`, redites ici pour que l'écran n'en invente pas d'autres. */

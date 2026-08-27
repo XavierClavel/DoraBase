@@ -11,6 +11,7 @@ import {
   lineNumbers,
 } from '@codemirror/view'
 import { useEffect, useRef } from 'react'
+import { useT } from '../../i18n/LanguageContext'
 import type { Dialecte } from '../Workbench/onglets'
 import { type Catalogue, sourceDeCompletion } from './completion'
 import { themeDuHandoff } from './theme'
@@ -88,6 +89,7 @@ export function SqlEditor({
   catalogue,
   dialecte = 'sql',
 }: SqlEditorProps) {
+  const t = useT()
   const hote = useRef<HTMLDivElement>(null)
   const vue = useRef<EditorView | null>(null)
   // Les rappels sont lus par les extensions de CodeMirror, qui ne sont posées qu'une fois : les
@@ -180,7 +182,10 @@ export function SqlEditor({
           // Le nom accessible dit **quelle** langue : « Requête SQL » sur une console mongo
           // annoncerait la mauvaise à la voix.
           EditorView.contentAttributes.of({
-            'aria-label': langue.current === 'mongo' ? 'Commande MongoDB' : 'Requête SQL',
+            'aria-label':
+              langue.current === 'mongo'
+                ? t('console.sqlEditor.ariaLabelMongo')
+                : t('console.sqlEditor.ariaLabelSql'),
           }),
           themeDuHandoff,
           EditorView.updateListener.of((maj) => {

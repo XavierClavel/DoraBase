@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
+import { useT } from '../../i18n/LanguageContext'
 import styles from './ArbreJson.module.css'
 import { basculer, type Noeud, noeudsVisibles, ouvertsParDefaut, resume } from './noeudsJson'
 
@@ -22,6 +23,7 @@ type ArbreJsonProps = {
  * calcule la liste — testable sans DOM.
  */
 export function ArbreJson({ documents, onCopier }: ArbreJsonProps) {
+  const t = useT()
   const [ouverts, setOuverts] = useState<ReadonlySet<string>>(() => ouvertsParDefaut(documents))
 
   const noeuds = useMemo(
@@ -30,7 +32,7 @@ export function ArbreJson({ documents, onCopier }: ArbreJsonProps) {
   )
 
   if (documents.length === 0) {
-    return <p className={styles.vide}>La commande n’a rendu aucun document.</p>
+    return <p className={styles.vide}>{t('console.arbreJson.vide')}</p>
   }
 
   return (
@@ -43,20 +45,20 @@ export function ArbreJson({ documents, onCopier }: ArbreJsonProps) {
           // « Tout replier » ramène à **rien d'ouvert**, et non à l'état initial : c'est ce que le
           // libellé dit. « Rouvrir d'un cran » est le bouton d'à côté.
         >
-          Tout replier
+          {t('console.arbreJson.toutReplier')}
         </button>
         <button
           type="button"
           className={styles.action}
           onClick={() => setOuverts(ouvertsParDefaut(documents))}
         >
-          Déplier d’un cran
+          {t('console.arbreJson.deplierUnCran')}
         </button>
       </div>
       {/* Un nom accessible sur la liste : sans lui, ces champs se confondent avec ceux de la
           section « Schéma déduit » de la sidebar, qui porte les mêmes noms — et une assertion de
           test comme une lecture à la voix viserait le mauvais. */}
-      <ul className={styles.liste} aria-label="Documents du résultat">
+      <ul className={styles.liste} aria-label={t('console.arbreJson.documentsAriaLabel')}>
         {noeuds.map((noeud) => (
           <Ligne
             key={noeud.chemin}
@@ -89,7 +91,11 @@ function Ligne({
   onBasculer: () => void
   onCopier?: () => void
 }) {
-  const etiquette = noeud.niveau === 0 ? `document ${Number(noeud.chemin) + 1}` : noeud.cle
+  const t = useT()
+  const etiquette =
+    noeud.niveau === 0
+      ? t('console.arbreJson.document', { numero: Number(noeud.chemin) + 1 })
+      : noeud.cle
 
   return (
     <li className={styles.ligne} style={{ paddingLeft: `${noeud.niveau * 14 + 8}px` }}>
@@ -99,7 +105,10 @@ function Ligne({
           className={styles.chevron}
           onClick={onBasculer}
           aria-expanded={ouvert}
-          aria-label={`${ouvert ? 'Replier' : 'Déplier'} ${etiquette}`}
+          aria-label={t('console.arbreJson.basculerAriaLabel', {
+            action: t(ouvert ? 'console.arbreJson.replier' : 'console.arbreJson.deplier'),
+            etiquette,
+          })}
         >
           <Icon name={ouvert ? 'chevd' : 'chevr'} size={11} strokeWidth={2.4} />
         </button>
@@ -110,14 +119,14 @@ function Ligne({
       )}
       <span className={styles.cle}>{etiquette}</span>
       {noeud.texte === null ? (
-        <span className={styles.resume}>{resume(noeud)}</span>
+        <span className={styles.resume}>{resume(noeud, t)}</span>
       ) : (
         <span className={styles[noeud.genre]}>{noeud.texte}</span>
       )}
       {onCopier && (
         <button type="button" className={styles.copier} onClick={onCopier}>
           <Icon name="copy" size={11} strokeWidth={2.2} />
-          Copier
+          {t('console.arbreJson.copier')}
         </button>
       )}
     </li>

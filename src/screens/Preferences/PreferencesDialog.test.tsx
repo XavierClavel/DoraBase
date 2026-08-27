@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { Preferences } from '../../domain/config'
 import type { AvailableUpdate } from '../../domain/maj'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { PreferencesDialog } from './PreferencesDialog'
 import { HAUTEUR_MIN, PREFERENCES_PAR_DEFAUT } from './preferences'
 
@@ -21,14 +22,19 @@ function monter(
   render(
     <>
       <Sprite />
-      <PreferencesDialog
-        preferences={preferences}
-        onChange={onChange}
-        onClose={onClose}
-        version="DoraBase 0.4.2 (arm64)"
-        chercherMiseAJour={maj.chercher ?? (() => Promise.reject(new Error('pas de pont')))}
-        installerMiseAJour={maj.installer ?? (() => Promise.reject(new Error('pas de pont')))}
-      />
+      {/* Le français forcé, indépendamment de `preferences.language` : ce fichier ne teste pas la
+          langue elle-même (voir « la langue » plus bas), et le laisser suivre `navigator.language`
+          de jsdom rendrait les assertions en français instables selon la machine. */}
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <PreferencesDialog
+          preferences={preferences}
+          onChange={onChange}
+          onClose={onClose}
+          version="DoraBase 0.4.2 (arm64)"
+          chercherMiseAJour={maj.chercher ?? (() => Promise.reject(new Error('pas de pont')))}
+          installerMiseAJour={maj.installer ?? (() => Promise.reject(new Error('pas de pont')))}
+        />
+      </LanguageProvider>
     </>,
   )
   return { onChange, onClose }
@@ -85,6 +91,23 @@ describe('la coquille (`15a`)', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /valeurs d’origine/ }))
     expect(onChange).toHaveBeenCalledWith(PREFERENCES_PAR_DEFAUT)
+  })
+})
+
+describe('la langue (26 août 2026)', () => {
+  it('les trois réglages se choisissent, et « Système » est le défaut', async () => {
+    const { onChange } = monter()
+    await allerA('Général')
+    expect(screen.getByRole('radio', { name: 'Système' })).toBeChecked()
+
+    await userEvent.click(screen.getByRole('radio', { name: 'English' }))
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ language: 'en' }))
+  })
+
+  it('« Général » dit encore ce qui n’est pas livré, sous la langue', async () => {
+    monter()
+    await allerA('Général')
+    expect(screen.getByText(/Cette section portera/)).toBeInTheDocument()
   })
 })
 

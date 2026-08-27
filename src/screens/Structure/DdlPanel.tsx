@@ -1,5 +1,6 @@
 import { Icon } from '../../design/icons/Icon'
 import type { TableDetail } from '../../domain/engine'
+import { useT } from '../../i18n/LanguageContext'
 import { SqlColore } from '../TableView/SqlColore'
 import styles from './DdlPanel.module.css'
 
@@ -23,11 +24,15 @@ type DdlPanelProps = {
  * `22` : c'est le prix de l'unification, et la poignée le rattrape.
  */
 export function DdlPanel({ detail, schema, onOuvrirDansLaConsole }: DdlPanelProps) {
+  const t = useT()
   return (
-    <aside className={styles.root} aria-label={`DDL de ${schema}.${detail.name}`}>
+    <aside
+      className={styles.root}
+      aria-label={t('structure.ddl.panelLabel', { schema, table: detail.name })}
+    >
       <div className={styles.barre}>
         <Icon name="code" size={12} strokeWidth={2} />
-        DDL
+        {t('structure.ddl.titre')}
         <span className={styles.espace} />
         <button
           type="button"
@@ -35,7 +40,7 @@ export function DdlPanel({ detail, schema, onOuvrirDansLaConsole }: DdlPanelProp
           onClick={() => void navigator.clipboard?.writeText(detail.ddl)}
         >
           <Icon name="copy" size={11} strokeWidth={2.2} />
-          Copier
+          {t('structure.ddl.copier')}
         </button>
       </div>
       <div className={styles.texte}>
@@ -47,8 +52,8 @@ export function DdlPanel({ detail, schema, onOuvrirDansLaConsole }: DdlPanelProp
           générés peuvent différer de la migration écrite. Le taire ferait chercher une régression
           là où il n'y a qu'une reconstruction. */}
       <p className={styles.mention}>
-        Reconstruit depuis le catalogue : équivalent au <code>CREATE TABLE</code> d’origine, pas
-        identique.
+        {t('structure.ddl.mentionAvant')} <code>CREATE TABLE</code>{' '}
+        {t('structure.ddl.mentionApres')}
       </p>
       <div className={styles.pied}>
         <button
@@ -62,12 +67,12 @@ export function DdlPanel({ detail, schema, onOuvrirDansLaConsole }: DdlPanelProp
           aria-disabled={onOuvrirDansLaConsole === undefined}
           title={
             onOuvrirDansLaConsole === undefined
-              ? 'Aucune base ouverte : la console n’aurait rien à interroger.'
+              ? t('structure.ddl.ouvrirDansLaConsoleDesactive')
               : undefined
           }
         >
           <Icon name="term" size={12} strokeWidth={2} />
-          Ouvrir dans la console
+          {t('structure.ddl.ouvrirDansLaConsole')}
         </button>
       </div>
     </aside>

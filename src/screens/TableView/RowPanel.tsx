@@ -1,6 +1,7 @@
 import { type MouseEvent as MouseEventReact, useEffect, useRef, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type { ColumnInfo, DatabaseKey, Relation, Value } from '../../domain/engine'
+import { useT } from '../../i18n/LanguageContext'
 import { cx } from '../../ui/cx'
 import { MenuContextuel } from '../../ui/MenuContextuel/MenuContextuel'
 import type { PasserelleDetail } from '../Workbench/useDetailTable'
@@ -65,6 +66,7 @@ export function RowPanel({
   passerelleDetail,
   passerelleLignes,
 }: RowPanelProps) {
+  const t = useT()
   const [onglet, setOnglet] = useState<Onglet>('champs')
   const [revelation, setRevelation] = useState<Apercu | null>(null)
   const [menu, setMenu] = useState<{
@@ -134,13 +136,13 @@ export function RowPanel({
   if (!ligne || rang === null) return null
 
   return (
-    <aside className={styles.root} aria-label={`Détail de la ligne ${rang}`}>
-      <div className={styles.onglets} role="tablist" aria-label="Vues de la ligne">
+    <aside className={styles.root} aria-label={t('tableView.rowPanel.detailLabel', { rang })}>
+      <div className={styles.onglets} role="tablist" aria-label={t('tableView.rowPanel.tabsLabel')}>
         {(
           [
-            { id: 'champs', label: 'Champs', icon: 'cols' },
-            { id: 'json', label: 'JSON', icon: 'json' },
-            { id: 'liens', label: 'Liens', icon: 'link' },
+            { id: 'champs', label: t('tableView.rowPanel.tabs.fields'), icon: 'cols' },
+            { id: 'json', label: t('tableView.rowPanel.tabs.json'), icon: 'json' },
+            { id: 'liens', label: t('tableView.rowPanel.tabs.links'), icon: 'link' },
           ] as const
         ).map((vue) => (
           <button
@@ -184,7 +186,12 @@ export function RowPanel({
                     onMouseEnter={(evenement) => armer(evenement.currentTarget, colonne.name)}
                     onMouseLeave={desarmer}
                     onContextMenu={(evenement) =>
-                      ouvrirLeMenu(evenement, 'la clé', colonne.name, colonne.name)
+                      ouvrirLeMenu(
+                        evenement,
+                        t('tableView.rowPanel.theKey'),
+                        colonne.name,
+                        colonne.name,
+                      )
                     }
                   >
                     {colonne.name}
@@ -194,7 +201,7 @@ export function RowPanel({
                     onMouseEnter={(evenement) => armer(evenement.currentTarget, texte)}
                     onMouseLeave={desarmer}
                     onContextMenu={(evenement) =>
-                      ouvrirLeMenu(evenement, 'la valeur', colonne.name, texte)
+                      ouvrirLeMenu(evenement, t('tableView.rowPanel.theValue'), colonne.name, texte)
                     }
                   >
                     {rendreValeur(valeur)}
@@ -220,8 +227,8 @@ export function RowPanel({
             <button
               type="button"
               className={styles.copierJson}
-              aria-label="Copier le JSON de la ligne"
-              title="Copier le JSON de la ligne"
+              aria-label={t('tableView.rowPanel.copyJson')}
+              title={t('tableView.rowPanel.copyJson')}
               onClick={() => void navigator.clipboard?.writeText(jsonDe(columns, ligne))}
             >
               <Icon name="copy" size={12} strokeWidth={2.2} />
@@ -232,7 +239,7 @@ export function RowPanel({
 
         {onglet === 'liens' &&
           (relations.length === 0 ? (
-            <p className={styles.vide}>Aucune clé étrangère.</p>
+            <p className={styles.vide}>{t('tableView.rowPanel.noForeignKey')}</p>
           ) : (
             <ul className={styles.liens}>
               {relations.map((r) => (
@@ -255,11 +262,13 @@ export function RowPanel({
         {onglet === 'champs' && apercu && (
           <section className={styles.liee}>
             <h3 className={styles.lieeTitre}>
-              Ligne liée · {apercu.table}
+              {t('tableView.rowPanel.linkedRow', { table: apercu.table })}
               <span className={styles.detectes}>
                 {' '}
-                — {apercu.champs.map((c) => c.name).join(', ')} détecté
-                {apercu.champs.length > 1 ? 's' : ''}
+                {t('tableView.rowPanel.detectedFields', {
+                  champs: apercu.champs.map((c) => c.name).join(', '),
+                  count: apercu.champs.length,
+                })}
               </span>
             </h3>
             <div className={styles.lieeCorps}>
@@ -276,7 +285,7 @@ export function RowPanel({
         {onCopyInsert && (
           <button type="button" className={styles.copier} onClick={onCopyInsert}>
             <Icon name="copy" size={12} strokeWidth={2} />
-            Copier la ligne en INSERT
+            {t('tableView.rowPanel.copyAsInsert')}
           </button>
         )}
       </div>
@@ -292,13 +301,16 @@ export function RowPanel({
         <MenuContextuel
           x={menu.x}
           y={menu.y}
-          label={`Actions sur ${menu.quoi} de ${menu.colonne}`}
+          label={t('tableView.rowPanel.contextMenuLabel', {
+            what: menu.quoi,
+            column: menu.colonne,
+          })}
           entrees={[
             {
               // Le libellé nomme **ce qui sera copié**, pas l'endroit du clic : « Copier la clé » sur
               // le nom de colonne, « Copier la valeur » sur la donnée. Un libellé unique obligerait à
               // se souvenir de ce qu'on visait.
-              libelle: `Copier ${menu.quoi}`,
+              libelle: t('tableView.rowPanel.copyWhat', { what: menu.quoi }),
               // Le texte **tel qu'il est rendu**, donc tel qu'on le lit. Copier la représentation
               // brute donnerait une chaîne vide là où l'écran affiche « NULL ».
               onClick: () => void navigator.clipboard?.writeText(menu.texte),

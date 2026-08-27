@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { Database, Project, SecretRef, UpdateVariantRequest } from '../../domain/config'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { emptyDraft } from './ConnectionDraft'
 import { draftToUpdateRequest } from './enregistrerLaBase'
 import { NewConnection } from './NewConnection'
@@ -47,22 +48,24 @@ function monter(over: { onUpdate?: (r: UpdateVariantRequest) => Promise<Project[
   render(
     <>
       <Sprite />
-      <NewConnection
-        onClose={() => {}}
-        projects={[{ id: 'Atelier', name: 'Atelier', environments: TRIO_DE_TEST }]}
-        edition={{ project: 'Atelier', database: BASE }}
-        onBrowseKey={async () => null}
-        onTest={async () => {
-          throw new Error('non employé')
-        }}
-        onUpdate={
-          over.onUpdate ??
-          (async (requete) => {
-            requetes.push(requete)
-            return APRES
-          })
-        }
-      />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <NewConnection
+          onClose={() => {}}
+          projects={[{ id: 'Atelier', name: 'Atelier', environments: TRIO_DE_TEST }]}
+          edition={{ project: 'Atelier', database: BASE }}
+          onBrowseKey={async () => null}
+          onTest={async () => {
+            throw new Error('non employé')
+          }}
+          onUpdate={
+            over.onUpdate ??
+            (async (requete) => {
+              requetes.push(requete)
+              return APRES
+            })
+          }
+        />
+      </LanguageProvider>
     </>,
   )
   return requetes
@@ -202,16 +205,18 @@ describe('modifier une connexion (08g)', () => {
     render(
       <>
         <Sprite />
-        <NewConnection
-          onClose={() => {}}
-          projects={[{ id: 'Atelier', name: 'Atelier', environments: TRIO_DE_TEST }]}
-          edition={{ project: 'Atelier', database: avecTunnel }}
-          onBrowseKey={async () => null}
-          onTest={async () => {
-            throw new Error('non employé')
-          }}
-          onUpdate={async () => APRES}
-        />
+        <LanguageProvider preferences={{ language: 'fr' }}>
+          <NewConnection
+            onClose={() => {}}
+            projects={[{ id: 'Atelier', name: 'Atelier', environments: TRIO_DE_TEST }]}
+            edition={{ project: 'Atelier', database: avecTunnel }}
+            onBrowseKey={async () => null}
+            onTest={async () => {
+              throw new Error('non employé')
+            }}
+            onUpdate={async () => APRES}
+          />
+        </LanguageProvider>
       </>,
     )
 

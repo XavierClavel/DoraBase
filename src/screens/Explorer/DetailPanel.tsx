@@ -1,6 +1,7 @@
 import { Icon } from '../../design/icons/Icon'
 import type { IconName } from '../../design/icons/names'
 import type { TableDetail } from '../../domain/engine'
+import { useT } from '../../i18n/LanguageContext'
 import { ABSENT, formatBytes, formatRowCount } from '../../ui/format'
 import { StatTile } from '../../ui/StatTile/StatTile'
 import { Tooltip } from '../../ui/Tooltip/Tooltip'
@@ -40,11 +41,43 @@ const APERCU = 5
  * `aria-disabled` et non `disabled` : un bouton désactivé ne reçoit ni focus ni survol, donc son
  * infobulle serait inatteignable — exactement là où elle est le plus utile.
  */
-const ACTIONS: { key: string; label: string; icon: IconName; accent?: boolean; ecran: string }[] = [
-  { key: 'open', label: 'Ouvrir les données', icon: 'table', accent: true, ecran: 'A5' },
-  { key: 'structure', label: 'Structure', icon: 'cols', ecran: 'A9' },
-  { key: 'select', label: 'SELECT dans console', icon: 'term', ecran: 'A7' },
-  { key: 'export', label: 'Exporter CSV', icon: 'dl', ecran: 'un écran d’export' },
+type Action = {
+  key: string
+  labelKey: string
+  icon: IconName
+  accent?: boolean
+  /** Un code d'écran (`A5`) reste tel quel ; sinon, une clé du dictionnaire à traduire. */
+  ecran: string
+  ecranEstUneCle?: boolean
+}
+
+const ACTIONS: Action[] = [
+  {
+    key: 'open',
+    labelKey: 'explorer.detailPanel.actions.openData',
+    icon: 'table',
+    accent: true,
+    ecran: 'A5',
+  },
+  {
+    key: 'structure',
+    labelKey: 'explorer.detailPanel.actions.structure',
+    icon: 'cols',
+    ecran: 'A9',
+  },
+  {
+    key: 'select',
+    labelKey: 'explorer.detailPanel.actions.selectInConsole',
+    icon: 'term',
+    ecran: 'A7',
+  },
+  {
+    key: 'export',
+    labelKey: 'explorer.detailPanel.actions.exportCsv',
+    icon: 'dl',
+    ecran: 'explorer.detailPanel.actions.exportScreenName',
+    ecranEstUneCle: true,
+  },
 ]
 
 /**
@@ -63,6 +96,7 @@ export function DetailPanel({
   onTogglePin,
   onOpenData,
 }: DetailPanelProps) {
+  const t = useT()
   if (error)
     return (
       <aside className={styles.root}>
@@ -72,13 +106,13 @@ export function DetailPanel({
   if (loading)
     return (
       <aside className={styles.root}>
-        <p className={styles.vide}>Chargement du détail…</p>
+        <p className={styles.vide}>{t('explorer.detailPanel.loading')}</p>
       </aside>
     )
   if (!detail)
     return (
-      <aside className={styles.root} aria-label="Détail de l’objet">
-        <p className={styles.vide}>Sélectionnez un objet pour en voir le détail.</p>
+      <aside className={styles.root} aria-label={t('explorer.detailPanel.ariaLabelEmpty')}>
+        <p className={styles.vide}>{t('explorer.detailPanel.noSelection')}</p>
       </aside>
     )
 
@@ -86,7 +120,10 @@ export function DetailPanel({
   const restantes = detail.columns.length - colonnes.length
 
   return (
-    <aside className={styles.root} aria-label={`Détail de ${schema}.${detail.name}`}>
+    <aside
+      className={styles.root}
+      aria-label={t('explorer.detailPanel.ariaLabel', { schema, name: detail.name })}
+    >
       <header className={styles.header}>
         <span className={styles.title}>
           {schema}.{detail.name}
@@ -97,7 +134,7 @@ export function DetailPanel({
           className={styles.pin}
           onClick={onTogglePin}
           aria-pressed={pinned}
-          aria-label={pinned ? 'Détacher le panneau' : 'Épingler le panneau'}
+          aria-label={pinned ? t('explorer.detailPanel.unpin') : t('explorer.detailPanel.pin')}
         >
           <Icon name="pin" size={13} strokeWidth={1.9} />
         </button>
@@ -109,23 +146,23 @@ export function DetailPanel({
               au niveau du type (`06c`) : le drapeau se **dérive** au lieu d'être supposé. Les
               présenter à l'identique serait un mensonge de précision, que le handoff commet. */}
           <StatTile
-            label="Lignes"
+            label={t('explorer.detailPanel.rows')}
             value={formatRowCount(detail.rows)}
             approximate={detail.rows.kind === 'estimated'}
             unknownHint={
-              detail.rows.kind === 'unknown'
-                ? 'Lignes : cette relation n’a jamais été analysée, le catalogue n’en a aucune estimation. Un ANALYZE la renseignerait.'
-                : undefined
+              detail.rows.kind === 'unknown' ? t('explorer.detailPanel.rowsUnknownHint') : undefined
             }
           />
           <StatTile
-            label="Taille"
+            label={t('explorer.detailPanel.size')}
             value={detail.sizeBytes === null ? ABSENT : formatBytes(detail.sizeBytes)}
           />
         </div>
 
         <section className={styles.bloc}>
-          <h3 className={styles.blocTitre}>Colonnes · {detail.columns.length}</h3>
+          <h3 className={styles.blocTitre}>
+            {t('explorer.detailPanel.columnsTitle', { count: detail.columns.length })}
+          </h3>
           <div className={styles.encadre}>
             {colonnes.map((colonne) => (
               <div key={colonne.name} className={styles.colonne}>
@@ -142,14 +179,16 @@ export function DetailPanel({
                 `A9` (`14`), qui est faite pour ça. */}
             {restantes > 0 && (
               <div className={styles.colonne}>
-                <span className={styles.reste}>+ {restantes} autres…</span>
+                <span className={styles.reste}>
+                  {t('explorer.detailPanel.moreColumns', { count: restantes })}
+                </span>
               </div>
             )}
           </div>
         </section>
 
         <section className={styles.bloc}>
-          <h3 className={styles.blocTitre}>Actions</h3>
+          <h3 className={styles.blocTitre}>{t('explorer.detailPanel.actionsTitle')}</h3>
           <div className={styles.actions}>
             {/* « Ouvrir les données » a son écran depuis `10b` : elle s'active dès qu'un
                 gestionnaire est fourni, et perd l'infobulle qui annonçait `A5`. Les trois autres
@@ -166,11 +205,11 @@ export function DetailPanel({
         </section>
 
         <section className={styles.bloc}>
-          <h3 className={styles.blocTitre}>Relations</h3>
+          <h3 className={styles.blocTitre}>{t('explorer.detailPanel.relationsTitle')}</h3>
           <div className={styles.encadre}>
             {detail.relations.length === 0 ? (
               <div className={styles.colonne}>
-                <span className={styles.reste}>Aucune clé étrangère</span>
+                <span className={styles.reste}>{t('explorer.detailPanel.noForeignKey')}</span>
               </div>
             ) : (
               detail.relations.map((relation) => (
@@ -218,6 +257,7 @@ function ActionDeDetail({
   action: (typeof ACTIONS)[number]
   onActivate?: () => void
 }) {
+  const t = useT()
   const bouton = (
     <button
       type="button"
@@ -226,11 +266,12 @@ function ActionDeDetail({
       onClick={onActivate}
     >
       <Icon name={action.icon} size={13} strokeWidth={2} />
-      {action.label}
+      {t(action.labelKey)}
     </button>
   )
   if (onActivate) return bouton
-  return <Tooltip label={`Viendra avec ${action.ecran}`}>{bouton}</Tooltip>
+  const ecran = action.ecranEstUneCle ? t(action.ecran) : action.ecran
+  return <Tooltip label={t('explorer.detailPanel.comingWith', { ecran })}>{bouton}</Tooltip>
 }
 
 /**

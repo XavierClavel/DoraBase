@@ -1,6 +1,9 @@
 import { Icon } from '../../design/icons/Icon'
 import type { EnvironmentColor } from '../../domain/config'
 import type { ConnectionState } from '../../domain/engine'
+import { shellFr } from '../../i18n/dictionaries/shell'
+import { useT } from '../../i18n/LanguageContext'
+import type { Dictionnaire, Entree } from '../../i18n/types'
 import { COULEURS_D_ENVIRONNEMENT } from '../../screens/NewConnection/environments'
 import { Badge } from '../../ui/Badge/Badge'
 import styles from './SelectionIndicator.module.css'
@@ -87,6 +90,7 @@ export function SelectionIndicator({
   readOnly = false,
   pendingChanges = 0,
 }: SelectionIndicatorProps) {
+  const t = useT()
   return (
     <div className={styles.root}>
       {(connection || pendingChanges > 0) && (
@@ -110,7 +114,7 @@ export function SelectionIndicator({
           <span className={styles.env}>{environment.label}</span>
           {environment.production && (
             <Badge tone="danger" size="xs">
-              PROD
+              {t('shell.selectionIndicator.prod')}
             </Badge>
           )}
         </>
@@ -118,14 +122,14 @@ export function SelectionIndicator({
       {breadcrumb && <span className={styles.breadcrumb}>{breadcrumb}</span>}
       {pendingChanges > 0 && (
         <Badge tone="warn" size="xs" icon={<Icon name="pencil" size={10} strokeWidth={2.6} />}>
-          Édition
+          {t('shell.selectionIndicator.edition')}
         </Badge>
       )}
       {/* **« Lecture seule » disparaît en édition** : les deux badges côte à côte se
           contrediraient. Le mockup de `A6` met « ÉDITION » là où `A5` met « LECTURE SEULE ». */}
       {readOnly && pendingChanges === 0 && (
         <Badge tone="muted" size="xs" icon={<Icon name="lock" size={10} strokeWidth={2.4} />}>
-          Lecture seule
+          {t('shell.selectionIndicator.readOnly')}
         </Badge>
       )}
       {/* **L'état en texte masqué visuellement, pas en `aria-label` sur le point.**
@@ -136,20 +140,45 @@ export function SelectionIndicator({
           Les espaces sont explicites, faute de quoi les nœuds de texte se collent — le piège de
           `08a`, `09a` et `09c`. */}
       {connection && pendingChanges === 0 && (
-        <span className={styles.srOnly}>{` ${libelleDeConnexion(connection)}`}</span>
+        <span className={styles.srOnly}>{` ${libelleDeConnexion(connection, t)}`}</span>
       )}
       {pendingChanges > 0 && (
         <span className={styles.srOnly}>
-          {` ${pendingChanges} modification${pendingChanges > 1 ? 's' : ''} en attente`}
+          {t('shell.selectionIndicator.pendingChanges', { count: pendingChanges })}
         </span>
       )}
       {/* **« Prod » est un sigle**, et la pastille de couleur est `aria-hidden` : sans cette ligne,
           rien n'annoncerait en clair qu'on regarde une production. */}
       {environment?.production === true && (
-        <span className={styles.srOnly}> environnement de production</span>
+        <span className={styles.srOnly}>
+          {t('shell.selectionIndicator.productionAnnouncement')}
+        </span>
       )}
     </div>
   )
+}
+
+/** Résolution minimale d'un chemin par points, pour le repli français de `libelleDeConnexion`. */
+function resoudre(dictionnaire: Dictionnaire, chemin: string): Entree | undefined {
+  return chemin.split('.').reduce<Entree | Dictionnaire | undefined>((noeud, segment) => {
+    if (noeud !== null && typeof noeud === 'object' && segment in noeud) {
+      return (noeud as Dictionnaire)[segment]
+    }
+    return undefined
+  }, dictionnaire) as Entree | undefined
+}
+
+/**
+ * Repli quand `libelleDeConnexion` est appelée hors d'un composant — c'est le cas de son propre
+ * test, qui l'appelle directement plutôt que de rendre `SelectionIndicator` (`resoudre` ne dépend
+ * pas de `LanguageProvider`, donc ce repli reste utilisable sans lui).
+ */
+function tParDefaut(cle: string, parametres: Record<string, string | number> = {}): string {
+  // `shellFr` est la racine du dictionnaire « shell » : le préfixe `shell.` que porte `useT()`
+  // n'y a pas cours, d'où ce retrait avant résolution.
+  const entree = resoudre(shellFr, cle.replace(/^shell\./, ''))
+  if (entree === undefined) return cle
+  return typeof entree === 'function' ? entree(parametres) : entree
 }
 
 /**
@@ -159,15 +188,18 @@ export function SelectionIndicator({
  * `resumeEtat` — deux formulations, et c'est assumé : celle-ci nomme la version du serveur, dont une
  * ligne d'arbre n'a pas la place.
  */
-export function libelleDeConnexion(etat: ConnectionState): string {
+export function libelleDeConnexion(
+  etat: ConnectionState,
+  t: (cle: string, parametres?: Record<string, string | number>) => string = tParDefaut,
+): string {
   switch (etat.kind) {
     case 'never':
-      return 'jamais connectée'
+      return t('shell.selectionIndicator.status.never')
     case 'connecting':
-      return 'connexion en cours'
+      return t('shell.selectionIndicator.status.connecting')
     case 'connected':
-      return `connectée · ${etat.serverVersion}`
+      return t('shell.selectionIndicator.status.connected', { version: etat.serverVersion })
     case 'offline':
-      return `hors ligne · ${etat.reason}`
+      return t('shell.selectionIndicator.status.offline', { reason: etat.reason })
   }
 }

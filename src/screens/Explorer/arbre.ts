@@ -1,8 +1,56 @@
 import type { IconName } from '../../design/icons/names'
 import type { EnvironmentId, Project } from '../../domain/config'
 import type { ConnectionState, SchemaInfo, TableSummary } from '../../domain/engine'
+import type { useT } from '../../i18n/LanguageContext'
 import { formatRowCount } from '../../ui/format'
 import { COULEURS_D_ENVIRONNEMENT } from '../NewConnection/environments'
+
+/**
+ * `aplatir` est une fonction pure, pas un composant : elle ne peut pas appeler `useT()`
+ * elle-même. L'appelant (`ExplorerSidebar`) le fait et passe la fonction de traduction en
+ * paramètre — même pattern que `raisons(t)` dans ce même écran.
+ */
+type Traduire = ReturnType<typeof useT>
+
+/**
+ * Le repli par défaut de `t`, en français — les mêmes chaînes que celles que ce fichier portait
+ * en dur avant le 26 août 2026. **Optionnel plutôt qu'obligatoire** : `arbre.test.ts` appelle
+ * `aplatir` à 32 endroits sans se soucier de la langue, et les y faire tous passer un `t` de
+ * complaisance n'aurait rien testé de plus — seul `ExplorerSidebar` a besoin de la vraie
+ * traduction, et c'est lui qui la passe.
+ */
+const traduireEnFrancais: Traduire = (cle, parametres = {}) => {
+  switch (cle) {
+    case 'explorer.arbre.loading':
+      return 'Chargement…'
+    case 'explorer.arbre.noObjects':
+      return 'Aucun objet'
+    case 'explorer.arbre.noConnectionsIn':
+      return `Aucune connexion déclarée en ${parametres.label}`
+    case 'explorer.arbre.connectionCount': {
+      const compte = Number(parametres.count)
+      return `${compte} connexion${compte > 1 ? 's' : ''}`
+    }
+    case 'explorer.arbre.prodBadge':
+      return 'PROD'
+    case 'explorer.arbre.connectingBadge':
+      return '…'
+    case 'explorer.arbre.connectedBadge':
+      return 'OK'
+    case 'explorer.arbre.offlineBadge':
+      return 'HORS LIGNE'
+    case 'explorer.arbre.statusNever':
+      return 'non connectée'
+    case 'explorer.arbre.statusConnecting':
+      return 'connexion en cours'
+    case 'explorer.arbre.statusConnected':
+      return 'connectée'
+    case 'explorer.arbre.statusOffline':
+      return `hors ligne : ${parametres.reason}`
+    default:
+      return cle
+  }
+}
 
 /**
  * L'aplatissement de l'arbre de `A4`, en fonction **pure**.
@@ -143,6 +191,7 @@ export function aplatir(
   deplies: Deplies,
   charge: Charge,
   etats: (project: string, database: string, environment: EnvironmentId) => ConnectionState,
+  t: Traduire = traduireEnFrancais,
 ): Noeud[] {
   const noeuds: Noeud[] = []
 
@@ -163,7 +212,7 @@ export function aplatir(
       // **« n connexions » et non « n bases »** : depuis `23b` la connexion est l'unité — une base ne
       // porte plus de variantes. « n environnements » ne dirait pas si l'un d'eux contient quoi que
       // ce soit, et un projet à environnements vides mérite de le dire.
-      meta: projetDeplie ? undefined : compteDeConnexions(projet.databases.length),
+      meta: projetDeplie ? undefined : compteDeConnexions(t, projet.databases.length),
       metaVariant: 'caps',
       project: projet.name,
       // Combien de connexions déclarées : la confirmation de retrait (`08j`) les compte, et un menu
@@ -206,13 +255,15 @@ export function aplatir(
         // rien.
         icon: 'pin',
         iconColor: COULEURS_D_ENVIRONNEMENT[declaration.color],
-        meta: environnementDeplie ? undefined : compteDeConnexions(connexions.length),
+        meta: environnementDeplie ? undefined : compteDeConnexions(t, connexions.length),
         metaVariant: 'caps',
         // **Le drapeau, jamais le libellé** (`23g`) — et jamais la couleur déclarée non plus : un
         // environnement marqué production que l'utilisateur a coloré en vert porterait un badge vert,
         // et le badge d'alerte cesserait d'alerter. La couleur voyage par `iconColor`, le drapeau par
         // ce badge : deux canaux pour deux informations, plutôt qu'un pixel pour les deux.
-        badge: declaration.production ? { text: 'PROD', tone: 'danger' } : undefined,
+        badge: declaration.production
+          ? { text: t('explorer.arbre.prodBadge'), tone: 'danger' }
+          : undefined,
         project: projet.name,
         environment: declaration.id,
         connexions: connexions.length,
@@ -224,7 +275,13 @@ export function aplatir(
       // chargement en cours — le doute du défaut de `06d`. Ici rien ne charge, la liste vient de la
       // configuration, donc le vide est un fait et non une attente.
       if (connexions.length === 0) {
-        noeuds.push(message(`${idE}:vide`, 2, `Aucune connexion déclarée en ${declaration.label}`))
+        noeuds.push(
+          message(
+            `${idE}:vide`,
+            2,
+            t('explorer.arbre.noConnectionsIn', { label: declaration.label }),
+          ),
+        )
         continue
       }
 
@@ -241,10 +298,10 @@ export function aplatir(
           chevron: baseDepliee ? 'open' : 'closed',
           icon: 'db',
           iconColor: `var(--engine-${abregeMoteur(base.engine)})`,
-          badge: badgeEtat(etat),
+          badge: badgeEtat(t, etat),
           // L'état est **dans le nom accessible**, pas seulement dans une couleur : un point vert
           // et un point rouge sont indiscernables pour une part des utilisateurs.
-          announce: `${base.name} · ${resumeEtat(etat)}`,
+          announce: `${base.name} · ${resumeEtat(t, etat)}`,
           project: projet.name,
           database: base.name,
           environment: base.environment,
@@ -278,9 +335,9 @@ export function aplatir(
           })
         }
 
-        const enfants = enfantsDe(idB, charge, () =>
+        const enfants = enfantsDe(idB, charge, t, () =>
           (charge.schemas[idB] ?? []).flatMap((schema) =>
-            noeudsDeSchema(projet.name, base.name, base.environment, schema, deplies, charge),
+            noeudsDeSchema(projet.name, base.name, base.environment, schema, deplies, charge, t),
           ),
         )
         noeuds.push(...enfants)
@@ -298,6 +355,7 @@ function noeudsDeSchema(
   schema: SchemaInfo,
   deplies: Deplies,
   charge: Charge,
+  t: Traduire,
 ): Noeud[] {
   const id = idSchema(project, environment, database, schema.name)
   const deplie = deplies.has(id)
@@ -319,7 +377,7 @@ function noeudsDeSchema(
 
   return [
     tete,
-    ...enfantsDe(id, charge, () =>
+    ...enfantsDe(id, charge, t, () =>
       (charge.objets[id] ?? []).map((objet) => ({
         id: idObjet(project, environment, database, schema.name, objet.name),
         kind: 'object' as const,
@@ -348,7 +406,7 @@ function noeudsDeSchema(
  * sur un schéma ne doit pas faire disparaître les autres. D'où une ligne de message enfant,
  * plutôt qu'une bannière ou un état global.
  */
-function enfantsDe(id: string, charge: Charge, contenu: () => Noeud[]): Noeud[] {
+function enfantsDe(id: string, charge: Charge, t: Traduire, contenu: () => Noeud[]): Noeud[] {
   // La profondeur du message se lit dans le **préfixe** de l'identité du parent : `d:` est une
   // connexion au palier 2, donc ses messages sont au palier 3 ; `s:` est un schéma au palier 3.
   const profondeur = (id.startsWith('d:') ? 3 : 4) as 3 | 4
@@ -357,13 +415,15 @@ function enfantsDe(id: string, charge: Charge, contenu: () => Noeud[]): Noeud[] 
     return [message(`${id}:echec`, profondeur, charge.echecs[id] as string)]
   }
   if (charge.enCours.has(id)) {
-    return [message(`${id}:chargement`, profondeur, 'Chargement…')]
+    return [message(`${id}:chargement`, profondeur, t('explorer.arbre.loading'))]
   }
 
   const enfants = contenu()
   // Vide **chargé** n'est pas vide **non chargé** : un schéma sans table est un état normal, et
   // ne rien afficher laisserait croire que le dépliage n'a pas abouti.
-  return enfants.length > 0 ? enfants : [message(`${id}:vide`, profondeur, 'Aucun objet')]
+  return enfants.length > 0
+    ? enfants
+    : [message(`${id}:vide`, profondeur, t('explorer.arbre.noObjects'))]
 }
 
 function message(id: string, depth: 2 | 3 | 4, label: string): Noeud {
@@ -371,8 +431,8 @@ function message(id: string, depth: 2 | 3 | 4, label: string): Noeud {
 }
 
 /** « 3 connexions », « 1 connexion », « 0 connexion » — le zéro prend le singulier, en français. */
-function compteDeConnexions(compte: number): string {
-  return `${compte} connexion${compte > 1 ? 's' : ''}`
+function compteDeConnexions(t: Traduire, compte: number): string {
+  return t('explorer.arbre.connectionCount', { count: compte })
 }
 
 /**
@@ -381,29 +441,29 @@ function compteDeConnexions(compte: number): string {
  * `never` n'a **aucun badge** : une base qu'on n'a pas ouverte n'est pas dans un état
  * remarquable, et lui coller une marque la ferait paraître en défaut.
  */
-function badgeEtat(etat: ConnectionState): Noeud['badge'] {
+function badgeEtat(t: Traduire, etat: ConnectionState): Noeud['badge'] {
   switch (etat.kind) {
     case 'never':
       return undefined
     case 'connecting':
-      return { text: '…', tone: 'warn' }
+      return { text: t('explorer.arbre.connectingBadge'), tone: 'warn' }
     case 'connected':
-      return { text: 'OK', tone: 'success' }
+      return { text: t('explorer.arbre.connectedBadge'), tone: 'success' }
     case 'offline':
-      return { text: 'HORS LIGNE', tone: 'danger' }
+      return { text: t('explorer.arbre.offlineBadge'), tone: 'danger' }
   }
 }
 
-function resumeEtat(etat: ConnectionState): string {
+function resumeEtat(t: Traduire, etat: ConnectionState): string {
   switch (etat.kind) {
     case 'never':
-      return 'non connectée'
+      return t('explorer.arbre.statusNever')
     case 'connecting':
-      return 'connexion en cours'
+      return t('explorer.arbre.statusConnecting')
     case 'connected':
-      return 'connectée'
+      return t('explorer.arbre.statusConnected')
     case 'offline':
-      return `hors ligne : ${etat.reason}`
+      return t('explorer.arbre.statusOffline', { reason: etat.reason })
   }
 }
 

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { Project } from '../../domain/config'
 import type { SchemaInfo, TableDetail, TableSummary, UpdatePlan } from '../../domain/engine'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { REGLAGES, TRIO_DE_TEST } from '../NewConnection/pourLesTests'
 import type { PasserelleLignes } from '../TableView/useLignes'
 import type { PasserelleArbre } from './useArbre'
@@ -321,7 +322,9 @@ function monter(over: Partial<Parameters<typeof Workbench>[0]> = {}) {
   render(
     <>
       <Sprite />
-      <Pilote />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <Pilote />
+      </LanguageProvider>
     </>,
   )
   return { passerelle, detail, lignes, structures }
@@ -546,11 +549,13 @@ describe('Workbench', () => {
     render(
       <>
         <Sprite />
-        <Workbench
-          projects={PROJETS}
-          passerelle={passerelle}
-          passerelleDetail={{ describeTable: vi.fn(async () => DETAIL) }}
-        />
+        <LanguageProvider preferences={{ language: 'fr' }}>
+          <Workbench
+            projects={PROJETS}
+            passerelle={passerelle}
+            passerelleDetail={{ describeTable: vi.fn(async () => DETAIL) }}
+          />
+        </LanguageProvider>
       </>,
     )
 

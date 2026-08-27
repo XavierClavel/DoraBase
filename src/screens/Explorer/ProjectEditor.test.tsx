@@ -8,6 +8,7 @@ import type {
   Project,
   ReorderEnvironmentsRequest,
 } from '../../domain/config'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { ProjectEditor } from './ProjectEditor'
 
 /**
@@ -80,32 +81,34 @@ function monter(surcharge: Partial<Project> = {}) {
   render(
     <>
       <Sprite />
-      <ProjectEditor
-        projet={{ ...projet(), ...surcharge }}
-        onClose={() => {}}
-        onProjets={onProjets}
-        onRenameProject={onRenameProject}
-        onCreer={async (request) => {
-          appels.creer?.push(request)
-          return []
-        }}
-        onRenommer={async (request) => {
-          appels.renommer?.push(request)
-          return []
-        }}
-        onRecolorier={async (request) => {
-          appels.recolorier?.push(request)
-          return []
-        }}
-        onReordonner={async (request) => {
-          appels.reordonner?.push(request)
-          return []
-        }}
-        onRetirer={async (request) => {
-          appels.retirer?.push(request)
-          return RIEN
-        }}
-      />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <ProjectEditor
+          projet={{ ...projet(), ...surcharge }}
+          onClose={() => {}}
+          onProjets={onProjets}
+          onRenameProject={onRenameProject}
+          onCreer={async (request) => {
+            appels.creer?.push(request)
+            return []
+          }}
+          onRenommer={async (request) => {
+            appels.renommer?.push(request)
+            return []
+          }}
+          onRecolorier={async (request) => {
+            appels.recolorier?.push(request)
+            return []
+          }}
+          onReordonner={async (request) => {
+            appels.reordonner?.push(request)
+            return []
+          }}
+          onRetirer={async (request) => {
+            appels.retirer?.push(request)
+            return RIEN
+          }}
+        />
+      </LanguageProvider>
     </>,
   )
   return { appels, onProjets, onRenameProject }
@@ -329,15 +332,17 @@ test('le refus du cœur s’affiche, et la modale reste ouverte', async () => {
   render(
     <>
       <Sprite />
-      <ProjectEditor
-        projet={projet()}
-        onClose={() => {}}
-        onProjets={() => {}}
-        onRenameProject={async () => ({ missingSecrets: [], leftoverSecrets: [] })}
-        onCreer={async () => {
-          throw new Error('« vitrine » est déjà déclaré dans ce projet')
-        }}
-      />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <ProjectEditor
+          projet={projet()}
+          onClose={() => {}}
+          onProjets={() => {}}
+          onRenameProject={async () => ({ missingSecrets: [], leftoverSecrets: [] })}
+          onCreer={async () => {
+            throw new Error('« vitrine » est déjà déclaré dans ce projet')
+          }}
+        />
+      </LanguageProvider>
     </>,
   )
   await utilisateur.click(screen.getByRole('button', { name: /Ajouter un environnement/ }))

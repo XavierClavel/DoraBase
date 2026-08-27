@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useT } from '../../i18n/LanguageContext'
 import { Button } from '../../ui/Button/Button'
 import { Modal } from '../../ui/Modal/Modal'
 import styles from './DeleteConnectionDialog.module.css'
@@ -48,6 +49,7 @@ export function DeleteConnectionDialog({
   onClose,
   onDelete,
 }: DeleteConnectionDialogProps) {
+  const t = useT()
   const [etat, setEtat] = useState<
     | { phase: 'confirmation' }
     | { phase: 'en-cours' }
@@ -56,7 +58,10 @@ export function DeleteConnectionDialog({
   >({ phase: 'confirmation' })
 
   const nom = cible.kind === 'project' ? cible.project : cible.database
-  const verbe = cible.kind === 'project' ? 'Retirer le projet' : 'Retirer la connexion'
+  const verbe =
+    cible.kind === 'project'
+      ? t('explorer.deleteConnection.removeProject')
+      : t('explorer.deleteConnection.removeConnection')
 
   async function retirer() {
     setEtat({ phase: 'en-cours' })
@@ -77,23 +82,23 @@ export function DeleteConnectionDialog({
 
   return (
     <Modal
-      title={`Retirer ${nom} de DoraBase`}
+      title={t('explorer.deleteConnection.title', { nom })}
       icon="trash"
       onClose={onClose}
       footer={
         etat.phase === 'fait' ? (
           <Button variant="dark" size="md" onClick={onClose}>
-            Terminé
+            {t('explorer.deleteConnection.done')}
           </Button>
         ) : (
           <>
             <Button variant="secondary" size="md" onClick={onClose} disabled={enCours}>
-              Annuler
+              {t('explorer.deleteConnection.cancel')}
             </Button>
             {/* Le bouton porte le **verbe du geste**, et non « OK » ou « Supprimer » : un bouton qui
                 nomme son acte est la dernière chance de lire ce qu'on fait. */}
             <Button variant="dark" size="md" onClick={retirer} disabled={enCours}>
-              {enCours ? 'Retrait…' : verbe}
+              {enCours ? t('explorer.deleteConnection.removing') : verbe}
             </Button>
           </>
         )
@@ -101,46 +106,52 @@ export function DeleteConnectionDialog({
     >
       {etat.phase === 'fait' ? (
         <div className={styles.corps} role="status">
-          <p className={styles.titre}>C’est retiré de DoraBase.</p>
+          <p className={styles.titre}>{t('explorer.deleteConnection.doneTitle')}</p>
           <p>
             {etat.leftoverSecrets.length === 1
-              ? '1 mot de passe n’a pas pu être effacé du Trousseau. Il y reste'
-              : `${etat.leftoverSecrets.length} mots de passe n’ont pas pu être effacés du Trousseau. Ils y restent`}
-            , sans effet sur l’application.
+              ? t('explorer.deleteConnection.leftoverOne')
+              : t('explorer.deleteConnection.leftoverMany', {
+                  count: etat.leftoverSecrets.length,
+                })}
+            {t('explorer.deleteConnection.leftoverSuffix')}
           </p>
         </div>
       ) : (
         <div className={styles.corps}>
           <p className={styles.efface}>
-            <strong>Ce qui est effacé de cet ordinateur :</strong>{' '}
+            <strong>{t('explorer.deleteConnection.erasedTitle')}</strong>{' '}
             {/* Les accords sont écrits, pas suffixés de « (s) » : la modale la plus lue de
                 l'application est celle qui précède un geste irréversible, et un texte bâclé y
                 inspire moins confiance qu'ailleurs. */}
             {cible.kind === 'project'
-              ? `le projet ${cible.project} et ${connexionsDe(cible.connexions)} déclarée${
-                  cible.connexions > 1 ? 's' : ''
-                }`
-              : `la connexion ${cible.database}, sur ${environnementsDe(cible.connexions)}`}
-            , ainsi que les mots de passe enregistrés dans le Trousseau.
+              ? t('explorer.deleteConnection.erasedProject', {
+                  project: cible.project,
+                  connexions: connexionsDe(t, cible.connexions),
+                })
+              : t('explorer.deleteConnection.erasedConnection', {
+                  database: cible.database,
+                  environnements: environnementsDe(t, cible.connexions),
+                })}
+            {t('explorer.deleteConnection.erasedSuffix')}
           </p>
           {/* **Le fait qui rassure, dit aussi fort que celui qui inquiète.** Sans cette phrase, un
               utilisateur pressé peut lire « supprimer une base de données » et croire qu'il efface
               son serveur de production. */}
           <p className={styles.intact}>
-            <strong>Ce qui n’est pas touché :</strong> le serveur et ses données. DoraBase n’envoie
-            aucune commande à la base — elle oublie seulement comment s’y connecter.
+            <strong>{t('explorer.deleteConnection.intactTitle')}</strong>{' '}
+            {t('explorer.deleteConnection.intactBody')}
           </p>
           {modificationsEnAttente > 0 && (
             <p className={styles.attention}>
               {modificationsEnAttente === 1
-                ? '1 modification en attente sera perdue'
-                : `${modificationsEnAttente} modifications en attente seront perdues`}{' '}
-              : les onglets de cette base vont se fermer, et rien n’a encore été envoyé à la base.
+                ? t('explorer.deleteConnection.pendingOne')
+                : t('explorer.deleteConnection.pendingMany', {
+                    count: modificationsEnAttente,
+                  })}{' '}
+              {t('explorer.deleteConnection.pendingSuffix')}
             </p>
           )}
-          <p className={styles.definitif}>
-            Il n’y a pas d’annulation : il faudra déclarer la connexion à nouveau.
-          </p>
+          <p className={styles.definitif}>{t('explorer.deleteConnection.noUndo')}</p>
           {etat.phase === 'refuse' && (
             <p className={styles.refus} role="alert">
               {etat.message}
@@ -152,12 +163,16 @@ export function DeleteConnectionDialog({
   )
 }
 
-/** « une connexion » ou « 3 connexions » — le compte s'écrit, il ne se suffixe pas. */
-function connexionsDe(nombre: number): string {
-  return nombre === 1 ? 'sa connexion' : `ses ${nombre} connexions`
+/** « sa connexion déclarée » ou « ses 3 connexions déclarées » — le compte s'écrit, il ne se suffixe pas. */
+function connexionsDe(t: ReturnType<typeof useT>, nombre: number): string {
+  return nombre === 1
+    ? t('explorer.deleteConnection.connexionSingular')
+    : t('explorer.deleteConnection.connexionPlural', { count: nombre })
 }
 
 /** « un environnement » ou « 2 environnements ». */
-function environnementsDe(nombre: number): string {
-  return nombre === 1 ? 'un environnement' : `${nombre} environnements`
+function environnementsDe(t: ReturnType<typeof useT>, nombre: number): string {
+  return nombre === 1
+    ? t('explorer.deleteConnection.environmentSingular')
+    : t('explorer.deleteConnection.environmentPlural', { count: nombre })
 }
