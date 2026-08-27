@@ -1,6 +1,7 @@
 import { type ReactNode, useMemo, useState } from 'react'
 import type { EnvironmentId, Project } from '../../domain/config'
 import type { ColumnInfo, ConnectionState } from '../../domain/engine'
+import { useT } from '../../i18n/LanguageContext'
 import { Badge } from '../../ui/Badge/Badge'
 import { ColumnRow } from '../../ui/ColumnRow/ColumnRow'
 import { type EntreeDeMenu, MenuContextuel } from '../../ui/MenuContextuel/MenuContextuel'
@@ -165,6 +166,7 @@ export function ExplorerSidebar({
   width = 'wide',
   modifications,
 }: ExplorerSidebarProps) {
+  const t = useT()
   const [filtre, setFiltre] = useState('')
   /**
    * La ligne en cours de renommage, par identité de nœud — une console (`12f`) ou une connexion
@@ -200,8 +202,8 @@ export function ExplorerSidebar({
   const demanderLeRetrait = onDelete === undefined ? undefined : setARetirer
 
   const noeuds = useMemo(
-    () => aplatir(projects, deplies, charge, etatDe),
-    [projects, deplies, charge, etatDe],
+    () => aplatir(projects, deplies, charge, etatDe, t),
+    [projects, deplies, charge, etatDe, t],
   )
 
   const visibles = useMemo(() => filtrer(noeuds, filtre), [noeuds, filtre])
@@ -224,6 +226,7 @@ export function ExplorerSidebar({
       onRefresh,
       consoles,
       setEnRenommage,
+      t,
     )
 
   /** La ligne visée par le clic droit, si elle est toujours là, et ce que son menu propose. */
@@ -287,7 +290,7 @@ export function ExplorerSidebar({
         <MenuContextuel
           x={menuAuPointeur.x}
           y={menuAuPointeur.y}
-          label={`Actions de ${cibleDe(viseeAuPointeur.noeud)}`}
+          label={t('explorer.sidebar.actionsFor', { cible: cibleDe(viseeAuPointeur.noeud) })}
           entrees={viseeAuPointeur.entrees}
           onFermer={() => setMenuAuPointeur(null)}
         />
@@ -320,8 +323,8 @@ export function ExplorerSidebar({
             <SidebarToolbar>
               <SidebarToolbarButton
                 icon="bag"
-                label="Nouveau projet"
-                title="Nouveau projet (⌘N)"
+                label={t('explorer.sidebar.newProject')}
+                title={t('explorer.sidebar.newProjectTitle')}
                 onClick={onNewProject}
               />
             </SidebarToolbar>
@@ -341,9 +344,9 @@ export function ExplorerSidebar({
         {/* `role="tree"` et `treeitem` : l'arbre est aplati dans le DOM, donc `aria-level` porte la
           profondeur qu'une imbrication aurait donnée gratuitement. Sans lui, un lecteur d'écran
           annoncerait une liste plate de vingt éléments sans hiérarchie. */}
-        <div role="tree" aria-label="Projets, environnements et connexions" className={styles.tree}>
+        <div role="tree" aria-label={t('explorer.sidebar.treeLabel')} className={styles.tree}>
           {visibles.length === 0 && filtre !== '' && (
-            <p className={styles.vide}>Aucune ligne affichée ne correspond à « {filtre} ».</p>
+            <p className={styles.vide}>{t('explorer.sidebar.noMatch', { filtre })}</p>
           )}
           {visibles.map((noeud) =>
             noeud.message ? (
@@ -455,11 +458,11 @@ export function ExplorerSidebar({
                 déduite — plutôt que d'un drapeau que l'appelant pourrait oublier de poser. */}
             <SidebarSectionTitle>
               {estDeduit(columns.columns)
-                ? `Schéma déduit de ${columns.table}`
-                : `Colonnes de ${columns.table}`}
+                ? t('explorer.sidebar.inferredSchema', { table: columns.table })
+                : t('explorer.sidebar.columnsOf', { table: columns.table })}
             </SidebarSectionTitle>
             {columns.loading ? (
-              <p className={styles.message}>Chargement des colonnes…</p>
+              <p className={styles.message}>{t('explorer.sidebar.loadingColumns')}</p>
             ) : (
               <>
                 {columns.columns.slice(0, APERCU_COLONNES).map((colonne) => (
@@ -488,7 +491,9 @@ export function ExplorerSidebar({
                 ))}
                 {columns.columns.length > APERCU_COLONNES && (
                   <ColumnRow
-                    label={`+ ${columns.columns.length - APERCU_COLONNES} autres`}
+                    label={t('explorer.sidebar.moreColumns', {
+                      count: columns.columns.length - APERCU_COLONNES,
+                    })}
                     summary
                   />
                 )}
@@ -589,7 +594,9 @@ function entreesDe(
   onRefresh: ExplorerSidebarProps['onRefresh'],
   consoles: ExplorerSidebarProps['consoles'],
   demanderLeRenommage: (id: string) => void,
+  t: ReturnType<typeof useT>,
 ): readonly EntreeDeMenu[] | undefined {
+  const RAISONS = raisons(t)
   if (noeud.kind === 'project') {
     return [
       {
@@ -605,7 +612,7 @@ function entreesDe(
                Sa portée est celle de l'arbre entier, pas du seul projet cliqué ; le menu d'une ligne
                projet est néanmoins le seul déjà monté, et la racine est l'endroit le moins mensonger
                pour l'accrocher. */
-        libelle: 'Rafraîchir l’arborescence',
+        libelle: t('explorer.sidebar.menu.refreshTree'),
         icone: 'refresh',
         onClick: onRefresh,
         raison: onRefresh ? undefined : RAISONS.rafraichirIndisponible,
@@ -613,7 +620,7 @@ function entreesDe(
       {
         // **« Modifier le projet… » et non « Renommer… »** (`23e`) : l'écran fait les deux, et
         // un libellé qui n'annonce que le renommage cacherait les environnements.
-        libelle: 'Modifier le projet…',
+        libelle: t('explorer.sidebar.menu.editProject'),
         icone: 'pencil',
         onClick: onEditProject ? () => onEditProject(noeud.label) : undefined,
         raison: onEditProject ? undefined : RAISONS.editionIndisponible,
@@ -621,7 +628,7 @@ function entreesDe(
       {
         // **« Retirer… » et non « Supprimer… »** : le mot compte, et c'est toute la décision de
         // `08j`. Ce qui part est une déclaration sur cet ordinateur, pas une base de données.
-        libelle: 'Retirer de DoraBase…',
+        libelle: t('explorer.sidebar.menu.removeFromDoraBase'),
         icone: 'trash',
         onClick: demanderLeRetrait
           ? () =>
@@ -652,7 +659,7 @@ function entreesDe(
     if (project === undefined || environment === undefined) return undefined
     return [
       {
-        libelle: 'Ajouter une connexion…',
+        libelle: t('explorer.sidebar.menu.addConnection'),
         icone: 'plus',
         onClick: onAddDatabase ? () => onAddDatabase({ project, environment }) : undefined,
         raison: onAddDatabase ? undefined : RAISONS.ajoutIndisponible,
@@ -678,13 +685,13 @@ function entreesDe(
         /* **Le même mécanisme que le double-clic**, pas une modale. L'entrée reste malgré tout :
                un geste qui n'existe qu'au double-clic est invisible pour qui ne l'essaie pas, et
                inatteignable au clavier. Elle passe la ligne en édition, le champ prend le focus. */
-        libelle: 'Renommer…',
+        libelle: t('explorer.sidebar.menu.rename'),
         icone: 'pencil',
         onClick: () => demanderLeRenommage(noeud.id),
       },
       {
         // **« Retirer… » et non « Supprimer… »**, comme partout : le mot est celui de `08j`.
-        libelle: 'Retirer…',
+        libelle: t('explorer.sidebar.menu.removeEllipsis'),
         icone: 'trash',
         onClick: () => consoles.onRetirer(project, database, environment, nom),
       },
@@ -704,7 +711,7 @@ function entreesDe(
       /* **La création d'une console part d'ici**, et non du pied de la sidebar. Une console
              appartient à une connexion : l'endroit d'où on la crée doit dire laquelle, sans quoi il
              faudrait deviner le contexte — et se tromper dès que deux connexions sont dépliées. */
-      libelle: 'Nouvelle console…',
+      libelle: t('explorer.sidebar.menu.newConsole'),
       icone: 'term',
       onClick:
         consoles && project !== undefined && environment !== undefined
@@ -717,13 +724,13 @@ function entreesDe(
              champ qui se corrige sur place, et le seul dont le changement déplace un mot de passe
              dans le Trousseau ; les autres réglages se relisent ensemble, dans un formulaire. Les
              fondre aurait fait ouvrir une modale de quinze champs pour corriger une lettre. */
-      libelle: 'Renommer…',
+      libelle: t('explorer.sidebar.menu.rename'),
       icone: 'pencil',
       onClick: renommageDisponible ? () => demanderLeRenommage(noeud.id) : undefined,
       raison: renommageDisponible ? undefined : RAISONS.renommerIndisponible,
     },
     {
-      libelle: 'Modifier…',
+      libelle: t('explorer.sidebar.menu.edit'),
       icone: 'pencil',
       onClick: modifiable
         ? () => onEditDatabase(project as string, label, environment as EnvironmentId)
@@ -731,7 +738,7 @@ function entreesDe(
       raison: modifiable ? undefined : RAISONS.modifierIndisponible,
     },
     {
-      libelle: 'Retirer de DoraBase…',
+      libelle: t('explorer.sidebar.menu.removeFromDoraBase'),
       icone: 'trash',
       onClick:
         demanderLeRetrait && project !== undefined
@@ -769,14 +776,16 @@ function renderActions(
  * Pourquoi une entrée n'est pas encore là — **dite, jamais devinée**. La règle de `09f`, et la
  * leçon du défaut n° 36 : un bouton cliquable et inerte se lit comme une panne.
  */
-const RAISONS = {
-  renommerIndisponible: 'Cet écran n’est pas relié à la commande de renommage.',
-  retirerIndisponible: 'Cet écran n’est pas relié à la commande de retrait.',
-  modifierIndisponible: 'Cet écran n’est pas relié à la modale de modification.',
-  editionIndisponible: 'Cet écran n’est pas relié à la modale d’édition de projet.',
-  rafraichirIndisponible: 'Cet écran ne charge pas l’arborescence.',
-  consoleIndisponible: 'Cet écran n’est pas relié à la création de consoles.',
-  ajoutIndisponible: 'Cet écran n’est pas relié à la déclaration de connexions.',
+function raisons(t: ReturnType<typeof useT>) {
+  return {
+    renommerIndisponible: t('explorer.sidebar.raisons.renameUnavailable'),
+    retirerIndisponible: t('explorer.sidebar.raisons.removeUnavailable'),
+    modifierIndisponible: t('explorer.sidebar.raisons.editUnavailable'),
+    editionIndisponible: t('explorer.sidebar.raisons.projectEditUnavailable'),
+    rafraichirIndisponible: t('explorer.sidebar.raisons.refreshUnavailable'),
+    consoleIndisponible: t('explorer.sidebar.raisons.consoleUnavailable'),
+    ajoutIndisponible: t('explorer.sidebar.raisons.addUnavailable'),
+  }
 }
 
 /**

@@ -1,3 +1,4 @@
+import { useT } from '../../i18n/LanguageContext'
 import { Button } from '../../ui/Button/Button'
 import { Modal } from '../../ui/Modal/Modal'
 import styles from './NewConnection.module.css'
@@ -32,15 +33,17 @@ type ConnectionFailureProps = {
  * l'un ni l'autre, plutôt que d'être rempli d'une copie.
  */
 export function ConnectionFailure({ message, code, viaTunnel, onClose }: ConnectionFailureProps) {
+  const t = useT()
+
   return (
     <Modal
-      title="Connexion impossible"
+      title={t('newConnection.failure.title')}
       icon="warn"
       nested
       onClose={onClose}
       footer={
         <Button variant="dark" size="md" shortcut="esc" onClick={onClose}>
-          Fermer
+          {t('newConnection.failure.close')}
         </Button>
       }
     >
@@ -54,13 +57,14 @@ export function ConnectionFailure({ message, code, viaTunnel, onClose }: Connect
           <div className={styles.failureLog}>
             {code !== null && (
               <div>
-                sqlstate <span className={styles.failureCause}>{code}</span>
+                {t('newConnection.failure.sqlstate')}{' '}
+                <span className={styles.failureCause}>{code}</span>
               </div>
             )}
             {/* La seconde ligne du mockup : « tunnel aborted · pg connect skipped ». Elle ne
                 s'affiche que s'il y avait un tunnel — l'inventer sur une connexion directe
                 enverrait chercher un bastion inexistant. */}
-            {viaTunnel && <div>tunnel · pg connect skipped</div>}
+            {viaTunnel && <div>{t('newConnection.failure.tunnelLine')}</div>}
           </div>
         )}
       </div>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FilterOperator } from '../../domain/engine'
+import { useT } from '../../i18n/LanguageContext'
 import { cx } from '../../ui/cx'
 import { SANS_CORRECTION } from '../../ui/Field/Field'
 import { Popover } from '../../ui/Popover/Popover'
@@ -26,6 +27,7 @@ type FilterCellProps = {
  * une durée que rien ne fonde.
  */
 export function FilterCell({ column, operator, value, onApply }: FilterCellProps) {
+  const t = useT()
   const [saisie, setSaisie] = useState(value)
 
   // La valeur appliquée fait autorité : vider un chip de la toolbar (`10e`) doit vider le champ,
@@ -42,7 +44,7 @@ export function FilterCell({ column, operator, value, onApply }: FilterCellProps
   return (
     <div className={cx(styles.root, actif && styles.actif, modifie && styles.modifie)}>
       <Popover
-        title={`Opérateur · ${column}`}
+        title={t('tableView.filterCell.operatorTitle', { column })}
         content={(fermer) => (
           <ul className={styles.liste}>
             {OPERATEURS.map((o) => (
@@ -59,21 +61,25 @@ export function FilterCell({ column, operator, value, onApply }: FilterCellProps
                   }}
                 >
                   <span className={styles.signe}>{o.signe}</span>
-                  {o.libelle}
+                  {t(`tableView.filterCell.operators.${o.valeur}`)}
                 </button>
               </li>
             ))}
           </ul>
         )}
       >
-        <button type="button" className={styles.operateur} aria-label={`Opérateur de ${column}`}>
+        <button
+          type="button"
+          className={styles.operateur}
+          aria-label={t('tableView.filterCell.operatorLabel', { column })}
+        >
           {signeDe(operator)}
         </button>
       </Popover>
       <input
         {...SANS_CORRECTION}
         className={styles.saisie}
-        aria-label={`Filtrer ${column}`}
+        aria-label={t('tableView.filterCell.filterLabel', { column })}
         value={operator === 'isNull' ? '' : saisie}
         disabled={operator === 'isNull'}
         onChange={(evenement) => setSaisie(evenement.target.value)}

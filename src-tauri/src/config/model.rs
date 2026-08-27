@@ -559,6 +559,8 @@ pub struct SavedQuery {
 #[ts(export_to = "config.ts")]
 pub struct Preferences {
     pub theme: Theme,
+    /// La langue de l'interface (26 août 2026), défaut `Systeme`.
+    pub language: Language,
     /// L'accent, pris dans la palette **fermée** du handoff.
     ///
     /// Un sélecteur de couleur libre permettrait un accent illisible sur le fond du produit ; le
@@ -580,6 +582,7 @@ impl Default for Preferences {
     fn default() -> Self {
         Self {
             theme: Theme::Cahier,
+            language: Language::Systeme,
             accent: Accent::Terracotta,
             // 26 px : la valeur du handoff, et celle que `10a` a codée en dur.
             row_height: 26,
@@ -646,6 +649,23 @@ pub enum Theme {
     /// `15b` livre le mécanisme et le dit à l'écran plutôt que de cacher le réglage.
     Nuit,
     /// Suit `prefers-color-scheme`.
+    Systeme,
+}
+
+/// La langue de l'interface (26 août 2026).
+///
+/// **Le même mécanisme que `Theme`** : une variante `Systeme` que l'écran résout lui-même,
+/// plutôt qu'un défaut Rust deviné. La détection — `navigator.language` — vit dans la
+/// webview, qui la porte déjà sans dépendance Rust ni appel IPC ; le cœur ne connaît que
+/// le réglage choisi, jamais la langue résolue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, Default)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "config.ts")]
+pub enum Language {
+    Fr,
+    En,
+    /// Suit la langue du système, avec l'anglais en repli si elle ne s'en distingue pas.
+    #[default]
     Systeme,
 }
 

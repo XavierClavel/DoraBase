@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { ColumnInfo, DatabaseKey, RowQuery } from '../../domain/engine'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { TableView } from './TableView'
 import type { PasserelleLignes } from './useLignes'
 
@@ -49,13 +50,15 @@ function monter() {
   render(
     <>
       <Sprite />
-      <TableView
-        cle={CLE}
-        schema="public"
-        table="orders"
-        columns={COLONNES}
-        passerelle={passerelle}
-      />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <TableView
+          cle={CLE}
+          schema="public"
+          table="orders"
+          columns={COLONNES}
+          passerelle={passerelle}
+        />
+      </LanguageProvider>
     </>,
   )
   return { readRows }

@@ -1,4 +1,5 @@
 import type { TableSummary } from '../../domain/engine'
+import { useT } from '../../i18n/LanguageContext'
 import { type Column, DataTable } from '../../ui/DataTable/DataTable'
 import { ABSENT, formatBytes, formatRowCount } from '../../ui/format'
 import type { TypeObjet } from './BreadcrumbBar'
@@ -36,10 +37,11 @@ export function ObjectTable({
   loading = false,
   error = null,
 }: ObjectTableProps) {
+  const t = useT()
   return (
     <DataTable
-      label={`Objets du schéma ${schema}`}
-      columns={COLONNES}
+      label={t('explorer.objectTable.label', { schema })}
+      columns={colonnes(t)}
       rows={objects}
       rowId={(objet) => objet.name}
       selectedId={selectedName}
@@ -48,23 +50,29 @@ export function ObjectTable({
       // **Vide, chargement et échec se distinguent, et aucun ne ressemble aux deux autres.** Le
       // handoff n'en maquette aucun des trois ; le minimum défendable est une ligne de texte,
       // sans illustration inventée.
-      empty={<span>{messageVide(type, schema, loading, error)}</span>}
+      empty={<span>{messageVide(t, type, schema, loading, error)}</span>}
     />
   )
 }
 
 function messageVide(
+  t: ReturnType<typeof useT>,
   type: TypeObjet,
   schema: string,
   loading: boolean,
   error: string | null,
 ): string {
   if (error) return error
-  if (loading) return 'Chargement des objets…'
-  const quoi = { tables: 'table', views: 'vue', functions: 'fonction', indexes: 'index' }[type]
+  if (loading) return t('explorer.objectTable.loading')
+  const cleQuoi = {
+    tables: 'explorer.objectTable.kind.table',
+    views: 'explorer.objectTable.kind.view',
+    functions: 'explorer.objectTable.kind.function',
+    indexes: 'explorer.objectTable.kind.index',
+  }[type]
   // Un schéma sans table est normal — `public` d'une base neuve. Le dire, plutôt que de laisser
   // un tableau à zéro ligne qui ressemble à un chargement inachevé.
-  return `Le schéma ${schema} ne contient aucune ${quoi}.`
+  return t('explorer.objectTable.empty', { schema, quoi: t(cleQuoi) })
 }
 
 /**
@@ -73,38 +81,56 @@ function messageVide(
  * `ui: true` sur la seule colonne du nom : le mockup pose `td { font: 500 11.5px JetBrains
  * Mono }` pour toutes les cellules, et seule celle-là y échappe.
  */
-const COLONNES: Column<TableSummary>[] = [
-  { key: 'name', header: 'Nom', cell: (o) => o.name, ui: true, width: '210px' },
-  {
-    key: 'rows',
-    header: 'Lignes',
-    // `RowCount` distingue `estimated` de `exact` au niveau du type (`06c`). Le tableau n'affiche
-    // qu'un nombre — la distinction sert à `09f`, dont la tuile ne doit pas présenter une
-    // estimation comme un fait exact.
-    cell: (o) => formatRowCount(o.rows),
-    numeric: true,
-    width: '88px',
-  },
-  {
-    key: 'size',
-    header: 'Taille',
-    // `None` quand le moteur ne sait pas donner de taille physique — une vue, par exemple.
-    cell: (o) => (o.sizeBytes === null ? ABSENT : formatBytes(o.sizeBytes)),
-    numeric: true,
-    width: '78px',
-  },
-  { key: 'columns', header: 'Col.', cell: (o) => o.columnCount, numeric: true, width: '66px' },
-  {
-    key: 'pk',
-    header: 'Clé primaire',
-    cell: (o) => o.primaryKey ?? ABSENT,
-    width: '150px',
-  },
-  {
-    key: 'analyze',
-    header: 'Dernier ANALYZE',
-    cell: (o) => o.lastAnalyze ?? ABSENT,
-    width: '120px',
-  },
-  { key: 'comment', header: 'Commentaire', cell: (o) => o.comment ?? ABSENT },
-]
+function colonnes(t: ReturnType<typeof useT>): Column<TableSummary>[] {
+  return [
+    {
+      key: 'name',
+      header: t('explorer.objectTable.columns.name'),
+      cell: (o) => o.name,
+      ui: true,
+      width: '210px',
+    },
+    {
+      key: 'rows',
+      header: t('explorer.objectTable.columns.rows'),
+      // `RowCount` distingue `estimated` de `exact` au niveau du type (`06c`). Le tableau n'affiche
+      // qu'un nombre — la distinction sert à `09f`, dont la tuile ne doit pas présenter une
+      // estimation comme un fait exact.
+      cell: (o) => formatRowCount(o.rows),
+      numeric: true,
+      width: '88px',
+    },
+    {
+      key: 'size',
+      header: t('explorer.objectTable.columns.size'),
+      // `None` quand le moteur ne sait pas donner de taille physique — une vue, par exemple.
+      cell: (o) => (o.sizeBytes === null ? ABSENT : formatBytes(o.sizeBytes)),
+      numeric: true,
+      width: '78px',
+    },
+    {
+      key: 'columns',
+      header: t('explorer.objectTable.columns.columns'),
+      cell: (o) => o.columnCount,
+      numeric: true,
+      width: '66px',
+    },
+    {
+      key: 'pk',
+      header: t('explorer.objectTable.columns.primaryKey'),
+      cell: (o) => o.primaryKey ?? ABSENT,
+      width: '150px',
+    },
+    {
+      key: 'analyze',
+      header: t('explorer.objectTable.columns.lastAnalyze'),
+      cell: (o) => o.lastAnalyze ?? ABSENT,
+      width: '120px',
+    },
+    {
+      key: 'comment',
+      header: t('explorer.objectTable.columns.comment'),
+      cell: (o) => o.comment ?? ABSENT,
+    },
+  ]
+}

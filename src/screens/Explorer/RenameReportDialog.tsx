@@ -1,3 +1,4 @@
+import { useT } from '../../i18n/LanguageContext'
 import { Button } from '../../ui/Button/Button'
 import { Modal } from '../../ui/Modal/Modal'
 import styles from './RenameReportDialog.module.css'
@@ -36,18 +37,23 @@ type RenameReportDialogProps = {
  * lire, exactement ce que `23f` refuse pour un environnement vide.
  */
 export function RenameReportDialog({ rapport, onClose }: RenameReportDialogProps) {
+  const t = useT()
   const refuse = rapport.refus !== undefined
 
   return (
     <Modal
       // Le titre dit **laquelle des deux nouvelles** c'est, avant même le corps : un refus et un
       // succès à réserve n'ont pas le même en-tête.
-      title={refuse ? `« ${rapport.nom} » n’a pas pu être donné` : `Renommée en « ${rapport.nom} »`}
+      title={
+        refuse
+          ? t('explorer.renameReport.refusedTitle', { nom: rapport.nom })
+          : t('explorer.renameReport.doneTitle', { nom: rapport.nom })
+      }
       icon={refuse ? 'warn' : 'pencil'}
       onClose={onClose}
       footer={
         <Button variant="dark" size="md" onClick={onClose}>
-          Terminé
+          {t('explorer.renameReport.done')}
         </Button>
       }
     >
@@ -58,20 +64,14 @@ export function RenameReportDialog({ rapport, onClose }: RenameReportDialogProps
             {/* **Le fait qui rassure, dit aussi fort que celui qui inquiète** — la règle de `08j`.
                 Un refus de renommage laisse tout en place, et ne pas le dire laisse craindre un
                 état intermédiaire. */}
-            <p>La connexion garde son nom, et son mot de passe est intact.</p>
+            <p>{t('explorer.renameReport.reassurance')}</p>
           </>
         )}
         {rapport.missingSecrets.length > 0 && (
-          <p className={styles.reserve}>
-            Le mot de passe de cette connexion était introuvable dans le Trousseau. Le renommage a
-            eu lieu ; la connexion le redemandera à la prochaine ouverture.
-          </p>
+          <p className={styles.reserve}>{t('explorer.renameReport.missingSecrets')}</p>
         )}
         {rapport.leftoverSecrets.length > 0 && (
-          <p className={styles.reserve}>
-            L’ancien mot de passe n’a pas pu être effacé du Trousseau. Il y reste, sans effet sur
-            l’application.
-          </p>
+          <p className={styles.reserve}>{t('explorer.renameReport.leftoverSecrets')}</p>
         )}
       </div>
     </Modal>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { DeleteEnvironmentResult } from '../../domain/config'
+import { useT } from '../../i18n/LanguageContext'
 import { Button } from '../../ui/Button/Button'
 import { Modal } from '../../ui/Modal/Modal'
 import styles from './DeleteEnvironmentDialog.module.css'
@@ -44,6 +45,7 @@ export function DeleteEnvironmentDialog({
   onClose,
   onDelete,
 }: DeleteEnvironmentDialogProps) {
+  const t = useT()
   const [etat, setEtat] = useState<
     | { phase: 'question' }
     | { phase: 'en-cours' }
@@ -72,22 +74,24 @@ export function DeleteEnvironmentDialog({
 
   return (
     <Modal
-      title={`Retirer ${libelle}`}
+      title={t('explorer.deleteEnvironment.title', { libelle })}
       icon="trash"
       nested
       onClose={onClose}
       footer={
         etat.phase === 'fait' ? (
           <Button variant="dark" size="md" onClick={onClose}>
-            Terminé
+            {t('explorer.deleteEnvironment.done')}
           </Button>
         ) : (
           <>
             <Button variant="secondary" size="md" onClick={onClose} disabled={enCours}>
-              Annuler
+              {t('explorer.deleteEnvironment.cancel')}
             </Button>
             <Button variant="dark" size="md" onClick={retirer} disabled={enCours}>
-              {enCours ? 'Retrait…' : 'Retirer l’environnement'}
+              {enCours
+                ? t('explorer.deleteEnvironment.removing')
+                : t('explorer.deleteEnvironment.remove')}
             </Button>
           </>
         )
@@ -96,19 +100,27 @@ export function DeleteEnvironmentDialog({
       <div className={styles.corps}>
         {etat.phase === 'fait' ? (
           <div className={styles.rapport} role="status">
-            <p className={styles.titre}>L’environnement est retiré.</p>
+            <p className={styles.titre}>{t('explorer.deleteEnvironment.doneTitle')}</p>
             <p>
-              {etat.leftoverSecrets.length} mot(s) de passe n’ont pas pu être retirés du Trousseau.
-              Ils y restent, sans effet sur l’application — vous pouvez les y effacer à la main.
+              {t('explorer.deleteEnvironment.leftover', { count: etat.leftoverSecrets.length })}
             </p>
           </div>
         ) : (
           <>
             <p className={styles.phrase}>
-              Retirer <strong>{libelle}</strong> de <em>{projet}</em> supprimera aussi{' '}
+              {t('explorer.deleteEnvironment.introBefore')}
+              <strong>{libelle}</strong>
+              {t('explorer.deleteEnvironment.introBetween')}
+              <em>{projet}</em>
+              {t('explorer.deleteEnvironment.introAfter')}
               <strong>
-                {connexions.length} connexion{connexions.length > 1 ? 's' : ''} déclarée
-                {connexions.length > 1 ? 's' : ''}
+                {connexions.length > 1
+                  ? t('explorer.deleteEnvironment.connexionsPlural', {
+                      count: connexions.length,
+                    })
+                  : t('explorer.deleteEnvironment.connexionsSingular', {
+                      count: connexions.length,
+                    })}
               </strong>{' '}
               :
             </p>
@@ -120,12 +132,12 @@ export function DeleteEnvironmentDialog({
                 <li key={connexion}>{connexion}</li>
               ))}
             </ul>
-            <p className={styles.phrase}>Leurs mots de passe seront retirés du Trousseau.</p>
+            <p className={styles.phrase}>{t('explorer.deleteEnvironment.secretsWillBeRemoved')}</p>
             {/* La phrase que `08j` a rendue obligatoire. En gras parce que c'est celle qu'on lit
                 quand on ne lit qu'une ligne. */}
             <p className={styles.rassurance}>
-              <strong>Les bases distantes ne sont pas touchées.</strong> DoraBase retire des
-              déclarations, jamais des données.
+              <strong>{t('explorer.deleteEnvironment.reassuranceTitle')}</strong>{' '}
+              {t('explorer.deleteEnvironment.reassuranceBody')}
             </p>
             {etat.phase === 'refuse' && (
               <p className={styles.refus} role="alert">

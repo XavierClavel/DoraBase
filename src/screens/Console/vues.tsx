@@ -1,4 +1,5 @@
 import type { QueryResult } from '../../domain/engine'
+import { useT } from '../../i18n/LanguageContext'
 import { JsonColore } from '../TableView/JsonColore'
 import { texteBrutDe } from '../TableView/modifications'
 import styles from './vues.module.css'
@@ -18,9 +19,10 @@ import styles from './vues.module.css'
  * suit donc la sélection, comme le panneau de `10f`.
  */
 export function VueJson({ resultat, rang }: { resultat: QueryResult; rang: number | null }) {
+  const t = useT()
   const ligne = rang === null ? null : resultat.rows[rang]
   if (!ligne) {
-    return <p className={styles.invite}>Sélectionnez une ligne du résultat pour la voir en JSON.</p>
+    return <p className={styles.invite}>{t('console.vues.jsonInvite')}</p>
   }
 
   // Les valeurs **brutes**, non formatées : un JSON qui porterait « 12 900 » avec une espace
@@ -45,17 +47,18 @@ export function VueJson({ resultat, rang }: { resultat: QueryResult; rang: numbe
  * journal se relit. Et c'est là qu'on cherche pourquoi un résultat s'arrête à mille lignes.
  */
 export function VueMessages({ resultat }: { resultat: QueryResult }) {
+  const t = useT()
   return (
     <ul className={styles.messages}>
       <li>
-        <span className={styles.horodatage}>exécuté</span> en {resultat.durationMs} ms,{' '}
-        {resultat.rows.length} ligne{resultat.rows.length > 1 ? 's' : ''} rendue
-        {resultat.rows.length > 1 ? 's' : ''}
+        <span className={styles.horodatage}>{t('console.vues.execute')}</span>
+        {t('console.vues.dureeEtLignes', { ms: resultat.durationMs, n: resultat.rows.length })}
       </li>
       {resultat.appliedLimit !== null && (
         <li className={styles.notable}>
-          <span className={styles.horodatage}>DoraBase</span> a ajouté{' '}
-          <code>limit {resultat.appliedLimit}</code> : la requête n’en portait pas.
+          <span className={styles.horodatage}>{t('console.vues.dorabase')}</span>{' '}
+          {t('console.vues.aAjoute')} <code>limit {resultat.appliedLimit}</code> :{' '}
+          {t('console.vues.neEnPortaitPas')}
         </li>
       )}
       <li className={styles.sql}>{resultat.sql}</li>
@@ -63,7 +66,11 @@ export function VueMessages({ resultat }: { resultat: QueryResult }) {
           la requête, ce qui demande de les capter à la connexion — hors périmètre de `12e`, et dit
           plutôt que tu. */}
       <li className={styles.absent}>
-        Les avis du serveur (<code>NOTICE</code>, <code>WARNING</code>) ne sont pas encore captés.
+        {t('console.vues.avisServeurAvant')}
+        <code>NOTICE</code>
+        {t('console.vues.avisServeurMilieu')}
+        <code>WARNING</code>
+        {t('console.vues.avisServeurApres')}
       </li>
     </ul>
   )

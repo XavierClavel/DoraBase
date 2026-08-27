@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { Sprite } from '../../design/icons/Sprite'
 import type { TableSummary } from '../../domain/engine'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { BreadcrumbBar, type TypeObjet } from './BreadcrumbBar'
 import { ObjectTable } from './ObjectTable'
 
@@ -14,15 +15,17 @@ function BarrePilotée() {
   return (
     <>
       <Sprite />
-      <BreadcrumbBar
-        database="analytics"
-        schema="public"
-        counts={COMPTES}
-        type={type}
-        onTypeChange={setType}
-        filter={filtre}
-        onFilterChange={setFiltre}
-      />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <BreadcrumbBar
+          database="analytics"
+          schema="public"
+          counts={COMPTES}
+          type={type}
+          onTypeChange={setType}
+          filter={filtre}
+          onFilterChange={setFiltre}
+        />
+      </LanguageProvider>
     </>
   )
 }
@@ -97,13 +100,15 @@ test('la saisie du filtre se voit', async () => {
 
 function monterTableau(props: Partial<Parameters<typeof ObjectTable>[0]> = {}) {
   return render(
-    <ObjectTable
-      schema="public"
-      objects={[objet()]}
-      type="tables"
-      onSelect={() => {}}
-      {...props}
-    />,
+    <LanguageProvider preferences={{ language: 'fr' }}>
+      <ObjectTable
+        schema="public"
+        objects={[objet()]}
+        type="tables"
+        onSelect={() => {}}
+        {...props}
+      />
+    </LanguageProvider>,
   )
 }
 

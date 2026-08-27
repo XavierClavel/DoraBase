@@ -8,6 +8,7 @@ import type {
   Project,
 } from '../../domain/config'
 import type { SchemaInfo, TableDetail, TableSummary } from '../../domain/engine'
+import { LanguageProvider, langueAppliquee } from '../../i18n/LanguageContext'
 import { NewConnection } from '../NewConnection/NewConnection'
 import { ParcoursDeCreation } from '../NewProject/ParcoursDeCreation'
 import { PreferencesDialog } from '../Preferences/PreferencesDialog'
@@ -634,6 +635,7 @@ export function WorkbenchDemo() {
     const theme = themeApplique(preferences)
     if (theme === null) racine.removeAttribute('data-theme')
     else racine.setAttribute('data-theme', theme)
+    racine.lang = langueAppliquee(preferences)
     return () => {
       for (const nom of Object.keys(jetons)) racine.style.removeProperty(nom)
       racine.removeAttribute('data-theme')
@@ -755,7 +757,7 @@ export function WorkbenchDemo() {
   }
 
   return (
-    <>
+    <LanguageProvider preferences={preferences}>
       {edition && (
         <NewConnection
           edition={edition}
@@ -1002,6 +1004,6 @@ export function WorkbenchDemo() {
         onProjets={setProjets}
         gestesEnvironnement={gestesEnvironnement}
       />
-    </>
+    </LanguageProvider>
   )
 }

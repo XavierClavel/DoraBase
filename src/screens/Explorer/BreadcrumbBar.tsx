@@ -1,4 +1,5 @@
 import { Icon } from '../../design/icons/Icon'
+import { useT } from '../../i18n/LanguageContext'
 import { SANS_CORRECTION } from '../../ui/Field/Field'
 import { type Segment, SegmentedControl } from '../../ui/SegmentedControl/SegmentedControl'
 import styles from './BreadcrumbBar.module.css'
@@ -14,13 +15,6 @@ type BreadcrumbBarProps = {
   onTypeChange: (type: TypeObjet) => void
   filter: string
   onFilterChange: (filter: string) => void
-}
-
-const LIBELLES: Record<TypeObjet, string> = {
-  tables: 'Tables',
-  views: 'Vues',
-  functions: 'Fonctions',
-  indexes: 'Index',
 }
 
 const ORDRE: readonly TypeObjet[] = ['tables', 'views', 'functions', 'indexes']
@@ -41,17 +35,24 @@ export function BreadcrumbBar({
   filter,
   onFilterChange,
 }: BreadcrumbBarProps) {
-  const segments: Segment<TypeObjet>[] = ORDRE.map((t) => ({
-    value: t,
-    label: LIBELLES[t],
+  const t = useT()
+  const LIBELLES: Record<TypeObjet, string> = {
+    tables: t('explorer.breadcrumb.types.tables'),
+    views: t('explorer.breadcrumb.types.views'),
+    functions: t('explorer.breadcrumb.types.functions'),
+    indexes: t('explorer.breadcrumb.types.indexes'),
+  }
+  const segments: Segment<TypeObjet>[] = ORDRE.map((typeObjet) => ({
+    value: typeObjet,
+    label: LIBELLES[typeObjet],
     // **Issus des données.** Les coder en dur les rendrait faux dès la première base réelle, et
     // c'est le genre de valeur qu'on oublie de brancher parce qu'elle *ressemble* à du bon.
-    count: counts[t],
+    count: counts[typeObjet],
   }))
 
   return (
     <div className={styles.root}>
-      <nav className={styles.breadcrumb} aria-label="Chemin de l’objet affiché">
+      <nav className={styles.breadcrumb} aria-label={t('explorer.breadcrumb.path')}>
         <Icon name="db" size={13} strokeWidth={1.8} className={styles.dbIcon} />
         {database}
         <Icon name="chevr" size={11} strokeWidth={2.4} className={styles.separator} />
@@ -74,14 +75,14 @@ export function BreadcrumbBar({
           type="text"
           className={styles.searchInput}
           value={filter}
-          placeholder={`Filtrer les objets de ${schema}…`}
-          aria-label={`Filtrer les objets de ${schema}`}
+          placeholder={t('explorer.breadcrumb.filterPlaceholder', { schema })}
+          aria-label={t('explorer.breadcrumb.filterLabel', { schema })}
           onChange={(evenement) => onFilterChange(evenement.target.value)}
         />
       </label>
 
       <SegmentedControl
-        label="Type d’objet"
+        label={t('explorer.breadcrumb.typeLabel')}
         segments={segments}
         value={type}
         onValueChange={onTypeChange}

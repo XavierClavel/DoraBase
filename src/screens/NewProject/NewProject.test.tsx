@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { CreateProjectRequest, Project } from '../../domain/config'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { NewProject } from './NewProject'
 
 function monter(projets: readonly { name: string }[] = [], raison?: string) {
@@ -15,13 +16,15 @@ function monter(projets: readonly { name: string }[] = [], raison?: string) {
   render(
     <>
       <Sprite />
-      <NewProject
-        projets={projets}
-        onClose={() => {}}
-        onCreate={onCreate}
-        onCreated={(_projects, nom) => crees.push(nom)}
-        {...(raison === undefined ? {} : { raison })}
-      />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <NewProject
+          projets={projets}
+          onClose={() => {}}
+          onCreate={onCreate}
+          onCreated={(_projects, nom) => crees.push(nom)}
+          {...(raison === undefined ? {} : { raison })}
+        />
+      </LanguageProvider>
     </>,
   )
   return { creations, crees, onCreate }
@@ -146,14 +149,16 @@ test('un refus du cœur s’affiche là où les autres s’affichent', async () 
   render(
     <>
       <Sprite />
-      <NewProject
-        projets={[]}
-        onClose={() => {}}
-        onCreate={async () => {
-          throw 'le fichier de configuration est en lecture seule'
-        }}
-        onCreated={() => {}}
-      />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <NewProject
+          projets={[]}
+          onClose={() => {}}
+          onCreate={async () => {
+            throw 'le fichier de configuration est en lecture seule'
+          }}
+          onCreated={() => {}}
+        />
+      </LanguageProvider>
     </>,
   )
   await nommer(utilisateur, 'Halle')
@@ -186,14 +191,16 @@ test('un refus du cœur est annoncé comme une alerte', async () => {
   render(
     <>
       <Sprite />
-      <NewProject
-        projets={[]}
-        onClose={() => {}}
-        onCreate={async () => {
-          throw 'deux environnements portent le même identifiant'
-        }}
-        onCreated={() => {}}
-      />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <NewProject
+          projets={[]}
+          onClose={() => {}}
+          onCreate={async () => {
+            throw 'deux environnements portent le même identifiant'
+          }}
+          onCreated={() => {}}
+        />
+      </LanguageProvider>
     </>,
   )
   await nommer(utilisateur, 'Atelier Nord')

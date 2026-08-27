@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type { Engine, EnvironmentDeclaration, EnvironmentId, SslMode } from '../../domain/config'
+import { useT } from '../../i18n/LanguageContext'
 import { Badge } from '../../ui/Badge/Badge'
 import { cx } from '../../ui/cx'
 import { Field } from '../../ui/Field/Field'
@@ -20,29 +21,6 @@ import { ToggleWithLabel } from './ToggleWithLabel'
  * contrôlé que `08e` a déjà payé une fois. Le préfixe la rend impossible à confondre avec un nom
  * de projet, que `05a` n'autorise pas à commencer par un caractère de contrôle.
  */
-
-/** Pourquoi le port est grisé derrière un proxy Cloud SQL. Dit, jamais deviné. */
-const RAISON_PORT_CLOUD_SQL =
-  "Le port est choisi par l'application à l'ouverture du proxy Cloud SQL, et lu sur ce que le proxy annonce. Une valeur saisie ici ne serait pas employée."
-
-/** Pourquoi le mot de passe est grisé derrière un proxy Cloud SQL. */
-const RAISON_MOT_DE_PASSE_CLOUD_SQL =
-  "L'authentification est celle de Cloud SQL IAM : le proxy présente un jeton à la place d'un mot de passe. L'utilisateur est un principal IAM — une adresse."
-
-/** Pourquoi les trois champs d'identité sont verrouillés en édition. Dit, jamais deviné. */
-const RAISON_VERROU =
-  'Ces champs identifient la connexion : les changer déplacerait son mot de passe et fermerait sa connexion.'
-
-/**
- * La raison du verrou **du nom**, distincte depuis `26` : le geste existe désormais.
- *
- * Le champ reste verrouillé — cette modale a un bouton « Enregistrer », et un champ qui déplacerait
- * un mot de passe dans le Trousseau au milieu d'un formulaire tampon serait le seul contrôle de
- * l'écran à s'appliquer sans lui. Mais dire « supprimez et redéclarez » serait maintenant **faux** :
- * l'infobulle nomme le geste au lieu d'un contournement qui n'a plus lieu d'être.
- */
-const RAISON_VERROU_NOM =
-  'Le nom identifie la connexion. Pour le changer : menu « … » de sa ligne dans l’arbre, puis « Renommer… ».'
 
 type ConnectionFormProps = {
   draft: ConnectionDraft
@@ -116,6 +94,7 @@ export function ConnectionForm({
   environnements,
   verrouille = false,
 }: ConnectionFormProps) {
+  const t = useT()
   const [passwordVisible, setPasswordVisible] = useState(false)
   // **Un moteur de fichier n'a pas de serveur** (`17a`) : cinq champs du formulaire ne veulent rien
   // dire pour lui, et les afficher laisserait croire qu'ils comptent.
@@ -152,23 +131,23 @@ export function ConnectionForm({
             fait croire à un bug — la leçon de `09f`. Le `title` porte l'explication : `Field` n'a
             pas d'infobulle, et lui en ajouter une pour trois champs serait disproportionné. */}
         <Field
-          label="Nom de la base"
+          label={t('newConnection.form.nameLabel')}
           className={styles.nameField}
           value={draft.name}
           disabled={verrouille}
-          title={verrouille ? RAISON_VERROU_NOM : undefined}
+          title={verrouille ? t('newConnection.form.reasons.lockName') : undefined}
           onChange={(event) => onChange({ name: event.target.value })}
         />
         <div>
           {/* « Environnement », et non plus « Variante d'environnement » : le mot décrivait le modèle
               à variantes, que `23b` a retiré. */}
-          <div className={styles.label}>Environnement</div>
+          <div className={styles.label}>{t('newConnection.form.environmentLabel')}</div>
           <RadioGroup
-            label="Environnement"
+            label={t('newConnection.form.environmentLabel')}
             options={optionsDEnvironnement(environnements)}
             value={draft.environment}
             disabled={verrouille}
-            title={verrouille ? RAISON_VERROU : undefined}
+            title={verrouille ? t('newConnection.form.reasons.lock') : undefined}
             onValueChange={(environment) => onChange({ environment: environment as EnvironmentId })}
           />
         </div>
@@ -182,17 +161,17 @@ export function ConnectionForm({
         // les 18px de la grille principale.
         <div className={styles.rowHost}>
           <Field
-            label="Hôte"
+            label={t('newConnection.form.hostLabel')}
             mono
             value={draft.host}
             onChange={(event) => onChange({ host: event.target.value })}
           />
           <Field
-            label="Port"
+            label={t('newConnection.form.portLabel')}
             mono
             inputMode="numeric"
             disabled={parCloudSql}
-            title={parCloudSql ? RAISON_PORT_CLOUD_SQL : undefined}
+            title={parCloudSql ? t('newConnection.form.reasons.portCloudSql') : undefined}
             value={parCloudSql ? 'auto' : draft.port}
             onChange={(event) => onChange({ port: event.target.value })}
           />
@@ -203,16 +182,20 @@ export function ConnectionForm({
           — le champ est déjà « la base à ouvrir », et pour SQLite la base *est* un fichier. Le
           libellé change, la donnée non. */}
       <Field
-        label={fichier ? 'Fichier de la base' : 'Base par défaut'}
+        label={
+          fichier
+            ? t('newConnection.form.defaultDatabaseLabel.file')
+            : t('newConnection.form.defaultDatabaseLabel.server')
+        }
         mono
         value={draft.defaultDatabase}
-        placeholder={fichier ? '~/bases/atelier.db' : undefined}
+        placeholder={fichier ? t('newConnection.form.filePlaceholder') : undefined}
         onChange={(event) => onChange({ defaultDatabase: event.target.value })}
       />
 
       {!fichier && (
         <Field
-          label="Utilisateur"
+          label={t('newConnection.form.usernameLabel')}
           mono
           value={draft.username}
           onChange={(event) => onChange({ username: event.target.value })}
@@ -223,12 +206,12 @@ export function ConnectionForm({
           « Trousseau » promettrait de ranger un secret qui n'existe pas. */}
       {!fichier && (
         <Field
-          label="Mot de passe"
+          label={t('newConnection.form.passwordLabel')}
           mono
           type={passwordVisible ? 'text' : 'password'}
           className={styles.passwordField}
           disabled={parCloudSql}
-          title={parCloudSql ? RAISON_MOT_DE_PASSE_CLOUD_SQL : undefined}
+          title={parCloudSql ? t('newConnection.form.reasons.passwordCloudSql') : undefined}
           value={parCloudSql ? '' : draft.password}
           onChange={(event) => onChange({ password: event.target.value })}
           suffix={
@@ -243,7 +226,9 @@ export function ConnectionForm({
                   className={styles.eye}
                   onClick={() => setPasswordVisible((visible) => !visible)}
                   aria-label={
-                    passwordVisible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'
+                    passwordVisible
+                      ? t('newConnection.form.hidePassword')
+                      : t('newConnection.form.showPassword')
                   }
                   aria-pressed={passwordVisible}
                 >
@@ -254,7 +239,7 @@ export function ConnectionForm({
                 Trousseau. Le libellé exact viendra de `08e`, qui interrogera le magasin —
                 ici il reflète le cas signé, comme le mockup. */}
                 <Badge tone="success" icon={<Icon name="lock" size={12} strokeWidth={2} />}>
-                  Trousseau
+                  {t('newConnection.form.keychainBadge')}
                 </Badge>
               </>
             )
@@ -272,10 +257,10 @@ export function ConnectionForm({
           défaut fait foi —, ce que le texte de substitution dit plutôt qu'une infobulle. */}
       {!fichier && authentifieParBase(draft.engine) && (
         <Field
-          label="Base d’authentification"
+          label={t('newConnection.form.authDatabaseLabel')}
           mono
           value={draft.authDatabase}
-          placeholder="vide : la base par défaut — « admin » pour un utilisateur racine"
+          placeholder={t('newConnection.form.authDatabasePlaceholder')}
           onChange={(event) => onChange({ authDatabase: event.target.value })}
         />
       )}
@@ -292,10 +277,10 @@ export function ConnectionForm({
           moteur de fichier (`17a`) — ne montrer que ce qui compte. */}
       {!fichier && authentifie(draft.sslMode) && (
         <Field
-          label="Certificat d’autorité"
+          label={t('newConnection.form.caCertificateLabel')}
           mono
           value={draft.caCertificate}
-          placeholder="~/certs/interne.pem — vide : autorités publiques"
+          placeholder={t('newConnection.form.caCertificatePlaceholder')}
           onChange={(event) => onChange({ caCertificate: event.target.value })}
         />
       )}
@@ -303,7 +288,7 @@ export function ConnectionForm({
       <div className={styles.rowSsl}>
         {!fichier && (
           <Select
-            label="Mode SSL"
+            label={t('newConnection.form.sslModeLabel')}
             options={optionsSsl(draft.engine)}
             value={draft.sslMode}
             onValueChange={(sslMode) => onChange({ sslMode: sslMode as SslMode })}
@@ -313,12 +298,12 @@ export function ConnectionForm({
           <ToggleWithLabel
             checked={draft.readOnly}
             onCheckedChange={(readOnly) => onChange({ readOnly })}
-            label="Ouvrir en lecture seule"
+            label={t('newConnection.form.readOnlyLabel')}
           />
           <ToggleWithLabel
             checked={draft.reconnectOnStartup}
             onCheckedChange={(reconnectOnStartup) => onChange({ reconnectOnStartup })}
-            label="Se reconnecter au démarrage"
+            label={t('newConnection.form.reconnectLabel')}
           />
         </div>
       </div>

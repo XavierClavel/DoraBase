@@ -1,4 +1,23 @@
 import type { ColumnInfo, Value } from '../../domain/engine'
+import type { useT } from '../../i18n/LanguageContext'
+
+type Traduire = ReturnType<typeof useT>
+
+/**
+ * Le repli de `raisonDuRefus`, en français — même arbitrage que `arbre.ts` : `t` est optionnel
+ * pour que `modifications.test.ts` n'ait pas à en passer un à chaque appel, et seul l'appelant
+ * réel (`TableView`) a besoin de la vraie traduction.
+ */
+const traduireEnFrancais: Traduire = (cle, parametres = {}) => {
+  switch (cle) {
+    case 'tableView.grid.primaryKeyColumnReason':
+      return `${parametres.column} identifie la ligne : la modifier déplacerait la ligne à mettre à jour.`
+    case 'tableView.grid.binaryReason':
+      return `${parametres.column} est binaire : sa valeur ne se saisit pas au clavier.`
+    default:
+      return cle
+  }
+}
 
 /**
  * Les modifications en attente de `A6`, en fonctions **pures**.
@@ -308,12 +327,15 @@ export function estEditable(colonne: ColumnInfo): boolean {
 }
 
 /** Pourquoi une colonne ne l'est pas — dit, jamais deviné. */
-export function raisonDuRefus(colonne: ColumnInfo): string | null {
+export function raisonDuRefus(
+  colonne: ColumnInfo,
+  t: Traduire = traduireEnFrancais,
+): string | null {
   if (colonne.key === 'primary') {
-    return `${colonne.name} identifie la ligne : la modifier déplacerait la ligne à mettre à jour.`
+    return t('tableView.grid.primaryKeyColumnReason', { column: colonne.name })
   }
   if (colonne.category === 'binary') {
-    return `${colonne.name} est binaire : sa valeur ne se saisit pas au clavier.`
+    return t('tableView.grid.binaryReason', { column: colonne.name })
   }
   return null
 }

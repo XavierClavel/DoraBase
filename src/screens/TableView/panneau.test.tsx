@@ -10,6 +10,7 @@ import type {
   TableDetail,
   Value,
 } from '../../domain/engine'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import type { PasserelleDetail } from '../Workbench/useDetailTable'
 import { RowPanel } from './RowPanel'
 import type { PasserelleLignes } from './useLignes'
@@ -113,16 +114,18 @@ function monter({
   const rendu = render(
     <>
       <Sprite />
-      <RowPanel
-        cle={CLE}
-        columns={columns}
-        relations={relations}
-        ligne={ligne}
-        rang={rang}
-        onCopyInsert={onCopyInsert}
-        passerelleDetail={{ describeTable } as unknown as PasserelleDetail}
-        passerelleLignes={{ readRows } as unknown as PasserelleLignes}
-      />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <RowPanel
+          cle={CLE}
+          columns={columns}
+          relations={relations}
+          ligne={ligne}
+          rang={rang}
+          onCopyInsert={onCopyInsert}
+          passerelleDetail={{ describeTable } as unknown as PasserelleDetail}
+          passerelleLignes={{ readRows } as unknown as PasserelleLignes}
+        />
+      </LanguageProvider>
     </>,
   )
   return { readRows, describeTable, rendu }

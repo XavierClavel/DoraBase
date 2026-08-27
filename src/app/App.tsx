@@ -9,6 +9,7 @@ import {
 import { useConfiguration } from '../data/useConfiguration'
 import { Sprite } from '../design/icons/Sprite'
 import type { Database, EnvironmentId, Preferences, Project } from '../domain/config'
+import { LanguageProvider, langueAppliquee } from '../i18n/LanguageContext'
 import {
   renommerLaConnexion,
   renommerLeProjet,
@@ -132,6 +133,11 @@ export function App() {
     if (theme === null) racine.removeAttribute('data-theme')
     else racine.setAttribute('data-theme', theme)
 
+    // `lang`, pour les technologies d'assistance et le correcteur du système — même résolution
+    // que `LanguageProvider`, posée ici plutôt que dans le contexte pour rester avec le thème,
+    // l'autre attribut de racine que les préférences gouvernent.
+    racine.lang = langueAppliquee(preferences)
+
     return () => {
       for (const nom of Object.keys(jetons)) racine.style.removeProperty(nom)
       racine.removeAttribute('data-theme')
@@ -171,7 +177,7 @@ export function App() {
   }))
 
   return (
-    <>
+    <LanguageProvider preferences={preferences}>
       <Sprite />
       {/* **Montées une fois, pour toute l'application.** Elles écoutent le défilement en capture sur
           le document : n'importe quel panneau y a droit sans le savoir, y compris ceux qui n'existent
@@ -349,7 +355,7 @@ export function App() {
           version={VERSION_AFFICHEE}
         />
       )}
-    </>
+    </LanguageProvider>
   )
 }
 

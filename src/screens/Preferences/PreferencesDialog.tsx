@@ -4,6 +4,7 @@ import { Icon } from '../../design/icons/Icon'
 import type { IconName } from '../../design/icons/names'
 import type { Guards, Preferences, Theme } from '../../domain/config'
 import type { AvailableUpdate } from '../../domain/maj'
+import { useT } from '../../i18n/LanguageContext'
 import { Button } from '../../ui/Button/Button'
 import { Modal } from '../../ui/Modal/Modal'
 import { Toggle } from '../../ui/Toggle/Toggle'
@@ -14,6 +15,7 @@ import {
   CORPS_MIN,
   HAUTEUR_MAX,
   hauteurMinimalePour,
+  LANGUES,
   PALETTE,
   PREFERENCES_PAR_DEFAUT,
   THEMES,
@@ -50,21 +52,6 @@ type Section =
   | 'raccourcis'
   | 'maj'
 
-const SECTIONS: readonly { cle: Section; nom: string; icone: IconName }[] = [
-  { cle: 'general', nom: 'Général', icone: 'gear' },
-  { cle: 'apparence', nom: 'Apparence', icone: 'paint' },
-  { cle: 'grille', nom: 'Grille de données', icone: 'cols' },
-  { cle: 'editeur', nom: 'Éditeur SQL', icone: 'code' },
-  { cle: 'connexions', nom: 'Connexions', icone: 'srv' },
-  { cle: 'securite', nom: 'Sécurité & écriture', icone: 'shield' },
-  { cle: 'raccourcis', nom: 'Raccourcis', icone: 'kbd' },
-  // **En dernier, et après les sept du mockup.** Ce n'est pas un réglage : rien ne s'y règle, on y
-  // demande et on y installe. La placer parmi les sections de préférences la ferait chercher parmi
-  // les cases à cocher, et la version que la sidebar affiche déjà juste en dessous en est le
-  // voisinage naturel.
-  { cle: 'maj', nom: 'Mises à jour', icone: 'dl' },
-]
-
 /**
  * L'écran de préférences de `A10` (`15a` → `15d`).
  *
@@ -80,6 +67,23 @@ export function PreferencesDialog({
   chercherMiseAJour = checkUpdate,
   installerMiseAJour = installUpdate,
 }: PreferencesDialogProps) {
+  const t = useT()
+
+  const SECTIONS: readonly { cle: Section; nom: string; icone: IconName }[] = [
+    { cle: 'general', nom: t('preferences.sections.general'), icone: 'gear' },
+    { cle: 'apparence', nom: t('preferences.sections.apparence'), icone: 'paint' },
+    { cle: 'grille', nom: t('preferences.sections.grille'), icone: 'cols' },
+    { cle: 'editeur', nom: t('preferences.sections.editeur'), icone: 'code' },
+    { cle: 'connexions', nom: t('preferences.sections.connexions'), icone: 'srv' },
+    { cle: 'securite', nom: t('preferences.sections.securite'), icone: 'shield' },
+    { cle: 'raccourcis', nom: t('preferences.sections.raccourcis'), icone: 'kbd' },
+    // **En dernier, et après les sept du mockup.** Ce n'est pas un réglage : rien ne s'y règle, on y
+    // demande et on y installe. La placer parmi les sections de préférences la ferait chercher parmi
+    // les cases à cocher, et la version que la sidebar affiche déjà juste en dessous en est le
+    // voisinage naturel.
+    { cle: 'maj', nom: t('preferences.sections.maj'), icone: 'dl' },
+  ]
+
   // Le mockup ouvre sur « Apparence » : c'est la section qui a du contenu, et ouvrir sur « Général »
   // montrerait d'abord une section qui annonce ce qu'elle portera.
   const [section, setSection] = useState<Section>('apparence')
@@ -91,20 +95,20 @@ export function PreferencesDialog({
 
   return (
     <Modal
-      title="Préférences"
+      title={t('preferences.title')}
       icon="gear"
       onClose={onClose}
       className={styles.modale}
       footer={
         <div className={styles.pied}>
           {/* La phrase du mockup, et elle **engage** : pas de bouton « Appliquer ». */}
-          <span className={styles.immediat}>Les préférences s’appliquent immédiatement</span>
+          <span className={styles.immediat}>{t('preferences.footer.immediat')}</span>
           <span className={styles.espace} />
           <Button variant="secondary" size="md" onClick={() => setAReinitialiser(true)}>
-            Réinitialiser
+            {t('preferences.footer.reinitialiser')}
           </Button>
           <Button variant="dark" size="md" onClick={onClose}>
-            Terminé
+            {t('preferences.footer.termine')}
           </Button>
         </div>
       }
@@ -121,7 +125,7 @@ export function PreferencesDialog({
           className={styles.sections}
           role="tablist"
           aria-orientation="vertical"
-          aria-label="Sections des préférences"
+          aria-label={t('preferences.tablistLabel')}
           onKeyDown={(evenement) => {
             const pas = evenement.key === 'ArrowDown' ? 1 : evenement.key === 'ArrowUp' ? -1 : 0
             if (pas === 0) return
@@ -177,28 +181,23 @@ export function PreferencesDialog({
           {section === 'maj' && (
             <MisesAJour chercher={chercherMiseAJour} installer={installerMiseAJour} />
           )}
-          {section === 'general' && (
-            <AVenir
-              titre="Général"
-              porte="La langue de l’interface, le comportement au démarrage, et l’ouverture automatique des connexions."
-            />
-          )}
+          {section === 'general' && <General preferences={preferences} onRegler={regler} />}
           {section === 'editeur' && (
             <AVenir
-              titre="Éditeur SQL"
-              porte="Le dialecte de coloration, la taille de l’indentation, et le formateur — qui demande d’abord de choisir une dépendance."
+              titre={t('preferences.sections.editeur')}
+              porte={t('preferences.editeur.aVenir')}
             />
           )}
           {section === 'connexions' && (
             <AVenir
-              titre="Connexions"
-              porte="Le délai d’attente, la reconnexion automatique, et le chemin du fichier de clés SSH par défaut."
+              titre={t('preferences.sections.connexions')}
+              porte={t('preferences.connexions.aVenir')}
             />
           )}
           {section === 'raccourcis' && (
             <AVenir
-              titre="Raccourcis"
-              porte="La table des raccourcis, et leur réassignation. Ceux du produit sont pour l’instant figés — ils sont affichés à côté de chaque action."
+              titre={t('preferences.sections.raccourcis')}
+              porte={t('preferences.raccourcis.aVenir')}
             />
           )}
         </div>
@@ -217,6 +216,56 @@ export function PreferencesDialog({
   )
 }
 
+/**
+ * « Général » : la langue de l'interface (26 août 2026, `general` n'avait jusque-là rien à régler).
+ *
+ * **Le reste que la section promettait — comportement au démarrage, ouverture automatique des
+ * connexions — n'est toujours pas livré**, et le dit encore, sous la langue : livrer un réglage ne
+ * doit pas faire disparaître ce qui reste annoncé.
+ */
+function General({
+  preferences,
+  onRegler,
+}: {
+  preferences: Preferences
+  onRegler: (partiel: Partial<Preferences>) => void
+}) {
+  const t = useT()
+  return (
+    <>
+      <section className={styles.bloc}>
+        <h3 className={styles.titre}>{t('preferences.general.langueTitre')}</h3>
+        {/* **Des radios natives**, comme le thème juste en dessous : l'exclusivité, la navigation
+            aux flèches et l'annonce à la voix viennent du navigateur. */}
+        <div className={styles.themes}>
+          {LANGUES.map((langue) => (
+            <label
+              key={langue.valeur}
+              className={preferences.language === langue.valeur ? styles.themeActif : styles.theme}
+              title={t(`preferences.langues.detail${majuscule(langue.valeur)}`)}
+            >
+              <input
+                type="radio"
+                name="language"
+                className={styles.radio}
+                checked={preferences.language === langue.valeur}
+                onChange={() => onRegler({ language: langue.valeur })}
+              />
+              {t(`preferences.langues.${langue.valeur}`)}
+            </label>
+          ))}
+        </div>
+      </section>
+      <AVenir titre={t('preferences.sections.general')} porte={t('preferences.general.aVenir')} />
+    </>
+  )
+}
+
+/** `'fr'` → `'Fr'`, `'systeme'` → `'Systeme'` — pour composer `detailFr`/`detailEn`/`detailSysteme`. */
+function majuscule(valeur: string): string {
+  return valeur.charAt(0).toUpperCase() + valeur.slice(1)
+}
+
 /** Thème et couleur d'accent (`15b`). */
 function Apparence({
   preferences,
@@ -225,10 +274,11 @@ function Apparence({
   preferences: Preferences
   onRegler: (partiel: Partial<Preferences>) => void
 }) {
+  const t = useT()
   return (
     <>
       <section className={styles.bloc}>
-        <h3 className={styles.titre}>Thème</h3>
+        <h3 className={styles.titre}>{t('preferences.apparence.themeTitre')}</h3>
         {/* **Des radios natives**, comme `RadioGroup` (`08a`) : l'exclusivité, la navigation aux
             flèches et l'annonce à la voix viennent du navigateur. Un `role="radio"` posé sur un
             bouton redemanderait tout cela à la main — et Biome le signale. */}
@@ -246,14 +296,14 @@ function Apparence({
                 onChange={() => onRegler({ theme: theme.valeur })}
               />
               <span className={styles.apercu} data-theme-apercu={theme.valeur} aria-hidden="true" />
-              {theme.nom}
+              {t(`preferences.themes.${theme.valeur}.nom`)}
             </label>
           ))}
         </div>
       </section>
 
       <section className={styles.bloc}>
-        <h3 className={styles.titre}>Couleur d’accent</h3>
+        <h3 className={styles.titre}>{t('preferences.apparence.accentTitre')}</h3>
         <div className={styles.palette}>
           {PALETTE.map((entree) => (
             <label
@@ -272,10 +322,10 @@ function Apparence({
               />
               {/* Le nom est **porté par un texte**, pas par un `aria-label` sur une pastille de
                   couleur : « terracotta » doit s'annoncer, et une couleur seule n'est pas un nom. */}
-              <span className={styles.pourLaVoix}>{entree.nom}</span>
+              <span className={styles.pourLaVoix}>{t(`preferences.accents.${entree.valeur}`)}</span>
             </label>
           ))}
-          <span className={styles.note}>sert aussi à teinter la connexion active</span>
+          <span className={styles.note}>{t('preferences.apparence.accentNote')}</span>
         </div>
       </section>
     </>
@@ -290,39 +340,42 @@ function Grille({
   preferences: Preferences
   onRegler: (partiel: Partial<Preferences>) => void
 }) {
+  const t = useT()
   const plancher = hauteurMinimalePour(preferences.codeFontTenths)
   const contraint = plancher > 20
 
   return (
     <>
       <section className={styles.bloc}>
-        <h3 className={styles.titre}>Densité des lignes</h3>
+        <h3 className={styles.titre}>{t('preferences.grille.densiteTitre')}</h3>
         <div className={styles.curseur}>
-          <span className={styles.borne}>compact</span>
+          <span className={styles.borne}>{t('preferences.grille.compact')}</span>
           <input
             type="range"
             min={plancher}
             max={HAUTEUR_MAX}
             step={1}
             value={preferences.rowHeight}
-            aria-label="Densité des lignes"
+            aria-label={t('preferences.grille.densiteAriaLabel')}
             onChange={(evenement) => onRegler({ rowHeight: Number(evenement.target.value) })}
           />
-          <span className={styles.borne}>aéré</span>
+          <span className={styles.borne}>{t('preferences.grille.aere')}</span>
           <span className={styles.valeur}>{preferences.rowHeight}px</span>
         </div>
         {/* **La contrainte est dite, pas subie** (`15c`) : le curseur ne descend plus, et sans cette
             phrase l'utilisateur chercherait pourquoi. */}
         {contraint && (
           <p className={styles.reserve}>
-            La police du code occupe {preferences.codeFontTenths / 10} px : en dessous de {plancher}
-            px, le texte des cellules serait rogné.
+            {t('preferences.grille.contrainte', {
+              corps: preferences.codeFontTenths / 10,
+              plancher,
+            })}
           </p>
         )}
       </section>
 
       <section className={styles.bloc}>
-        <h3 className={styles.titre}>Police du code</h3>
+        <h3 className={styles.titre}>{t('preferences.grille.policeTitre')}</h3>
         <div className={styles.curseur}>
           <span className={styles.borne}>{CORPS_MIN / 10} px</span>
           <input
@@ -331,7 +384,7 @@ function Grille({
             max={CORPS_MAX}
             step={5}
             value={preferences.codeFontTenths}
-            aria-label="Corps de la police du code"
+            aria-label={t('preferences.grille.policeAriaLabel')}
             onChange={(evenement) => onRegler({ codeFontTenths: Number(evenement.target.value) })}
           />
           <span className={styles.borne}>{CORPS_MAX / 10} px</span>
@@ -340,10 +393,7 @@ function Grille({
         {/* La famille n'est pas réglable : `--font-mono` porte JetBrains Mono, embarquée par `02`.
             Proposer une liste de polices système demanderait de les énumérer, ce que le web ne
             permet pas sans une permission que Tauri ne donne pas. */}
-        <p className={styles.note}>
-          La famille reste JetBrains Mono, embarquée avec l’application. Le corps s’applique à la
-          grille, à l’éditeur et aux blocs SQL.
-        </p>
+        <p className={styles.note}>{t('preferences.grille.policeNote')}</p>
       </section>
     </>
   )
@@ -357,28 +407,29 @@ function GardeFous({
   guards: Guards
   onRegler: (partiel: Partial<Guards>) => void
 }) {
+  const t = useT()
   return (
     <section className={styles.bloc}>
-      <h3 className={styles.titre}>Garde-fous</h3>
+      <h3 className={styles.titre}>{t('preferences.securite.titre')}</h3>
       {/* **Chaque bascule dit ce qu'elle protège, pas comment elle marche.** Les phrases sont
           celles du mockup, complétées de ce qui arrive quand on éteint : `11d` avait posé qu'un
           garde-fou désactivable avant qu'un écran ne l'explique est un garde-fou qu'on désactive
           par accident. L'écran existe maintenant. */}
       <GardeFou
-        libelle="Modifications en attente avant écriture"
-        detail="Toute édition passe par un diff à valider (⌘↩). Éteint, une cellule modifiée part directement dans la base."
+        libelle={t('preferences.securite.pendingBeforeWrite.libelle')}
+        detail={t('preferences.securite.pendingBeforeWrite.detail')}
         checked={guards.pendingBeforeWrite}
         onCheckedChange={(pendingBeforeWrite) => onRegler({ pendingBeforeWrite })}
       />
       <GardeFou
-        libelle="Ouvrir les bases « prod » en lecture seule"
-        detail="⌘E déverrouille l’édition pour la session en cours. Éteint, une base de production s’ouvre modifiable."
+        libelle={t('preferences.securite.prodReadOnly.libelle')}
+        detail={t('preferences.securite.prodReadOnly.detail')}
         checked={guards.prodReadOnly}
         onCheckedChange={(prodReadOnly) => onRegler({ prodReadOnly })}
       />
       <GardeFou
-        libelle="Refuser DELETE/UPDATE sans clause WHERE"
-        detail="Dans la console comme dans la grille. Éteint, la confirmation subsiste — mais elle se clique, là où un refus oblige à écrire la clause."
+        libelle={t('preferences.securite.refuseUnrestrictedWrites.libelle')}
+        detail={t('preferences.securite.refuseUnrestrictedWrites.detail')}
         checked={guards.refuseUnrestrictedWrites}
         onCheckedChange={(refuseUnrestrictedWrites) => onRegler({ refuseUnrestrictedWrites })}
       />
@@ -386,8 +437,8 @@ function GardeFous({
           cette promesse puis l'avaient retirée, faute de persister le patch. La leçon du défaut
           n° 36 tranche — un réglage qui ne fait rien est pire qu'un réglage absent. */}
       <GardeFou
-        libelle="Garder le patch inverse 24 h"
-        detail="Le patch inverse existe pendant la session et se copie depuis le panneau des modifications. Le conserver au-delà demande de décider où l’écrire et ce qu’il advient d’un patch dont la base a changé : ce n’est pas encore tranché."
+        libelle={t('preferences.securite.keepInversePatch.libelle')}
+        detail={t('preferences.securite.keepInversePatch.detail')}
         checked={false}
         onCheckedChange={() => {}}
         indisponible
@@ -450,6 +501,7 @@ function MisesAJour({
   chercher: () => Promise<AvailableUpdate | null>
   installer: () => Promise<void>
 }) {
+  const t = useT()
   // Quatre états, et « pas encore cherché » n'est pas « à jour » — c'est la même distinction que
   // les quatre états d'une base dans l'arbre : « jamais tentée » n'est pas « hors ligne ».
   const [etat, setEtat] = useState<
@@ -480,7 +532,7 @@ function MisesAJour({
       // **Atteint seulement en cas d'échec** : au succès, le processus est remplacé pendant
       // l'attente. Le dire ainsi plutôt que de laisser le bouton tourner indéfiniment, qui est le
       // pire des deux messages possibles.
-      setEchecInstallation('l’installation n’a pas abouti')
+      setEchecInstallation(t('preferences.maj.installationEchouee'))
     } catch (erreur) {
       setEchecInstallation(message(erreur))
     }
@@ -489,7 +541,7 @@ function MisesAJour({
 
   return (
     <section className={styles.bloc}>
-      <h3 className={styles.titre}>Mises à jour</h3>
+      <h3 className={styles.titre}>{t('preferences.maj.titre')}</h3>
       <div className={styles.maj}>
         <Button
           variant="secondary"
@@ -497,34 +549,32 @@ function MisesAJour({
           onClick={rechercher}
           disabled={etat.quoi === 'recherche'}
         >
-          {etat.quoi === 'recherche' ? 'Recherche…' : 'Rechercher une mise à jour'}
+          {etat.quoi === 'recherche'
+            ? t('preferences.maj.recherche')
+            : t('preferences.maj.rechercher')}
         </Button>
       </div>
 
       {/* `role="status"` : la réponse arrive après le clic, donc elle doit s'annoncer sans que le
           focus quitte le bouton. */}
       <div role="status">
-        {etat.quoi === 'aJour' && <p className={styles.majVerdict}>DoraBase est à jour.</p>}
+        {etat.quoi === 'aJour' && <p className={styles.majVerdict}>{t('preferences.maj.aJour')}</p>}
         {etat.quoi === 'echec' && (
-          <p className={styles.reserve}>
-            La recherche n’a pas abouti : {etat.raison}. Une machine hors ligne, un pare-feu, ou
-            l’application lancée hors de son bundle donnent tous ce résultat.
-          </p>
+          <p className={styles.reserve}>{t('preferences.maj.echec', { raison: etat.raison })}</p>
         )}
         {etat.quoi === 'disponible' && (
           <div className={styles.majTrouvee}>
             <p className={styles.majVerdict}>
-              La version <strong>{etat.maj.version}</strong> est disponible.
+              {t('preferences.maj.disponibleAvant')} <strong>{etat.maj.version}</strong>{' '}
+              {t('preferences.maj.disponibleApres')}
             </p>
             {/* Une release sans notes est un cas normal du manifeste, et l'écran tient sans. */}
-            <p className={styles.majNotes}>{etat.maj.notes ?? 'Cette version n’a pas de notes.'}</p>
+            <p className={styles.majNotes}>{etat.maj.notes ?? t('preferences.maj.sansNotes')}</p>
             {echecInstallation !== null && <p className={styles.reserve}>{echecInstallation}</p>}
             <Button variant="dark" size="md" onClick={lancer} disabled={installation}>
-              {installation ? 'Téléchargement…' : 'Installer et redémarrer'}
+              {installation ? t('preferences.maj.installation') : t('preferences.maj.installer')}
             </Button>
-            <p className={styles.note}>
-              DoraBase se relance seul. Les consoles non enregistrées ne sont pas conservées.
-            </p>
+            <p className={styles.note}>{t('preferences.maj.redemarrageNote')}</p>
           </div>
         )}
       </div>
@@ -544,12 +594,11 @@ function message(erreur: unknown): string {
  * croire à un défaut.
  */
 function AVenir({ titre, porte }: { titre: string; porte: string }) {
+  const t = useT()
   return (
     <section className={styles.bloc}>
       <h3 className={styles.titre}>{titre}</h3>
-      <p className={styles.aVenir}>
-        Rien à régler ici pour l’instant. Cette section portera : {porte}
-      </p>
+      <p className={styles.aVenir}>{t('preferences.aVenir.corps', { porte })}</p>
     </section>
   )
 }
@@ -568,9 +617,10 @@ function ReinitialisationConfirmee({
   onClose: () => void
   onConfirmer: () => void
 }) {
+  const t = useT()
   return (
     <Modal
-      title="Réinitialiser les préférences"
+      title={t('preferences.reinitialisation.titre')}
       icon="warn"
       nested
       onClose={onClose}
@@ -578,20 +628,20 @@ function ReinitialisationConfirmee({
         <div className={styles.pied}>
           <span className={styles.espace} />
           <Button variant="secondary" size="md" onClick={onClose}>
-            Annuler
+            {t('preferences.reinitialisation.annuler')}
           </Button>
           <Button variant="dark" size="md" onClick={onConfirmer}>
-            Remettre les valeurs d’origine
+            {t('preferences.reinitialisation.confirmer')}
           </Button>
         </div>
       }
     >
       <div className={styles.confirmation}>
         <p>
-          Le thème, l’accent, la densité et la police reviendront aux valeurs du produit, et{' '}
-          <strong>les quatre garde-fous d’écriture seront réactivés</strong>.
+          {t('preferences.reinitialisation.corpsAvant')}{' '}
+          <strong>{t('preferences.reinitialisation.corpsGras')}</strong>.
         </p>
-        <p className={styles.note}>Aucune connexion et aucune requête enregistrée n’est touchée.</p>
+        <p className={styles.note}>{t('preferences.reinitialisation.note')}</p>
       </div>
     </Modal>
   )

@@ -13,6 +13,7 @@ import type {
   EnvironmentDeclaration,
   Project,
 } from '../../domain/config'
+import { useT } from '../../i18n/LanguageContext'
 import { Button } from '../../ui/Button/Button'
 import { cx } from '../../ui/cx'
 import { Field } from '../../ui/Field/Field'
@@ -88,6 +89,7 @@ export function ProjectEditor({
   onReordonner = reordonnerLesEnvironnements,
   onRetirer = retirerLEnvironnement,
 }: ProjectEditorProps) {
+  const t = useT()
   // Le nom en cours de saisie. **Local, et seulement le temps de la saisie** : la vérité est le
   // projet reçu, et ce brouillon disparaît au relâchement du champ.
   const [nom, setNom] = useState(projet.name)
@@ -127,7 +129,10 @@ export function ProjectEditor({
       const issue = await onRenameProject(propre)
       if (issue.missingSecrets.length > 0 || issue.leftoverSecrets.length > 0) {
         setRapport(
-          `Le projet est renommé. ${issue.missingSecrets.length} mot(s) de passe étaient introuvables dans le Trousseau, ${issue.leftoverSecrets.length} n’ont pas pu y être effacés.`,
+          t('explorer.projectEditor.renameReport', {
+            missing: issue.missingSecrets.length,
+            leftover: issue.leftoverSecrets.length,
+          }),
         )
       }
     } catch (erreur) {
@@ -179,7 +184,7 @@ export function ProjectEditor({
         />
       )}
       <Modal
-        title={`Modifier ${projet.name}`}
+        title={t('explorer.projectEditor.title', { nom: projet.name })}
         icon="bag"
         onClose={onClose}
         footer={
@@ -191,14 +196,14 @@ export function ProjectEditor({
                 d'enregistrement laisserait croire qu'une fermeture par la croix perd les
                 modifications. */}
             <Button variant="dark" size="md" onClick={onClose}>
-              Terminé
+              {t('explorer.projectEditor.done')}
             </Button>
           </div>
         }
       >
         <div className={styles.form}>
           <Field
-            label="Nom du projet"
+            label={t('explorer.projectEditor.projectName')}
             value={nom}
             // Les quatre attributs de `08a` : macOS corrigeait `localhost` en `Localhost`, et un nom
             // de projet n'a pas plus à être corrigé qu'un nom d'hôte.
@@ -214,13 +219,10 @@ export function ProjectEditor({
               if (evenement.key === 'Escape') setNom(projet.name)
             }}
           />
-          <p className={styles.note}>
-            Les mots de passe enregistrés suivent le nouveau nom, et les connexions ouvertes de ce
-            projet seront fermées.
-          </p>
+          <p className={styles.note}>{t('explorer.projectEditor.renameNote')}</p>
 
           <div className={styles.bloc}>
-            <div className={styles.blocTitre}>Environnements</div>
+            <div className={styles.blocTitre}>{t('explorer.projectEditor.environments')}</div>
             <ul className={styles.liste}>
               {projet.environments.map((declaration, index) => {
                 const connexions = connexionsDe(declaration.id)
@@ -242,7 +244,9 @@ export function ProjectEditor({
                       // réordonnancement inatteignable sans souris. `↑↓` sur la poignée décale d'un
                       // cran, ce qui est la seule façon d'offrir ce geste au clavier sans inventer
                       // un mode.
-                      aria-label={`Déplacer ${declaration.label} (flèches haut et bas)`}
+                      aria-label={t('explorer.projectEditor.movehandle', {
+                        libelle: declaration.label,
+                      })}
                       draggable
                       onDragStart={() => setGlisse(declaration.id)}
                       onDragEnd={() => setGlisse(null)}
@@ -268,7 +272,9 @@ export function ProjectEditor({
                     <div
                       className={styles.nuancier}
                       role="radiogroup"
-                      aria-label={`Couleur de ${declaration.label}`}
+                      aria-label={t('explorer.projectEditor.colorOf', {
+                        libelle: declaration.label,
+                      })}
                     >
                       {COULEURS.map((couleur) => (
                         // **De vraies cases radio, non des `<button role="radio">`** : le groupe natif
@@ -311,7 +317,9 @@ export function ProjectEditor({
                           ? libelleEnCours.valeur
                           : declaration.label
                       }
-                      aria-label={`Libellé de ${declaration.label}`}
+                      aria-label={t('explorer.projectEditor.labelOf', {
+                        libelle: declaration.label,
+                      })}
                       spellCheck={false}
                       autoCapitalize="off"
                       autoCorrect="off"
@@ -347,8 +355,14 @@ export function ProjectEditor({
                         tous, et le compte le dit déjà mieux. */}
                     <span className={styles.compte}>
                       {connexions.length === 0
-                        ? 'aucune connexion'
-                        : `${connexions.length} connexion${connexions.length > 1 ? 's' : ''}`}
+                        ? t('explorer.projectEditor.noConnection')
+                        : connexions.length > 1
+                          ? t('explorer.projectEditor.connexionsPlural', {
+                              count: connexions.length,
+                            })
+                          : t('explorer.projectEditor.connexionsSingular', {
+                              count: connexions.length,
+                            })}
                     </span>
 
                     {/* **Pas un `<label>`** : `Toggle` rend un `<button role="switch">`, auquel un
@@ -356,7 +370,9 @@ export function ProjectEditor({
                         L'interrupteur porte son nom par `aria-label`. Même arbitrage qu'en `24a`. */}
                     <div className={styles.production}>
                       <Toggle
-                        label={`Production pour ${declaration.label}`}
+                        label={t('explorer.projectEditor.productionFor', {
+                          libelle: declaration.label,
+                        })}
                         checked={declaration.production}
                         onCheckedChange={(production) =>
                           void geste(() =>
@@ -375,14 +391,16 @@ export function ProjectEditor({
                           declaration.production && styles.marque,
                         )}
                       >
-                        Production
+                        {t('explorer.projectEditor.production')}
                       </span>
                     </div>
 
                     <button
                       type="button"
                       className={styles.retirer}
-                      aria-label={`Retirer ${declaration.label}`}
+                      aria-label={t('explorer.projectEditor.removeEnvironment', {
+                        libelle: declaration.label,
+                      })}
                       // **Le dernier ne se retire pas**, et le bouton dit pourquoi : une connexion
                       // appartient à un environnement (`23b`), donc un projet sans environnement ne
                       // peut plus rien déclarer. Le cœur le refuse aussi ; l'attribut évite d'offrir
@@ -390,7 +408,7 @@ export function ProjectEditor({
                       disabled={projet.environments.length === 1}
                       title={
                         projet.environments.length === 1
-                          ? 'Un projet a besoin d’au moins un environnement.'
+                          ? t('explorer.projectEditor.needsOneEnvironment')
                           : undefined
                       }
                       onClick={() => {
@@ -434,7 +452,7 @@ export function ProjectEditor({
                 )
               }
             >
-              + Ajouter un environnement
+              + {t('explorer.projectEditor.addEnvironment')}
             </Button>
           </div>
         </div>

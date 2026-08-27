@@ -665,7 +665,7 @@ impl ConfigStore {
 
 #[cfg(test)]
 mod tests_preferences {
-    use super::super::model::{Accent, Guards, Theme};
+    use super::super::model::{Accent, Guards, Language, Theme};
     use super::*;
     use tempfile::tempdir;
 
@@ -713,6 +713,7 @@ mod tests_preferences {
 
         let mut voulues = Preferences {
             theme: Theme::Nuit,
+            language: Language::En,
             accent: Accent::Sauge,
             row_height: 32,
             code_font_tenths: 110,

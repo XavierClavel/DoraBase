@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { Value } from '../../domain/engine'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import type { LigneAjoutee, LigneSupprimee, ModificationDeCellule } from './modifications'
 import { PendingPanel } from './PendingPanel'
 
@@ -27,14 +28,16 @@ function monter(props: Partial<Parameters<typeof PendingPanel>[0]> = {}) {
   render(
     <>
       <Sprite />
-      <PendingPanel
-        attente={[modification()]}
-        table="public.orders"
-        sql={SQL}
-        onRetirer={onRetirer}
-        onToutAnnuler={onToutAnnuler}
-        {...props}
-      />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <PendingPanel
+          attente={[modification()]}
+          table="public.orders"
+          sql={SQL}
+          onRetirer={onRetirer}
+          onToutAnnuler={onToutAnnuler}
+          {...props}
+        />
+      </LanguageProvider>
     </>,
   )
   return { onRetirer, onToutAnnuler }

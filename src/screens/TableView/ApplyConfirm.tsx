@@ -1,3 +1,4 @@
+import { useT } from '../../i18n/LanguageContext'
 import { Button } from '../../ui/Button/Button'
 import { Modal } from '../../ui/Modal/Modal'
 import styles from './ApplyConfirm.module.css'
@@ -30,6 +31,7 @@ export function ApplyConfirm({
   onConfirmer,
   enCours = false,
 }: ApplyConfirmProps) {
+  const t = useT()
   // Les lignes, pas les modifications : trois corrections sur la même ligne n'en touchent qu'une, et
   // c'est le nombre de lignes qui dit l'ampleur de ce qu'on écrit.
   const lignes = new Set(attente.map((modification) => modification.cle)).size
@@ -51,45 +53,53 @@ export function ApplyConfirm({
   const misesAJour = attente.length - ajouts - suppressions
 
   return (
-    <Modal title="Écrire en production" icon="warn" nested onClose={onClose}>
+    <Modal title={t('tableView.applyConfirm.title')} icon="warn" nested onClose={onClose}>
       <div className={styles.corps}>
         <p className={styles.alerte}>
-          Cette base est déclarée en <strong>production</strong>.
+          {t('tableView.applyConfirm.alertPrefix')}
+          <strong>{t('tableView.applyConfirm.alertProduction')}</strong>
+          {t('tableView.applyConfirm.alertSuffix')}
         </p>
         <dl className={styles.recap}>
           <div className={styles.entree}>
-            <dt>Table</dt>
+            <dt>{t('tableView.applyConfirm.table')}</dt>
             <dd className={styles.mono}>{table}</dd>
           </div>
           <div className={styles.entree}>
-            <dt>{lignes === 1 ? 'Ligne' : 'Lignes'}</dt>
+            <dt>{t('tableView.applyConfirm.rowsLabel', { count: lignes })}</dt>
             <dd>{lignes}</dd>
           </div>
           <div className={styles.entree}>
-            <dt>{colonnes.length === 1 ? 'Colonne' : 'Colonnes'}</dt>
+            <dt>{t('tableView.applyConfirm.columnsLabel', { count: colonnes.length })}</dt>
             <dd className={styles.mono}>{colonnes.join(', ')}</dd>
           </div>
           <div className={styles.entree}>
-            <dt>Instructions</dt>
-            <dd>{resumeDesInstructions(misesAJour, ajouts, suppressions)}, en une transaction</dd>
+            <dt>{t('tableView.applyConfirm.instructions')}</dt>
+            <dd>
+              {t('tableView.applyConfirm.transactionSuffix', {
+                resume: resumeDesInstructions(
+                  misesAJour,
+                  ajouts,
+                  suppressions,
+                  t('tableView.applyConfirm.and'),
+                ),
+              })}
+            </dd>
           </div>
         </dl>
         {/* Ce que `11d` livre vraiment : le patch inverse est rendu après l'écriture et copiable,
             mais **il n'est pas persisté** — `A10` en fera une préférence à 24 h. Annoncer « gardé
             24 h » sans le garder serait pire que ne rien annoncer. */}
-        <p className={styles.patch}>
-          Après l’écriture, DoraBase affichera le SQL qui l’annule. Il reste disponible tant que cet
-          onglet est ouvert.
-        </p>
+        <p className={styles.patch}>{t('tableView.applyConfirm.patchNote')}</p>
       </div>
       <div className={styles.pied}>
         <Button variant="secondary" size="md" onClick={onClose} disabled={enCours}>
-          Annuler
+          {t('tableView.applyConfirm.cancel')}
         </Button>
         {/* Le verbe du geste, comme en `08j` : un bouton qui nomme son acte est la dernière chance de
             lire ce qu'on fait. */}
         <Button variant="dark" size="md" onClick={onConfirmer} disabled={enCours}>
-          {enCours ? 'Écriture…' : 'Écrire en production'}
+          {enCours ? t('tableView.applyConfirm.writing') : t('tableView.applyConfirm.confirm')}
         </Button>
       </div>
     </Modal>
@@ -97,10 +107,15 @@ export function ApplyConfirm({
 }
 
 /** « 2 UPDATE et 1 INSERT » — ce qui part vraiment, sans nommer un verbe absent. */
-function resumeDesInstructions(misesAJour: number, ajouts: number, suppressions: number): string {
+function resumeDesInstructions(
+  misesAJour: number,
+  ajouts: number,
+  suppressions: number,
+  et: string,
+): string {
   const morceaux: string[] = []
   if (misesAJour > 0) morceaux.push(`${misesAJour} UPDATE`)
   if (ajouts > 0) morceaux.push(`${ajouts} INSERT`)
   if (suppressions > 0) morceaux.push(`${suppressions} DELETE`)
-  return morceaux.join(' et ')
+  return morceaux.join(et)
 }

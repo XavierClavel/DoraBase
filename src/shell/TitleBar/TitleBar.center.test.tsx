@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { SelectionIndicator } from '../SelectionIndicator/SelectionIndicator'
 import { TitleBar } from './TitleBar'
 
@@ -29,10 +30,10 @@ const barre = (container: HTMLElement) =>
  */
 test('sans centre, la barre garde son wordmark et ses actions, et rien au centre', () => {
   const { container } = render(
-    <>
+    <LanguageProvider preferences={{ language: 'fr' }}>
       <Sprite />
       <TitleBar onOpenPreferences={() => {}} />
-    </>,
+    </LanguageProvider>,
   )
   expect(screen.getByText('DoraBase')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Préférences' })).toBeInTheDocument()
@@ -45,10 +46,10 @@ test('sans centre, la barre garde son wordmark et ses actions, et rien au centre
 
 test('avec un centre, l’indicateur de sélection y est rendu', () => {
   render(
-    <>
+    <LanguageProvider preferences={{ language: 'fr' }}>
       <Sprite />
       <TitleBar center={<SelectionIndicator projectName="Atelier Nord" />} />
-    </>,
+    </LanguageProvider>,
   )
   expect(screen.getByText('Atelier Nord')).toBeInTheDocument()
 })
@@ -63,7 +64,7 @@ test('avec un centre, l’indicateur de sélection y est rendu', () => {
  */
 test('le parcours clavier de la barre compte un arrêt, et le centre n’en est pas', async () => {
   render(
-    <>
+    <LanguageProvider preferences={{ language: 'fr' }}>
       <Sprite />
       <TitleBar
         center={
@@ -75,7 +76,7 @@ test('le parcours clavier de la barre compte un arrêt, et le centre n’en est 
         }
         onOpenPreferences={() => {}}
       />
-    </>,
+    </LanguageProvider>,
   )
   await userEvent.tab()
   expect(screen.getByRole('button', { name: 'Préférences' })).toHaveFocus()
@@ -89,10 +90,10 @@ test('le parcours clavier de la barre compte un arrêt, et le centre n’en est 
 // une prop sans appelant n'est qu'un emplacement que le prochain écran remplira sans savoir pourquoi.
 test('la barre n’expose que le centre, sans emplacement à droite', () => {
   const { container } = render(
-    <>
+    <LanguageProvider preferences={{ language: 'fr' }}>
       <Sprite />
       <TitleBar center={<SelectionIndicator projectName="Atelier Nord" />} />
-    </>,
+    </LanguageProvider>,
   )
   // Trois zones exactement : wordmark, centre, actions.
   expect(barre(container).children).toHaveLength(3)
@@ -100,10 +101,10 @@ test('la barre n’expose que le centre, sans emplacement à droite', () => {
 
 test('sans gestionnaire, l’engrenage est désactivé et dit pourquoi', () => {
   render(
-    <>
+    <LanguageProvider preferences={{ language: 'fr' }}>
       <Sprite />
       <TitleBar />
-    </>,
+    </LanguageProvider>,
   )
   // La règle de `09f`, et la leçon du défaut n° 36 : un bouton cliquable et inerte se lit comme une
   // panne. Il est donc désactivé, avec son infobulle.
@@ -120,10 +121,10 @@ test('sans gestionnaire, l’engrenage est désactivé et dit pourquoi', () => {
 test('avec un gestionnaire, l’engrenage l’appelle', async () => {
   const ouvrir = vi.fn()
   render(
-    <>
+    <LanguageProvider preferences={{ language: 'fr' }}>
       <Sprite />
       <TitleBar onOpenPreferences={ouvrir} />
-    </>,
+    </LanguageProvider>,
   )
   await userEvent.click(screen.getByRole('button', { name: 'Préférences' }))
   expect(ouvrir).toHaveBeenCalledTimes(1)

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Value } from '../../domain/engine'
+import { useT } from '../../i18n/LanguageContext'
 import { cx } from '../../ui/cx'
 import styles from './EditableCell.module.css'
 import type { Saisie } from './modifications'
@@ -30,6 +31,7 @@ type EditableCellProps = {
  * modification **retenue**, ce qui est l'affaire de l'écran, pas d'un champ.
  */
 export function EditableCell({ valeur, retenue, onValider, onAbandonner }: EditableCellProps) {
+  const t = useT()
   // La saisie part de ce qui est **retenu** s'il y a déjà une modification, de l'origine sinon :
   // rouvrir une cellule déjà modifiée doit montrer ce qu'on y a mis.
   const depart =
@@ -59,7 +61,7 @@ export function EditableCell({ valeur, retenue, onValider, onAbandonner }: Edita
       <input
         ref={champ}
         className={styles.champ}
-        aria-label="Nouvelle valeur"
+        aria-label={t('tableView.editableCell.newValue')}
         value={nul ? 'NULL' : texte}
         readOnly={nul}
         autoCapitalize="off"

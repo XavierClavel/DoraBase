@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { useT } from '../../i18n/LanguageContext'
 import { Badge } from '../../ui/Badge/Badge'
 import { CollapsiblePanel } from '../../ui/CollapsiblePanel/CollapsiblePanel'
 import { Field } from '../../ui/Field/Field'
@@ -35,23 +36,6 @@ type TunnelPanelProps = {
 }
 
 /**
- * Les deux sortes de proxy : `05d` les modélise, `06g` ouvre la seconde.
- *
- * Cloud SQL **n'est pas dans le handoff** : ce libellé, comme le champ de son visage, est
- * inventé ici : Cloud SQL n'était pas maquetté, et attend un passage de design.
- */
-const TYPES = [
-  { value: 'ssh', label: 'SSH' },
-  { value: 'cloud-sql', label: 'Cloud SQL' },
-] as const
-
-/** Ce que le badge annonce pour chaque sorte. */
-const BADGES: Record<ProxyKind, string> = {
-  ssh: 'SSH activé',
-  'cloud-sql': 'Cloud SQL activé',
-}
-
-/**
  * Le bloc « Proxy / tunnel » de `A2`, dans l'un ou l'autre de ses deux visages.
  *
  * Le panneau existe toujours ; c'est la **présence d'un proxy** qui change. Sans proxy, les
@@ -74,11 +58,29 @@ export function TunnelPanel({
   onOpenChange,
   onBrowseKey,
 }: TunnelPanelProps) {
+  const t = useT()
   const aideId = useId()
 
   // Le proxy affiché : celui du tunnel s'il existe **et** s'il est de la sorte choisie, un proxy
   // vide sinon. Le second cas couvre le panneau sans tunnel, où les champs sont là mais vides.
   const proxy: ProxyDraft = tunnel && tunnel.proxy.kind === kind ? tunnel.proxy : emptyProxy(kind)
+
+  /**
+   * Les deux sortes de proxy : `05d` les modélise, `06g` ouvre la seconde.
+   *
+   * Cloud SQL **n'est pas dans le handoff** : ce libellé, comme le champ de son visage, est
+   * inventé ici : Cloud SQL n'était pas maquetté, et attend un passage de design.
+   */
+  const types = [
+    { value: 'ssh', label: t('newConnection.tunnel.types.ssh') },
+    { value: 'cloud-sql', label: t('newConnection.tunnel.types.cloudSql') },
+  ] as const
+
+  /** Ce que le badge annonce pour chaque sorte. */
+  const badges: Record<ProxyKind, string> = {
+    ssh: t('newConnection.tunnel.badges.ssh'),
+    'cloud-sql': t('newConnection.tunnel.badges.cloudSql'),
+  }
 
   async function parcourir(
     ouvrir: () => Promise<string | null>,
@@ -92,17 +94,17 @@ export function TunnelPanel({
   return (
     <div className={styles.tunnelBlock}>
       <CollapsiblePanel
-        title="Proxy / tunnel"
+        title={t('newConnection.tunnel.panelTitle')}
         icon="shield"
-        badge={tunnel ? <Badge tone="violet">{BADGES[tunnel.proxy.kind]}</Badge> : undefined}
+        badge={tunnel ? <Badge tone="violet">{badges[tunnel.proxy.kind]}</Badge> : undefined}
         open={open}
         onOpenChange={onOpenChange}
       >
         <div className={styles.tunnelGrid}>
           <Select
-            label="Type"
+            label={t('newConnection.tunnel.typeLabel')}
             size="sm"
-            options={TYPES}
+            options={types}
             value={kind}
             onValueChange={onKindChange}
           />
@@ -110,14 +112,14 @@ export function TunnelPanel({
           {proxy.kind === 'ssh' ? (
             <>
               <Field
-                label="Hôte du bastion"
+                label={t('newConnection.tunnel.bastionHostLabel')}
                 size="sm"
                 mono
                 value={proxy.bastionHost}
                 onChange={(event) => onProxyChange({ ...proxy, bastionHost: event.target.value })}
               />
               <Field
-                label="Port"
+                label={t('newConnection.tunnel.portLabel')}
                 size="sm"
                 mono
                 inputMode="numeric"
@@ -125,7 +127,7 @@ export function TunnelPanel({
                 onChange={(event) => onProxyChange({ ...proxy, bastionPort: event.target.value })}
               />
               <Field
-                label="Utilisateur"
+                label={t('newConnection.tunnel.usernameLabel')}
                 size="sm"
                 mono
                 value={proxy.username}
@@ -136,11 +138,11 @@ export function TunnelPanel({
             // L'instance prend les trois colonnes restantes : un nom de connexion
             // `projet:région:instance` est long, et le couper sur `1fr` le rendrait illisible.
             <Field
-              label="Instance"
+              label={t('newConnection.tunnel.instanceLabel')}
               size="sm"
               mono
               className={styles.tunnelInstance}
-              placeholder="projet:région:instance"
+              placeholder={t('newConnection.tunnel.instancePlaceholder')}
               value={proxy.instanceConnectionName}
               onChange={(event) =>
                 onProxyChange({ ...proxy, instanceConnectionName: event.target.value })
@@ -151,7 +153,7 @@ export function TunnelPanel({
           <div className={styles.tunnelKeyRow}>
             {proxy.kind === 'ssh' ? (
               <Field
-                label="Clé privée"
+                label={t('newConnection.tunnel.privateKeyLabel')}
                 size="sm"
                 mono
                 value={proxy.privateKeyPath}
@@ -166,7 +168,7 @@ export function TunnelPanel({
                       parcourir(onBrowseKey, (chemin) => ({ ...proxy, privateKeyPath: chemin }))
                     }
                   >
-                    Parcourir…
+                    {t('newConnection.tunnel.browse')}
                   </button>
                 }
               />
@@ -189,9 +191,9 @@ export function TunnelPanel({
               // passe. Sans la seconde, une connexion IAM se remplit comme une autre et
               // n'apprend qu'à l'échec, sur « IAM user authentication failed ».
               <p id={aideId} className={styles.tunnelHint}>
-                Authentification IAM, par les identifiants par défaut de l'application — installés
-                par <code>gcloud auth application-default login</code>. L'utilisateur est un
-                principal IAM (une adresse) ; le mot de passe n'est pas utilisé.
+                {t('newConnection.tunnel.cloudSqlAuthPrefix')}{' '}
+                <code>gcloud auth application-default login</code>
+                {t('newConnection.tunnel.cloudSqlAuthSuffix')}
               </p>
             )}
           </div>

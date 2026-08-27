@@ -1,5 +1,6 @@
 import { Icon } from '../../design/icons/Icon'
 import type { RowWindow } from '../../domain/engine'
+import { useT } from '../../i18n/LanguageContext'
 import { MiseAJour } from '../../shell/MiseAJour/MiseAJour'
 import { cx } from '../../ui/cx'
 import { formatInteger } from '../../ui/format'
@@ -42,41 +43,49 @@ export function TableStatusBar({
   pendingChanges = 0,
   editing = false,
 }: TableStatusBarProps) {
+  const t = useT()
   // **La barre du mode édition dit autre chose**, et le mockup le montre : « 3 modifications en
   // attente · 0 envoyée · transaction non ouverte ». Le compte de lignes lu n'est plus l'information
   // qui compte quand quelque chose attend d'être écrit.
   if (pendingChanges > 0) {
     return (
-      <div className={cx(styles.root, styles.edition)} role="status" aria-label="État de la table">
+      <div
+        className={cx(styles.root, styles.edition)}
+        role="status"
+        aria-label={t('tableView.statusBar.ariaLabel')}
+      >
         <span className={styles.attente}>
-          {pendingChanges} modification{pendingChanges > 1 ? 's' : ''} en attente
+          {t('tableView.statusBar.pendingCount', { count: pendingChanges })}
         </span>
         <span>·</span>
         {/* « 0 envoyée » est **vrai et important** : c'est la promesse que rien n'est parti. Elle
             restera à zéro jusqu'à `11d`, qui écrit. */}
-        <span>0 envoyée</span>
+        <span>{t('tableView.statusBar.zeroSent')}</span>
         <span>·</span>
-        <span>transaction non ouverte</span>
+        <span>{t('tableView.statusBar.noTransaction')}</span>
         <span className={styles.espace} />
         <MiseAJour />
-        <span>⌘E quitte l’édition</span>
+        <span>{t('tableView.statusBar.exitEditing')}</span>
       </div>
     )
   }
 
   return (
-    <div className={styles.root} role="status" aria-label="État de la table">
+    <div className={styles.root} role="status" aria-label={t('tableView.statusBar.ariaLabel')}>
       {error ? (
         // Le message complet vit dans la grille, là où l'utilisateur cherche ses lignes ; la barre
         // ne porte que le verdict. L'écrire aux deux endroits ferait lire deux fois la même
         // phrase, et allongerait une barre de 26 px.
-        <span className={styles.echec}>lecture impossible</span>
+        <span className={styles.echec}>{t('tableView.statusBar.readFailed')}</span>
       ) : loading ? (
-        <span>Lecture…</span>
+        <span>{t('tableView.statusBar.loading')}</span>
       ) : fenetre ? (
         <>
           <span className={styles.compte}>
-            {formatInteger(fenetre.rows.length)} ligne{fenetre.rows.length > 1 ? 's' : ''}
+            {t('tableView.statusBar.rowCount', {
+              count: fenetre.rows.length,
+              formatted: formatInteger(fenetre.rows.length),
+            })}
           </span>
           <span>·</span>
           <span>{fenetre.durationMs} ms</span>
@@ -84,7 +93,7 @@ export function TableStatusBar({
           <span>limit {fenetre.rows.length === 0 ? '—' : limiteLue(fenetre.sql)}</span>
         </>
       ) : (
-        <span>Aucune lecture</span>
+        <span>{t('tableView.statusBar.noRead')}</span>
       )}
       <span className={styles.espace} />
       <MiseAJour />
@@ -93,7 +102,7 @@ export function TableStatusBar({
           bascule, donc il revient. */}
       <span className={styles.lecture}>
         <Icon name={editing ? 'pencil' : 'lock'} size={11} strokeWidth={2.2} />
-        {editing ? 'édition — aucune modification' : 'lecture seule — ⌘E pour éditer'}
+        {editing ? t('tableView.statusBar.editingNoChange') : t('tableView.statusBar.readOnlyHint')}
       </span>
     </div>
   )

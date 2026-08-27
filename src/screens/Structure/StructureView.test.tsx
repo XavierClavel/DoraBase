@@ -1,7 +1,9 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactElement } from 'react'
 import { describe, expect, it } from 'vitest'
 import type { ColumnInfo, TableDetail } from '../../domain/engine'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { momentDuDeclencheur, resumeDIndex, StructureView } from './StructureView'
 
 function colonne(partiel: Partial<ColumnInfo>): ColumnInfo {
@@ -73,16 +75,20 @@ function vide(partiel: Partial<TableDetail> = {}): TableDetail {
   return { ...DETAIL, indexes: [], constraints: [], triggers: [], ...partiel }
 }
 
+function monter(ui: ReactElement) {
+  return render(<LanguageProvider preferences={{ language: 'fr' }}>{ui}</LanguageProvider>)
+}
+
 describe('StructureView', () => {
   it('affiche les trois comptes de l’introspection', () => {
-    render(<StructureView detail={DETAIL} schema="public" />)
+    monter(<StructureView detail={DETAIL} schema="public" />)
     expect(screen.getByText('4 colonnes')).toBeInTheDocument()
     expect(screen.getByText('2 index')).toBeInTheDocument()
     expect(screen.getByText('1 contrainte')).toBeInTheDocument()
   })
 
   it('nomme l’identité d’une clé primaire, que le catalogue laisse sans défaut', () => {
-    render(<StructureView detail={DETAIL} schema="public" />)
+    monter(<StructureView detail={DETAIL} schema="public" />)
     const tableau = screen.getByRole('table', { name: /Colonnes de public\.orders/ })
     const ligne = within(tableau).getByText('id').closest('tr') as HTMLElement
     // Sans le champ `identity` de `06c`, cette cellule dirait « — » et se lirait comme une colonne
@@ -91,20 +97,20 @@ describe('StructureView', () => {
   })
 
   it('donne la cible d’une clé étrangère, et la marque comme déduite', () => {
-    render(<StructureView detail={DETAIL} schema="public" />)
+    monter(<StructureView detail={DETAIL} schema="public" />)
     const cible = screen.getByText('→ users.id')
     expect(cible).toHaveAttribute('title', 'déduit du catalogue par DoraBase')
   })
 
   it('nomme la clé pour les lecteurs d’écran, que l’icône seule ne dit pas', () => {
-    render(<StructureView detail={DETAIL} schema="public" />)
+    monter(<StructureView detail={DETAIL} schema="public" />)
     expect(screen.getByText('clé primaire')).toBeInTheDocument()
     expect(screen.getByText('clé étrangère')).toBeInTheDocument()
   })
 
   it('filtre sur le type autant que sur le nom', async () => {
     const utilisateur = userEvent.setup()
-    render(<StructureView detail={DETAIL} schema="public" />)
+    monter(<StructureView detail={DETAIL} schema="public" />)
     const champ = screen.getByRole('textbox', { name: /Filtrer les colonnes/ })
 
     await utilisateur.type(champ, 'timestamptz')
@@ -117,7 +123,7 @@ describe('StructureView', () => {
   })
 
   it('résume les index, et l’unicité se lit — pas seulement se colore', () => {
-    render(<StructureView detail={DETAIL} schema="public" />)
+    monter(<StructureView detail={DETAIL} schema="public" />)
     // L'unicité empêche des écritures : la coder par la seule teinte d'une icône la rendrait
     // invisible à la voix, et discutable à l'œil.
     expect(screen.getByText('unique btree(id)')).toBeInTheDocument()
@@ -125,7 +131,7 @@ describe('StructureView', () => {
   })
 
   it('dit ses vides plutôt que d’effacer ses sections', () => {
-    render(<StructureView detail={vide()} schema="public" />)
+    monter(<StructureView detail={vide()} schema="public" />)
     // Une section absente se lit comme une donnée non chargée — le doute exact que le défaut de
     // `06d` a produit.
     expect(screen.getByText('Aucun index.')).toBeInTheDocument()
@@ -135,10 +141,10 @@ describe('StructureView', () => {
   })
 
   it('distingue une lecture en cours d’une absence de table', () => {
-    const { unmount } = render(<StructureView detail={null} schema="public" loading />)
+    const { unmount } = monter(<StructureView detail={null} schema="public" loading />)
     expect(screen.getByText('Lecture de la structure…')).toBeInTheDocument()
     unmount()
-    render(<StructureView detail={null} schema="public" />)
+    monter(<StructureView detail={null} schema="public" />)
     expect(screen.getByText('Ouvrez une table pour en voir la structure.')).toBeInTheDocument()
   })
 })

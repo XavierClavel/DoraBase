@@ -1,3 +1,5 @@
+import type { useT } from '../../i18n/LanguageContext'
+
 /**
  * Le modèle de l'arbre JSON dépliable de `13b`, en fonctions **pures**.
  *
@@ -7,6 +9,26 @@
  * Isolé du rendu pour la raison habituelle du projet : le dépliage, le repli et la reconnaissance
  * des types se testent sans DOM.
  */
+
+type Traduire = ReturnType<typeof useT>
+
+/**
+ * Le repli de `resume`, en français — même arbitrage que `arbre.ts` et `modifications.ts` : `t`
+ * est optionnel pour que `noeudsJson.test.ts` n'ait pas à en passer un, seul `ArbreJson` (qui a
+ * la vraie traduction) le fait.
+ */
+const traduireEnFrancais: Traduire = (cle, parametres = {}) => {
+  switch (cle) {
+    case 'console.arbreJson.resumeTableau':
+      return `[ ${parametres.enfants} ]`
+    case 'console.arbreJson.resumeObjet': {
+      const enfants = Number(parametres.enfants)
+      return `{ ${enfants} champ${enfants > 1 ? 's' : ''} }`
+    }
+    default:
+      return cle
+  }
+}
 
 /** Ce qu'un nœud de l'arbre porte. */
 export type Noeud = {
@@ -177,9 +199,9 @@ export function basculer(ouverts: ReadonlySet<string>, chemin: string): Set<stri
  * **Le compte, et non un aperçu des valeurs.** Un aperçu tronqué de trois champs se lirait comme le
  * contenu entier — et pour savoir combien il en reste, il faudrait déplier.
  */
-export function resume(noeud: Noeud): string {
+export function resume(noeud: Noeud, t: Traduire = traduireEnFrancais): string {
   if (!noeud.depliable) return ''
   return noeud.genre === 'tableau'
-    ? `[ ${noeud.enfants} ]`
-    : `{ ${noeud.enfants} champ${noeud.enfants > 1 ? 's' : ''} }`
+    ? t('console.arbreJson.resumeTableau', { enfants: noeud.enfants })
+    : t('console.arbreJson.resumeObjet', { enfants: noeud.enfants })
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { checkUpdate, installUpdate } from '../../data/commandes'
 import type { AvailableUpdate } from '../../domain/maj'
+import { useT } from '../../i18n/LanguageContext'
 import { Button } from '../../ui/Button/Button'
 import { Popover } from '../../ui/Popover/Popover'
 import styles from './MiseAJour.module.css'
@@ -73,6 +74,7 @@ type MiseAJourProps = {
  * que le redémarrage suivant aurait trouvée de toute façon.
  */
 export function MiseAJour({ chercher = checkUpdate, installer = installUpdate }: MiseAJourProps) {
+  const t = useT()
   const [disponible, setDisponible] = useState<AvailableUpdate | null>(null)
   const [enCours, setEnCours] = useState(false)
   const [echec, setEchec] = useState<string | null>(null)
@@ -102,7 +104,7 @@ export function MiseAJour({ chercher = checkUpdate, installer = installUpdate }:
       await installer()
       // Atteint seulement si l'installation a échoué sans lever — le succès remplace le
       // processus. Le dire ainsi plutôt que de laisser le bouton tourner indéfiniment.
-      setEchec("l'installation n'a pas abouti")
+      setEchec(t('shell.miseAJour.installFailed'))
     } catch (erreur) {
       setEchec(erreur instanceof Error ? erreur.message : String(erreur))
     }
@@ -111,7 +113,7 @@ export function MiseAJour({ chercher = checkUpdate, installer = installUpdate }:
 
   return (
     <Popover
-      title={`Version ${disponible.version}`}
+      title={t('shell.miseAJour.popoverTitle', { version: disponible.version })}
       align="end"
       // **Vers le haut, et c'est le correctif du 26 août 2026.** Le déclencheur vit dans la barre
       // d'état, donc dans les 26 derniers pixels de la fenêtre : ouvert vers le bas, le panneau
@@ -126,20 +128,18 @@ export function MiseAJour({ chercher = checkUpdate, installer = installUpdate }:
           {disponible.notes ? (
             <p className={styles.notes}>{disponible.notes}</p>
           ) : (
-            <p className={styles.notes}>Cette version n'a pas de notes.</p>
+            <p className={styles.notes}>{t('shell.miseAJour.noNotes')}</p>
           )}
           {echec !== null && <p className={styles.echec}>{echec}</p>}
           <Button size="sm" onClick={lancer} disabled={enCours}>
-            {enCours ? 'Téléchargement…' : 'Installer et redémarrer'}
+            {enCours ? t('shell.miseAJour.installing') : t('shell.miseAJour.install')}
           </Button>
-          <p className={styles.avertissement}>
-            DoraBase se relance seul. Les consoles non enregistrées ne sont pas conservées.
-          </p>
+          <p className={styles.avertissement}>{t('shell.miseAJour.warning')}</p>
         </div>
       }
     >
       <button type="button" className={styles.declencheur}>
-        {disponible.version} disponible
+        {t('shell.miseAJour.trigger', { version: disponible.version })}
       </button>
     </Popover>
   )

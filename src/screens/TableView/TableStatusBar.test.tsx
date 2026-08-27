@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { RowWindow } from '../../domain/engine'
+import { LanguageProvider } from '../../i18n/LanguageContext'
 import { TableStatusBar } from './TableStatusBar'
 
 function fenetre(over: Partial<RowWindow> = {}): RowWindow {
@@ -19,7 +20,9 @@ function monter(props: Partial<Parameters<typeof TableStatusBar>[0]> = {}) {
   render(
     <>
       <Sprite />
-      <TableStatusBar fenetre={fenetre()} loading={false} error={null} {...props} />
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <TableStatusBar fenetre={fenetre()} loading={false} error={null} {...props} />
+      </LanguageProvider>
     </>,
   )
   return screen.getByRole('status', { name: 'État de la table' })

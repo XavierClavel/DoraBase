@@ -1,5 +1,6 @@
 import { Icon } from '../../design/icons/Icon'
 import type { Value } from '../../domain/engine'
+import { useT } from '../../i18n/LanguageContext'
 import { Badge } from '../../ui/Badge/Badge'
 import { cx } from '../../ui/cx'
 import type { EnAttente, Modification, Saisie } from './modifications'
@@ -77,6 +78,7 @@ export function PendingPanel({
   onCopierLePatch,
   onEcarterLePatch,
 }: PendingPanelProps) {
+  const t = useT()
   // **Deux états pour un panneau** : ce qui attend d'être écrit, et ce qui vient de l'être. Le
   // second n'a ni carte ni SQL à venir — seulement de quoi défaire.
   const apresEcriture = attente.length === 0 && patchInverse !== null
@@ -85,15 +87,17 @@ export function PendingPanel({
     // ignoré**, et Biome a raison de le signaler — le même piège qu'en `08c` avec le port local et
     // qu'en `09c` avec le point d'état. L'élément sémantique porte le rôle `complementary`, ce que ce
     // panneau est : un complément de la grille.
-    <aside className={styles.root} aria-label="Modifications en attente de la table">
+    <aside className={styles.root} aria-label={t('tableView.pendingPanel.ariaLabel')}>
       <header className={styles.entete}>
         <Icon name="pencil" size={13} strokeWidth={2.1} className={styles.icone} />
         <h2 className={styles.titre}>
-          {apresEcriture ? 'Écriture appliquée' : 'Modifications en attente'}
+          {apresEcriture
+            ? t('tableView.pendingPanel.writtenTitle')
+            : t('tableView.pendingPanel.pendingTitle')}
         </h2>
         {apresEcriture ? (
           <Badge tone="success" size="xs">
-            fait
+            {t('tableView.pendingPanel.done')}
           </Badge>
         ) : (
           <Badge tone="warn" size="xs">
@@ -115,11 +119,15 @@ export function PendingPanel({
                   {/* **Pas de clé à montrer** : celle de la base n'existe pas encore, et en inventer
                       une ferait croire à une ligne déjà écrite. Le numéro d'ordre suffit à désigner
                       celle dont on parle. */}
-                  <span className={styles.position}>nouvelle ligne {modification.rang}</span>
+                  <span className={styles.position}>
+                    {t('tableView.pendingPanel.newRow', { rang: modification.rang })}
+                  </span>
                   <button
                     type="button"
                     className={styles.retirer}
-                    aria-label={`Retirer la nouvelle ligne ${modification.rang}`}
+                    aria-label={t('tableView.pendingPanel.removeNewRow', {
+                      rang: modification.rang,
+                    })}
                     onClick={() => onRetirer(modification.cle, '')}
                   >
                     <Icon name="x" size={11} strokeWidth={2.4} />
@@ -138,7 +146,7 @@ export function PendingPanel({
                   {Object.keys(modification.valeurs).length === 0 && (
                     <li className={styles.valeur}>
                       <span className={styles.vide}>
-                        aucune valeur saisie — la base appliquera ses défauts
+                        {t('tableView.pendingPanel.noValueEntered')}
                       </span>
                     </li>
                   )}
@@ -148,18 +156,23 @@ export function PendingPanel({
               <li key={modification.cle} className={styles.carte}>
                 <div className={styles.carteEntete}>
                   <span className={styles.position}>
-                    ligne {modification.rang} · {modification.cle}
+                    {t('tableView.pendingPanel.rowPosition', {
+                      rang: modification.rang,
+                      cle: modification.cle,
+                    })}
                   </span>
                   <button
                     type="button"
                     className={styles.retirer}
-                    aria-label={`Annuler la suppression de la ligne ${modification.rang}`}
+                    aria-label={t('tableView.pendingPanel.cancelDeletion', {
+                      rang: modification.rang,
+                    })}
                     onClick={() => onRetirer(modification.cle, '')}
                   >
                     <Icon name="x" size={11} strokeWidth={2.4} />
                   </button>
                 </div>
-                <p className={styles.vide}>sera supprimée</p>
+                <p className={styles.vide}>{t('tableView.pendingPanel.willBeDeleted')}</p>
               </li>
             ) : (
               <li key={`${modification.cle}::${modification.column}`} className={styles.carte}>
@@ -167,12 +180,17 @@ export function PendingPanel({
                   {/* Le rang **et** la clé : le rang situe la ligne à l'écran, la clé l'identifie
                       quand un tri l'aura déplacée (`11a`). */}
                   <span className={styles.position}>
-                    ligne {modification.rang} · {modification.cle}
+                    {t('tableView.pendingPanel.rowPosition', {
+                      rang: modification.rang,
+                      cle: modification.cle,
+                    })}
                   </span>
                   <button
                     type="button"
                     className={styles.retirer}
-                    aria-label={`Retirer la modification de ${modification.column}`}
+                    aria-label={t('tableView.pendingPanel.removeCellChange', {
+                      column: modification.column,
+                    })}
                     onClick={() => onRetirer(modification.cle, modification.column)}
                   >
                     <Icon name="x" size={11} strokeWidth={2.4} />
@@ -192,11 +210,11 @@ export function PendingPanel({
         {!apresEcriture && (
           <section className={styles.bloc}>
             <div className={styles.blocEntete}>
-              <span className={styles.blocTitre}>SQL qui sera exécuté</span>
+              <span className={styles.blocTitre}>{t('tableView.pendingPanel.sqlToRun')}</span>
               {onCopierLeSQL && sql !== null && (
                 <button type="button" className={styles.copier} onClick={onCopierLeSQL}>
                   <Icon name="copy" size={11} strokeWidth={2} />
-                  Copier
+                  {t('tableView.pendingPanel.copy')}
                 </button>
               )}
             </div>
@@ -207,7 +225,7 @@ export function PendingPanel({
             ) : sql === null ? (
               // **Pas de SQL fabriqué en attendant.** Un texte plausible affiché sous ce titre serait
               // pire qu'une absence : c'est le dernier endroit où l'on vérifie avant d'écrire.
-              <p className={styles.absent}>Le moteur prépare la requête…</p>
+              <p className={styles.absent}>{t('tableView.pendingPanel.preparingQuery')}</p>
             ) : (
               <SqlColore texte={sql} />
             )}
@@ -226,18 +244,16 @@ export function PendingPanel({
           // rien annoncer.
           <section className={styles.bloc}>
             <div className={styles.blocEntete}>
-              <span className={styles.blocTitre}>SQL qui annule cette écriture</span>
+              <span className={styles.blocTitre}>{t('tableView.pendingPanel.undoSql')}</span>
               {onCopierLePatch && (
                 <button type="button" className={styles.copier} onClick={onCopierLePatch}>
                   <Icon name="copy" size={11} strokeWidth={2} />
-                  Copier
+                  {t('tableView.pendingPanel.copy')}
                 </button>
               )}
             </div>
             <SqlColore texte={patchInverse} />
-            <p className={styles.rappelPatch}>
-              Disponible tant que cet onglet est ouvert. DoraBase ne l’a pas enregistré.
-            </p>
+            <p className={styles.rappelPatch}>{t('tableView.pendingPanel.undoSqlNote')}</p>
           </section>
         )}
 
@@ -253,8 +269,9 @@ export function PendingPanel({
                 pas : `A10` en fera une préférence, et l'annoncer avant serait une promesse fausse.
                 C'est le panneau qui dit ce qu'il en est vraiment, sous le patch lui-même. */}
             <span>
-              Cette base est en <strong>production</strong>. DoraBase demande une confirmation avant
-              d’écrire, et affiche ensuite le SQL qui annule l’écriture.
+              {t('tableView.pendingPanel.productionPrefix')}
+              <strong>{t('tableView.pendingPanel.productionWord')}</strong>
+              {t('tableView.pendingPanel.productionSuffix')}
             </span>
           </p>
         )}
@@ -266,7 +283,7 @@ export function PendingPanel({
           // Rien à annuler ni à appliquer : l'écriture a eu lieu. Le seul geste restant est
           // d'écarter le rapport pour revenir à la lecture.
           <button type="button" className={styles.annuler} onClick={onEcarterLePatch}>
-            Fermer
+            {t('tableView.pendingPanel.close')}
           </button>
         ) : (
           <>
@@ -278,7 +295,7 @@ export function PendingPanel({
               onClick={onToutAnnuler}
               disabled={enCours}
             >
-              Tout annuler
+              {t('tableView.pendingPanel.cancelAll')}
             </button>
             <button
               type="button"
@@ -287,12 +304,12 @@ export function PendingPanel({
               disabled={onAppliquer === undefined || enCours}
               title={
                 onAppliquer === undefined
-                  ? 'L’écriture dans la base n’est pas encore branchée : rien ne peut partir.'
+                  ? t('tableView.pendingPanel.applyDisabledReason')
                   : undefined
               }
             >
               <Icon name="check" size={12} strokeWidth={2.6} />
-              {enCours ? 'Écriture…' : 'Appliquer'}
+              {enCours ? t('tableView.pendingPanel.writing') : t('tableView.pendingPanel.apply')}
               <span className={styles.raccourci}>⌘↩</span>
             </button>
           </>

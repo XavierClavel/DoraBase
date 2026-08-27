@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type { ColumnInfo, Filter, RowLimit, SortKey } from '../../domain/engine'
+import { useT } from '../../i18n/LanguageContext'
 import { Chip } from '../../ui/Chip/Chip'
 import { Popover } from '../../ui/Popover/Popover'
 import { Tooltip } from '../../ui/Tooltip/Tooltip'
@@ -111,6 +112,7 @@ export function Toolbar({
   onAjouterUneLigne,
   enCours = false,
 }: ToolbarProps) {
+  const t = useT()
   const rang = PALIERS.indexOf(limite)
   const visibles = columns.length - masquees.size
   const chips = useDefilementHorizontal()
@@ -119,7 +121,7 @@ export function Toolbar({
     // `role="toolbar"` : un groupe de commandes qui agissent sur la même chose, et le motif ARIA
     // le dit. Il donne aussi un nom à la barre — sans quoi « Rafraîchir » ici et « Rafraîchir »
     // dans le pied de la sidebar s'annonceraient à l'identique.
-    <div className={styles.root} role="toolbar" aria-label="Outils de la table">
+    <div className={styles.root} role="toolbar" aria-label={t('tableView.toolbar.ariaLabel')}>
       {/* **`aria-busy` autant que l'animation** : la rotation ne dit rien à un lecteur d'écran, et
           `prefers-reduced-motion` la retire entièrement. L'état, lui, doit rester lisible dans les
           deux cas. */}
@@ -129,7 +131,7 @@ export function Toolbar({
         onClick={onRefresh}
         disabled={enCours}
         aria-busy={enCours}
-        aria-label="Rafraîchir"
+        aria-label={t('tableView.toolbar.refresh')}
       >
         <Icon
           name="refresh"
@@ -149,7 +151,7 @@ export function Toolbar({
           <button
             type="button"
             className={styles.fleche}
-            aria-label="Augmenter la limite"
+            aria-label={t('tableView.toolbar.increaseLimit')}
             disabled={rang >= PALIERS.length - 1}
             onClick={() => {
               const suivant = PALIERS[rang + 1]
@@ -161,7 +163,7 @@ export function Toolbar({
           <button
             type="button"
             className={styles.fleche}
-            aria-label="Réduire la limite"
+            aria-label={t('tableView.toolbar.decreaseLimit')}
             disabled={rang <= 0}
             onClick={() => {
               const precedent = PALIERS[rang - 1]
@@ -181,7 +183,7 @@ export function Toolbar({
           type="button"
           className={styles.carre}
           onClick={onAjouterUneLigne}
-          aria-label="Ajouter une ligne"
+          aria-label={t('tableView.toolbar.addRow')}
         >
           <Icon name="plus" size={14} strokeWidth={2.1} />
         </button>
@@ -201,7 +203,7 @@ export function Toolbar({
             variant="accent"
             icon={<Icon name="filter" size={13} strokeWidth={1.9} />}
             onRemove={() => onRemoveFilter(filtre.column)}
-            removeLabel={`Retirer le filtre sur ${filtre.column}`}
+            removeLabel={t('tableView.toolbar.removeFilter', { column: filtre.column })}
           >
             {libelleDeFiltre(filtre)}
           </Chip>
@@ -224,23 +226,19 @@ export function Toolbar({
           pas ce qu'on croit qu'on ouvre ce panneau. */}
       <Popover
         align="end"
-        title="SQL exécuté"
-        content={
-          <pre className={styles.sql}>
-            {sql ?? 'Aucune requête n’a encore abouti pour cette table.'}
-          </pre>
-        }
+        title={t('tableView.toolbar.sqlExecuted')}
+        content={<pre className={styles.sql}>{sql ?? t('tableView.toolbar.noSqlYet')}</pre>}
       >
         <button type="button" className={styles.bouton}>
           <Icon name="code" size={13} strokeWidth={1.9} />
-          Voir le SQL
+          {t('tableView.toolbar.viewSql')}
           <Icon name="chevd" size={11} strokeWidth={2.4} />
         </button>
       </Popover>
 
       <Popover
         align="end"
-        title="Colonnes affichées"
+        title={t('tableView.toolbar.columnsShown')}
         content={
           <ul className={styles.colonnes}>
             {columns.map((colonne) => (
@@ -259,7 +257,11 @@ export function Toolbar({
           </ul>
         }
       >
-        <button type="button" className={styles.bouton} aria-label="Colonnes affichées">
+        <button
+          type="button"
+          className={styles.bouton}
+          aria-label={t('tableView.toolbar.columnsShown')}
+        >
           <Icon name="cols" size={13} strokeWidth={1.9} />
           {visibles}/{columns.length}
         </button>
@@ -269,8 +271,13 @@ export function Toolbar({
           la fenêtre ou le résultat complet, l'encodage, le séparateur, le traitement des `NULL` —
           sur 1,9 million de lignes, l'écriture doit être en flux, donc côté Rust. Désactivé avec
           l'infobulle qui nomme sa spec, comme les quatre actions de `09f`. */}
-      <Tooltip label="Viendra avec la spec d’export">
-        <button type="button" className={styles.carre} aria-disabled="true" aria-label="Exporter">
+      <Tooltip label={t('tableView.toolbar.exportTooltip')}>
+        <button
+          type="button"
+          className={styles.carre}
+          aria-disabled="true"
+          aria-label={t('tableView.toolbar.export')}
+        >
           <Icon name="dl" size={14} strokeWidth={1.9} />
         </button>
       </Tooltip>
