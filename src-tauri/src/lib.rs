@@ -3,9 +3,13 @@
 // seraient du code mort aux yeux de clippy — et masquer cet avertissement plutôt que
 // déclarer l'intention aurait caché de vraies régressions plus tard.
 pub mod config;
+pub mod dump;
 pub mod engine;
 pub mod maj;
+pub mod menu;
 pub mod secrets;
+
+use tauri::Emitter;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -19,10 +23,29 @@ pub fn run() {
         // dans `capabilities/default.json`. C'est `maj::check_update` et `maj::install_update`
         // qui les remplacent — voir l'en-tête de `maj/mod.rs`.
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Remplace le menu par défaut de macOS. Le remplacement reconstruit le menu
+        // applicatif et le menu Édition à l'identique — sinon ⌘C / ⌘V meurent dans toute
+        // la webview — et ajoute « Fichier » avec les deux entrées de dump. Voir
+        // `menu::build`.
+        .menu(menu::build::construire)
+        // Le pont du menu natif vers React. `MenuEvent` ne porte que l'identifiant de
+        // l'item : c'est donc lui, et rien d'autre, qui traverse. Le journal est la seule
+        // vérification possible du pont — Playwright ne pilote pas WKWebView, et un menu
+        // natif ne se clique pas depuis un test.
+        .on_menu_event(|app, evenement| {
+            let identifiant = evenement.id().0.as_str();
+            log::info!("menu → {identifiant}");
+            if let Err(erreur) = app.emit(menu::EVENEMENT, identifiant) {
+                log::error!("menu → {identifiant} : réémission impossible ({erreur})");
+            }
+        })
         .manage(config::ConfigState::new())
         // Le registre des connexions ouvertes (`09b`) : une base ouverte le reste, et le
         // recréer à chaque commande rouvrirait un tunnel SSH par requête.
         .manage(engine::registry::ConnectionRegistry::new())
+        // Les annulations d'export en cours (`22b`) : `start_export` et `cancel_export` sont
+        // deux commandes distinctes, donc le jeton doit survivre entre les deux.
+        .manage(dump::commands::DumpState::new())
         .invoke_handler(tauri::generate_handler![
             config::commands::load_config,
             config::commands::save_config,
@@ -56,7 +79,12 @@ pub fn run() {
             engine::commands::apply_changes,
             engine::commands::run_sql,
             maj::check_update,
-            maj::install_update
+            maj::install_update,
+            dump::commands::dump_availability,
+            dump::commands::start_export,
+            dump::commands::cancel_export,
+            dump::commands::inspect_dump,
+            dump::commands::start_import
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

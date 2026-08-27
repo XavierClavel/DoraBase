@@ -1,0 +1,552 @@
+//! Les commandes IPC de l'export et de l'import d'un dump.
+//!
+//! **Aucune ne rend le contenu du dump.** Le `stdout` du fils va dans le fichier ; la
+//! webview ne reçoit que des octets comptés et un verdict. C'est la contrainte transverse
+//! du projet sur l'IPC, et ici elle est respectée par construction.
+//!
+//! Comme celles de `05b` et `09b`, ces commandes sont **définies par l'app** et donc hors
+//! du système d'ACL de Tauri : aucune entrée à ajouter dans `capabilities/default.json`.
+//! Ce que `22b` y ajoute, c'est `dialog:allow-save` — la permission du **sélecteur de
+//! fichier**, appelé depuis le front, pas celle de ces commandes.
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+use serde::{Deserialize, Serialize};
+use tauri::{Emitter, Manager};
+use tokio::sync::Mutex;
+use ts_rs::TS;
+
+use super::discover::{analyser_version, decouvrir};
+use super::postgres::PostgresDumpTool;
+use super::run::{exporter, importer, Annulation, DumpError};
+use super::{Cible, DumpAvailability, Version};
+use crate::config::{ConnectionSettings, Engine};
+use crate::engine::commands::DatabaseKey;
+use crate::engine::registry::{cle, ConnectionRegistry, ConnectionState};
+use crate::secrets::Secret;
+
+/// L'événement de progression, en **octets écrits**. Sans total ni pourcentage : la taille
+/// finale d'un `pg_dump --format=plain` est inconnaissable avant la fin.
+pub const EVENEMENT_PROGRESSION: &str = "dump://progression";
+
+/// Ce qu'un échec de dump dit au front.
+///
+/// **`kind` en plus du message** : la modale doit pouvoir traiter « tronqué » et « annulé »
+/// autrement qu'un échec quelconque, et reconnaître un cas en cherchant un mot dans une
+/// phrase française serait un couplage au libellé.
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "dump.ts")]
+pub struct DumpFailure {
+    pub kind: String,
+    pub message: String,
+}
+
+impl DumpFailure {
+    fn locale(message: impl Into<String>) -> Self {
+        Self {
+            kind: "locale".into(),
+            message: message.into(),
+        }
+    }
+}
+
+impl From<DumpError> for DumpFailure {
+    fn from(erreur: DumpError) -> Self {
+        let kind = match &erreur {
+            DumpError::Annule => "annule",
+            DumpError::Lancement { .. } => "lancement",
+            DumpError::Fichier { .. } => "fichier",
+            DumpError::Echec { .. } => "echec",
+            DumpError::Tronque => "tronque",
+        };
+        Self {
+            kind: kind.into(),
+            message: erreur.to_string(),
+        }
+    }
+}
+
+/// Les annulations en cours, une par base.
+///
+/// Rangée dans l'état Tauri, comme le registre de `09b` : `cancel_export` et `start_export`
+/// sont deux commandes distinctes, donc le jeton doit survivre entre les deux.
+#[derive(Default)]
+pub struct DumpState {
+    en_cours: Mutex<HashMap<String, Annulation>>,
+}
+
+impl DumpState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    async fn armer(&self, identite: &str) -> Annulation {
+        let annulation = Annulation::nouvelle();
+        self.en_cours
+            .lock()
+            .await
+            .insert(identite.to_owned(), annulation.clone());
+        annulation
+    }
+
+    async fn desarmer(&self, identite: &str) {
+        self.en_cours.lock().await.remove(identite);
+    }
+
+    async fn annuler(&self, identite: &str) -> bool {
+        match self.en_cours.lock().await.get(identite) {
+            Some(annulation) => {
+                annulation.annuler();
+                true
+            }
+            None => false,
+        }
+    }
+}
+
+/// La requête d'export ou d'import, telle que le front la fournit.
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "dump.ts")]
+pub struct DumpRequest {
+    pub key: DatabaseKey,
+    pub variant: ConnectionSettings,
+    pub engine: Engine,
+    /// Le chemin choisi dans le sélecteur natif — destination à l'export, source à l'import.
+    pub file: String,
+}
+
+/// Où se connecter, et quelle version de serveur juger.
+///
+/// **Le cas tunnelé est le seul qui exige que la base soit ouverte.** Le tunnel de `06e` ne
+/// vit que tant que la connexion est dans le registre de `09b`, et son port local vient de
+/// `connection_states` : sans base ouverte, il n'y a aucun port où envoyer `pg_dump`. Le
+/// dire est tout l'objet de cette fonction — une erreur réseau brute (« connection
+/// refused ») ferait chercher une panne là où il suffit d'ouvrir la base.
+pub async fn cible_et_version(
+    registre: &ConnectionRegistry,
+    key: &DatabaseKey,
+    variante: &ConnectionSettings,
+    secret: Option<&Secret>,
+) -> Result<(Cible, Version), DumpFailure> {
+    let identite = cle(&key.project, &key.database, &key.environment);
+    let etat = registre.etat(&identite).await;
+
+    let base = variante.default_database.clone();
+    let utilisateur = variante.username.clone();
+
+    match (&etat, variante.tunnel.is_some()) {
+        // Ouverte, tunnelée : l'hôte et le port sont ceux du **tunnel**, jamais ceux de la
+        // variante — celle-ci porte l'adresse de la base vue depuis le bastion.
+        (
+            ConnectionState::Connected {
+                server_version,
+                tunnel_local_port,
+            },
+            true,
+        ) => {
+            let port = tunnel_local_port.ok_or_else(|| {
+                DumpFailure::locale(
+                    "la connexion est ouverte mais sans port de tunnel : refermer puis \
+                     ouvrir la base",
+                )
+            })?;
+            Ok((
+                Cible {
+                    hote: "127.0.0.1".into(),
+                    port,
+                    base,
+                    utilisateur,
+                },
+                version_de(server_version)?,
+            ))
+        }
+        // Ouverte, directe : les réglages de la variante suffisent, et la version est déjà
+        // connue — inutile de sonder une deuxième fois.
+        (ConnectionState::Connected { server_version, .. }, false) => Ok((
+            Cible {
+                hote: variante.host.clone(),
+                port: variante.port,
+                base,
+                utilisateur,
+            },
+            version_de(server_version)?,
+        )),
+        // Fermée, tunnelée : refus explicite, **avant** de lancer quoi que ce soit.
+        (_, true) => Err(DumpFailure::locale(format!(
+            "la base « {} » passe par un tunnel SSH : il faut l'ouvrir dans l'arbre avant \
+             d'exporter ou d'importer, le tunnel ne vit que tant qu'elle est ouverte",
+            key.database
+        ))),
+        // Fermée, directe : la version du serveur manque, donc on la demande. C'est le seul
+        // aller-retour réseau de cette fonction, et il évite d'exiger une base ouverte là
+        // où les réglages suffisent.
+        (_, false) => {
+            let adaptateur = crate::engine::postgres::PostgresAdapter::connect(variante, secret)
+                .await
+                .map_err(|erreur| DumpFailure::locale(erreur.message))?;
+            let sonde = {
+                use crate::engine::EngineAdapter;
+                let sonde = adaptateur.probe().await;
+                adaptateur.close().await;
+                sonde.map_err(|erreur| DumpFailure::locale(erreur.message))?
+            };
+            Ok((
+                Cible {
+                    hote: variante.host.clone(),
+                    port: variante.port,
+                    base,
+                    utilisateur,
+                },
+                version_de(&sonde.server_version)?,
+            ))
+        }
+    }
+}
+
+fn version_de(annonce: &str) -> Result<Version, DumpFailure> {
+    analyser_version(annonce).ok_or_else(|| {
+        DumpFailure::locale(format!(
+            "version de serveur illisible dans « {annonce} » : impossible de juger la \
+             version de l'outil"
+        ))
+    })
+}
+
+/// Le verdict de disponibilité, pour l'export ou pour l'import.
+///
+/// **L'entrée de menu reste active dans les cinq cas.** Un item de menu natif désactivé ne
+/// peut pas être cliqué : le motif serait inatteignable. C'est cette commande, et la modale
+/// qui l'affiche, qui délivrent le verdict.
+#[tauri::command]
+pub async fn dump_availability(
+    request: DumpRequest,
+    import: bool,
+    app: tauri::AppHandle,
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<DumpAvailability, DumpFailure> {
+    log::info!(
+        "dump_availability ← {} ({}) {}",
+        request.key.database,
+        if import { "import" } else { "export" },
+        request.variant.host
+    );
+
+    // Le verdict de moteur passe **avant** tout accès réseau : un BigQuery n'a pas d'outil
+    // local, et le sonder pour l'apprendre serait absurde.
+    if let Some(verdict) = DumpAvailability::pour_moteur(request.engine) {
+        log::info!("dump_availability → {verdict:?}");
+        return Ok(verdict);
+    }
+
+    let secret = relire_le_secret(&app, &request.variant)?;
+    let (_cible, version) =
+        cible_et_version(&registry, &request.key, &request.variant, secret.as_ref()).await?;
+
+    let outil = PostgresDumpTool;
+    let binaire = if import {
+        <PostgresDumpTool as super::DumpTool>::binaire_import(&outil)
+    } else {
+        <PostgresDumpTool as super::DumpTool>::binaire_export(&outil)
+    };
+    let verdict = decouvrir(binaire, version);
+    log::info!("dump_availability → {verdict:?}");
+    Ok(verdict)
+}
+
+/// Lance l'export et **attend** sa fin. La progression part par événement.
+#[tauri::command]
+pub async fn start_export(
+    request: DumpRequest,
+    app: tauri::AppHandle,
+    registry: tauri::State<'_, ConnectionRegistry>,
+    dumps: tauri::State<'_, DumpState>,
+) -> Result<u64, DumpFailure> {
+    let identite = cle(
+        &request.key.project,
+        &request.key.database,
+        &request.key.environment,
+    );
+    let fichier = PathBuf::from(&request.file);
+    log::info!("start_export ← {identite} vers {}", fichier.display());
+
+    let secret = relire_le_secret(&app, &request.variant)?;
+    let (cible, version) =
+        cible_et_version(&registry, &request.key, &request.variant, secret.as_ref()).await?;
+
+    let outil = PostgresDumpTool;
+    let binaire = match decouvrir("pg_dump", version) {
+        DumpAvailability::Ready { tool, .. } => tool,
+        // Le verdict est déjà affiché par la modale ; y arriver ici veut dire que l'outil a
+        // disparu entre le verdict et le clic.
+        autre => {
+            return Err(DumpFailure::locale(format!(
+                "pg_dump n'est plus disponible : {autre:?}"
+            )))
+        }
+    };
+
+    let annulation = dumps.armer(&identite).await;
+    let vers_la_webview = app.clone();
+    let issue = exporter(
+        &outil,
+        &binaire,
+        &cible,
+        secret.as_ref(),
+        &fichier,
+        move |octets| {
+            // L'échec d'un événement de progression n'a pas à emporter le dump.
+            let _ = vers_la_webview.emit(EVENEMENT_PROGRESSION, octets);
+        },
+        &annulation,
+    )
+    .await;
+    dumps.desarmer(&identite).await;
+
+    match issue {
+        Ok(octets) => {
+            log::info!("start_export → {octets} octets écrits");
+            Ok(octets)
+        }
+        Err(erreur) => {
+            log::info!("start_export → échec : {erreur}");
+            Err(erreur.into())
+        }
+    }
+}
+
+/// Demande l'annulation de l'export en cours sur cette base.
+///
+/// Rend `false` quand il n'y avait rien à annuler — un état normal, pas une erreur : la
+/// modale a pu se fermer entre la fin du dump et le clic.
+#[tauri::command]
+pub async fn cancel_export(
+    key: DatabaseKey,
+    dumps: tauri::State<'_, DumpState>,
+) -> Result<bool, DumpFailure> {
+    let identite = cle(&key.project, &key.database, &key.environment);
+    let annule = dumps.annuler(&identite).await;
+    log::info!("cancel_export ← {identite} : {annule}");
+    Ok(annule)
+}
+
+/// Rejoue un dump vers la base cible. Voir `22c` pour le garde-fou qui précède.
+#[tauri::command]
+pub async fn start_import(
+    request: DumpRequest,
+    app: tauri::AppHandle,
+    registry: tauri::State<'_, ConnectionRegistry>,
+    dumps: tauri::State<'_, DumpState>,
+) -> Result<(), DumpFailure> {
+    let identite = cle(
+        &request.key.project,
+        &request.key.database,
+        &request.key.environment,
+    );
+    let fichier = PathBuf::from(&request.file);
+    log::info!("start_import ← {identite} depuis {}", fichier.display());
+
+    // **`readOnly` refuse avant toute autre étape** : avant la découverte du binaire, avant
+    // l'inspection du fichier, avant la modale : une variante en lecture seule ne doit
+    // même pas voir la question posée.
+    refuser_si_lecture_seule(&request.variant)?;
+
+    let secret = relire_le_secret(&app, &request.variant)?;
+    let (cible, version) =
+        cible_et_version(&registry, &request.key, &request.variant, secret.as_ref()).await?;
+
+    // L'inspection du fichier vient avant `psql`, et c'est tout l'objet de `22c` : un dump
+    // tronqué s'importe sinon partiellement, en silence, avec `exit=0`.
+    super::inspect::exiger_importable(&fichier, version)?;
+
+    let binaire = match decouvrir("psql", version) {
+        DumpAvailability::Ready { tool, .. } => tool,
+        autre => {
+            return Err(DumpFailure::locale(format!(
+                "psql n'est plus disponible : {autre:?}"
+            )))
+        }
+    };
+
+    let annulation = dumps.armer(&identite).await;
+    let issue = importer(
+        &PostgresDumpTool,
+        &binaire,
+        &cible,
+        secret.as_ref(),
+        &fichier,
+        &annulation,
+    )
+    .await;
+    dumps.desarmer(&identite).await;
+
+    match issue {
+        Ok(()) => {
+            log::info!("start_import → import terminé");
+            Ok(())
+        }
+        Err(erreur) => {
+            log::info!("start_import → échec : {erreur}");
+            Err(erreur.into())
+        }
+    }
+}
+
+/// Ce que l'inspection d'un fichier dit au front, avant toute confirmation.
+#[tauri::command]
+pub async fn inspect_dump(
+    file: String,
+    request: DumpRequest,
+    app: tauri::AppHandle,
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<super::inspect::Inspection, DumpFailure> {
+    refuser_si_lecture_seule(&request.variant)?;
+    let secret = relire_le_secret(&app, &request.variant)?;
+    let (_cible, version) =
+        cible_et_version(&registry, &request.key, &request.variant, secret.as_ref()).await?;
+    let inspection = super::inspect::inspecter(std::path::Path::new(&file), version);
+    log::info!("inspect_dump → {inspection:?}");
+    Ok(inspection)
+}
+
+/// Le refus de `readOnly`, avec **où** se change le réglage.
+fn refuser_si_lecture_seule(variante: &ConnectionSettings) -> Result<(), DumpFailure> {
+    if variante.read_only {
+        return Err(DumpFailure {
+            kind: "lectureSeule".into(),
+            message: "cette variante est en lecture seule : l'import écrirait dans la base. \
+                      Le réglage se change dans A2, « Lecture seule »."
+                .into(),
+        });
+    }
+    Ok(())
+}
+
+/// Relit le mot de passe depuis le magasin, comme `open_database`.
+///
+/// **Le mot de passe se relit, il ne se redemande pas** : la variante ne porte qu'une
+/// `SecretRef` (`08e`). `Ok(None)` est un état normal — une base sans mot de passe.
+fn relire_le_secret(
+    app: &tauri::AppHandle,
+    variante: &ConnectionSettings,
+) -> Result<Option<Secret>, DumpFailure> {
+    let Some(reference) = &variante.password else {
+        return Ok(None);
+    };
+
+    let repertoire = app.path().app_config_dir().map_err(|e| {
+        DumpFailure::locale(format!("répertoire de configuration introuvable : {e}"))
+    })?;
+    let magasin = crate::secrets::selectionner(&repertoire)
+        .map_err(|e| DumpFailure::locale(format!("magasin de secrets indisponible : {e}")))?;
+    magasin
+        .store
+        .retrieve(reference)
+        .map_err(|e| DumpFailure::locale(format!("le mot de passe n'a pas pu être relu : {e}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{Proxy, ProxySsh, SslMode, Tunnel};
+
+    fn variante_tunnelee_fermee() -> ConnectionSettings {
+        ConnectionSettings {
+            // L'adresse de la base **vue depuis le bastion** : injoignable d'ici, ce qui est
+            // le propre d'une variante tunnelée.
+            host: "db.interne".into(),
+            port: 5432,
+            default_database: "commandes".into(),
+            username: "dorabase".into(),
+            password: None,
+            ssl_mode: SslMode::Disable,
+            ca_certificate: None,
+            auth_database: None,
+            read_only: false,
+            reconnect_on_startup: false,
+            tunnel: Some(Tunnel {
+                local_port: None,
+                // Depuis `05d`, ce qui varie entre les sortes de proxy est une énumération
+                // à données : un bastion SSH ne peut plus porter un nom d'instance Cloud SQL.
+                proxy: Proxy::Ssh(ProxySsh {
+                    bastion_host: "bastion.interne".into(),
+                    bastion_port: 22,
+                    username: "jump".into(),
+                    private_key_path: "/dev/null".into(),
+                }),
+            }),
+        }
+    }
+
+    fn cle_de_test() -> DatabaseKey {
+        DatabaseKey {
+            project: "Boutique".into(),
+            database: "commandes".into(),
+            environment: "staging".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn un_export_sur_connexion_tunnelee_fermee_dit_d_ouvrir_la_base() {
+        // Le tunnel ne vit que tant que la connexion est ouverte dans le registre de `09b` :
+        // sans base ouverte, il n'y a aucun port local où envoyer `pg_dump`.
+        let registre = ConnectionRegistry::new();
+        let erreur = cible_et_version(&registre, &cle_de_test(), &variante_tunnelee_fermee(), None)
+            .await
+            .expect_err("une variante tunnelée fermée ne peut pas être exportée");
+
+        assert!(
+            erreur.message.contains("ouvrir"),
+            "message inutilisable : {}",
+            erreur.message
+        );
+        // Ce qui distingue ce refus d'une panne : aucune erreur réseau brute, parce que rien
+        // n'a été tenté.
+        assert!(
+            !erreur.message.contains("connection refused"),
+            "erreur réseau brute : {}",
+            erreur.message
+        );
+        assert!(erreur.message.contains("tunnel"), "{}", erreur.message);
+    }
+
+    #[tokio::test]
+    async fn une_variante_en_lecture_seule_refuse_avant_tout_le_reste() {
+        // Avant la découverte du binaire, avant l'inspection, avant la modale.
+        let mut variante = variante_tunnelee_fermee();
+        variante.read_only = true;
+        let erreur = refuser_si_lecture_seule(&variante).expect_err("refus attendu");
+
+        assert_eq!(erreur.kind, "lectureSeule");
+        assert!(
+            erreur.message.contains("lecture seule"),
+            "{}",
+            erreur.message
+        );
+        assert!(
+            erreur.message.contains("A2"),
+            "le message ne dit pas où changer le réglage : {}",
+            erreur.message
+        );
+    }
+
+    #[test]
+    fn un_echec_de_dump_garde_son_espece() {
+        // La modale traite « tronqué » et « annulé » autrement qu'un échec quelconque, et
+        // reconnaître un cas en cherchant un mot dans une phrase serait un couplage au
+        // libellé.
+        assert_eq!(DumpFailure::from(DumpError::Tronque).kind, "tronque");
+        assert_eq!(DumpFailure::from(DumpError::Annule).kind, "annule");
+        assert_eq!(
+            DumpFailure::from(DumpError::Echec {
+                binaire: "pg_dump".into(),
+                code: Some(1),
+                stderr: "erreur".into()
+            })
+            .kind,
+            "echec"
+        );
+    }
+}
