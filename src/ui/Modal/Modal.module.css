@@ -75,6 +75,14 @@
   background: transparent;
 }
 
+/* `A10` (28 août 2026) : une modale à onglets, où l'en-tête n'a qu'un titre à porter — la bande
+ * de sections vit dans le corps, en dessous. Resserrée plutôt que de reprendre les 44px pensés
+ * pour l'en-tête plus chargé de `A2`. */
+.headerCompact {
+  height: 36px;
+  padding: 0 var(--space-6);
+}
+
 .badge {
   display: flex;
   align-items: center;
@@ -170,6 +178,12 @@
   padding: var(--space-5) var(--space-7);
   border-top: 1px solid var(--divider);
   background: var(--field);
+}
+
+/* `A10` (28 août 2026) : même raison que `.headerCompact`, appliquée au pied. */
+.footerCompact {
+  min-height: 47px;
+  padding: var(--space-4) var(--space-6);
 }
 
 .shellNested .footer {

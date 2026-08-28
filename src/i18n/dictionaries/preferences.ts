@@ -8,10 +8,8 @@ export const preferencesFr: Dictionnaire = {
     general: 'Général',
     apparence: 'Apparence',
     grille: 'Grille de données',
-    editeur: 'Éditeur SQL',
     connexions: 'Connexions',
     securite: 'Sécurité & écriture',
-    raccourcis: 'Raccourcis',
     maj: 'Mises à jour',
   },
   footer: {
@@ -61,17 +59,9 @@ export const preferencesFr: Dictionnaire = {
     policeNote:
       'La famille reste JetBrains Mono, embarquée avec l’application. Le corps s’applique à la grille, à l’éditeur et aux blocs SQL.',
   },
-  editeur: {
-    aVenir:
-      'Le dialecte de coloration, la taille de l’indentation, et le formateur — qui demande d’abord de choisir une dépendance.',
-  },
   connexions: {
     aVenir:
       'Le délai d’attente, la reconnexion automatique, et le chemin du fichier de clés SSH par défaut.',
-  },
-  raccourcis: {
-    aVenir:
-      'La table des raccourcis, et leur réassignation. Ceux du produit sont pour l’instant figés — ils sont affichés à côté de chaque action.',
   },
   securite: {
     titre: 'Garde-fous',
@@ -133,10 +123,8 @@ export const preferencesEn: Dictionnaire = {
     general: 'General',
     apparence: 'Appearance',
     grille: 'Data grid',
-    editeur: 'SQL editor',
     connexions: 'Connections',
     securite: 'Security & writes',
-    raccourcis: 'Shortcuts',
     maj: 'Updates',
   },
   footer: {
@@ -186,16 +174,8 @@ export const preferencesEn: Dictionnaire = {
     policeNote:
       'The family stays JetBrains Mono, bundled with the application. The size applies to the grid, the editor, and SQL blocks.',
   },
-  editeur: {
-    aVenir:
-      'The syntax highlighting dialect, indentation size, and the formatter — which first requires picking a dependency.',
-  },
   connexions: {
     aVenir: 'The timeout, automatic reconnection, and the default SSH key file path.',
-  },
-  raccourcis: {
-    aVenir:
-      'The shortcut table, and reassigning them. The product’s shortcuts are fixed for now — they’re shown next to each action.',
   },
   securite: {
     titre: 'Guardrails',
