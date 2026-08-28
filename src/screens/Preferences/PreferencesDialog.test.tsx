@@ -45,9 +45,9 @@ function allerA(nom: string) {
 }
 
 describe('la coquille (`15a`)', () => {
-  it('liste les sept sections du mockup, plus les mises à jour, et affiche la version', () => {
+  it('liste les cinq sections du mockup, plus les mises à jour, et affiche la version', () => {
     monter()
-    expect(screen.getAllByRole('tab')).toHaveLength(8)
+    expect(screen.getAllByRole('tab')).toHaveLength(6)
     expect(screen.getByText('DoraBase 0.4.2 (arm64)')).toBeInTheDocument()
   })
 
@@ -60,7 +60,7 @@ describe('la coquille (`15a`)', () => {
 
   it('les sections sans contenu disent ce qu’elles porteront', async () => {
     monter()
-    for (const nom of ['Général', 'Éditeur SQL', 'Connexions', 'Raccourcis']) {
+    for (const nom of ['Général', 'Connexions']) {
       await allerA(nom)
       // **Ni cachées ni vides** : cacher ferait croire à une interface plus pauvre qu'elle ne sera,
       // laisser vide ferait croire à un défaut. La règle de `09f`, appliquée à une section.

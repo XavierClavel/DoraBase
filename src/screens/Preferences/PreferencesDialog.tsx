@@ -41,23 +41,21 @@ type PreferencesDialogProps = {
   installerMiseAJour?: () => Promise<void>
 }
 
-/** Les sept sections du mockup, dans son ordre, plus « Mises à jour » (26 août 2026). */
-type Section =
-  | 'general'
-  | 'apparence'
-  | 'grille'
-  | 'editeur'
-  | 'connexions'
-  | 'securite'
-  | 'raccourcis'
-  | 'maj'
+/**
+ * Les sections du mockup, dans son ordre, plus « Mises à jour » (26 août 2026).
+ *
+ * **« Éditeur SQL » et « Raccourcis » ont été retirées le 28 août 2026** : deux sections qui ne
+ * portaient qu'une phrase « à venir », et sans date à laquelle ce contenu arrive. Elles
+ * reviendront quand il y aura quelque chose à y régler.
+ */
+type Section = 'general' | 'apparence' | 'grille' | 'connexions' | 'securite' | 'maj'
 
 /**
  * L'écran de préférences de `A10` (`15a` → `15d`).
  *
- * **Trois des sept sections n'ont rien à régler**, et elles le disent. Les cacher ferait croire à
- * une interface plus pauvre qu'elle ne sera ; les laisser vides ferait croire à un défaut. C'est la
- * règle de `09f`, appliquée à une section plutôt qu'à un bouton.
+ * **Deux des sections restantes n'ont rien à régler**, et elles le disent. Les cacher ferait
+ * croire à une interface plus pauvre qu'elle ne sera ; les laisser vides ferait croire à un
+ * défaut. C'est la règle de `09f`, appliquée à une section plutôt qu'à un bouton.
  */
 export function PreferencesDialog({
   preferences,
@@ -73,11 +71,9 @@ export function PreferencesDialog({
     { cle: 'general', nom: t('preferences.sections.general'), icone: 'gear' },
     { cle: 'apparence', nom: t('preferences.sections.apparence'), icone: 'paint' },
     { cle: 'grille', nom: t('preferences.sections.grille'), icone: 'cols' },
-    { cle: 'editeur', nom: t('preferences.sections.editeur'), icone: 'code' },
     { cle: 'connexions', nom: t('preferences.sections.connexions'), icone: 'srv' },
     { cle: 'securite', nom: t('preferences.sections.securite'), icone: 'shield' },
-    { cle: 'raccourcis', nom: t('preferences.sections.raccourcis'), icone: 'kbd' },
-    // **En dernier, et après les sept du mockup.** Ce n'est pas un réglage : rien ne s'y règle, on y
+    // **En dernier, et après les cinq du mockup.** Ce n'est pas un réglage : rien ne s'y règle, on y
     // demande et on y installe. La placer parmi les sections de préférences la ferait chercher parmi
     // les cases à cocher, et la version que la sidebar affiche déjà juste en dessous en est le
     // voisinage naturel.
@@ -98,6 +94,7 @@ export function PreferencesDialog({
       title={t('preferences.title')}
       icon="gear"
       onClose={onClose}
+      compact
       className={styles.modale}
       footer={
         <div className={styles.pied}>
@@ -114,12 +111,12 @@ export function PreferencesDialog({
       }
     >
       <div className={styles.corps}>
-        {/* `role="tablist"` : sept panneaux dont un seul est visible, ce qui est exactement ce que
+        {/* `role="tablist"` : six panneaux dont un seul est visible, ce qui est exactement ce que
             les onglets ARIA décrivent.
             **Les flèches sont écrites à la main, et il fallait qu'elles le soient.** Un rôle ARIA ne
             fournit aucun comportement : il *annonce* une convention, et c'est au code de la tenir.
             Un `tablist` sans navigation aux flèches est un mensonge à la voix — un lecteur d'écran
-            annonce « onglet 1 sur 7 » et les flèches ne font rien. Un commentaire de ce fichier
+            annonce « onglet 1 sur 6 » et les flèches ne font rien. Un commentaire de ce fichier
             affirmait le contraire ; c'est le test Playwright qui l'a démenti. */}
         <div
           className={styles.sections}
@@ -159,7 +156,7 @@ export function PreferencesDialog({
               data-section={entree.cle}
               aria-selected={section === entree.cle}
               // **Un seul onglet dans l'ordre de tabulation**, l'actif : c'est la convention ARIA,
-              // et sans elle sept tabulations séparent la liste du panneau.
+              // et sans elle six tabulations séparent la liste du panneau.
               tabIndex={section === entree.cle ? 0 : -1}
               className={section === entree.cle ? styles.sectionActive : styles.section}
               onClick={() => setSection(entree.cle)}
@@ -182,22 +179,10 @@ export function PreferencesDialog({
             <MisesAJour chercher={chercherMiseAJour} installer={installerMiseAJour} />
           )}
           {section === 'general' && <General preferences={preferences} onRegler={regler} />}
-          {section === 'editeur' && (
-            <AVenir
-              titre={t('preferences.sections.editeur')}
-              porte={t('preferences.editeur.aVenir')}
-            />
-          )}
           {section === 'connexions' && (
             <AVenir
               titre={t('preferences.sections.connexions')}
               porte={t('preferences.connexions.aVenir')}
-            />
-          )}
-          {section === 'raccourcis' && (
-            <AVenir
-              titre={t('preferences.sections.raccourcis')}
-              porte={t('preferences.raccourcis.aVenir')}
             />
           )}
         </div>
