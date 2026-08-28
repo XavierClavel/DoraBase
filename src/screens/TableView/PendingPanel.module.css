@@ -9,6 +9,14 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* `min-width: 0` : sans lui, ce panneau est un item de la rangée flex d'`ColonneDroite`
+     (`.corps`) qui refuse de descendre sous la largeur minimale de son contenu — ici le pied
+     (`.pied`, boutons « Tout annuler »/« Appliquer ⌘⏎ » + cible) et l'en-tête du bloc SQL
+     (`.blocEntete`, titre + « Copier »). La fenêtre de mesure faisait 338 px pour un panneau
+     réglé à 296, débordant de 42 px hors de la colonne — le SQL et les boutons du pied coupés à
+     l'écran. Même défaut, même remède que la grille de `A5` (voir le commentaire de `.root` dans
+     `TableView.module.css`). */
+  min-width: 0;
   height: 100%;
   background: var(--paper);
   border-left: 1px solid var(--divider);
