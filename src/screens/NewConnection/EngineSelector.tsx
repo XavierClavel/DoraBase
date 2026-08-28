@@ -21,8 +21,12 @@ export function EngineSelector({ value, onValueChange }: EngineSelectorProps) {
       label,
       // La couleur est celle du moteur quand le bouton est inactif ; `RadioGroup` la remplace par
       // du blanc translucide quand il est actif, comme le mockup le fait passer `Pg` de
-      // `#31648F` à `opacity:.85` sur fond accent — repris ici pour l'icône comme pour le
-      // monogramme, `Icon` traçant en `currentColor`.
+      // `#31648F` à `opacity:.85` sur fond accent — pour le monogramme (Redis, Snowflake,
+      // BigQuery), qui trace en `currentColor`. **Les quatre logos officiels ne le suivent plus**
+      // (28 août 2026) : ils portent leur propre `fill` dans `sprite.svg`, donc `color` ici ne
+      // change rien pour `pg`/`mongo`/`mysql`/`sqlite` — laissé quand même, il ne coûte rien et
+      // évite un branchement conditionnel pour deux moteurs de plus le jour où ils perdent leur
+      // icône dessinée.
       prefix: icon ? (
         <span style={{ color }}>
           <Icon name={icon} size={15} strokeWidth={1.9} />
