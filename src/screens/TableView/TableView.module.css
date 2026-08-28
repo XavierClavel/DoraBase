@@ -87,8 +87,16 @@
   border: none;
   border-radius: var(--radius-badge);
   background: none;
-  color: var(--ink-4);
+  color: var(--ink-2);
   cursor: pointer;
+}
+
+/* `--ink-4` se lisait à peine sur `--hover-row` (fond à 5 % d'encre) : deux icônes à 11px, déjà
+   fines, à 40 % d'opacité. Repris sur le motif de `SidebarToolbar` — `--ink-2` au repos, `--ink`
+   au survol du bouton lui-même. */
+.supprimerLigne:hover,
+.editerDocument:hover {
+  color: var(--ink);
 }
 
 .gouttiereWrap:hover .actions,
