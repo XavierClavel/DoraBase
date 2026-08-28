@@ -28,6 +28,15 @@ type ModalProps = {
    * `A3` en a besoin ; `A2` non.
    */
   nested?: boolean
+  /**
+   * Resserre le remplissage vertical de l'en-tête et du pied (28 août 2026, `A10`).
+   *
+   * `A2` et `A3` gardent leurs 44/57px : c'est `A10` qui en a demandé moins, une modale à
+   * onglets où l'en-tête et le pied sont du chrome pur, sans rien à lire. Un prop plutôt qu'une
+   * classe passée par `className` : l'en-tête et le pied ne sont pas exposés à l'appelant, ils
+   * vivent entièrement dans ce composant.
+   */
+  compact?: boolean
   className?: string
   children: ReactNode
 }
@@ -91,6 +100,7 @@ export function Modal({
   contexte,
   footer,
   nested = false,
+  compact = false,
   className,
   children,
 }: ModalProps) {
@@ -208,7 +218,7 @@ export function Modal({
         tabIndex={-1}
         className={cx(styles.shell, nested && styles.shellNested, className)}
       >
-        <div className={styles.header}>
+        <div className={cx(styles.header, compact && styles.headerCompact)}>
           <span className={cx(styles.badge, nested && styles.badgeNested)}>
             <Icon name={icon} size={nested ? 17 : 15} strokeWidth={1.9} />
           </span>
@@ -232,7 +242,10 @@ export function Modal({
         </div>
 
         {footer && (
-          <div className={styles.footer} data-testid="modal-footer">
+          <div
+            className={cx(styles.footer, compact && styles.footerCompact)}
+            data-testid="modal-footer"
+          >
             {footer}
           </div>
         )}
