@@ -13,12 +13,14 @@ genre de panne que ce projet refuse — une vérification qui ne peut pas échou
 Lancé par `scripts/verifier-tout.sh`.
 """
 
+import re
 import sys
 from pathlib import Path
 
 WORKFLOWS = Path(__file__).resolve().parent.parent / ".github" / "workflows"
 CI = WORKFLOWS / "ci.yml"
 PUBLICATION = WORKFLOWS / "publication.yml"
+RACINE = Path(__file__).resolve().parent.parent
 
 
 def noms_de_jobs_dupliques(chemin: Path) -> list[str]:
@@ -113,6 +115,33 @@ def verifier_ci() -> None:
     build = etapes_de(jobs, "build", 25, "ci.yml")
     etapes_de(jobs, "engine", 11, "ci.yml")
     e2e = etapes_de(jobs, "e2e", 6, "ci.yml")
+    windows = etapes_de(jobs, "windows", 13, "ci.yml")
+
+    # **Le job Windows doit rester sur Windows, et compiler.**
+    #
+    # Sa raison d'être est d'attraper ce que ni macOS ni Linux ne voient : `std::os::unix` sans
+    # garde compile parfaitement sur les deux. Déplacé sur un autre runner, il deviendrait un
+    # doublon coûteux du job Linux ; privé de `cargo test` ou de `tauri build`, il ne dirait plus
+    # que « ça compile », ce que `clippy` dit déjà.
+    if "windows" not in str(jobs["windows"].get("runs-on", "")):
+        print("ci.yml : le job « windows » a quitté un runner Windows — il ne verrait plus les "
+              "API propres à unix, qui compilent sur macOS comme sur Linux", file=sys.stderr)
+        raise SystemExit(1)
+
+    commandes_windows = commandes_de(windows)
+    for fragment, raison in (
+        ("pnpm proxy:embarquer",
+         "toute commande cargo échouerait sur l'`externalBin` absent (défaut n° 111)"),
+        ("verifier-conf-windows.py",
+         "le recouvrement de configuration pourrait perdre la fenêtre en silence"),
+        ("cargo clippy", "les avertissements propres à Windows repasseraient"),
+        ("cargo test", "clippy compile les tests sans les exécuter"),
+        ("tauri build", "rien ne dirait que le bundle NSIS se fabrique"),
+    ):
+        if fragment not in commandes_windows:
+            print(f"ci.yml : le job « windows » a perdu « {fragment} » — {raison}",
+                  file=sys.stderr)
+            raise SystemExit(1)
 
     # **Une exécution par commit.** `on: [push, pull_request]` faisait tourner toute la CI deux
     # fois sur chaque branche ayant une PR : deux verdicts identiques, à la seconde près. Le
@@ -258,9 +287,90 @@ def verifier_publication() -> None:
     print(f"publication.yml cohérent — {len(jobs)} job, tag ancré, release publiée")
 
 
+def verifier_playwright() -> None:
+    """Que les captures de fidélité soient **comparées**, et non réécrites.
+
+    Le gabarit de chemin par défaut de Playwright est
+    `…/{arg}{-projectName}{-snapshotSuffix}{ext}`. Depuis l'ajout des deux projets (`macos` et
+    `windows`, 31 août 2026), ce `{-projectName}` suffit à renommer les références : Playwright
+    a cherché `a1-accueil-macos-darwin.png`, ne l'a pas trouvé, et l'a **écrit**. Les cinq tests
+    de fidélité sont passés au vert en ne comparant rien — mesuré au premier lancement.
+
+    C'est le même piège que le runner Linux, déjà gardé plus haut, atteint par un autre chemin :
+    et il est pire, parce qu'il se déclenche sur le **bon** système. D'où ce contrôle, qui porte
+    sur le mécanisme plutôt que sur ses symptômes.
+    """
+    chemin = RACINE / "playwright.config.ts"
+    source = chemin.read_text()
+
+    if "snapshotPathTemplate" not in source:
+        print(
+            "playwright.config.ts : `snapshotPathTemplate` n'est plus déclaré.\n"
+            "  Le gabarit par défaut insère `{-projectName}` : les cinq références seraient\n"
+            "  réécrites sous un nouveau nom au lieu d'être comparées, et la suite serait verte\n"
+            "  sans rien mesurer.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+    # Le nom du projet ne doit pas entrer dans le chemin : un seul projet prend des captures, et
+    # le suffixe qui distingue quelque chose est celui de la plateforme.
+    ligne = next(
+        (l for l in source.splitlines() if "{testFileName}-snapshots" in l),
+        "",
+    )
+    if "{-projectName}" in ligne:
+        print(
+            "playwright.config.ts : le gabarit des captures contient `{-projectName}`.\n"
+            "  Les références sur disque n'en portent pas (a1-accueil-darwin.png) : elles\n"
+            "  seraient donc réécrites au lieu d'être comparées.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+    if "{-snapshotSuffix}" not in ligne:
+        print(
+            "playwright.config.ts : le gabarit des captures a perdu `{-snapshotSuffix}`.\n"
+            "  C'est lui qui porte `-darwin` : sans lui, une exécution sur un autre système\n"
+            "  écraserait les références de macOS.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+    # Les captures ne doivent porter aucun nom de projet.
+    #
+    # **`endswith("-darwin.png")` ne suffisait pas**, et le sabotage l'a montré :
+    # `a1-accueil-macos-darwin.png` finit lui aussi par `-darwin.png`. Le nom du projet s'insère
+    # *avant* le suffixe de plateforme, jamais après — c'est donc lui qu'il faut chercher, et il
+    # est lu dans la configuration plutôt qu'écrit ici, pour qu'un troisième projet soit couvert
+    # sans qu'on y pense.
+    projets = re.findall(r"^\s*name: '([a-z0-9-]+)',", source, re.MULTILINE)
+    references = sorted((RACINE / "e2e").glob("*-snapshots/*.png"))
+
+    intruses = [
+        r.name
+        for r in references
+        if not r.name.endswith("-darwin.png")
+        or any(f"-{projet}-" in r.name for projet in projets)
+    ]
+    if intruses:
+        print(
+            f"e2e : {len(intruses)} référence(s) hors convention : {intruses}\n"
+            f"  (projets déclarés : {projets})\n"
+            "  Une référence portant un nom de projet est le signe que Playwright en a écrit de\n"
+            "  nouvelles au lieu de comparer les anciennes — donc que les tests de fidélité sont\n"
+            "  verts sans rien mesurer. Retirez-la et rétablissez `snapshotPathTemplate`.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+    print(f"playwright.config.ts cohérent — {len(references)} référence(s), toutes en `-darwin.png`")
+
+
 def main() -> int:
     verifier_ci()
     verifier_publication()
+    verifier_playwright()
     return 0
 
 
