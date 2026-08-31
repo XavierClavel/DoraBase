@@ -251,6 +251,36 @@ se redéfait : `ExplorerSidebar` faisait voyager `noeud.label` comme identité v
 IPC (`onCreer`, `onEditDatabase`, `demanderLeRetrait`) — vrai tant que `label === name`, faux dès
 que l'un diverge de l'autre. C'est `noeud.database` qui doit y voyager.
 
+**Le cache de l'arbre suit le registre, qui est la seule vérité sur ce qui est ouvert** (31 août
+2026). `connection_states` lit le registre ; l'arbre ne le relisait qu'au `finally` de son propre
+chargement. Or **six commandes de configuration ferment des connexions** — renommer un projet,
+renommer une connexion, retirer une base, retirer un projet, `update_variant`, retirer une console —
+et aucune ne le disait à l'écran. Conséquence mesurée à l'usage, contre un vrai cluster : l'arbre
+affichait **« OK »** sur une base que le registre avait fermée, et la première requête répondait
+« aucune connexion ouverte ».
+
+**Et le cache rendait le mensonge irréparable.** `charger` n'appelle `chargerBase` que si les schémas
+ne sont pas déjà en cache : replier puis déplier ne rouvrait donc **rien**, et l'arbre continuait
+d'afficher les schémas de la base précédente. Or c'est **mot pour mot** ce que le commentaire
+d'`update_variant` annonce vouloir éviter en fermant la connexion — « l'arbre continuerait d'afficher
+les schémas de la base précédente sans qu'un *Rafraîchir* y change quoi que ce soit ». La moitié Rust
+était juste ; la moitié écran n'a jamais été écrite, et le commentaire a survécu à la garantie qu'il
+décrivait.
+
+**Le remède est une règle, pas six branchements** : *ce que le registre ne tient plus ne peut plus
+être lu, donc ne doit plus être caché*. Les états sont relus à chaque changement de `projects` — le
+signal commun aux six, puisque toutes rendent `Vec<Project>` que `App` repose —, et le cache comme le
+dépliage se purgent des bases absentes du registre. Brancher chaque commande aurait demandé de les
+connaître, et la septième l'aurait oublié. Trois points à ne pas défaire :
+
+- **la purge part des schémas en cache, pas des entrées du registre** : celui-ci ne dit que ce qui
+  est **ouvert**, il ne peut pas énumérer ce qui a été fermé ;
+- **le dépliage est purgé en plus du cache.** `charger` n'est appelé que par `basculer` : un nœud
+  resté déplié avec des schémas oubliés afficherait un vide que rien ne viendrait remplir ;
+- **une lecture dépassée ne doit pas écraser une plus récente** (`tourDesEtats`). Deux appels se
+  croisent — l'effet et le chargement —, et une lecture partie avant une ouverture peut répondre
+  après elle. C'est le défaut n° 112 par un autre bout.
+
 **L'arbre se lit sans réseau.** La configuration ne demande aucune connexion : l'arbre
 s'affiche immédiatement et chaque base porte son état. Une base injoignable reste
 **visible et marquée**, jamais masquée ni bloquante — attendre les connexions bloquerait
@@ -1245,6 +1275,16 @@ anecdotes.
     sa propre ligne « Forwarding from… » pour un nom de contexte, et l'en-tête du journal — qui est
     tout le remède au contexte optionnel — se serait rempli de bruit sans qu'un test le voie. C'est
     la règle n° 14 par l'autre bout : ce qu'un double **entend** compte autant que ce qu'il émet.
+
+20. **Une garantie posée d'un seul côté du pont ne garantit rien, et son commentaire le cache.**
+    `update_variant` ferme la connexion de la base modifiée, et son commentaire explique que c'est
+    pour empêcher l'arbre de montrer les schémas de la base précédente. Le Rust faisait exactement ce
+    qu'il disait ; l'écran, lui, ne relisait jamais les états et ne purgeait jamais son cache — donc
+    le résultat que le commentaire annonçait prévenir **arrivait quand même**, et le commentaire
+    faisait obstacle à l'enquête en affirmant le contraire. C'est le défaut n° 16 déplacé de deux
+    fonctions à deux *couches* : quand une garantie traverse l'IPC, le commentaire doit nommer la
+    moitié qui reste à faire, et un test doit partir du côté qui **observe** — ici l'arbre, pas la
+    commande. Symptôme à reconnaître : « l'écran dit que c'est ouvert, mais rien ne répond ».
 
 **Et la méthode qui a le plus payé** : mesurer le rendu dans un navigateur plutôt que lire
 des valeurs déclarées, et comparer deux captures **côte à côte**. Une mesure vérifie une

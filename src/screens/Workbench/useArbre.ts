@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   closeDatabase,
   connectionStates,
@@ -82,6 +82,89 @@ export function useArbre(
     [etats],
   )
 
+  /**
+   * Le tour de lecture des états, pour écarter une réponse dépassée.
+   *
+   * Deux appels concurrents existent — l'effet ci-dessous et le `finally` de `chargerBase` — et
+   * `connectionStates` n'est pas instantané. Sans ce compteur, une lecture partie **avant** une
+   * ouverture pourrait répondre **après** elle et remettre l'arbre à « jamais tentée » sur une base
+   * qui vient de s'ouvrir. C'est le défaut n° 112 par un autre bout : une lecture asynchrone rend
+   * l'état de son propre instant, pas de celui où elle atterrit.
+   */
+  const tourDesEtats = useRef(0)
+
+  /**
+   * Relit les états **au registre**, et fait suivre le cache.
+   *
+   * # Le défaut que cette fonction corrige (31 août 2026)
+   *
+   * `connection_states` lit le registre, qui est la seule vérité sur ce qui est ouvert. L'arbre ne
+   * le relisait qu'à un seul endroit : le `finally` de `chargerBase`. Or **six commandes de
+   * configuration ferment des connexions** — renommer un projet, renommer une connexion, retirer une
+   * base, retirer un projet, `update_variant`, et la suppression de console —, et aucune ne le
+   * disait à l'écran. Après une modification de connexion, l'arbre affichait donc « OK » sur une
+   * base que le registre avait fermée, et toute requête répondait « aucune connexion ouverte ».
+   *
+   * **Et le cache aggravait le mensonge en le rendant irréparable.** `charger` n'appelle
+   * `chargerBase` que si `charge.schemas[id]` est vide : les schémas de l'ancienne base restant en
+   * cache, replier puis déplier **ne rouvrait rien**, et l'arbre continuait de montrer les schémas
+   * de la base précédente. C'est mot pour mot ce que le commentaire d'`update_variant` disait
+   * vouloir éviter en fermant la connexion — la moitié Rust était faite, la moitié écran jamais.
+   *
+   * **Le cache suit donc le registre, plutôt qu'un signal envoyé par chaque appelant.** Une purge
+   * déclenchée par les commandes demanderait de la brancher aux six, et la septième l'oublierait.
+   * Ici la règle est une : *ce que le registre ne tient plus ne peut plus être lu, donc ne doit plus
+   * être caché*. Elle vaut pour les six sans les connaître.
+   */
+  const rafraichirEtats = useCallback(async (): Promise<readonly ConnectionStateEntry[] | null> => {
+    const tour = tourDesEtats.current + 1
+    tourDesEtats.current = tour
+    const lus = await passerelle.connectionStates().catch(() => [])
+    // Une réponse dépassée ne dit plus rien de l'instant : elle n'écrase pas, et elle ne purge pas.
+    if (tour !== tourDesEtats.current) return null
+    setEtats(lus)
+    return lus
+  }, [passerelle])
+
+  /**
+   * Relit les états **et fait suivre le cache** : ce que le registre ne tient plus est oublié.
+   *
+   * **Séparée de `rafraichirEtats`, et cette séparation est le fruit d'une erreur.** La purge avait
+   * d'abord été mise dans la lecture elle-même — donc aussi dans le `finally` de `chargerBase`, qui
+   * lit les états juste après avoir mis des schémas en cache. Elle les reprenait aussitôt : **61
+   * tests sont tombés d'un coup**, et le défaut aurait valu en production au moindre écart entre
+   * « l'ouverture a réussi » et « le registre l'annonce ».
+   *
+   * La leçon tient en une phrase : **une purge est une réaction à un changement de configuration,
+   * pas à une lecture d'état.** Les deux gestes lisent la même chose ; ils n'en concluent pas la
+   * même.
+   */
+  const synchroniserAvecLeRegistre = useCallback(async () => {
+    const lus = await rafraichirEtats()
+    if (!lus) return
+    const ouvertes = new Set(lus.map((entree) => identiteDeBase(entree.key)))
+    setCharge((precedent) => oublierLesFermees(precedent, ouvertes))
+    setDeplies((precedent) => replierLesFermees(precedent, ouvertes))
+  }, [rafraichirEtats])
+
+  /**
+   * **Relu à chaque changement de projets**, et c'est ce qui couvre les six commandes d'un coup.
+   *
+   * Toutes rendent `Vec<Project>` et `App` les pose par `setProjects` : ce changement est donc le
+   * signal commun, sans qu'aucune ait à se déclarer. Le coût est un appel IPC par écriture de
+   * configuration — y compris pour celles qui ne ferment rien, comme l'enregistrement du SQL d'une
+   * console —, ce qui est le prix d'une règle unique plutôt que de six branchements.
+   *
+   * **`projects` est le déclencheur, pas une donnée lue** — d'où l'exemption ci-dessous, qui suit la
+   * forme des quatre autres du dépôt. Biome a raison sur la lettre : la fonction ne lit rien de
+   * `projects`. Le retirer des dépendances rendrait pourtant l'effet inerte après le montage, donc
+   * rendrait le défaut du 31 août 2026 exactement à son état d'avant.
+   */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: voir ci-dessus
+  useEffect(() => {
+    void synchroniserAvecLeRegistre()
+  }, [projects, synchroniserAvecLeRegistre])
+
   const marquer = useCallback((id: string, enCours: boolean, echec?: string) => {
     setCharge((precedent) => {
       const suivant = new Set(precedent.enCours)
@@ -134,10 +217,12 @@ export function useArbre(
         // son chargement.
         marquer(id, false, message(cause))
       } finally {
-        setEtats(await passerelle.connectionStates().catch(() => []))
+        // **La lecture seule, jamais la synchronisation.** Ce `finally` suit une ouverture qui vient
+        // de mettre des schémas en cache : y purger reprendrait ce qu'on vient d'obtenir.
+        await rafraichirEtats()
       }
     },
-    [projects, passerelle, marquer, onOuverture],
+    [projects, passerelle, marquer, onOuverture, rafraichirEtats],
   )
 
   const chargerSchema = useCallback(
@@ -207,6 +292,94 @@ export function useArbre(
     () => ({ deplies, charge, etatDeBase, basculer, charger, rafraichir }),
     [deplies, charge, etatDeBase, basculer, charger, rafraichir],
   )
+}
+
+/**
+ * L'identité d'une base telle que les identifiants de l'arbre la portent.
+ *
+ * `idBase` compose `d:projet/environnement/base`, `idSchema` compose
+ * `s:projet/environnement/base/schéma` : la part commune est ce que cette fonction rend, et c'est
+ * elle qui permet d'apparier un nœud à une entrée du registre.
+ *
+ * **Réserve connue** : un nom de projet, d'environnement ou de base qui contiendrait une barre
+ * oblique rendrait ces identifiants ambigus. Le défaut est antérieur et vaut pour tout l'arbre, pas
+ * seulement ici.
+ */
+function identiteDeBase(key: DatabaseKey): string {
+  return `${key.project}/${key.environment}/${key.database}`
+}
+
+/** L'identifiant de nœud, privé de son étiquette de sorte (`d:`, `s:`, `o:`). */
+function identiteDuNoeud(id: string): string {
+  return id.slice(id.indexOf(':') + 1)
+}
+
+/** Ce nœud décrit-il cette base, ou quelque chose dessous ? */
+function sousLaBase(id: string, identite: string): boolean {
+  const nu = identiteDuNoeud(id)
+  return nu === identite || nu.startsWith(`${identite}/`)
+}
+
+/**
+ * Les identités de base dont des schémas sont en cache alors que le registre ne les tient plus.
+ *
+ * Partir des schémas en cache, et non des entrées du registre, est ce qui rend la comparaison
+ * possible : le registre ne dit que ce qui est **ouvert**, il ne peut pas énumérer ce qui a été
+ * fermé.
+ */
+function basesFermees(charge: Charge, ouvertes: ReadonlySet<string>): readonly string[] {
+  return Object.keys(charge.schemas)
+    .map(identiteDuNoeud)
+    .filter((identite) => !ouvertes.has(identite))
+}
+
+/**
+ * Oublie ce qui est chargé pour les bases que le registre ne tient plus.
+ *
+ * **Rend `charge` inchangé quand il n'y a rien à oublier**, et ce n'est pas une micro-optimisation :
+ * cette fonction est appelée à chaque changement de projets, y compris ceux qui ne ferment rien, et
+ * un objet neuf à chaque fois ferait re-rendre l'arbre entier pour rien.
+ */
+function oublierLesFermees(charge: Charge, ouvertes: ReadonlySet<string>): Charge {
+  const fermees = basesFermees(charge, ouvertes)
+  if (fermees.length === 0) return charge
+
+  const aOublier = (id: string) => fermees.some((identite) => sousLaBase(id, identite))
+  const garder = <T>(table: Readonly<Record<string, T>>): Record<string, T> =>
+    Object.fromEntries(Object.entries(table).filter(([id]) => !aOublier(id)))
+
+  return {
+    schemas: garder(charge.schemas),
+    objets: garder(charge.objets),
+    echecs: garder(charge.echecs),
+    // **`enCours` n'est pas purgé** : un chargement en vol appartient à la requête qui l'a lancé, et
+    // le lui retirer laisserait son `marquer(id, false)` final poser un état pour un nœud oublié.
+    enCours: charge.enCours,
+  }
+}
+
+/**
+ * Replie les bases que le registre ne tient plus.
+ *
+ * **Nécessaire en plus de la purge du cache**, et pour une raison qui se voit à l'écran : `charger`
+ * n'est appelé que par `basculer`, donc un nœud resté **déplié** avec des schémas oubliés
+ * afficherait un vide que rien ne viendrait remplir. Replier rend le geste au prochain regard, ce
+ * qui est exactement la règle de `rafraichir`.
+ */
+function replierLesFermees(
+  deplies: ReadonlySet<string>,
+  ouvertes: ReadonlySet<string>,
+): ReadonlySet<string> {
+  const concernes = [...deplies].filter(
+    (id) => id.startsWith('d:') && !ouvertes.has(identiteDuNoeud(id)),
+  )
+  if (concernes.length === 0) return deplies
+
+  const identites = concernes.map(identiteDuNoeud)
+  const suivant = new Set(
+    [...deplies].filter((id) => !identites.some((identite) => sousLaBase(id, identite))),
+  )
+  return suivant
 }
 
 /** La variante d'environnement d'une base, celle que `open_database` réclame. */
