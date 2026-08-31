@@ -107,9 +107,21 @@ pub fn qualifier_avec(etat: EtatProxy, sujet: &str, erreur: EngineError) -> Engi
 /// - **rien d'autre dans le dépôt n'a eu une ligne à changer** : ni `registry`, ni `commands`, ni
 ///   les trois adaptateurs, ni un seul écran. Tous parlent de « proxy » ou de « tunnel », jamais de
 ///   sa sorte — et c'est cette discipline, plus que l'énumération, qui a fait le prix du chantier.
+///
+/// **`CloudSql` est en `Box`, et ce n'est pas un caprice de lint** (31 août 2026). Sous Windows
+/// `CloudSqlProxy` pèse **328 octets** contre 32 pour `SshTunnel` — les types de processus et de
+/// handle du système y sont plus gros —, donc l'enum entier faisait 328 octets et **chaque**
+/// connexion en portait la taille, y compris celles tunnelées par SSH, qui est le cas courant.
+/// Les trois adaptateurs gardent un `Option<ProxyOuvert>` par connexion ouverte, dans un
+/// registre qui vit tant que l'application vit.
+///
+/// Sur macOS l'écart restait sous le seuil de `clippy::large_enum_variant`, ce qui est la seule
+/// raison pour laquelle il a fallu compiler pour Windows pour le voir. Le coût est une allocation
+/// par proxy Cloud SQL ouvert — donc une par connexion, en regard d'un sous-processus qu'on vient
+/// de lancer.
 pub enum ProxyOuvert {
     Ssh(crate::engine::tunnel::SshTunnel),
-    CloudSql(crate::engine::cloudsql::CloudSqlProxy),
+    CloudSql(Box<crate::engine::cloudsql::CloudSqlProxy>),
     Kubernetes(crate::engine::kubernetes::KubernetesProxy),
 }
 
@@ -157,7 +169,7 @@ impl ProxyOuvert {
             crate::config::Proxy::CloudSql(cloud) => {
                 crate::engine::cloudsql::CloudSqlProxy::ouvrir(cloud, tunnel.local_port)
                     .await
-                    .map(Self::CloudSql)
+                    .map(|proxy| Self::CloudSql(Box::new(proxy)))
             }
             crate::config::Proxy::Kubernetes(kube) => {
                 crate::engine::kubernetes::KubernetesProxy::ouvrir(
