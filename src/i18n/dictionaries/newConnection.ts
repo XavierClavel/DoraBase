@@ -32,8 +32,10 @@ export const newConnectionFr: Dictionnaire = {
     defaultDatabaseLabel: {
       file: 'Fichier de la base',
       server: 'Base par défaut',
+      project: 'ID de projet GCP',
     },
     filePlaceholder: '~/bases/atelier.db',
+    projectPlaceholder: 'mon-projet-gcp',
     usernameLabel: 'Utilisateur',
     passwordLabel: 'Mot de passe',
     showPassword: 'Afficher le mot de passe',
@@ -121,8 +123,10 @@ export const newConnectionEn: Dictionnaire = {
     defaultDatabaseLabel: {
       file: 'Database file',
       server: 'Default database',
+      project: 'GCP project ID',
     },
     filePlaceholder: '~/databases/workshop.db',
+    projectPlaceholder: 'my-gcp-project',
     usernameLabel: 'Username',
     passwordLabel: 'Password',
     showPassword: 'Show password',

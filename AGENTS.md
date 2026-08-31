@@ -888,31 +888,40 @@ manière de reprendre des données sans que `serde` les efface en silence.
 
 ---
 
-## Ce que les quatre moteurs ont répondu à la même question
+## Ce que les cinq moteurs ont répondu à la même question
 
-À lire avant d'en ajouter un cinquième.
+À lire avant d'en ajouter un sixième.
 
-| Question | PostgreSQL | MongoDB | SQLite | MySQL |
-| --- | --- | --- | --- | --- |
-| Le niveau « schéma » | les schémas de la base | les **bases** du serveur | un seul, `main` | les **bases** du serveur |
-| Les colonnes | déclarées | **déduites** par échantillonnage | déclarées, type **suggéré** | déclarées |
-| Le DDL | **reconstruit** | les commandes qui recréent la collection | **presque** d'origine | rendu par le serveur |
-| Le compte de lignes | estimé (`reltuples`) | estimé | **exact** | estimé (InnoDB) ou **exact** (MyISAM) |
-| L'égalité sûre au nul | `is not distinct from` | `$in: [null]` | `is` | `<=>` |
-| Les transactions | toujours | jeu de réplicas requis | toujours | InnoDB oui, MyISAM **non** |
-| La citation | guillemet double | — | guillemet double | **backtick** |
-| Le port par défaut | 5432 | 27017 | **aucun** — un fichier | 3306 |
-| La connexion | hôte et port | hôte et port | **un fichier** | hôte et port |
+| Question | PostgreSQL | MongoDB | SQLite | MySQL | BigQuery |
+| --- | --- | --- | --- | --- | --- |
+| Le niveau « schéma » | les schémas de la base | les **bases** du serveur | un seul, `main` | les **bases** du serveur | les **jeux de données** du projet |
+| Les colonnes | déclarées | **déduites** par échantillonnage | déclarées, type **suggéré** | déclarées | déclarées |
+| Le DDL | **reconstruit** | les commandes qui recréent la collection | **presque** d'origine | rendu par le serveur | **reconstruit** |
+| Le compte de lignes | estimé (`reltuples`) | estimé | **exact** | estimé (InnoDB) ou **exact** (MyISAM) | estimé (`numRows`, hors tampon de diffusion) |
+| L'égalité sûre au nul | `is not distinct from` | `$in: [null]` | `is` | `<=>` | pas nécessaire — filtres en `cast(… as string)` paramétré |
+| Les transactions | toujours | jeu de réplicas requis | toujours | InnoDB oui, MyISAM **non** | aucune édition offerte, voir plus bas |
+| La citation | guillemet double | — | guillemet double | **backtick** | **backtick**, table en un seul jeton `` `projet.jeu.table` `` |
+| Le port par défaut | 5432 | 27017 | **aucun** — un fichier | 3306 | **aucun** — HTTPS vers l'API Google |
+| La connexion | hôte et port | hôte et port | **un fichier** | hôte et port | **un projet GCP**, identifiants par défaut de l'application |
 
 **La ligne de l'égalité sûre au nul a mordu quatre fois** : avec `=`, une modification
 partant d'une cellule vide ne trouve aucune ligne, la transaction s'annule, et
-l'utilisateur lit « la ligne a changé » sur une ligne que personne n'a touchée.
+l'utilisateur lit « la ligne a changé » sur une ligne que personne n'a touchée. BigQuery
+n'a pas cette ligne parce qu'il n'a pas d'édition à protéger — voir la spec `21`.
 
 **Le pari du contrat de moteur a tenu** — les écrans sont écrits en termes du contrat, pas
 de PostgreSQL. Cinq écrans ont fonctionné pour MongoDB, SQLite **et** MySQL sans une ligne
 de code propre au moteur. Trois exceptions seulement, toutes dans l'écran et non dans le
 contrat : la console mongo (dialecte de l'éditeur), la section « Schéma déduit », et les
 cinq champs qu'un moteur de fichier masque.
+
+**BigQuery (`21`) est le premier moteur du contrat sans édition de lignes.**
+`preview_updates` et `apply_updates` refusent, avec leur raison : les DML sont facturés au
+volume parcouru, et `gcp_bigquery_client` 0.24 ne modélise pas encore les clés primaires
+déclarées de BigQuery — rien ici ne peut garantir le même contrôle de conflit que les
+quatre autres moteurs (`11d`). La console SQL, elle, exécute ce que l'utilisateur y
+écrit, DML compris ; seule la grille refuse. `row_as_insert` reste offert : copier une
+ligne en `INSERT` ne modifie rien.
 
 **Redis n'entre pas dans ce contrat**, et c'est une conclusion, pas un retard : un espace
 de clés n'est pas un tableau, et l'y forcer donnerait des écrans qui affichent des
@@ -1240,8 +1249,13 @@ Aucun de ces points ne bloque le code en place.
 
 - **Redis** — un écran de parcours de clés à concevoir. Le forcer dans le contrat de moteur
   donnerait des colonnes inventées.
-- **Snowflake et BigQuery** — un compte d'essai pour chacun. Sans décor, l'adaptateur
-  serait le premier code du projet dont aucun test ne dirait s'il fonctionne.
+- **Snowflake** — un compte d'essai. Sans décor, l'adaptateur serait le premier code du
+  projet dont aucun test ne dirait s'il fonctionne — la raison pour laquelle il n'est pas
+  encore écrit.
+- **BigQuery, lui, a été écrit sans compte d'essai** (`21`) — voir « Réserves connues » et
+  le commentaire de tête de `src-tauri/src/engine/bigquery/mod.rs`. Ce qui reste à décider
+  n'est plus le principe, mais la vérification : quelqu'un doit le pointer vers un vrai
+  projet GCP et regarder ce qui se passe.
 - **L'export CSV est un sujet, pas un bouton.** Outre `blob:` refusé par la CSP, il reste à
   trancher la fenêtre ou le résultat complet, l'encodage, le séparateur, le traitement des
   `NULL` et des sauts de ligne. Sur 1,9 million de lignes l'écriture doit être en flux,
@@ -1280,3 +1294,14 @@ Aucun de ces points ne bloque le code en place.
   parlé à Google. Le test se déverrouille avec `DORABASE_TEST_CLOUDSQL_INSTANCE`,
   `_DATABASE`, `_USER`, plus `_PASSWORD` ou `_CREDENTIALS`.
 - **Une instance IAM réelle n'a pas été observée** depuis ce poste.
+- **BigQuery (`21`) est livré sans qu'aucun décor n'ait jamais parlé à un vrai projet GCP.**
+  Ce qui ne demande pas de réseau — la composition du SQL (`rows.rs`), la conversion des
+  types (`valeurs.rs`), le DDL reconstruit (`introspect.rs`) — est testé en pur, sans
+  connexion. L'ouverture du client, l'authentification par les identifiants par défaut de
+  l'application, et chaque appel à l'API REST (`dataset.list`, `table.get`, `job.query`)
+  ne le sont pas : `cargo test --features db-tests` ne les exerce pas, faute de compte
+  d'essai — même obstacle que Snowflake, sauf que le contrat, lui, a été jugé assez proche
+  de MongoDB (jeux de données = bases du serveur) pour écrire l'adaptateur avant le décor,
+  plutôt que d'attendre les deux à la fois. Voir le commentaire de tête de
+  `src-tauri/src/engine/bigquery/mod.rs` avant d'y toucher, et vérifier contre un projet
+  réel avant de faire confiance au chemin heureux.
