@@ -20,6 +20,7 @@ use super::{regle_de_version, DumpAvailability, Version, VersionVerdict};
 /// Le `*` d'un segment est développé en listant le répertoire parent : `postgresql@17`,
 /// `postgresql@16`… Une app lancée depuis le Finder n'hérite pas du `PATH` du shell, donc
 /// cette liste n'est pas un luxe — c'est le cas courant.
+#[cfg(not(windows))]
 pub const EMPLACEMENTS_CONNUS: &[&str] = &[
     "/opt/homebrew/opt/postgresql@*/bin",
     "/opt/homebrew/opt/libpq/bin",
@@ -27,6 +28,28 @@ pub const EMPLACEMENTS_CONNUS: &[&str] = &[
     "/usr/local/opt/libpq/bin",
     "/Applications/Postgres.app/Contents/Versions/*/bin",
     "/usr/bin",
+];
+
+/// Les mêmes emplacements sous Windows (31 août 2026).
+///
+/// **La raison d'être de cette liste n'est pas la même que sur macOS, et c'est pourquoi elle
+/// existe quand même.** Là-bas, le motif est qu'une app lancée depuis le Finder reçoit un
+/// `PATH` minimal. Ici, l'installateur EDB — la voie de très loin la plus courante — ne met
+/// simplement **pas** `bin` dans le `PATH` : la case existe et n'est pas cochée par défaut. Le
+/// résultat est le même, l'outil est installé et introuvable, donc le repli est tout aussi
+/// nécessaire.
+///
+/// Les deux premiers couvrent l'installateur EDB en 64 et 32 bits ; le `*` développe le numéro
+/// de version, et le tri décroissant de `developper` fait préférer la plus récente, comme pour
+/// les `postgresql@N` de Homebrew.
+///
+/// **Non vérifié sur une machine Windows réelle** — ces chemins viennent de la documentation de
+/// l'installateur, pas d'une mesure, contrairement à ceux de macOS qui ont été relevés. À
+/// confirmer à l'œil : c'est dans la liste de ce qu'aucun test ne peut dire.
+#[cfg(windows)]
+pub const EMPLACEMENTS_CONNUS: &[&str] = &[
+    r"C:\Program Files\PostgreSQL\*\bin",
+    r"C:\Program Files (x86)\PostgreSQL\*\bin",
 ];
 
 /// Découvre un binaire : `PATH` d'abord, puis les emplacements connus.
@@ -59,7 +82,7 @@ pub fn decouvrir_dans(
         .chain(globs.iter().flat_map(|motif| developper(motif)));
 
     for dossier in candidats {
-        let chemin = dossier.join(binaire);
+        let chemin = dossier.join(nom_de_fichier(binaire));
         if !executable(&chemin) {
             continue;
         }
@@ -86,12 +109,43 @@ pub fn decouvrir_dans(
     DumpAvailability::ToolMissing { binary: binaire }
 }
 
-fn executable(chemin: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
+/// Le nom du **fichier** à chercher, qui n'est pas le nom de l'**outil**.
+///
+/// La distinction compte parce que les deux sortent par des portes différentes : ce nom-ci ne
+/// sert qu'à `join`, tandis que `binaire` continue de voyager tel quel dans
+/// `DumpAvailability::ToolMissing` — donc jusqu'à l'écran. Un verdict qui réclamerait
+/// « pg_dump.exe » nommerait un fichier là où l'utilisateur cherche un outil, et la
+/// documentation de PostgreSQL, elle, dit `pg_dump`.
+fn nom_de_fichier(binaire: &str) -> String {
+    if cfg!(windows) {
+        format!("{binaire}.exe")
+    } else {
+        binaire.to_owned()
+    }
+}
 
-    std::fs::metadata(chemin)
-        .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
+/// Un fichier utilisable comme programme.
+///
+/// **Les deux bras sont nécessaires, et l'absence du second était le seul défaut de
+/// compilation du projet sous Windows** (31 août 2026). Le job Linux de la CI ne pouvait pas
+/// le voir : `std::os::unix` existe là aussi. La même forme est en place depuis plus longtemps
+/// dans `engine/cloudsql/binaire.rs` — c'est celle-ci qui était en retard, pas l'inverse.
+///
+/// Windows n'a pas de bit d'exécution : l'extension décide, et c'est `NOM_AVEC_EXTENSION` qui
+/// la porte. Se contenter de `is_file()` y est donc la lecture exacte, pas un repli dégradé.
+fn executable(chemin: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        std::fs::metadata(chemin)
+            .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        chemin.is_file()
+    }
 }
 
 /// Développe un motif à **au plus un `*`** par segment, en listant le répertoire parent.
@@ -100,24 +154,37 @@ fn executable(chemin: &Path) -> bool {
 /// résultats sont triés à l'envers : `postgresql@18` passe avant `postgresql@17`, donc la
 /// version la plus récente installée est essayée en premier.
 fn developper(motif: &str) -> Vec<PathBuf> {
-    let Some((avant, apres)) = motif.split_once('*') else {
+    let Some(position) = motif.find('*') else {
         return vec![PathBuf::from(motif)];
     };
 
-    let parent = Path::new(avant)
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_default();
-    let prefixe = Path::new(avant)
-        .file_name()
-        .map(|nom| nom.to_string_lossy().to_string())
-        .unwrap_or_default();
-    // Ce qui suit l'étoile jusqu'au prochain `/` appartient au nom ; le reste est la suite
-    // du chemin. Dans nos six motifs, `apres` commence toujours par `/bin`.
-    let (suffixe, suite) = match apres.split_once('/') {
-        Some((suffixe, suite)) => (suffixe, suite),
-        None => (apres, ""),
-    };
+    // **Le découpage se fait sur le segment qui porte l'étoile, et non par `Path::parent`.**
+    // Deux défauts corrigés d'un coup le 31 août 2026, tous deux invisibles jusque-là :
+    //
+    //   - `Path::new("…/Versions/").parent()` rend `…/Contents` et `file_name()` rend
+    //     `Versions`, parce que `Path` ignore la barre finale. Un motif dont l'étoile est un
+    //     **segment entier** — `…/Versions/*/bin` — voyait donc `Versions` pris pour un préfixe
+    //     de nom, et rendait `…/Versions/bin` : le repli Postgres.app n'a jamais fonctionné.
+    //     Personne ne l'a vu parce que la mesure du 19 août notait « Postgres.app n'est pas
+    //     installé » — le seul motif faux était le seul qui ne pouvait rien trouver.
+    //   - `apres.split_once('/')` était écrit sur la barre oblique seule. Sous Windows, les
+    //     motifs sont en `\`, donc rien ne se découpait.
+    //
+    // `std::path::is_separator` répond selon la plateforme : `/` seul sur Unix, `/` **et** `\`
+    // sous Windows. C'est ce qui laisse les deux familles de motifs s'écrire naturellement.
+    let debut = motif[..position]
+        .rfind(std::path::is_separator)
+        .map_or(0, |index| index + 1);
+    let fin = motif[position..]
+        .find(std::path::is_separator)
+        .map_or(motif.len(), |index| index + position);
+
+    let parent = PathBuf::from(&motif[..debut]);
+    let prefixe = motif[debut..position].to_owned();
+    let suffixe = &motif[position + 1..fin];
+    // La suite du chemin, sa barre de tête retirée : `join` la remettrait, et un chemin
+    // absolu en argument de `join` **remplacerait** la base au lieu de s'y ajouter.
+    let suite = motif[fin..].trim_start_matches(std::path::is_separator);
 
     let Ok(entrees) = std::fs::read_dir(&parent) else {
         return vec![];
@@ -127,8 +194,15 @@ fn developper(motif: &str) -> Vec<PathBuf> {
         .filter_map(Result::ok)
         .filter_map(|entree| {
             let nom = entree.file_name().to_string_lossy().to_string();
-            (nom.starts_with(&prefixe) && nom.ends_with(suffixe) && nom.len() >= prefixe.len())
-                .then(|| parent.join(nom))
+            // **La longueur est vérifiée contre les deux bouts, pas seulement le préfixe.**
+            // Sans quoi un nom plus court que `prefixe + suffixe` satisfait `starts_with` et
+            // `ends_with` en les faisant se chevaucher — l'étoile aurait alors remplacé
+            // *moins* que rien. Le cas du segment entier (les deux vides) reste vrai pour tout
+            // nom, ce qui est bien ce qu'une étoile seule veut dire.
+            (nom.starts_with(&prefixe)
+                && nom.ends_with(suffixe)
+                && nom.len() >= prefixe.len() + suffixe.len())
+            .then(|| parent.join(nom))
         })
         .collect();
     trouves.sort();
@@ -180,10 +254,19 @@ pub fn analyser_version(ligne: &str) -> Option<Version> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Seul `faux_binaire` s'en sert, et il est `#[cfg(unix)]`.
+    #[cfg(unix)]
     use std::io::Write;
 
     /// Un faux binaire qui annonce la version qu'on lui donne. Le seul moyen d'exercer
     /// `ToolTooOld` sans installer un PostgreSQL 13 sur la machine.
+    ///
+    /// **`#[cfg(unix)]` : le double est un script `sh`, pas le sujet.** Son équivalent Windows
+    /// serait un `.cmd`, donc un second double à tenir honnête — et ce que ce test mesure, la
+    /// règle de version, ne dépend d'aucune plateforme. Le porter coûterait une divergence
+    /// possible entre les deux doubles pour ne rien mesurer de plus (règle 14 d'AGENTS.md : ce
+    /// qu'un double émet doit venir d'une observation de l'original).
+    #[cfg(unix)]
     fn faux_binaire(nom: &str, annonce: &str) -> tempfile::TempDir {
         let dossier = tempfile::tempdir().expect("dossier temporaire");
         let chemin = dossier.path().join(nom);
@@ -194,7 +277,72 @@ mod tests {
             .expect("droits d'exécution");
         dossier
     }
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+
+    /// L'étoile comme **segment entier** — la forme du repli Postgres.app, et celle des deux
+    /// motifs Windows.
+    ///
+    /// **C'est le test qui manquait, et son absence cachait un défaut livré.** Le code d'avant
+    /// le 31 août 2026 rendait `<base>/bin` au lieu de `<base>/17/bin` : `Path::parent` ignore
+    /// la barre finale, donc `Versions` était pris pour le préfixe d'un nom au lieu du dernier
+    /// répertoire. Le repli Postgres.app n'a donc jamais rien trouvé. Sabotage vérifié : remis
+    /// dans sa forme d'avant, ce test tombe et les quatre autres restent verts.
+    #[test]
+    fn une_etoile_de_segment_entier_developpe_chaque_sous_dossier() {
+        let base = tempfile::tempdir().unwrap();
+        for version in ["16", "17"] {
+            std::fs::create_dir_all(base.path().join(version).join("bin")).unwrap();
+        }
+
+        let motif = format!("{}/*/bin", base.path().display());
+
+        assert_eq!(
+            developper(&motif),
+            vec![
+                base.path().join("17").join("bin"),
+                base.path().join("16").join("bin"),
+            ],
+            "chaque sous-dossier, le plus récent d'abord"
+        );
+    }
+
+    /// L'étoile **dans** un nom — la forme des `postgresql@N` de Homebrew.
+    ///
+    /// Le voisin `libpq` est là pour que le test distingue « développe » de « rend tout » :
+    /// sans lui, une étoile qui ignorerait le préfixe passerait aussi.
+    #[test]
+    fn une_etoile_dans_un_nom_ne_retient_que_le_prefixe() {
+        let base = tempfile::tempdir().unwrap();
+        for nom in ["postgresql@16", "postgresql@17", "libpq"] {
+            std::fs::create_dir_all(base.path().join(nom).join("bin")).unwrap();
+        }
+
+        let motif = format!("{}/postgresql@*/bin", base.path().display());
+
+        assert_eq!(
+            developper(&motif),
+            vec![
+                base.path().join("postgresql@17").join("bin"),
+                base.path().join("postgresql@16").join("bin"),
+            ],
+            "`libpq` ne porte pas le préfixe et ne doit pas paraître"
+        );
+    }
+
+    /// Le nom du **fichier** porte l'extension, le nom de l'**outil** non.
+    ///
+    /// Les deux sortent par des portes différentes — l'un vers `join`, l'autre vers l'écran —
+    /// et les confondre ferait réclamer « pg_dump.exe » à quelqu'un qui cherche `pg_dump`.
+    #[test]
+    fn le_nom_de_fichier_porte_l_extension_de_la_plateforme() {
+        let attendu = if cfg!(windows) {
+            "pg_dump.exe"
+        } else {
+            "pg_dump"
+        };
+        assert_eq!(nom_de_fichier("pg_dump"), attendu);
+    }
 
     #[test]
     fn un_path_sans_pg_dump_donne_tool_missing() {
@@ -211,6 +359,7 @@ mod tests {
         ));
     }
 
+    #[cfg(unix)]
     #[test]
     fn un_faux_pg_dump_trop_vieux_donne_tool_too_old() {
         // Un script qui annonce la version 13 face à un serveur 17.

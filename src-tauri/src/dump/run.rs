@@ -378,8 +378,11 @@ mod tests {
     /// rien. Le chemin exercé est exactement le même : `run::exporter`, son sondage, son
     /// `kill` et sa suppression. Le fichier réel, lui, est couvert par
     /// `tests_reels::annuler_un_export_reel_ne_laisse_aucun_fichier`.
+    /// `#[cfg(unix)]` avec le script qu'il pilote : voir `script_lent`.
+    #[cfg(unix)]
     struct OutilLent;
 
+    #[cfg(unix)]
     impl DumpTool for OutilLent {
         fn binaire_export(&self) -> &'static str {
             "lent"
@@ -399,6 +402,18 @@ mod tests {
     }
 
     /// Le script du faux outil lent, écrit dans un dossier temporaire.
+    ///
+    /// **`#[cfg(unix)]`, comme les deux tests qu'il sert.** La règle 3 d'AGENTS.md dit pourquoi
+    /// ce double existe : un vrai `pg_dump` de 100 000 lignes prend 0,136 s, donc l'annulation
+    /// ne peut être exercée que contre un outil délibérément lent. Ce qu'elle mesure — que
+    /// l'annulation coupe le sous-processus et ne laisse aucun fichier partiel — ne dépend
+    /// d'aucune plateforme ; c'est le **double** qui est un script `sh`.
+    ///
+    /// Un jumeau `.cmd` serait un second double à tenir honnête, et la règle 14 avertit que ce
+    /// qu'un double émet doit venir d'une observation de l'original. On préfère donc ne pas
+    /// exercer ce chemin sous Windows que l'exercer contre un double dont personne n'a vérifié
+    /// qu'il ressemble à `pg_dump`. À reprendre si l'annulation devient suspecte là-bas.
+    #[cfg(unix)]
     fn script_lent(dossier: &Path) -> PathBuf {
         use std::io::Write;
         use std::os::unix::fs::PermissionsExt;
@@ -416,6 +431,7 @@ mod tests {
         chemin
     }
 
+    #[cfg(unix)]
     async fn attendre_que_le_fichier_grossisse(fichier: &Path) {
         for _ in 0..200 {
             if std::fs::metadata(fichier)
@@ -429,6 +445,7 @@ mod tests {
         panic!("le fichier n'a jamais grossi : rien à annuler");
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn annuler_en_cours_ne_laisse_aucun_fichier() {
         let dossier = tempfile::tempdir().unwrap();
@@ -462,6 +479,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn la_progression_est_un_nombre_d_octets_croissant() {
         // Contrôle positif du test précédent : sans lui, `annuler_en_cours…` passerait
