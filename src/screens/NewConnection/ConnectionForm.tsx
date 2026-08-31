@@ -8,7 +8,13 @@ import { Field } from '../../ui/Field/Field'
 import { RadioGroup } from '../../ui/RadioGroup/RadioGroup'
 import { Select } from '../../ui/Select/Select'
 import type { ConnectionDraft } from './ConnectionDraft'
-import { authentifieParBase, estUnFichier, modesSslDisponibles, NOM_PAR_DEFAUT } from './engines'
+import {
+  authentifieParBase,
+  estUnFichier,
+  estUnProjet,
+  modesSslDisponibles,
+  NOM_PAR_DEFAUT,
+} from './engines'
 import { authentifie, SSL_MODES } from './environments'
 import styles from './NewConnection.module.css'
 import { ToggleWithLabel } from './ToggleWithLabel'
@@ -182,18 +188,28 @@ export function ConnectionForm({
         </div>
       )}
 
-      {/* **Le même champ, deux rôles.** Pour un moteur de fichier, `defaultDatabase` porte le chemin
-          — le champ est déjà « la base à ouvrir », et pour SQLite la base *est* un fichier. Le
-          libellé change, la donnée non. */}
+      {/* **Le même champ, trois rôles.** Pour un moteur de fichier, `defaultDatabase` porte le
+          chemin — le champ est déjà « la base à ouvrir », et pour SQLite la base *est* un fichier.
+          Pour BigQuery (`21`), il porte l'identifiant du **projet** GCP — même raison, autre
+          nature : aucun des deux n'a de serveur à qui demander « quelle base ? ». Le libellé
+          change, la donnée non. */}
       <Field
         label={
-          fichier
-            ? t('newConnection.form.defaultDatabaseLabel.file')
-            : t('newConnection.form.defaultDatabaseLabel.server')
+          estUnProjet(draft.engine)
+            ? t('newConnection.form.defaultDatabaseLabel.project')
+            : fichier
+              ? t('newConnection.form.defaultDatabaseLabel.file')
+              : t('newConnection.form.defaultDatabaseLabel.server')
         }
         mono
         value={draft.defaultDatabase}
-        placeholder={fichier ? t('newConnection.form.filePlaceholder') : undefined}
+        placeholder={
+          estUnProjet(draft.engine)
+            ? t('newConnection.form.projectPlaceholder')
+            : fichier
+              ? t('newConnection.form.filePlaceholder')
+              : undefined
+        }
         onChange={(event) => onChange({ defaultDatabase: event.target.value })}
       />
 
