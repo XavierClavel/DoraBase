@@ -71,24 +71,49 @@ export const ENGINE_ORDER: readonly Engine[] = [
 /**
  * Les moteurs dont un adaptateur existe. Les autres restent **sélectionnables et le disent**.
  *
- * PostgreSQL (`06`), MongoDB (`18`), SQLite (`17`), MySQL (`16`). Les trois restants sont refusés par
- * le moteur avec une raison qui nomme ce qui manque — voir `raison_du_refus` côté Rust : Redis
- * n'entre pas dans le contrat (`19a`), Snowflake et BigQuery n'ont aucun décor de test (`20`, `21`).
+ * PostgreSQL (`06`), MongoDB (`18`), SQLite (`17`), MySQL (`16`), BigQuery (`21`). Les deux restants
+ * sont refusés par le moteur avec une raison qui nomme ce qui manque — voir `raison_du_refus` côté
+ * Rust : Redis n'entre pas dans le contrat (`19a`), Snowflake n'a aucun décor de test (`20`).
+ *
+ * **BigQuery est livré sans qu'aucun décor ne l'ait jamais exercé** — voir le commentaire de tête
+ * de `src-tauri/src/engine/bigquery/mod.rs`. Il figure ici parce que le pilote est joint, pas parce
+ * que le chemin heureux a été observé contre un vrai projet.
  */
-export const IMPLEMENTED_ENGINES: readonly Engine[] = ['postgresql', 'mongodb', 'sqlite', 'mysql']
+export const IMPLEMENTED_ENGINES: readonly Engine[] = [
+  'postgresql',
+  'mongodb',
+  'sqlite',
+  'mysql',
+  'bigquery',
+]
 
 /**
  * Les moteurs **sans serveur** : ni hôte, ni port, ni utilisateur, ni mot de passe, ni TLS.
  *
- * SQLite est le seul (`17a`). Son chemin de fichier vit dans `defaultDatabase` — le champ est déjà
- * « la base à ouvrir », et pour SQLite la base *est* un fichier. Afficher un port à qui n'en a pas
- * ferait remplir cinq champs pour rien, et laisserait croire qu'ils comptent.
+ * SQLite (`17a`) et BigQuery (`21`), pour deux raisons différentes. SQLite s'ouvre depuis un
+ * fichier : son chemin vit dans `defaultDatabase`, la base *est* le fichier. BigQuery parle HTTPS à
+ * l'API Google, authentifié par les identifiants par défaut de l'application — comme Cloud SQL
+ * (`06j`), aucun champ de la connexion ne porte de secret ; `defaultDatabase` y porte l'identifiant
+ * du **projet** GCP. Afficher un port ou un mot de passe à qui n'en a ni l'un ni l'autre ferait
+ * remplir des champs pour rien, et laisserait croire qu'ils comptent.
  */
-export const FILE_ENGINES: readonly Engine[] = ['sqlite']
+export const FILE_ENGINES: readonly Engine[] = ['sqlite', 'bigquery']
 
-/** Vrai quand ce moteur s'ouvre depuis un fichier plutôt que depuis un hôte. */
+/** Vrai quand ce moteur s'ouvre depuis un fichier ou un projet plutôt que depuis un hôte. */
 export function estUnFichier(engine: Engine): boolean {
   return FILE_ENGINES.includes(engine)
+}
+
+/**
+ * Les moteurs dont `estUnFichier` masque les champs, mais dont le champ « base par défaut » ne
+ * porte pas un chemin — BigQuery seul. `A2` en tire le libellé et le repère de son unique champ
+ * restant : « ID de projet », pas « Chemin du fichier ».
+ */
+export const PROJECT_ENGINES: readonly Engine[] = ['bigquery']
+
+/** Vrai quand le champ « base par défaut » de ce moteur porte un identifiant de projet GCP. */
+export function estUnProjet(engine: Engine): boolean {
+  return PROJECT_ENGINES.includes(engine)
 }
 
 /**
@@ -156,8 +181,10 @@ export function portSuivant(precedent: Engine, portAffiche: string, suivant: Eng
  * - `verify-ca` — vérifier la chaîne sans vérifier le nom — n'existe que pour PostgreSQL, seul
  *   pilote des trois à accepter une `ClientConfig` de `rustls`. Les deux autres refusaient déjà ce
  *   mode avec leur raison ; le refuser *et* le proposer était l'incohérence restante.
- * - SQLite n'a aucun transport à chiffrer : sa liste est vide, et le champ disparaît déjà pour un
- *   moteur de fichier (`estUnFichier`).
+ * - SQLite et BigQuery n'ont aucun transport à chiffrer que ce champ puisse régler : le premier
+ *   parce que c'est un fichier local, le second parce que HTTPS n'est ni optionnel ni négociable à
+ *   ce niveau. Les deux listes sont vides, et le champ disparaît déjà pour un moteur sans serveur
+ *   (`estUnFichier`).
  *
  * **Typé `Record<Engine, …>` pour la raison d'`ENGINES`** : un huitième moteur en Rust fait échouer
  * la compilation ici. Et le côté Rust **refuse** un mode qu'il ne sait pas exprimer, au lieu de le
@@ -170,12 +197,13 @@ export const SSL_MODES_PAR_MOTEUR: Record<Engine, readonly SslMode[]> = {
   // Aucun transport : la liste est vide, et l'écran ne montre pas le champ.
   sqlite: [],
   mongodb: ['disable', 'require', 'verify-full'],
-  // **Les trois moteurs sans adaptateur gardent les six modes.** Ce n'est pas un oubli : rien ne
+  // Aucun réglage : HTTPS vers l'API Google, sans négociation possible depuis ce champ (`21`).
+  bigquery: [],
+  // **Les deux moteurs sans adaptateur gardent les six modes.** Ce n'est pas un oubli : rien ne
   // *sait* encore ce que leurs pilotes expriment, et restreindre au hasard inventerait une limite.
   // Leur connexion est refusée bien avant le TLS — voir `raison_du_refus` côté Rust.
   redis: SSL_MODE_ORDER,
   snowflake: SSL_MODE_ORDER,
-  bigquery: SSL_MODE_ORDER,
 }
 
 /**

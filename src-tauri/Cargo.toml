@@ -94,6 +94,16 @@ tauri-plugin-dialog = "2"
 # Le jour où une dépendance activerait `aws_lc_rs` sur `rustls`, c'est ici qu'il faudra passer le
 # plugin en `native-tls`.
 tauri-plugin-updater = "2"
+# BigQuery (`21`). Ses fonctionnalités par défaut (`rust-tls`, `ring`, `gzip`) choisissent déjà le
+# même fournisseur `rustls`/`ring` que le reste du projet — vérifié par `cargo tree -e features` :
+# la totalité de l'arbre de cette crate (y compris `yup-oauth2`, `hyper-rustls`, `tonic`) résout sur
+# un seul `rustls` 0.23 en `ring`, sans `aws-lc-rs` ni `native-tls`. Le piège de `06j`/`06k` — deux
+# fournisseurs cryptographiques dans le même binaire — ne s'applique donc pas ici.
+gcp-bigquery-client = "0.24"
+# BigQuery rend ses horodatages `TIMESTAMP` en secondes Unix, pas en texte ISO 8601 comme les autres
+# moteurs. `chrono` est déjà résolu dans l'arbre (via `rusqlite`/`mongodb`) : cette ligne ne fait
+# qu'en rendre l'API visible ici, pour la seule conversion dont ce moteur a besoin.
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

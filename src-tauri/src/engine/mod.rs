@@ -14,6 +14,7 @@
 //! Le trait reste utile — chaque adaptateur est écrit contre lui et testable isolément —
 //! mais il n'est jamais employé en objet.
 
+pub mod bigquery;
 pub mod cloudsql;
 pub mod commands;
 mod error;
@@ -132,9 +133,8 @@ pub trait EngineAdapter {
 
 /// Le moteur actif, réparti statiquement.
 ///
-/// Six variantes manquent encore — MySQL (`16`), SQLite (`17`), MongoDB (`18a`–`18g`),
-/// Redis (`19`), Snowflake (`20`), BigQuery (`21`). L'exhaustivité du `match` est ce qui
-/// garantit qu'aucune ne sera oubliée en cours de route : chaque ajout fait échouer la
+/// Deux variantes manquent encore — Redis (`19`), Snowflake (`20`). L'exhaustivité du `match` est
+/// ce qui garantit qu'aucune ne sera oubliée en cours de route : chaque ajout fait échouer la
 /// compilation ici.
 ///
 /// **`18a` est la spec à lire avant d'en ajouter une** : elle recense les six endroits où ce
@@ -145,6 +145,12 @@ pub enum AnyEngine {
     MongoDb(mongo::MongoAdapter),
     Sqlite(sqlite::SqliteAdapter),
     MySql(mysql::MysqlAdapter),
+    // **Boxé, contrairement aux quatre autres.** `BigQueryAdapter` porte le `Client` de
+    // `gcp_bigquery_client`, sensiblement plus gros que les autres pilotes — `clippy` le signale
+    // (`large_enum_variant`) parce que la taille de l'énumération entière suit sa variante la plus
+    // grande. `Box` reporte ce poids sur le tas, sans changer un seul appelant : `AnyEngine` reste
+    // aussi léger que si BigQuery n'existait pas.
+    BigQuery(Box<bigquery::BigQueryAdapter>),
 }
 
 impl AnyEngine {
@@ -191,10 +197,16 @@ impl AnyEngine {
             Engine::MySql => Ok(Self::MySql(
                 mysql::MysqlAdapter::connect_via(variante, mot_de_passe, known_hosts).await?,
             )),
+            // **`21` a comblé l'obstacle que `raison_du_refus` décrivait** : le décor de test
+            // manquait, pas le contrat. Il manque encore — voir le commentaire de tête de
+            // `bigquery/mod.rs` — mais le pilote, lui, est joint comme les quatre autres.
+            Engine::BigQuery => Ok(Self::BigQuery(Box::new(
+                bigquery::BigQueryAdapter::connect_via(variante, mot_de_passe, known_hosts).await?,
+            ))),
             // **Refusé, avec ce qui manque — pas seulement un numéro de spec.** La règle de `09f`
             // appliquée à un moteur : un message qui nomme l'échéance vaut mieux qu'un échec de
             // connexion qui laisse chercher un problème de réseau. Et nommer *la difficulté* vaut
-            // mieux qu'un numéro, parce que les trois moteurs restants sont bloqués pour trois
+            // mieux qu'un numéro, parce que les deux moteurs restants sont bloqués pour deux
             // raisons différentes.
             autre => Err(EngineError::local(raison_du_refus(autre))),
         }
@@ -207,6 +219,7 @@ impl AnyEngine {
             Self::MongoDb(adaptateur) => adaptateur.etat_tunnel(),
             Self::Sqlite(adaptateur) => adaptateur.etat_tunnel(),
             Self::MySql(adaptateur) => adaptateur.etat_tunnel(),
+            Self::BigQuery(adaptateur) => adaptateur.etat_tunnel(),
         }
     }
 
@@ -217,6 +230,7 @@ impl AnyEngine {
             Self::MongoDb(adaptateur) => adaptateur.port_local_tunnel(),
             Self::Sqlite(adaptateur) => adaptateur.port_local_tunnel(),
             Self::MySql(adaptateur) => adaptateur.port_local_tunnel(),
+            Self::BigQuery(adaptateur) => adaptateur.port_local_tunnel(),
         }
     }
 
@@ -227,6 +241,7 @@ impl AnyEngine {
             Self::MongoDb(adaptateur) => adaptateur.close().await,
             Self::Sqlite(adaptateur) => adaptateur.close().await,
             Self::MySql(adaptateur) => adaptateur.close().await,
+            Self::BigQuery(adaptateur) => adaptateur.close().await,
         }
     }
 }
@@ -246,7 +261,7 @@ fn nom_du_moteur(moteur: crate::config::Engine) -> &'static str {
 
 /// Pourquoi ce moteur n'est pas livré, **dans ses termes**.
 ///
-/// Les trois moteurs restants le sont pour trois raisons distinctes, et les confondre sous un
+/// Les deux moteurs restants le sont pour deux raisons distinctes, et les confondre sous un
 /// « voir la spec N » ferait chercher du code là où il manque un compte, ou un écran.
 fn raison_du_refus(moteur: crate::config::Engine) -> String {
     use crate::config::Engine;
@@ -259,8 +274,9 @@ fn raison_du_refus(moteur: crate::config::Engine) -> String {
         Engine::Redis => format!(
             "{nom} ne se parcourt pas comme une base relationnelle : un espace de clés n'a ni              tables ni colonnes, et les inventer donnerait des écrans qui affichent des données qui              n'existent pas. Il lui faut son propre écran — voir la spec {spec}"
         ),
-        // `20` et `21` : ni difficulté de conception, ni décor de test. Le second est l'obstacle.
-        Engine::Snowflake | Engine::BigQuery => format!(
+        // `20` : ni difficulté de conception, ni décor de test. **`21`, lui, est livré** — voir
+        // `bigquery/mod.rs` sur ce que « livré sans décor » veut dire pour ce moteur précisément.
+        Engine::Snowflake => format!(
             "DoraBase ne sait pas encore parler à {nom} : le contrat lui irait, mais le projet n'a              aucun décor de test pour lui — et un adaptateur de base de données que rien ne vérifie              est exactement ce qui perd des données sans le dire. Voir la spec {spec}"
         ),
         autre => format!(
@@ -291,6 +307,7 @@ impl AnyEngine {
             Self::MongoDb(adaptateur) => adaptateur.probe().await,
             Self::Sqlite(adaptateur) => adaptateur.probe().await,
             Self::MySql(adaptateur) => adaptateur.probe().await,
+            Self::BigQuery(adaptateur) => adaptateur.probe().await,
         }
     }
 
@@ -300,6 +317,7 @@ impl AnyEngine {
             Self::MongoDb(adaptateur) => adaptateur.schemas().await,
             Self::Sqlite(adaptateur) => adaptateur.schemas().await,
             Self::MySql(adaptateur) => adaptateur.schemas().await,
+            Self::BigQuery(adaptateur) => adaptateur.schemas().await,
         }
     }
 
@@ -309,6 +327,7 @@ impl AnyEngine {
             Self::MongoDb(adaptateur) => adaptateur.objects(schema).await,
             Self::Sqlite(adaptateur) => adaptateur.objects(schema).await,
             Self::MySql(adaptateur) => adaptateur.objects(schema).await,
+            Self::BigQuery(adaptateur) => adaptateur.objects(schema).await,
         }
     }
 
@@ -322,6 +341,7 @@ impl AnyEngine {
             Self::MongoDb(adaptateur) => adaptateur.table_detail(schema, table).await,
             Self::Sqlite(adaptateur) => adaptateur.table_detail(schema, table).await,
             Self::MySql(adaptateur) => adaptateur.table_detail(schema, table).await,
+            Self::BigQuery(adaptateur) => adaptateur.table_detail(schema, table).await,
         }
     }
 
@@ -331,6 +351,7 @@ impl AnyEngine {
             Self::MongoDb(adaptateur) => adaptateur.rows(query).await,
             Self::Sqlite(adaptateur) => adaptateur.rows(query).await,
             Self::MySql(adaptateur) => adaptateur.rows(query).await,
+            Self::BigQuery(adaptateur) => adaptateur.rows(query).await,
         }
     }
 
@@ -340,6 +361,7 @@ impl AnyEngine {
             Self::MongoDb(adaptateur) => adaptateur.preview_updates(plan).await,
             Self::Sqlite(adaptateur) => adaptateur.preview_updates(plan).await,
             Self::MySql(adaptateur) => adaptateur.preview_updates(plan).await,
+            Self::BigQuery(adaptateur) => adaptateur.preview_updates(plan).await,
         }
     }
 
@@ -349,6 +371,7 @@ impl AnyEngine {
             Self::MongoDb(adaptateur) => adaptateur.apply_updates(plan).await,
             Self::Sqlite(adaptateur) => adaptateur.apply_updates(plan).await,
             Self::MySql(adaptateur) => adaptateur.apply_updates(plan).await,
+            Self::BigQuery(adaptateur) => adaptateur.apply_updates(plan).await,
         }
     }
 
@@ -358,6 +381,7 @@ impl AnyEngine {
             Self::MongoDb(adaptateur) => adaptateur.run_sql(sql, limite).await,
             Self::Sqlite(adaptateur) => adaptateur.run_sql(sql, limite).await,
             Self::MySql(adaptateur) => adaptateur.run_sql(sql, limite).await,
+            Self::BigQuery(adaptateur) => adaptateur.run_sql(sql, limite).await,
         }
     }
 
@@ -372,6 +396,7 @@ impl AnyEngine {
             Self::MongoDb(adaptateur) => adaptateur.row_as_insert(schema, table, values).await,
             Self::Sqlite(adaptateur) => adaptateur.row_as_insert(schema, table, values).await,
             Self::MySql(adaptateur) => adaptateur.row_as_insert(schema, table, values).await,
+            Self::BigQuery(adaptateur) => adaptateur.row_as_insert(schema, table, values).await,
         }
     }
 }
@@ -396,14 +421,13 @@ mod tests_refus {
     }
 
     #[test]
-    fn snowflake_et_bigquery_sont_refuses_pour_l_absence_de_decor() {
-        // Ni l'un ni l'autre ne pose de difficulté de conception : c'est le décor qui manque, et le
-        // dire évite de chercher du code là où il faut un compte.
-        for moteur in [Engine::Snowflake, Engine::BigQuery] {
-            let raison = raison_du_refus(moteur);
-            assert!(raison.contains("décor de test"), "{raison}");
-            assert!(raison.contains("perd des données"), "{raison}");
-        }
+    fn snowflake_est_refuse_pour_l_absence_de_decor() {
+        // Aucune difficulté de conception : c'est le décor qui manque, et le dire évite de
+        // chercher du code là où il faut un compte. BigQuery avait la même raison — voir
+        // `bigquery/mod.rs` sur ce que « livré sans décor » veut dire pour lui désormais (`21`).
+        let raison = raison_du_refus(Engine::Snowflake);
+        assert!(raison.contains("décor de test"), "{raison}");
+        assert!(raison.contains("perd des données"), "{raison}");
     }
 
     #[test]
@@ -414,7 +438,6 @@ mod tests_refus {
             (Engine::Sqlite, "17a"),
             (Engine::Redis, "19a"),
             (Engine::Snowflake, "20"),
-            (Engine::BigQuery, "21"),
         ] {
             let raison = raison_du_refus(moteur);
             assert!(raison.contains(nom_du_moteur(moteur)), "{raison}");
@@ -474,13 +497,13 @@ mod tests_refus {
         }
     }
 
-    /// Les trois moteurs sans adaptateur, eux, doivent **toujours** être refusés.
+    /// Les deux moteurs sans adaptateur, eux, doivent **toujours** être refusés.
     ///
     /// Contrôle négatif du test précédent : sans lui, on pourrait le satisfaire en retirant le
     /// bras `autre`, ce qui ferait joindre un pilote qui n'existe pas.
     #[tokio::test]
     async fn les_moteurs_sans_adaptateur_sont_refuses_sans_rien_tenter() {
-        for moteur in [Engine::Redis, Engine::Snowflake, Engine::BigQuery] {
+        for moteur in [Engine::Redis, Engine::Snowflake] {
             let erreur = match AnyEngine::connect_via(
                 moteur,
                 &variante_injoignable(),
@@ -505,6 +528,38 @@ mod tests_refus {
                 erreur.message
             );
         }
+    }
+
+    /// **BigQuery est joint, mais pas par `variante_injoignable()`** : ce moteur n'a ni hôte ni
+    /// port, donc « port 1 fermé » ne prouve rien pour lui. La preuve déterministe et sans réseau
+    /// que le pilote est bien atteint — pas refusé comme un moteur non livré — est un projet GCP
+    /// **vide** : `connect::projet_de` le refuse avant tout appel à l'authentification, donc ce
+    /// test ne dépend ni du réseau ni des identifiants Google présents (ou non) sur la machine qui
+    /// l'exécute.
+    #[tokio::test]
+    async fn bigquery_est_joint_et_pas_refuse_comme_un_moteur_non_livre() {
+        let mut variante = variante_injoignable();
+        variante.default_database = String::new();
+        // `expect_err` demanderait `Debug` sur `AnyEngine`, que les adaptateurs refusent
+        // délibérément (`05c`) — même raison que `chacun_des_moteurs_livres_joint_son_pilote`.
+        let erreur = match AnyEngine::connect_via(
+            Engine::BigQuery,
+            &variante,
+            None,
+            std::path::Path::new("/inexistant/known_hosts"),
+        )
+        .await
+        {
+            Ok(_) => panic!("un projet vide doit être refusé"),
+            Err(erreur) => erreur,
+        };
+
+        assert!(
+            !erreur.message.contains("ne sait pas encore parler"),
+            "BigQuery a été refusé comme un moteur non livré : {}",
+            erreur.message
+        );
+        assert!(erreur.message.contains("projet GCP"), "{}", erreur.message);
     }
 
     /// Une variante que rien ne peut joindre : le port 1 est réservé et personne n'y écoute.
