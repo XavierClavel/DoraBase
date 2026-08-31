@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use super::{regle_de_version, DumpAvailability, Version, VersionVerdict};
+use crate::engine::programme;
 
 /// Les emplacements où un binaire PostgreSQL se trouve **hors du `PATH`**.
 ///
@@ -57,11 +58,9 @@ pub fn decouvrir(binaire: &'static str, serveur: Version) -> DumpAvailability {
     decouvrir_dans(&dossiers_du_path(), EMPLACEMENTS_CONNUS, binaire, serveur)
 }
 
-/// Les répertoires du `PATH`, dans l'ordre.
+/// Les répertoires du `PATH`, dans l'ordre. Réexporté pour les appelants de ce module.
 pub fn dossiers_du_path() -> Vec<PathBuf> {
-    std::env::var_os("PATH")
-        .map(|valeur| std::env::split_paths(&valeur).collect())
-        .unwrap_or_default()
+    programme::dossiers_du_path()
 }
 
 /// Le cœur de la découverte, avec ses deux sources **explicites**.
@@ -76,75 +75,41 @@ pub fn decouvrir_dans(
     binaire: &'static str,
     serveur: Version,
 ) -> DumpAvailability {
-    let candidats = dossiers
+    // **La recherche est déléguée à `programme`**, qui porte les deux faits communs aux trois
+    // scopes qui cherchent un exécutable : le droit d'exécution sous unix, l'extension `.exe`
+    // sous Windows. C'est ce qui a retiré d'ici le dernier `std::os::unix` non gardé du dépôt —
+    // par suppression, pas par une garde de plus.
+    //
+    // Matérialiser la liste plutôt que l'enchaîner paresseusement : `developper` liste des
+    // répertoires, donc le coût est celui de quelques `read_dir` déjà payés, et `localiser_dans`
+    // s'arrête au premier trouvé de toute façon.
+    let candidats: Vec<PathBuf> = dossiers
         .iter()
         .cloned()
-        .chain(globs.iter().flat_map(|motif| developper(motif)));
+        .chain(globs.iter().flat_map(|motif| developper(motif)))
+        .collect();
 
-    for dossier in candidats {
-        let chemin = dossier.join(nom_de_fichier(binaire));
-        if !executable(&chemin) {
-            continue;
-        }
-        // Le premier binaire trouvé décide, même s'il est trop vieux : chercher plus loin
-        // en cas de version insuffisante contredirait le `PATH`, où l'ordre est la
-        // préférence de l'utilisateur, et rendrait le verdict imprévisible.
-        return match lire_version(&chemin) {
-            Some(version) => match regle_de_version(version, serveur) {
-                VersionVerdict::Compatible => DumpAvailability::Ready {
-                    tool: chemin,
-                    version,
-                },
-                VersionVerdict::TropVieux { outil, serveur } => DumpAvailability::ToolTooOld {
-                    tool: outil,
-                    server: serveur,
-                },
+    let Some(chemin) = programme::localiser_dans(&candidats, binaire) else {
+        return DumpAvailability::ToolMissing { binary: binaire };
+    };
+
+    // Le premier binaire trouvé décide, même s'il est trop vieux : chercher plus loin en cas de
+    // version insuffisante contredirait le `PATH`, où l'ordre est la préférence de
+    // l'utilisateur, et rendrait le verdict imprévisible.
+    match lire_version(&chemin) {
+        Some(version) => match regle_de_version(version, serveur) {
+            VersionVerdict::Compatible => DumpAvailability::Ready {
+                tool: chemin,
+                version,
             },
-            // Un fichier exécutable dont `--version` est illisible n'est pas l'outil
-            // attendu : le traiter comme absent est la seule lecture honnête.
-            None => DumpAvailability::ToolMissing { binary: binaire },
-        };
-    }
-
-    DumpAvailability::ToolMissing { binary: binaire }
-}
-
-/// Le nom du **fichier** à chercher, qui n'est pas le nom de l'**outil**.
-///
-/// La distinction compte parce que les deux sortent par des portes différentes : ce nom-ci ne
-/// sert qu'à `join`, tandis que `binaire` continue de voyager tel quel dans
-/// `DumpAvailability::ToolMissing` — donc jusqu'à l'écran. Un verdict qui réclamerait
-/// « pg_dump.exe » nommerait un fichier là où l'utilisateur cherche un outil, et la
-/// documentation de PostgreSQL, elle, dit `pg_dump`.
-fn nom_de_fichier(binaire: &str) -> String {
-    if cfg!(windows) {
-        format!("{binaire}.exe")
-    } else {
-        binaire.to_owned()
-    }
-}
-
-/// Un fichier utilisable comme programme.
-///
-/// **Les deux bras sont nécessaires, et l'absence du second était le seul défaut de
-/// compilation du projet sous Windows** (31 août 2026). Le job Linux de la CI ne pouvait pas
-/// le voir : `std::os::unix` existe là aussi. La même forme est en place depuis plus longtemps
-/// dans `engine/cloudsql/binaire.rs` — c'est celle-ci qui était en retard, pas l'inverse.
-///
-/// Windows n'a pas de bit d'exécution : l'extension décide, et c'est `NOM_AVEC_EXTENSION` qui
-/// la porte. Se contenter de `is_file()` y est donc la lecture exacte, pas un repli dégradé.
-fn executable(chemin: &Path) -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-
-        std::fs::metadata(chemin)
-            .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false)
-    }
-    #[cfg(not(unix))]
-    {
-        chemin.is_file()
+            VersionVerdict::TropVieux { outil, serveur } => DumpAvailability::ToolTooOld {
+                tool: outil,
+                server: serveur,
+            },
+        },
+        // Un fichier exécutable dont `--version` est illisible n'est pas l'outil attendu : le
+        // traiter comme absent est la seule lecture honnête.
+        None => DumpAvailability::ToolMissing { binary: binaire },
     }
 }
 
@@ -328,20 +293,6 @@ mod tests {
             ],
             "`libpq` ne porte pas le préfixe et ne doit pas paraître"
         );
-    }
-
-    /// Le nom du **fichier** porte l'extension, le nom de l'**outil** non.
-    ///
-    /// Les deux sortent par des portes différentes — l'un vers `join`, l'autre vers l'écran —
-    /// et les confondre ferait réclamer « pg_dump.exe » à quelqu'un qui cherche `pg_dump`.
-    #[test]
-    fn le_nom_de_fichier_porte_l_extension_de_la_plateforme() {
-        let attendu = if cfg!(windows) {
-            "pg_dump.exe"
-        } else {
-            "pg_dump"
-        };
-        assert_eq!(nom_de_fichier("pg_dump"), attendu);
     }
 
     #[test]

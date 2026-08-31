@@ -229,7 +229,11 @@ mod tests {
     /// de l'appelant — et les confondre ferait réclamer « kubectl.exe » à qui cherche `kubectl`.
     #[test]
     fn le_nom_de_fichier_porte_l_extension_de_la_plateforme() {
-        let attendu = if cfg!(windows) { "kubectl.exe" } else { "kubectl" };
+        let attendu = if cfg!(windows) {
+            "kubectl.exe"
+        } else {
+            "kubectl"
+        };
         assert_eq!(nom_de_fichier("kubectl"), attendu);
     }
 
