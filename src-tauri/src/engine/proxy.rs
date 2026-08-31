@@ -108,21 +108,25 @@ pub fn qualifier_avec(etat: EtatProxy, sujet: &str, erreur: EngineError) -> Engi
 ///   les trois adaptateurs, ni un seul écran. Tous parlent de « proxy » ou de « tunnel », jamais de
 ///   sa sorte — et c'est cette discipline, plus que l'énumération, qui a fait le prix du chantier.
 ///
-/// **`CloudSql` est en `Box`, et ce n'est pas un caprice de lint** (31 août 2026). Sous Windows
-/// `CloudSqlProxy` pèse **328 octets** contre 32 pour `SshTunnel` — les types de processus et de
-/// handle du système y sont plus gros —, donc l'enum entier faisait 328 octets et **chaque**
-/// connexion en portait la taille, y compris celles tunnelées par SSH, qui est le cas courant.
-/// Les trois adaptateurs gardent un `Option<ProxyOuvert>` par connexion ouverte, dans un
-/// registre qui vit tant que l'application vit.
+/// **Les deux sortes à sous-processus sont en `Box`, et ce n'est pas un caprice de lint**
+/// (31 août 2026). Sous Windows, les types de processus et de handle du système sont bien plus
+/// gros qu'ailleurs : `KubernetesProxy` pèse **368 octets** et `CloudSqlProxy` **328**, contre
+/// **32** pour `SshTunnel`. Sans `Box`, l'enum entier faisait donc 368 octets et **chaque**
+/// connexion en portait la taille — y compris celles tunnelées par SSH, qui est le cas courant.
+/// Les trois adaptateurs gardent un `Option<ProxyOuvert>` par connexion ouverte, dans un registre
+/// qui vit tant que l'application vit.
 ///
 /// Sur macOS l'écart restait sous le seuil de `clippy::large_enum_variant`, ce qui est la seule
 /// raison pour laquelle il a fallu compiler pour Windows pour le voir. Le coût est une allocation
-/// par proxy Cloud SQL ouvert — donc une par connexion, en regard d'un sous-processus qu'on vient
-/// de lancer.
+/// par proxy ouvert — donc une par connexion, en regard d'un sous-processus qu'on vient de lancer.
+///
+/// **Les chiffres viennent de clippy, pas d'une supposition**, et c'est ce qui a évité l'erreur :
+/// `CloudSql` mis en `Box` le premier, c'est `Kubernetes` qui est devenu la plus grosse variante.
+/// Boxer l'une sans mesurer l'autre n'aurait rien réglé.
 pub enum ProxyOuvert {
     Ssh(crate::engine::tunnel::SshTunnel),
     CloudSql(Box<crate::engine::cloudsql::CloudSqlProxy>),
-    Kubernetes(crate::engine::kubernetes::KubernetesProxy),
+    Kubernetes(Box<crate::engine::kubernetes::KubernetesProxy>),
 }
 
 /// `Debug` à la main, comme pour les deux types qu'il porte : le dérivé exposerait l'état
@@ -178,7 +182,7 @@ impl ProxyOuvert {
                     port_cible,
                 )
                 .await
-                .map(Self::Kubernetes)
+                .map(|proxy| Self::Kubernetes(Box::new(proxy)))
             }
         }
     }
