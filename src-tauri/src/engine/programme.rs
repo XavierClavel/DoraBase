@@ -21,7 +21,19 @@ use std::path::{Path, PathBuf};
 /// n'hérite pas du `PATH` du shell : macOS lui en donne un minimal, sans `/opt/homebrew/bin` ni
 /// `/usr/local/bin`. Un outil parfaitement installé serait donc introuvable dans l'app packagée
 /// alors qu'il se trouve depuis un terminal — panne d'autant plus déroutante que `which` répond.
+#[cfg(not(windows))]
 pub const EMPLACEMENTS_USUELS: &[&str] = &["/opt/homebrew/bin", "/usr/local/bin"];
+
+/// **Vide sous Windows, et c'est la bonne réponse, pas un trou** (31 août 2026).
+///
+/// Les deux chemins ci-dessus sont ceux de Homebrew, qui n'existe pas là-bas, et Windows n'a pas
+/// d'équivalent : aucun gestionnaire de paquets n'y est assez répandu pour qu'un chemin en dur
+/// soit « usuel ». Surtout, **le motif qui rend cette liste nécessaire n'a pas cours** — un
+/// processus Windows hérite du `PATH` de la machine, là où une app lancée depuis le Finder
+/// reçoit un `PATH` minimal. Le `PATH` seul suffit donc, et `path_enrichi` n'y ajoute que le
+/// répertoire de l'outil que l'appelant vient de localiser.
+#[cfg(windows)]
+pub const EMPLACEMENTS_USUELS: &[&str] = &[];
 
 /// Les répertoires du `PATH`, dans l'ordre.
 pub fn dossiers_du_path() -> Vec<PathBuf> {
@@ -118,14 +130,35 @@ pub fn est_executable(chemin: &Path) -> bool {
     }
 }
 
+/// Le nom du **fichier** à chercher pour l'outil nommé `nom`.
+///
+/// **Windows décide par l'extension, là où unix décide par un bit.** Chercher `kubectl` ou
+/// `cloud-sql-proxy` tout court n'y trouve rien : les fichiers s'appellent `kubectl.exe` et
+/// `cloud-sql-proxy.exe`. Pour le proxy, c'est même la convention de nommage des `externalBin` de
+/// Tauri — `<nom>-<triplet><extension>` — donc **le sidecar embarqué était introuvable par
+/// l'application qui l'embarque**, et le repli `PATH` prenait la main là où rien n'est installé.
+///
+/// **Ici et pas chez les appelants**, pour la raison d'être de ce module : les trois cherchaient
+/// un exécutable, les trois auraient ajouté la même extension. Et le nom de l'**outil** reste
+/// celui que l'appelant a passé, donc celui qui paraît dans ses messages — « kubectl.exe est
+/// introuvable » nommerait un fichier là où l'utilisateur cherche un outil.
+fn nom_de_fichier(nom: &str) -> String {
+    if cfg!(windows) {
+        format!("{nom}.exe")
+    } else {
+        nom.to_owned()
+    }
+}
+
 /// Le premier des `emplacements` qui porte un exécutable nommé `nom`.
 ///
 /// Rend `None` plutôt qu'une erreur : le message qui dit **comment installer** l'outil appartient à
 /// l'appelant, qui seul sait quel outil il cherchait et par quelle commande on l'obtient.
 pub fn localiser_dans(emplacements: &[PathBuf], nom: &str) -> Option<PathBuf> {
+    let fichier = nom_de_fichier(nom);
     emplacements
         .iter()
-        .map(|repertoire| repertoire.join(nom))
+        .map(|repertoire| repertoire.join(&fichier))
         .find(|candidat| est_executable(candidat))
 }
 
@@ -190,6 +223,16 @@ mod tests {
         );
     }
 
+    /// Le nom du **fichier** porte l'extension de la plateforme, le nom de l'**outil** non.
+    ///
+    /// Les deux sortent par des portes différentes — l'un vers `join`, l'autre vers les messages
+    /// de l'appelant — et les confondre ferait réclamer « kubectl.exe » à qui cherche `kubectl`.
+    #[test]
+    fn le_nom_de_fichier_porte_l_extension_de_la_plateforme() {
+        let attendu = if cfg!(windows) { "kubectl.exe" } else { "kubectl" };
+        assert_eq!(nom_de_fichier("kubectl"), attendu);
+    }
+
     #[test]
     fn un_tilde_de_tete_est_developpe_et_le_reste_ne_bouge_pas() {
         let Some(maison) = std::env::var_os("HOME").map(PathBuf::from) else {
@@ -227,6 +270,10 @@ mod tests {
         }
     }
 
+    /// `#[cfg(not(windows))]` : la liste y est **vide**, donc cette boucle ne mesurerait rien.
+    /// Un test qui passe en n'exécutant aucune assertion est un mensonge poli — absent, il dit
+    /// au moins la vérité.
+    #[cfg(not(windows))]
     #[test]
     fn les_emplacements_usuels_incluent_homebrew_meme_hors_du_path() {
         let en_texte: Vec<String> = emplacements_usuels()

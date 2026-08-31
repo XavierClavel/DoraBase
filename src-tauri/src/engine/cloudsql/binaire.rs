@@ -12,6 +12,11 @@ use crate::engine::EngineError;
 
 /// Le nom du binaire officiel, tel que Google le distribue. C'est aussi le nom sous lequel
 /// Tauri copie le binaire externe dans le bundle, en retirant le triplet du nom du fichier.
+///
+/// **C'est le nom de l'outil, pas celui du fichier.** L'extension de la plateforme est ajoutée
+/// par `programme::localiser_dans`, pour tous ses appelants à la fois ; ici `NOM` sert aussi aux
+/// messages, où « cloud-sql-proxy.exe » nommerait un fichier là où l'utilisateur cherche l'outil
+/// que documente Google.
 const NOM: &str = "cloud-sql-proxy";
 
 /// Le verrou, inclus à la compilation.
@@ -92,11 +97,24 @@ pub fn localiser() -> Result<PathBuf, EngineError> {
 /// Séparée pour la même raison que `connect_via` l'est de `connect` en `06b` : un test n'a
 /// pas le droit de dépendre de ce qui est installé sur la machine qui l'exécute.
 pub fn localiser_dans(emplacements: &[PathBuf]) -> Result<PathBuf, EngineError> {
+    // **La manœuvre dépend du système, et un conseil faux est pire que pas de conseil.**
+    // `brew install` sous Windows nomme un outil que l'utilisateur n'a pas et ne peut pas avoir :
+    // le message enverrait chercher une solution qui n'existe pas là où il est. Les deux gardent
+    // en commun l'URL de Google, qui est la vraie réponse dans les deux cas.
+    let manoeuvre = if cfg!(windows) {
+        "téléchargez-le depuis https://cloud.google.com/sql/docs/mysql/sql-proxy \
+         et placez-le dans un dossier du PATH"
+            .to_owned()
+    } else {
+        format!(
+            "installez-le avec « brew install {NOM} », ou depuis \
+             https://cloud.google.com/sql/docs/mysql/sql-proxy"
+        )
+    };
+
     programme::localiser_dans(emplacements, NOM).ok_or_else(|| {
         EngineError::local(format!(
-            "le binaire « {NOM} » est introuvable — installez-le avec « brew install \
-             {NOM} », ou depuis https://cloud.google.com/sql/docs/mysql/sql-proxy, puis \
-             réessayez"
+            "le binaire « {NOM} » est introuvable — {manoeuvre}, puis réessayez"
         ))
     })
 }

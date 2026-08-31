@@ -57,9 +57,16 @@ suffixe_de() {
   case $1 in
     aarch64-apple-darwin) printf 'darwin.arm64' ;;
     x86_64-apple-darwin) printf 'darwin.amd64' ;;
-    # **Linux n'est pas une cible de livraison**, le bundle ne visant que macOS. Ces deux
-    # entrées existent parce qu'un `externalBin` déclaré est exigé par **toute** compilation,
-    # y compris `cargo test` sur le runner Linux de la CI (défaut n° 111).
+    # **Windows est une cible de livraison depuis le 31 août 2026**, mais son bundle n'est pas
+    # publié — voir AGENTS.md. Le nom du fichier chez Google suit ici un **troisième**
+    # vocabulaire : ni `windows.amd64`, ni le triplet Rust, mais `x64.exe`. C'est exactement la
+    # raison d'être de cette table, et la vérifier vaut mieux que la déduire — `windows.amd64`
+    # rend 404. Il n'y a pas de binaire Windows arm64 chez Google ; Windows sur ARM exécute le
+    # x64 en émulation, donc rien ne manque.
+    x86_64-pc-windows-msvc) printf 'x64.exe' ;;
+    # **Linux n'est pas une cible de livraison**, le bundle ne visant que macOS et Windows. Ces
+    # deux entrées existent parce qu'un `externalBin` déclaré est exigé par **toute**
+    # compilation, y compris `cargo test` sur le runner Linux de la CI (défaut n° 111).
     x86_64-unknown-linux-gnu) printf 'linux.amd64' ;;
     aarch64-unknown-linux-gnu) printf 'linux.arm64' ;;
     *)
@@ -86,11 +93,23 @@ empreinte_de() {
 temporaire=
 trap 'rm -f "${temporaire:-}"' EXIT
 
+# L'extension que Tauri attend sur le fichier **posé ici**, qui n'est pas celle du fichier
+# téléchargé : la convention des `externalBin` est `<nom>-<triplet><extension>`, et le bundler
+# cherche `cloud-sql-proxy-x86_64-pc-windows-msvc.exe`. Sans elle, le fichier porte le bon
+# contenu sous un nom que rien ne lit, et l'absence n'apparaît qu'au *bundling* — le même mode
+# de défaillance que la fusion universelle manquante, décrit en tête de ce fichier.
+extension_de() {
+  case $1 in
+    *-pc-windows-*) printf '.exe' ;;
+    *) printf '' ;;
+  esac
+}
+
 recuperer() {
   local triplet=$1
   local attendue
   attendue=$(lire "sha256-$triplet")
-  local cible=$destination/cloud-sql-proxy-$triplet
+  local cible=$destination/cloud-sql-proxy-$triplet$(extension_de "$triplet")
 
   if [[ -f $cible ]] && [[ $(empreinte_de "$cible") == "$attendue" ]]; then
     echo "cloud-sql-proxy $version ($triplet) : déjà présent et vérifié"
