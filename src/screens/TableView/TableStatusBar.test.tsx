@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { RowWindow } from '../../domain/engine'
 import { LanguageProvider } from '../../i18n/LanguageContext'
+import { raccourci } from '../../shell/plateforme'
 import { TableStatusBar } from './TableStatusBar'
 
 function fenetre(over: Partial<RowWindow> = {}): RowWindow {
@@ -48,7 +49,7 @@ describe('barre d’état', () => {
     expect(barre).toHaveTextContent('lecture seule')
     // `10c` avait retiré ce rappel faute d'écran qui y réponde — un raccourci affiché qui ne répond
     // pas est pire qu'un raccourci absent (`09e`). `11b` livre la bascule, donc il revient.
-    expect(barre).toHaveTextContent('⌘E pour éditer')
+    expect(barre).toHaveTextContent(`${raccourci('E')} pour éditer`)
   })
 
   it('en édition sans modification, elle le dit sans annoncer le compte', () => {

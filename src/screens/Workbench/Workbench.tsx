@@ -9,6 +9,7 @@ import type {
   TableSummary,
   Value,
 } from '../../domain/engine'
+import { modificateurActif } from '../../shell/plateforme'
 import { SelectionIndicator } from '../../shell/SelectionIndicator/SelectionIndicator'
 import { TitleBar } from '../../shell/TitleBar/TitleBar'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
@@ -894,7 +895,7 @@ export function Workbench({
   useEffect(() => {
     if (idActif === null) return
     function auClavier(evenement: KeyboardEvent) {
-      if (!evenement.metaKey || evenement.key !== 'e') return
+      if (!modificateurActif(evenement) || evenement.key !== 'e') return
       evenement.preventDefault()
       setOngletsEnEdition((precedent) => {
         const suivant = new Set(precedent)

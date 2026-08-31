@@ -13,6 +13,7 @@ import type {
   Value,
 } from '../../domain/engine'
 import { useT } from '../../i18n/LanguageContext'
+import { modificateurActif } from '../../shell/plateforme'
 import { cx } from '../../ui/cx'
 import { type GridColumn, VirtualGrid } from '../../ui/VirtualGrid/VirtualGrid'
 import { apercuDeLaSaisie, estNumerique, rendreValeur } from './cellule'
@@ -276,7 +277,7 @@ export function TableView({
   useEffect(() => {
     if (!edition) return
     function auClavier(evenement: KeyboardEvent) {
-      if (!evenement.metaKey || evenement.key !== 'z' || enEdition !== null) return
+      if (!modificateurActif(evenement) || evenement.key !== 'z' || enEdition !== null) return
       evenement.preventDefault()
       onAttenteChange?.(annulerLaDerniere(attente))
     }

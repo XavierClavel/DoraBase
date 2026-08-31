@@ -2,6 +2,7 @@ import { type ReactNode, useMemo, useState } from 'react'
 import type { EnvironmentId, Project } from '../../domain/config'
 import type { ColumnInfo, ConnectionState } from '../../domain/engine'
 import { useT } from '../../i18n/LanguageContext'
+import { raccourci } from '../../shell/plateforme'
 import { Badge } from '../../ui/Badge/Badge'
 import { ColumnRow } from '../../ui/ColumnRow/ColumnRow'
 import { type EntreeDeMenu, MenuContextuel } from '../../ui/MenuContextuel/MenuContextuel'
@@ -333,7 +334,7 @@ export function ExplorerSidebar({
               <SidebarToolbarButton
                 icon="plus"
                 label={t('explorer.sidebar.newProject')}
-                title={t('explorer.sidebar.newProjectTitle')}
+                title={t('explorer.sidebar.newProjectTitle', { raccourci: raccourci('N') })}
                 onClick={onNewProject}
               />
             </SidebarToolbar>

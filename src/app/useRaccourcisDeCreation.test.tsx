@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
+import { auModificateur } from '../test/raccourcis'
 import { useRaccourcisDeCreation } from './useRaccourcisDeCreation'
 
 function Ecran({ nouveauProjet, modale = false }: { nouveauProjet: () => void; modale?: boolean }) {
@@ -21,7 +22,7 @@ function monter(modale = false) {
 
 test('⌘N ouvre « Nouveau projet », et consomme la frappe', async () => {
   const { nouveauProjet } = monter()
-  const consomme = await enConsommant(() => userEvent.keyboard('{Meta>}n{/Meta}'))
+  const consomme = await enConsommant(() => userEvent.keyboard(auModificateur('n')))
   expect(nouveauProjet).toHaveBeenCalledTimes(1)
   // Sans `preventDefault`, le navigateur ouvre une fenêtre par-dessus la modale qu'on vient d'ouvrir.
   expect(consomme).toBe(true)
@@ -32,7 +33,7 @@ test('⇧⌘N ne déclenche plus rien, et n’est plus consommé', async () => {
   // **Le raccourci a été retiré le 26 août 2026.** Il ouvrait « Ajouter une connexion », mais un
   // raccourci clavier ne désigne aucune ligne d'arbre : il fallait deviner le projet, donc retomber
   // sur le premier de la liste. Le geste part désormais du menu d'une ligne d'environnement.
-  const consomme = await enConsommant(() => userEvent.keyboard('{Meta>}{Shift>}N{/Shift}{/Meta}'))
+  const consomme = await enConsommant(() => userEvent.keyboard(auModificateur('{Shift>}N{/Shift}')))
   expect(nouveauProjet).not.toHaveBeenCalled()
   // **Et il n'est pas avalé** : reprendre une frappe pour ne rien en faire est un raccourci mort. La
   // même règle que pour les deux refus — modale ouverte, zone de saisie.
@@ -47,14 +48,14 @@ test('« n » seul ne déclenche rien', async () => {
 
 test('rien pendant qu’une modale est ouverte', async () => {
   const { nouveauProjet } = monter(true)
-  await userEvent.keyboard('{Meta>}n{/Meta}')
+  await userEvent.keyboard(auModificateur('n'))
   expect(nouveauProjet).not.toHaveBeenCalled()
 })
 
 test('rien depuis une zone de saisie', async () => {
   const { nouveauProjet } = monter()
   await userEvent.click(screen.getByLabelText('Requête'))
-  await userEvent.keyboard('{Meta>}n{/Meta}')
+  await userEvent.keyboard(auModificateur('n'))
   expect(nouveauProjet).not.toHaveBeenCalled()
 })
 

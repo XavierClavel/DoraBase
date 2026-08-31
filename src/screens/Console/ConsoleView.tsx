@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type { QueryResult } from '../../domain/engine'
 import { useT } from '../../i18n/LanguageContext'
+import { raccourci } from '../../shell/plateforme'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
 import type { Dialecte } from '../Workbench/onglets'
 import { ConsoleResult, type VueResultat } from './ConsoleResult'
@@ -177,7 +178,7 @@ const ACTIONS = [
   {
     id: 'executer',
     icone: 'play' as const,
-    raccourci: '⌘↩',
+    raccourci: raccourci('↩'),
     principale: true,
   },
   {

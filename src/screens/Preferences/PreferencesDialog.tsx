@@ -5,6 +5,7 @@ import type { IconName } from '../../design/icons/names'
 import type { Guards, Preferences, Theme } from '../../domain/config'
 import type { AvailableUpdate } from '../../domain/maj'
 import { useT } from '../../i18n/LanguageContext'
+import { raccourci } from '../../shell/plateforme'
 import { Button } from '../../ui/Button/Button'
 import { Modal } from '../../ui/Modal/Modal'
 import { Toggle } from '../../ui/Toggle/Toggle'
@@ -424,13 +425,15 @@ function GardeFous({
           par accident. L'écran existe maintenant. */}
       <GardeFou
         libelle={t('preferences.securite.pendingBeforeWrite.libelle')}
-        detail={t('preferences.securite.pendingBeforeWrite.detail')}
+        detail={t('preferences.securite.pendingBeforeWrite.detail', {
+          raccourci: raccourci('↩'),
+        })}
         checked={guards.pendingBeforeWrite}
         onCheckedChange={(pendingBeforeWrite) => onRegler({ pendingBeforeWrite })}
       />
       <GardeFou
         libelle={t('preferences.securite.prodReadOnly.libelle')}
-        detail={t('preferences.securite.prodReadOnly.detail')}
+        detail={t('preferences.securite.prodReadOnly.detail', { raccourci: raccourci('E') })}
         checked={guards.prodReadOnly}
         onCheckedChange={(prodReadOnly) => onRegler({ prodReadOnly })}
       />

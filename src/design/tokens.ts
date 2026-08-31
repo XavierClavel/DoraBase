@@ -56,6 +56,8 @@ export type TokenName =
   | 'hero-wash'
   | 'hover-bg'
   | 'hover-border'
+  | 'hover-close'
+  | 'hover-close-ink'
   | 'hover-row'
   | 'info'
   | 'info-bg'
@@ -212,6 +214,8 @@ export const tokens: Record<TokenName, string> = {
   'hero-wash': 'var(--hero-wash)',
   'hover-bg': 'var(--hover-bg)',
   'hover-border': 'var(--hover-border)',
+  'hover-close': 'var(--hover-close)',
+  'hover-close-ink': 'var(--hover-close-ink)',
   'hover-row': 'var(--hover-row)',
   'info': 'var(--info)',
   'info-bg': 'var(--info-bg)',

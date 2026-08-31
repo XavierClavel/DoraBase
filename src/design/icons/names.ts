@@ -53,4 +53,7 @@ export type IconName =
   | 'trash'
   | 'view'
   | 'warn'
+  | 'wmax'
+  | 'wmin'
+  | 'wrestore'
   | 'x'

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { DumpAvailability } from '../../domain/dump'
 import { useT } from '../../i18n/LanguageContext'
+import { raccourci } from '../../shell/plateforme'
 import { Button } from '../../ui/Button/Button'
 import { formatBytes } from '../../ui/format'
 import { Modal } from '../../ui/Modal/Modal'
@@ -97,7 +98,7 @@ export function ExportDump({
                 {t('dump.export.close')}
               </Button>
               {pret && avancement.phase !== 'fini' && (
-                <Button onClick={exporter} shortcut="⇧⌘E">
+                <Button onClick={exporter} shortcut={raccourci('E', { maj: true })}>
                   {t('dump.export.choose')}
                 </Button>
               )}

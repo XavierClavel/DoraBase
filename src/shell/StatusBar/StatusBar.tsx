@@ -1,5 +1,6 @@
 import { appVersion } from '../../app/version'
 import { useT } from '../../i18n/LanguageContext'
+import { raccourci } from '../plateforme'
 import styles from './StatusBar.module.css'
 
 type StatusBarProps = {
@@ -12,7 +13,7 @@ export function StatusBar({ projectCount }: StatusBarProps) {
     <div className={styles.root}>
       <span>{t('shell.statusBar.projectCount', { count: projectCount })}</span>
       <span>·</span>
-      <span>{t('shell.statusBar.paletteHint')}</span>
+      <span>{t('shell.statusBar.paletteHint', { raccourci: raccourci('K') })}</span>
       <span className={styles.spacer} />
       {/* **Cette barre n'annonce plus les mises à jour** (2 septembre 2026) : elle disait qu'une
           version existait au seul écran d'accueil, donc précisément quand personne ne travaille, et

@@ -56,6 +56,8 @@
   --hero-wash: #F8F3E9;
   --hover-bg: #FFFDF8;
   --hover-border: rgba(35,32,28,.26);
+  --hover-close: var(--danger);
+  --hover-close-ink: var(--on-dark);
   --hover-row: rgba(35,32,28,.05);
   --info: #3B82C4;
   --info-bg: rgba(59,130,196,.10);

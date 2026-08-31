@@ -1,6 +1,7 @@
 import { Icon } from '../../design/icons/Icon'
 import type { RowWindow } from '../../domain/engine'
 import { useT } from '../../i18n/LanguageContext'
+import { raccourci } from '../../shell/plateforme'
 import { cx } from '../../ui/cx'
 import { formatInteger } from '../../ui/format'
 import styles from './TableStatusBar.module.css'
@@ -64,7 +65,7 @@ export function TableStatusBar({
         <span>·</span>
         <span>{t('tableView.statusBar.noTransaction')}</span>
         <span className={styles.espace} />
-        <span>{t('tableView.statusBar.exitEditing')}</span>
+        <span>{t('tableView.statusBar.exitEditing', { raccourci: raccourci('E') })}</span>
       </div>
     )
   }
@@ -100,7 +101,9 @@ export function TableStatusBar({
           bascule, donc il revient. */}
       <span className={styles.lecture}>
         <Icon name={editing ? 'pencil' : 'lock'} size={11} strokeWidth={2.2} />
-        {editing ? t('tableView.statusBar.editingNoChange') : t('tableView.statusBar.readOnlyHint')}
+        {editing
+          ? t('tableView.statusBar.editingNoChange')
+          : t('tableView.statusBar.readOnlyHint', { raccourci: raccourci('E') })}
       </span>
     </div>
   )

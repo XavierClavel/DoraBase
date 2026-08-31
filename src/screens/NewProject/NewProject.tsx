@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type { CreateProjectRequest, EnvironmentDeclaration, Project } from '../../domain/config'
 import { useT } from '../../i18n/LanguageContext'
+import { raccourci } from '../../shell/plateforme'
 import { Button } from '../../ui/Button/Button'
 import { cx } from '../../ui/cx'
 import { Field } from '../../ui/Field/Field'
@@ -183,7 +184,7 @@ export function NewProject({
             disabled={empeche !== null || enCours}
             title={empeche ?? undefined}
             size="lg"
-            shortcut="⌘↩"
+            shortcut={raccourci('↩')}
             onClick={() => void creer()}
           >
             {t('newProject.continueButton')}

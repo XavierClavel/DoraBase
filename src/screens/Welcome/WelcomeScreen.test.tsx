@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { LanguageProvider } from '../../i18n/LanguageContext'
+import { auModificateur } from '../../test/raccourcis'
 import { WelcomeScreen } from './WelcomeScreen'
 
 function monter(props: Partial<Parameters<typeof WelcomeScreen>[0]> = {}) {
@@ -32,7 +33,7 @@ test('les deux boutons appellent le même callback', async () => {
 test('cet écran n’écoute plus le clavier', async () => {
   const onNewProject = vi.fn()
   monter({ onNewProject })
-  await userEvent.keyboard('{Meta>}n{/Meta}')
+  await userEvent.keyboard(auModificateur('n'))
   await userEvent.keyboard('n')
   expect(onNewProject).not.toHaveBeenCalled()
 })

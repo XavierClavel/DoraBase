@@ -14,6 +14,8 @@ import type {
   UpdatePlan,
 } from '../../domain/engine'
 import { LanguageProvider } from '../../i18n/LanguageContext'
+import { raccourci } from '../../shell/plateforme'
+import { auModificateur } from '../../test/raccourcis'
 import { REGLAGES, TRIO_DE_TEST } from '../NewConnection/pourLesTests'
 import type { PasserelleLignes } from '../TableView/useLignes'
 import type { PasserelleArbre } from './useArbre'
@@ -1578,7 +1580,7 @@ describe('mode édition', () => {
     await ouvrirLArbreJusquAuSchema(utilisateur)
     await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
     await screen.findByRole('grid')
-    await utilisateur.keyboard('{Meta>}e{/Meta}')
+    await utilisateur.keyboard(auModificateur('e'))
   }
 
   /** Modifie la colonne `status` de la première ligne — non nulle, donc l'attendu est renseigné. */
@@ -1918,11 +1920,11 @@ describe('mode édition', () => {
 
     // `10c` avait retiré ce rappel faute d'écran qui y réponde ; il répond maintenant.
     expect(screen.getByRole('status', { name: 'État de la table' })).toHaveTextContent(
-      '⌘E pour éditer',
+      `${raccourci('E')} pour éditer`,
     )
     expect(screen.queryByRole('button', { name: /Modifier/ })).not.toBeInTheDocument()
 
-    await utilisateur.keyboard('{Meta>}e{/Meta}')
+    await utilisateur.keyboard(auModificateur('e'))
     expect(screen.getByRole('status', { name: 'État de la table' })).toHaveTextContent('édition')
     expect(screen.getAllByRole('button', { name: /Modifier/ }).length).toBeGreaterThan(0)
   })
@@ -1960,7 +1962,7 @@ describe('mode édition', () => {
     await modifier(utilisateur)
     await screen.findByLabelText('Modifications en attente de la table')
 
-    await utilisateur.keyboard('{Meta>}z{/Meta}')
+    await utilisateur.keyboard(auModificateur('z'))
 
     // Un compteur tenu à part divergerait ici.
     await waitFor(() =>
@@ -1994,7 +1996,7 @@ describe('mode édition', () => {
     await modifier(utilisateur)
     await screen.findByLabelText('Modifications en attente de la table')
 
-    await utilisateur.keyboard('{Meta>}e{/Meta}')
+    await utilisateur.keyboard(auModificateur('e'))
 
     // Les perdre sur une frappe serait le défaut qu'`esc` fermant une modale pleine a produit.
     expect(screen.getByLabelText('Modifications en attente de la table')).toBeInTheDocument()
