@@ -7,6 +7,12 @@ structure.
 
 Tauri 2 + React / TypeScript / Vite.
 
+**Windows se compile et se lance, mais n'est pas publié** (31 août 2026) : le produit y fait
+tout ce qu'il fait sur macOS, et la CI le vérifie à chaque commit — mais il n'y a **pas
+d'installateur signé ni de mise à jour en place**, faute de certificat Authenticode. Il faut
+donc le construire soi-même (voir *Développer*), et Windows avertira au lancement. Les versions
+publiées ci-dessous sont macOS seulement.
+
 ---
 
 ## Télécharger
@@ -169,6 +175,29 @@ pnpm dev             # serveur Vite ; ?gallery pour la galerie, ?demo pour le d�
 pnpm tauri dev       # l'application, dans sa fenêtre native
 ./scripts/verifier-tout.sh             # la barrière avant commit : ce que lance la CI
 ```
+
+### Sur Windows
+
+```bash
+pnpm install
+pnpm tauri build     # produit un installateur NSIS dans src-tauri/target/release/bundle/nsis/
+```
+
+Trois prérequis, en plus de Node et Rust :
+
+| Prérequis | Pourquoi |
+| --- | --- |
+| **Rust, toolchain MSVC** | `x86_64-pc-windows-msvc` ; la toolchain GNU n'est pas exercée |
+| **Git Bash sur le `PATH`** | `pnpm proxy:embarquer` et le hook de bundle sont des scripts bash |
+| **WebView2** | fourni par Windows 11 ; à installer sur un Windows 10 nu |
+
+L'installateur produit **n'est pas signé** : Windows affichera un avertissement SmartScreen, et
+il faut passer par « Informations complémentaires → Exécuter quand même ». C'est le même
+arbitrage que la signature ad hoc de macOS avant l'achat du Developer ID — dit franchement
+plutôt que de laisser croire à une application cassée.
+
+Pour compiler pour Windows **depuis un Mac** (utile pour vérifier qu'une modification compile,
+sans machine Windows) : voir la section *Commandes* d'[AGENTS.md](AGENTS.md).
 
 Les conventions, les décisions et leurs raisons, les prohibitions de design et les pièges
 propres à cette machine sont dans **[AGENTS.md](AGENTS.md)** — le document de référence du

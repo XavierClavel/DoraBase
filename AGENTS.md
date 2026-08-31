@@ -1058,6 +1058,134 @@ la sélection de l'arbre aux modales de dump. Sans cible unique, la modale le **
 que de choisir : exporter la mauvaise base est sans conséquence, importer dans la mauvaise en
 a une. À reprendre quand la sélection sera transmise.
 
+### Windows (31 août 2026)
+
+**Windows est une cible de développement et d'exécution ; ce n'est pas une cible de
+publication.** Le produit y compile, s'y lance et y fait tout ce qu'il fait sur macOS —
+Gestionnaire d'identifiants, SSH, dump, proxy Cloud SQL —, et `ci.yml` porte un job
+`windows-latest` qui le tient. Ce qui n'existe pas : **aucun installateur signé, aucune mise à
+jour en place**. Il n'y a pas de certificat Authenticode, donc SmartScreen avertit à chaque
+téléchargement ; c'est le même arbitrage que `signingIdentity: "-"` avant l'achat du Developer
+ID, un cran plus rude. `publication.yml` n'a pas bougé et ne fabrique toujours qu'un `.dmg`.
+
+**La plateforme est une constante de construction, `__APP_PLATFORM__`** — posée par
+`vite.config.ts` depuis `process.platform`, comme `__APP_ARCH__` et pour la raison qui y est
+déjà écrite : `navigator.userAgent` n'est pas fiable dans une webview, et un bundle est
+*construit pour* une plateforme. Elle est lue par **`src/shell/plateforme.ts` et nulle part
+ailleurs** : un composant qui interrogerait le global contournerait le seul endroit où le sens
+de cette valeur est écrit, et sortirait du champ des tests.
+
+**`DORABASE_PLATEFORME_DECOR` est la troisième valeur figée pour le décor**, après la version
+(`DORABASE_VERSION_DECOR`) et la locale, et pour la même raison : ce que la machine décide ne
+doit pas décider ce que les tests mesurent. C'est elle qui rend **toute la coquille Windows
+vérifiable depuis un Mac** — les trois boutons, les libellés `Ctrl+`, la géométrie de la barre.
+Sans elle, il faudrait un runner Windows pour Playwright, et les captures de fidélité y seraient
+*écrites* au lieu d'être comparées. Deux conséquences pratiques :
+
+- `playwright.config.ts` démarre **deux** serveurs Vite et déclare **deux** projets. Le projet
+  `windows` n'exécute que les fichiers `*.windows.spec.ts` ; y rejouer la suite entière ferait
+  comparer un rendu Windows à des références `-darwin.png` ;
+- `pnpm test` est vert **sous les deux décors**, et c'est une exigence, pas une coïncidence : une
+  suite qui rougirait sous `windows` rougirait sur un poste Windows, où l'on est censé pouvoir
+  développer. Les frappes de test passent donc par `auModificateur` (`src/test/raccourcis.ts`) et
+  les libellés par `raccourci`, jamais par un `{Meta>}` ni un `⌘` en dur. Mesuré : 29 tests
+  tombaient avant ce détour.
+
+**Le modificateur est `Ctrl`, et ce n'est pas une substitution de caractère.** Trois choses
+changent ensemble — le symbole (`⌘` / `Ctrl`), le séparateur (macOS colle, Windows joint par `+`)
+et **l'ordre** (`⇧⌘E` contre `Ctrl+Shift+E`). Remplacer `⌘` par `Ctrl+` aurait donné
+« Shift+Ctrl+E », que rien n'écrit. D'où `raccourci()`, et non une constante. Piège associé :
+`seulLeModificateur` existe parce que `useRaccourcisDeCreation` excluait `ctrlKey` comme
+« un modificateur qui n'est pas le nôtre » — sous Windows c'est le nôtre, et `Ctrl+N` n'aurait
+jamais rien ouvert, **en silence**, puisque rien n'échoue quand un raccourci ne répond pas.
+
+**La barre de titre est dessinée par nous, boutons compris — les premiers pixels inventés du
+projet.** `titleBarStyle: "Overlay"` et `hiddenTitle` sont des clefs macOS : sous Windows elles
+ne font rien, et le système dessine sa propre barre **au-dessus** de la nôtre. L'alternative
+refusée était de la garder : 72 px de chrome pour 40 px d'information, le mot « DoraBase » deux
+fois, et les 78 px de dégagement des feux devenus un trou inexpliqué. `decorations: false` retire
+le cadre, et `TitleBar` monte trois boutons à droite. Quatre points à ne pas défaire :
+
+- **le glyphe central suit l'état** (carré / deux carrés décalés) : c'est la seule raison de la
+  permission `core:window:allow-is-maximized`. Un bouton qui annoncerait toujours « Agrandir »
+  mentirait une fois sur deux sur ce qu'il va faire ;
+- **le survol rouge de la fermeture est le cinquième état de survol du dépôt**, et il est
+  délibéré : la convention Windows est si forte que s'en écarter ferait chercher le bouton. Le
+  rouge est `--hover-close`, **dérivé de `--danger` par `var()`** — donc celui du produit et non
+  le `#E81123` de Microsoft, qui jurerait sur du papier crème ; donc aussi aucune couleur
+  littérale ajoutée, et « Nuit » suit tout seul sans entrée à tenir en phase. `--hover-close-ink`
+  est l'encre : deux jetons plutôt qu'un, parce qu'un jeton nommé pour une surface ne doit jamais
+  servir d'encre (la leçon d'`--on-dark`) ;
+- **la passerelle `PasserelleFenetre` est injectée**, comme `PASSERELLE_ZOOM`, et ses quatre
+  fonctions sont `async`. Ce n'est pas décoratif : **`getCurrentWindow()` lève *synchronément***
+  hors de la webview (il lit `__TAURI_INTERNALS__.metadata`), donc un `() => getCurrentWindow()
+  .minimize()` ne construit jamais le `.catch()` de l'appelant. Mesuré : **81 tests** sont tombés
+  d'un coup, et la galerie, `?demo` et toute la suite Playwright d'un build Windows auraient
+  planté net. Même piège que le `SecurityError` synchrone d'un WebSocket refusé par la CSP ;
+- **`dimmed` ternit enfin les boutons**, ce que le mockup demandait et que macOS refusait : les
+  feux y sont dessinés par le système, les nôtres obéissent au CSS.
+
+**Le Gestionnaire d'identifiants n'a pas de question de signature à poser, et c'est la prémisse
+qui diffère, pas le code.** Tout `secrets/signature.rs` existe parce que les ACL du Trousseau
+macOS sont liées à la **signature de code**, qui change à chaque build ad-hoc. Les entrées de
+Windows sont protégées par DPAPI et rattachées au **compte de l'utilisateur**, qui ne change pas
+d'une reconstruction à l'autre : il n'y a rien à détecter. Laisser tourner la détection était le
+pire des deux mondes — `codesign` n'existe pas là-bas, `signature_courante` rend `AdHoc` par
+prudence, et le résultat aurait été un **fichier chiffré à vie**, y compris installé, annoncé
+fidèlement par le badge d'`A2` sans que personne se demande pourquoi. `selectionner` porte donc
+un `if cfg!(windows)`, en `cfg!` et non `#[cfg]` pour que les deux branches restent compilées
+partout.
+
+**Deux pièges de configuration mesurés plutôt que supposés :**
+
+- **Tauri fusionne `tauri.windows.conf.json` par RFC 7386, où un tableau est *remplacé*.**
+  `app.windows` étant un tableau, un recouvrement réduit à `{"decorations": false}` fait
+  disparaître `title`, `width`, `height`, `minWidth`, `minHeight` et `resizable` — le bundle prend
+  les défauts de Tauri (800 × 600, sans titre) et **rien n'échoue**. Vérifié contre `json-patch`
+  3.0.1, la version du verrou. Le recouvrement répète donc toute la fenêtre, et
+  `scripts/verifier-conf-windows.py` garde la répétition honnête : sans lui, relever `width` d'un
+  seul côté laisserait Windows à l'ancienne valeur pour toujours.
+- **Nommer les projets Playwright a renommé les captures de fidélité.** Le gabarit par défaut est
+  `{arg}{-projectName}{-snapshotSuffix}{ext}` : Playwright a cherché `a1-accueil-macos-darwin.png`,
+  ne l'a pas trouvé, et l'a **écrit**. Les cinq tests de fidélité sont passés au vert en ne
+  comparant rien. C'est le piège que ce fichier consignait pour un runner Linux, atteint sur le
+  bon système. D'où un `snapshotPathTemplate` explicite sans `{-projectName}`, et trois contrôles
+  dans `verifier-ci.py`.
+
+**Le sidecar porte l'extension, et il ne la portait pas.** La convention des `externalBin` est
+`<nom>-<triplet><extension>` : le bundler cherche `cloud-sql-proxy-x86_64-pc-windows-msvc.exe`, et
+`engine/cloudsql/binaire.rs` cherchait `cloud-sql-proxy` tout court — donc **le proxy embarqué
+était introuvable par l'application qui l'embarque**, et le repli `PATH` prenait la main là où rien
+n'est installé. Le nom du fichier chez Google suit un **troisième** vocabulaire, ni le triplet ni
+`windows.amd64` mais `cloud-sql-proxy.x64.exe` (vérifié : `windows.amd64` rend 404). Il n'existe
+pas de binaire Windows arm64 ; l'émulation x64 couvre ce cas.
+
+**Le job `windows` de la CI existe pour une famille de défauts que les deux autres ne peuvent pas
+voir.** `src/dump/discover.rs` employait `std::os::unix::fs::PermissionsExt` sans garde : le job
+Linux ne pouvait rien en dire, `std::os::unix` existant là aussi. C'était le **seul** défaut de
+compilation de tout le dépôt. Le job ne rejoue pas la moitié web — Vitest, Biome, `tsc`, les
+jetons et les projections ne dépendent pas de la plateforme — et ne lance pas Playwright, pour la
+raison des captures.
+
+**Localement, compiler pour Windows depuis un Mac demande trois outils** : `cargo-xwin` (qui
+télécharge le CRT MSVC et le SDK Windows), le `clang-cl` de la formule `llvm` de Homebrew, et
+`nasm` (que `aws-lc-sys`, arrivé par `russh`, exige pour son assembleur). `cargo check` suffit et
+n'a pas besoin de `lld-link` :
+
+```bash
+export PATH="$HOME/.cargo/bin:/opt/homebrew/opt/llvm/bin:$PATH"
+pnpm proxy:embarquer x86_64-pc-windows-msvc
+cd src-tauri && cargo xwin clippy --target x86_64-pc-windows-msvc --all-targets -- -D warnings
+```
+
+**Un défaut préexistant trouvé en route, et corrigé** : `developper()` de `dump/discover.rs` ne
+savait pas traiter une étoile occupant un **segment entier**. `Path::new("…/Versions/").parent()`
+rend `…/Contents` et `file_name()` rend `Versions`, parce que `Path` ignore la barre finale : le
+motif `…/Versions/*/bin` rendait donc `…/Versions/bin`, et **le repli Postgres.app n'a jamais
+fonctionné**. Personne ne l'a vu parce que la mesure du 19 août notait « Postgres.app n'est pas
+installé » — le seul motif faux était le seul qui ne pouvait rien trouver. Le découpage se fait
+désormais sur le segment, et `std::path::is_separator` traite `/` et `\` selon la plateforme.
+
 ### La migration du format de configuration
 
 `VERSION_COURANTE` vaut **5**. Les crans successifs sont des passes sur du
@@ -1450,6 +1578,35 @@ présenter comme vérifiées tant qu'un humain ne les a pas faites :
   par le suivant. L'expérience qui trancherait demande de scinder l'aller-retour en deux
   tests — un qui écrit, un qui relit.
 
+**Et depuis Windows (31 août 2026), une seconde liste, dont rien n'a encore été fait.** Toute la
+coquille Windows est vérifiée *en structure* — trois boutons, géométrie de la barre, libellés
+`Ctrl+`, compilation, bundle NSIS — et **rien du rendu**. WebView2 n'est pas plus pilotable que
+WKWebView, et les captures de fidélité mesurent le clair de macOS : leur vert prouve seulement
+que Windows n'a rien changé à macOS.
+
+- **Lire les dix écrans sous WebView2**, en clair puis en « Nuit ». Le rendu des polices diffère
+  de macOS — c'est même pourquoi un second jeu de références serait un jeu à maintenir et non une
+  copie. Un contraste faible, une bordure disparue, un libellé qui déborde son bouton ne se
+  voient qu'à l'œil. Même réserve que « lire les dix écrans en Nuit », pour la même raison.
+- **Les trois boutons de fenêtre, à la main** : survol (dont le rouge de fermeture), anneau de
+  focus, glissement de la fenêtre par la barre, double-clic pour agrandir, et le glyphe central
+  quand la fenêtre est **déjà** agrandie au lancement. `Win+↑` et `Win+↓` aussi : ils changent la
+  maximisation sans que le composant voie autre chose qu'un `resize`.
+- **Le presse-papier et les six menus**, comme sur macOS : le menu natif est reconstruit à
+  l'identique, et `⌘C`/`⌘V` devenus `Ctrl+C`/`Ctrl+V` sont **la** régression que le remplacement
+  du menu par défaut peut introduire. Aucun test ne voit un menu natif.
+- **Le Gestionnaire d'identifiants entre deux builds.** Le raisonnement dit qu'une entrée DPAPI
+  survit à une reconstruction, contrairement au Trousseau ; personne ne l'a constaté.
+- **Le `known_hosts` d'OpenSSH pour Windows**, écrit par le vrai client, contre une connexion
+  tunnelée. Le repli `USERPROFILE` est testé ; le format du fichier là-bas ne l'est pas.
+- **`pg_dump` avec l'installateur EDB**, et sans rien d'installé. Les deux chemins de
+  `C:\Program Files\PostgreSQL\*\bin` viennent de la documentation, **pas d'une mesure** —
+  contrairement à ceux de macOS, relevés le 19 août.
+- **Le proxy Cloud SQL depuis une application installée**, l'équivalent Windows du `PATH` minimal
+  du Finder.
+- **L'installateur NSIS** : qu'il s'ouvre, installe, et que l'application se lance. SmartScreen
+  avertira — c'est attendu, faute de certificat Authenticode.
+
 ---
 
 ## Trois pièges propres à cette machine
@@ -1546,7 +1703,13 @@ export DORABASE_E2E_PORT=5399
 pnpm dev            # serveur Vite ; `?gallery` affiche la galerie, `?demo` le décor de démo
 pnpm tauri dev      # l'app (bloquant, ouvre une fenêtre)
 pnpm test           # Vitest
-pnpm test:e2e       # Playwright, webServer auto
+pnpm test:e2e       # Playwright, webServer auto — deux projets, `macos` et `windows`
+pnpm test:e2e --project=windows   # la coquille Windows seule, depuis un Mac
+
+# La coquille Windows, à l'œil, sans machine Windows : la plateforme est une constante de
+# construction, donc c'est le serveur qu'on relance, jamais un réglage à l'exécution.
+DORABASE_PLATEFORME_DECOR=windows pnpm dev
+DORABASE_PLATEFORME_DECOR=windows pnpm test   # doit être vert, comme sans la variable
 pnpm typecheck      # tsc -b — le seul qui compile quelque chose
 pnpm lint           # Biome
 pnpm tokens:check   # garde-fou : échoue si tokens.css/ts ont été édités à la main
@@ -1558,6 +1721,13 @@ pnpm domain:check   # idem pour les projections ts-rs (exige un arbre git propre
 
 cd src-tauri && cargo test --features db-tests   # avec les décors
 cd src-tauri && cargo test                       # sans décor
+
+# Compiler pour Windows depuis ce Mac. Exige `cargo install cargo-xwin`, la formule `llvm` de
+# Homebrew (pour `clang-cl`) et `nasm` (qu'`aws-lc-sys`, venu de `russh`, réclame). `cargo check`
+# et `clippy` suffisent — ils ne lient pas, donc `lld-link` n'est pas nécessaire.
+export PATH="$HOME/.cargo/bin:/opt/homebrew/opt/llvm/bin:$PATH"
+pnpm proxy:embarquer x86_64-pc-windows-msvc
+cd src-tauri && cargo xwin clippy --target x86_64-pc-windows-msvc --all-targets -- -D warnings
 ```
 
 `src-tauri/dmg/fond-dmg.png`, `fond-dmg@2x.png` et `fond-dmg.tiff` sont engendrés par
