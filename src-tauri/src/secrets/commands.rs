@@ -34,7 +34,32 @@ pub struct ActiveSecretStore {
 /// **Aucun réglage** : le mécanisme se déduit, il ne se configure pas. Un réglage exposé
 /// serait un moyen de dégrader la sécurité en silence, et une question que l'utilisateur
 /// n'a pas les moyens de trancher.
+///
+/// # Sous Windows, la question de la signature ne se pose pas (31 août 2026)
+///
+/// **Ce n'est pas le code qui diffère, c'est la prémisse.** Tout ce module existe parce que
+/// les ACL du Trousseau macOS sont liées à la **signature de code** : une signature ad-hoc
+/// change à chaque build, donc les entrées écrites par le build précédent deviennent
+/// illisibles, en silence. Le Gestionnaire d'identifiants de Windows ne connaît pas cette
+/// liaison — ses entrées sont protégées par DPAPI et rattachées au **compte de
+/// l'utilisateur**, qui ne change pas d'une reconstruction à l'autre. Il n'y a donc rien à
+/// détecter, et rien contre quoi se prémunir.
+///
+/// Laisser tourner la détection y aurait été le pire des deux mondes : `codesign` n'existe pas
+/// sous Windows, `signature_courante` rend `AdHoc` par prudence en cas d'échec — la bonne
+/// réponse pour la question qu'elle pose —, et le résultat aurait été un **fichier chiffré à
+/// vie**, y compris dans un build installé. Le magasin du système n'aurait jamais été atteint,
+/// et le badge d'`A2` l'aurait annoncé fidèlement sans que personne ne se demande pourquoi.
+///
+/// `cfg!` plutôt que `#[cfg]` : les deux branches restent **compilées** sur les deux
+/// plateformes, donc la Windows ne peut pas pourrir sans que la CI macOS le voie.
 pub fn selectionner(repertoire: &Path) -> Result<ActiveSecretStore, SecretError> {
+    if cfg!(windows) {
+        return Ok(ActiveSecretStore {
+            mechanism: SecretMechanism::Keychain,
+            store: Box::new(KeychainStore::new()),
+        });
+    }
     selectionner_pour(signature_courante(), repertoire)
 }
 
@@ -93,13 +118,23 @@ mod tests {
         );
     }
 
+    /// Sur pièce, sans paramètre : c'est le vrai binaire qui est interrogé.
+    ///
+    /// **Le verdict attendu dépend de la plateforme, et c'est le fait à garder.** Sur un poste
+    /// de développement macOS ou Linux, la signature est ad-hoc (ou `codesign` est absent),
+    /// donc le fichier chiffré — c'est ce qui protège le Trousseau réel des builds successifs.
+    /// Sous Windows il n'y a pas de signature à interroger : voir la doc de `selectionner`.
+    ///
+    /// Écrit en un seul test plutôt qu'en deux `#[cfg]` : la propriété est « le mécanisme suit
+    /// la plateforme », et deux tests dont un seul se compile ne la disent pas.
     #[test]
-    fn le_mecanisme_choisi_en_developpement_est_le_fichier_chiffre() {
-        // Sur pièce, sans paramètre : c'est le vrai binaire qui est interrogé.
+    fn le_mecanisme_choisi_sans_parametre_suit_la_plateforme() {
         let dir = tempfile::tempdir().unwrap();
-        assert_eq!(
-            selectionner(dir.path()).unwrap().mechanism,
+        let attendu = if cfg!(windows) {
+            SecretMechanism::Keychain
+        } else {
             SecretMechanism::EncryptedFile
-        );
+        };
+        assert_eq!(selectionner(dir.path()).unwrap().mechanism, attendu);
     }
 }
