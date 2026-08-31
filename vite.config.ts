@@ -43,6 +43,23 @@ export default defineConfig({
     // `navigator.userAgent` ne la donne pas de façon fiable dans un WKWebView, et une valeur écrite
     // à la main cesserait d'être vraie sur l'autre plateforme.
     __APP_ARCH__: JSON.stringify(process.arch === 'arm64' ? 'arm64' : 'x86_64'),
+    // **La plateforme de construction** (31 août 2026), pour tout ce que la coquille doit faire
+    // autrement sous Windows : les boutons de fenêtre que le système n'y dessine plus, et le
+    // modificateur des raccourcis — `⌘` d'un côté, `Ctrl+` de l'autre.
+    //
+    // La même raison que `__APP_ARCH__`, et elle vaut doublement ici : `navigator.userAgent` est
+    // peu fiable dans une webview, et surtout un bundle est **construit pour** une plateforme —
+    // celle du build est donc celle qui tournera, sans détection à l'exécution.
+    //
+    // **`DORABASE_PLATEFORME_DECOR` est ce qui rend la coquille Windows vérifiable depuis un
+    // Mac** — troisième valeur figée pour le décor, après la version et la locale, et pour la
+    // même raison qu'elles : ce que la machine décide ne doit pas décider ce que les tests
+    // mesurent. Sans elle, Playwright ne pourrait exercer les trois boutons et les libellés
+    // `Ctrl+` que sur un runner Windows, et le job de fidélité doit rester sur macOS (les
+    // références portent le suffixe `-darwin.png`).
+    __APP_PLATFORM__: JSON.stringify(
+      process.env.DORABASE_PLATEFORME_DECOR ?? (process.platform === 'win32' ? 'windows' : 'macos'),
+    ),
   },
   server: { port: 5173, strictPort: true, watch: { ignored: ['**/src-tauri/**'] } },
   build: { target: 'safari16.4', cssTarget: 'safari16.4' },
