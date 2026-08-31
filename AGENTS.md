@@ -1152,13 +1152,32 @@ partout.
   bon système. D'où un `snapshotPathTemplate` explicite sans `{-projectName}`, et trois contrôles
   dans `verifier-ci.py`.
 
-**Le sidecar porte l'extension, et il ne la portait pas.** La convention des `externalBin` est
-`<nom>-<triplet><extension>` : le bundler cherche `cloud-sql-proxy-x86_64-pc-windows-msvc.exe`, et
-`engine/cloudsql/binaire.rs` cherchait `cloud-sql-proxy` tout court — donc **le proxy embarqué
-était introuvable par l'application qui l'embarque**, et le repli `PATH` prenait la main là où rien
-n'est installé. Le nom du fichier chez Google suit un **troisième** vocabulaire, ni le triplet ni
-`windows.amd64` mais `cloud-sql-proxy.x64.exe` (vérifié : `windows.amd64` rend 404). Il n'existe
-pas de binaire Windows arm64 ; l'émulation x64 couvre ce cas.
+**Un exécutable se cherche par son extension, et `engine/programme.rs` est le seul endroit qui le
+sait.** Windows décide par l'extension là où unix décide par un bit : chercher `kubectl` ou
+`cloud-sql-proxy` tout court n'y trouve rien. Pour le proxy c'est même la convention de nommage
+des `externalBin` — `<nom>-<triplet><extension>` —, donc **le sidecar embarqué était introuvable
+par l'application qui l'embarque**, et le repli `PATH` prenait la main là où rien n'est installé.
+`programme::localiser_dans` ajoute donc l'extension pour ses trois appelants à la fois, et le nom
+de l'**outil** reste celui qu'ils passent — celui qui paraît dans leurs messages, où
+« kubectl.exe est introuvable » nommerait un fichier.
+
+Corollaire : `dump/discover.rs` a rejoint le module au lieu de garder sa copie. C'est ce qui a
+retiré le dernier `std::os::unix` non gardé du dépôt **par suppression**, pas par une garde de
+plus — et `programme::EMPLACEMENTS_USUELS` est **vide** sous Windows, où le motif qui rend cette
+liste nécessaire (le `PATH` minimal d'une app lancée depuis le Finder) n'a pas cours.
+
+Le nom du fichier chez Google suit un **troisième** vocabulaire, ni le triplet ni `windows.amd64`
+mais `cloud-sql-proxy.x64.exe` (vérifié : `windows.amd64` rend 404). Il n'existe pas de binaire
+Windows arm64 ; l'émulation x64 couvre ce cas.
+
+**Et les deux sortes de proxy à sous-processus sont en `Box`.** Sous Windows les types de
+processus et de handle du système sont bien plus gros : `KubernetesProxy` pèse 368 octets et
+`CloudSqlProxy` 328, contre 32 pour `SshTunnel`. Sans `Box`, **chaque** connexion du registre
+portait 368 octets, y compris les tunnelées par SSH qui sont le cas courant. Les chiffres viennent
+de clippy, et c'est ce qui a évité l'erreur : `CloudSql` boxée la première, c'est `Kubernetes` qui
+est devenue la plus grosse. Boxer l'une sans mesurer l'autre n'aurait rien réglé. Sur macOS
+l'écart reste sous le seuil du lint, ce qui est la seule raison pour laquelle il a fallu compiler
+pour Windows pour le voir.
 
 **Le job `windows` de la CI existe pour une famille de défauts que les deux autres ne peuvent pas
 voir.** `src/dump/discover.rs` employait `std::os::unix::fs::PermissionsExt` sans garde : le job
