@@ -319,6 +319,14 @@ test('les champs du visage Cloud SQL font 28 px aussi (08k)', async ({ page }) =
       largeurType: Math.round(
         panneau.querySelector('[role=combobox]')?.getBoundingClientRect().width ?? 0,
       ),
+      // Les pistes **calculées** : c'est contre elles qu'une largeur de champ dit combien de
+      // colonnes il occupe.
+      pistes: getComputedStyle(panneau.querySelector('[class*=tunnelGrid]') as Element)
+        .gridTemplateColumns.split(' ')
+        .map((v) => Number.parseFloat(v)),
+      espace: Number.parseFloat(
+        getComputedStyle(panneau.querySelector('[class*=tunnelGrid]') as Element).columnGap,
+      ),
     }
   })
 
@@ -326,9 +334,75 @@ test('les champs du visage Cloud SQL font 28 px aussi (08k)', async ({ page }) =
   // visage : l'aligner sur l'autre est la seule cohérence disponible.
   expect(new Set(mesures?.champs)).toHaveProperty('size', 1)
   expect(mesures?.champs[0]).toBe(30)
-  // Comparée à « Type » plutôt que fixée en pixels : une valeur exacte dépendrait de la largeur
-  // de la modale, donc casserait au premier ajustement de mise en page.
-  expect(mesures?.largeurInstance).toBeGreaterThan((mesures?.largeurType ?? 0) * 2)
+  // **Mesurée contre les pistes de la grille, et non par un `> 2 ×` contre « Type »** (31 août
+  // 2026). L'ancienne forme de cette assertion était satisfaite par une piste `1fr` **seule** :
+  // elle est donc restée verte pendant que le `grid-column` de `.tunnelInstance` n'avait aucun
+  // effet, ayant été posé sur l'`<input>` — que `Field` reçoit son `className` là et non sur son
+  // `<div>` racine. Un test plus faible que le contrat qu'il garde finit par ne garder que sa
+  // propre faiblesse ; ici il aura mis trois semaines à se voir, et c'est le visage Kubernetes,
+  // écrit sur le même patron, qui l'a révélé.
+  //
+  // Les pistes sont lues et non fixées en pixels : une valeur exacte dépendrait de la largeur de
+  // la modale, donc casserait au premier ajustement de mise en page.
+  const [, ...apresType] = mesures?.pistes ?? []
+  const espace = mesures?.espace ?? 0
+  const troisDernieres = apresType.reduce((somme, piste) => somme + piste + espace, -espace)
+  expect(mesures?.largeurInstance ?? 0).toBeCloseTo(troisDernieres, 0)
+})
+
+// Le visage Kubernetes n'est pas maquetté non plus. Sa cote est ici et non en Vitest parce que
+// jsdom ne calcule aucune mise en page — une exigence de largeur y serait structurellement
+// inobservable (règle n° 9).
+test('les champs du visage Kubernetes font 28 px, et la ressource prend la rangée', async ({
+  page,
+}) => {
+  await deplierTunnel(page)
+  await page.getByRole('combobox', { name: 'Type' }).click()
+  await page.getByRole('option', { name: 'Kubernetes' }).click()
+  await page.waitForSelector('input[placeholder^="svc/postgres"]')
+
+  const mesures = await page.evaluate(() => {
+    const panneau = [...document.querySelectorAll('section')].find((s) =>
+      s.textContent?.includes('Proxy / tunnel'),
+    )
+    if (!panneau) return null
+    const grille = panneau.querySelector('[class*=tunnelGrid]') as HTMLElement
+    const boite = (selecteur: string) =>
+      Math.round(panneau.querySelector(selecteur)?.getBoundingClientRect().width ?? 0)
+    const hauteur = (el: Element | null) =>
+      el ? Math.round(el.getBoundingClientRect().height) : null
+    return {
+      champs: [...panneau.querySelectorAll('input')].map((i) =>
+        hauteur(i.parentElement?.className.includes('wrap') ? i.parentElement : i),
+      ),
+      espaceDeNoms: boite('input[placeholder*="default"]'),
+      kubeconfig: boite('input[placeholder*="KUBECONFIG"]'),
+      ressource: boite('input[placeholder^="svc/postgres"]'),
+      grilleLargeur: Math.round(grille.getBoundingClientRect().width),
+      pistes: getComputedStyle(grille)
+        .gridTemplateColumns.split(' ')
+        .map((v) => Number.parseFloat(v)),
+    }
+  })
+
+  // 28 px de contenu plus les 2 px de bordure, comme les deux autres visages. Le mockup ne montre
+  // celui-ci pas plus que celui de Cloud SQL : l'aligner sur eux est la seule cohérence disponible.
+  expect(new Set(mesures?.champs)).toHaveProperty('size', 1)
+  expect(mesures?.champs[0]).toBe(30)
+
+  // **L'espace de noms tient dans une seule piste**, la deuxième — il n'y a plus de cote à
+  // répartir depuis le retrait du champ « Contexte » (31 août 2026), et un nom d'espace de noms est
+  // court. Mesuré contre la piste calculée et non par un ordre de grandeur : une comparaison
+  // laisserait passer un champ tombé dans la piste voisine, qui est le défaut qu'on veut voir.
+  const [, piste2 = 0] = mesures?.pistes ?? []
+  expect(mesures?.espaceDeNoms ?? 0).toBeCloseTo(piste2, 0)
+
+  // Le fichier et la ressource prennent la rangée entière : un chemin de kubeconfig et un
+  // `statefulset/postgres-principal` tiennent mal dans une colonne. Tolérance de 3 px pour les
+  // bordures, plutôt qu'une égalité que le sous-pixel ferait échouer.
+  for (const large of [mesures?.kubeconfig ?? 0, mesures?.ressource ?? 0]) {
+    expect(large).toBeGreaterThan((mesures?.grilleLargeur ?? 0) - 3)
+  }
 })
 
 test('le panneau est à égale distance du moteur et du formulaire', async ({ page }) => {

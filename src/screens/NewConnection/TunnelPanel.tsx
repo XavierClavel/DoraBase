@@ -36,7 +36,7 @@ type TunnelPanelProps = {
 }
 
 /**
- * Le bloc « Proxy / tunnel » de `A2`, dans l'un ou l'autre de ses deux visages.
+ * Le bloc « Proxy / tunnel » de `A2`, dans l'un ou l'autre de ses trois visages.
  *
  * Le panneau existe toujours ; c'est la **présence d'un proxy** qui change. Sans proxy, les
  * champs sont là mais vides et le badge est absent — le mockup ne montre pas cet état, et c'est
@@ -66,20 +66,31 @@ export function TunnelPanel({
   const proxy: ProxyDraft = tunnel && tunnel.proxy.kind === kind ? tunnel.proxy : emptyProxy(kind)
 
   /**
-   * Les deux sortes de proxy : `05d` les modélise, `06g` ouvre la seconde.
+   * Les trois sortes de proxy : `05d` les modélise, `06g` ouvre la seconde, le 31 août 2026 la
+   * troisième.
    *
-   * Cloud SQL **n'est pas dans le handoff** : ce libellé, comme le champ de son visage, est
-   * inventé ici : Cloud SQL n'était pas maquetté, et attend un passage de design.
+   * **Ni Cloud SQL ni Kubernetes ne sont dans le handoff** : ces libellés, comme les champs de
+   * leurs visages, sont inventés ici et attendent un passage de design. Le garde-fou qui remplace
+   * la maquette est l'union discriminée de `ConnectionDraft` — c'est `tsc`, et non l'œil, qui
+   * empêche ce panneau de lire `bastionHost` sur un transfert Kubernetes.
    */
   const types = [
     { value: 'ssh', label: t('newConnection.tunnel.types.ssh') },
     { value: 'cloud-sql', label: t('newConnection.tunnel.types.cloudSql') },
+    { value: 'kubernetes', label: t('newConnection.tunnel.types.kubernetes') },
   ] as const
 
-  /** Ce que le badge annonce pour chaque sorte. */
+  /**
+   * Ce que le badge annonce pour chaque sorte.
+   *
+   * `Record<ProxyKind, string>` et non un objet libre : ajouter une sorte au modèle fait échouer
+   * `tsc` ici tant qu'elle n'a pas son libellé — sans quoi un badge vide paraîtrait sur un proxy
+   * pourtant déclaré.
+   */
   const badges: Record<ProxyKind, string> = {
     ssh: t('newConnection.tunnel.badges.ssh'),
     'cloud-sql': t('newConnection.tunnel.badges.cloudSql'),
+    kubernetes: t('newConnection.tunnel.badges.kubernetes'),
   }
 
   async function parcourir(
@@ -109,7 +120,7 @@ export function TunnelPanel({
             onValueChange={onKindChange}
           />
 
-          {proxy.kind === 'ssh' ? (
+          {proxy.kind === 'ssh' && (
             <>
               <Field
                 label={t('newConnection.tunnel.bastionHostLabel')}
@@ -134,24 +145,51 @@ export function TunnelPanel({
                 onChange={(event) => onProxyChange({ ...proxy, username: event.target.value })}
               />
             </>
-          ) : (
+          )}
+
+          {proxy.kind === 'cloud-sql' && (
             // L'instance prend les trois colonnes restantes : un nom de connexion
             // `projet:région:instance` est long, et le couper sur `1fr` le rendrait illisible.
+            //
+            // **L'enveloppe n'est pas décorative, elle est l'élément de grille** (31 août 2026).
+            // `Field` pose son `className` sur l'`<input>` — ou sur son enveloppe quand il y a un
+            // suffixe —, jamais sur le `<div>` racine qui porte l'étiquette. Un `grid-column` passé
+            // en `className` atterrissait donc sur un élément qui n'est pas enfant de la grille,
+            // donc **sans aucun effet** : l'instance occupait une seule piste `1fr` depuis `08k`,
+            // et le test de géométrie qui prétendait la garder passait pour une autre raison — son
+            // `> 2 ×` était satisfait par la largeur d'une piste seule. Trouvé en écrivant le même
+            // `grid-column` pour le visage Kubernetes, où l'effet attendu n'arrivait pas.
+            <div className={styles.tunnelInstance}>
+              <Field
+                label={t('newConnection.tunnel.instanceLabel')}
+                size="sm"
+                mono
+                placeholder={t('newConnection.tunnel.instancePlaceholder')}
+                value={proxy.instanceConnectionName}
+                onChange={(event) =>
+                  onProxyChange({ ...proxy, instanceConnectionName: event.target.value })
+                }
+              />
+            </div>
+          )}
+
+          {proxy.kind === 'kubernetes' && (
+            // **Un seul champ dans cette rangée depuis le retrait du contexte** (31 août 2026) : il
+            // n'y a plus de cote à répartir, l'espace de noms tenant largement dans une colonne
+            // `1fr`. Le fichier et la ressource vivent dans la rangée pleine largeur en dessous, où
+            // un chemin et un `statefulset/…` ont la place qu'ils demandent.
             <Field
-              label={t('newConnection.tunnel.instanceLabel')}
+              label={t('newConnection.tunnel.namespaceLabel')}
               size="sm"
               mono
-              className={styles.tunnelInstance}
-              placeholder={t('newConnection.tunnel.instancePlaceholder')}
-              value={proxy.instanceConnectionName}
-              onChange={(event) =>
-                onProxyChange({ ...proxy, instanceConnectionName: event.target.value })
-              }
+              placeholder={t('newConnection.tunnel.namespacePlaceholder')}
+              value={proxy.namespace}
+              onChange={(event) => onProxyChange({ ...proxy, namespace: event.target.value })}
             />
           )}
 
           <div className={styles.tunnelKeyRow}>
-            {proxy.kind === 'ssh' ? (
+            {proxy.kind === 'ssh' && (
               <Field
                 label={t('newConnection.tunnel.privateKeyLabel')}
                 size="sm"
@@ -172,7 +210,57 @@ export function TunnelPanel({
                   </button>
                 }
               />
-            ) : (
+            )}
+
+            {proxy.kind === 'kubernetes' && (
+              <>
+                {/* **Le kubeconfig est dans la rangée pleine largeur, et avant la ressource.** Un
+                    chemin de fichier ne tient pas dans une colonne de la grille, et cette rangée est
+                    déjà à `1fr` unique — donc aucune classe de grille à écrire. Placé avant la
+                    ressource parce que c'est ce fichier qui *désigne le cluster* : la lecture suit
+                    l'ordre où les coordonnées se déterminent.
+
+                    Pas de bouton « Parcourir… », à la différence de la clé privée SSH : le
+                    sélecteur natif de Tauri ne répond pas hors de la webview, donc chaque bouton de
+                    ce genre demande une prop injectée et un test de câblage. Un chemin de kubeconfig
+                    se tape ou se colle, et il est presque toujours sous `~/.kube/`. À reprendre si
+                    l'usage dit le contraire. */}
+                <Field
+                  label={t('newConnection.tunnel.kubeconfigLabel')}
+                  size="sm"
+                  mono
+                  placeholder={t('newConnection.tunnel.kubeconfigPlaceholder')}
+                  value={proxy.kubeconfig}
+                  onChange={(event) => onProxyChange({ ...proxy, kubeconfig: event.target.value })}
+                />
+                {/* La ressource prend la rangée entière : `statefulset/postgres-principal` tient
+                    mal dans une colonne, et c'est le seul champ obligatoire de ce visage. */}
+                <Field
+                  label={t('newConnection.tunnel.resourceLabel')}
+                  size="sm"
+                  mono
+                  aria-describedby={aideId}
+                  placeholder={t('newConnection.tunnel.resourcePlaceholder')}
+                  value={proxy.resource}
+                  onChange={(event) => onProxyChange({ ...proxy, resource: event.target.value })}
+                />
+                {/* **Deux faits qu'aucun champ ne dit et qu'on ne devine pas.** Que le transfert
+                    dépende d'un `kubectl` installé sur la machine — donc qu'une absence
+                    d'installation soit la première chose à vérifier. Et que le champ « Port » du
+                    formulaire soit celui de la base *dans le pod*, là où l'« Hôte » ne sert pas :
+                    sans cette phrase, on remplit l'hôte et on cherche pourquoi il est grisé.
+
+                    Lié par `aria-describedby` au champ, contrairement à la phrase Cloud SQL qui
+                    n'en a plus : ici il y a bien un champ, et l'aide *le* décrit. Un piège d'`A2`
+                    à ne pas rejouer — une infobulle décrit, elle ne nomme pas. */}
+                <p id={aideId} className={styles.tunnelHint}>
+                  {t('newConnection.tunnel.kubernetesHintPrefix')} <code>kubectl</code>
+                  {t('newConnection.tunnel.kubernetesHintSuffix')}
+                </p>
+              </>
+            )}
+
+            {proxy.kind === 'cloud-sql' && (
               // **Aucun champ dans cette ligne.** Un « Compte de service » s'y saisissait
               // (`06j`), puis une bascule « Authentification IAM » (`06k`) : les deux sont
               // partis, l'un parce que l'authentification est celle de la machine et non de la
@@ -190,7 +278,7 @@ export function TunnelPanel({
               // l'utilisateur doit saisir**, à savoir une adresse et pas un rôle, sans mot de
               // passe. Sans la seconde, une connexion IAM se remplit comme une autre et
               // n'apprend qu'à l'échec, sur « IAM user authentication failed ».
-              <p id={aideId} className={styles.tunnelHint}>
+              <p className={styles.tunnelHint}>
                 {t('newConnection.tunnel.cloudSqlAuthPrefix')}{' '}
                 <code>gcloud auth application-default login</code>
                 {t('newConnection.tunnel.cloudSqlAuthSuffix')}

@@ -114,14 +114,50 @@ export type ProxyCloudSqlDraft = {
 }
 
 /**
- * Ce qui **diffère** entre les deux sortes, en saisie.
+ * Le transfert de port Kubernetes, tel qu'il est saisi (31 août 2026).
+ *
+ * **Trois chaînes, jamais `null`**, comme les autres champs du brouillon : un formulaire porte du
+ * texte, et c'est la conversion qui traduit le vide en absence. Mélanger les deux conventions dans
+ * le même type obligerait chaque champ à dire laquelle il suit — l'arbitrage déjà pris pour
+ * `caCertificate` et `authDatabase`.
+ */
+export type ProxyKubernetesDraft = {
+  kind: 'kubernetes'
+  /**
+   * Le chemin du fichier kubeconfig. Vide : celui que `kubectl` choisirait.
+   *
+   * **Ce champ existe parce qu'une app graphique n'hérite pas de `$KUBECONFIG`** — voir
+   * `ProxyKubernetes` côté Rust, qui en porte la raison entière. Le `~/` de tête est développé
+   * côté Rust, pas ici : l'écran ne connaît pas le `HOME` du processus qui lancera `kubectl`.
+   */
+  kubeconfig: string
+  /** L'espace de noms. Vide : celui du contexte. */
+  namespace: string
+  /** `svc/postgres`, `pod/postgres-0`… Transmis tel quel à `kubectl`, jamais réécrit. */
+  resource: string
+}
+
+/**
+ * Ce qui **diffère** entre les trois sortes, en saisie.
  *
  * **Une union discriminée, comme `Proxy` de `05d`**, et pas seulement par symétrie : Cloud SQL
  * n'est pas dans le handoff, donc aucune maquette ne rattrapera un panneau qui lirait
  * `bastionHost` sur un proxy Cloud SQL. Le compilateur le rattrape ; c'est ce qui remplace la
  * maquette comme garde-fou.
+ *
+ * **Et le garde-fou a servi le 31 août 2026**, quand Kubernetes est devenu la troisième sorte.
+ * Mesuré par sabotage — la variante retirée de cette union, tout le reste en place : `tsc` nomme
+ * **dix-huit** erreurs dans **quatre** fichiers, et ce sont exactement les quatre où la sorte
+ * décide de quelque chose — `emptyProxy` et `brouillonDeProxy` ici, `proxyDraftToProxy` dans
+ * `tunnelDraftToTunnel`, les champs et le `Record` des badges dans `TunnelPanel`, le grisage de
+ * l'hôte dans `ConnectionForm`.
+ *
+ * **Et aucun test n'en fait partie** — c'est le fait à retenir. Les tests de ces conversions
+ * énumèrent les sortes qu'ils connaissent ; ils restent verts quand une quatrième apparaît, comme
+ * ils l'ont fait pour celle-ci avant qu'on les complète à la main. Le seul garde-fou contre
+ * l'oubli est le compilateur, et c'est pour cela que l'union est écrite ainsi.
  */
-export type ProxyDraft = ProxySshDraft | ProxyCloudSqlDraft
+export type ProxyDraft = ProxySshDraft | ProxyCloudSqlDraft | ProxyKubernetesDraft
 
 /** La sorte de proxy, telle que le sélecteur « Type » la nomme. */
 export type ProxyKind = ProxyDraft['kind']
@@ -155,6 +191,15 @@ export function emptyProxy(kind: ProxyKind): ProxyDraft {
       return { kind: 'ssh', bastionHost: '', bastionPort: '22', username: '', privateKeyPath: '' }
     case 'cloud-sql':
       return { kind: 'cloud-sql', instanceConnectionName: '' }
+    case 'kubernetes':
+      // **Rien n'est prérempli, et c'est un choix.** Le critère du projet est « vrai pour la
+      // quasi-totalité des cas » — celui du port 22 d'un bastion et de l'`admin` de MongoDB. Aucun
+      // des trois champs ne le satisfait : il n'existe pas de nom de contexte universel, aucune
+      // ressource ne s'appelle pareil partout, et surtout **`default` serait faux comme espace de
+      // noms** : vide, `kubectl` emploie celui que le contexte déclare, alors que `default` écrit
+      // dans le champ l'écraserait. Un préremplissage qui change le comportement n'est pas une
+      // commodité, c'est une décision prise à la place de l'utilisateur.
+      return { kind: 'kubernetes', kubeconfig: '', namespace: '', resource: '' }
   }
 }
 
@@ -252,6 +297,19 @@ function brouillonDeProxy(tunnel: Tunnel): TunnelDraft {
         proxy: {
           kind: 'cloud-sql',
           instanceConnectionName: tunnel.proxy.instanceConnectionName,
+        },
+      }
+    case 'kubernetes':
+      return {
+        localPort,
+        proxy: {
+          kind: 'kubernetes',
+          // L'absence du modèle et le vide de l'écran sont la même chose, dans les deux sens :
+          // c'est la convention que ce fichier applique déjà au certificat d'autorité et à la base
+          // d'authentification.
+          kubeconfig: tunnel.proxy.kubeconfig ?? '',
+          namespace: tunnel.proxy.namespace ?? '',
+          resource: tunnel.proxy.resource,
         },
       }
   }

@@ -1,9 +1,15 @@
-//! Les dernières lignes écrites par le proxy, pour les messages d'erreur.
+//! Les dernières lignes écrites par un proxy en sous-processus, pour les messages d'erreur.
 //!
 //! **Pourquoi garder quoi que ce soit.** Si le processus meurt, ce qu'il a écrit est le seul
 //! diagnostic disponible — une instance mal nommée, un compte sans droit et une API
 //! désactivée donnent chacun un message précis. Sans ce tampon, il est perdu et l'erreur
 //! remontée se réduit à « le proxy s'est arrêté ».
+//!
+//! **Remonté de `cloudsql/` d'un cran le 31 août 2026**, quand `kubernetes/` a eu le même besoin.
+//! Ce qui a bougé avec lui : `echecs` reçoit désormais le prédicat en paramètre, au lieu d'appeler
+//! `super::sortie::est_un_echec`. C'était le seul lien du journal avec Cloud SQL, et c'est ce qui
+//! l'y retenait — reconnaître un échec est propre à ce qu'écrit chaque outil, garder les vingt
+//! dernières lignes ne l'est pas.
 
 use std::collections::VecDeque;
 use std::sync::Mutex;
@@ -15,9 +21,10 @@ pub const CAPACITE: usize = 20;
 #[derive(Debug, Default)]
 pub struct Journal {
     /// Ce que **nous** savons du lancement, et que le proxy n'écrit pas : lequel des deux
-    /// binaires tourne (`06h`). Séparé des lignes du proxy, et non noté comme la première
-    /// d'entre elles, pour deux raisons : il ne doit pas être évincé par vingt lignes de
-    /// proxy bavard, et un proxy muet doit continuer de se dire muet.
+    /// binaires tourne (`06h`), ou quel contexte Kubernetes a été deviné. Séparé des lignes du
+    /// proxy, et non noté comme la première d'entre elles, pour deux raisons : il ne doit pas
+    /// être évincé par vingt lignes de proxy bavard, et un proxy muet doit continuer de se dire
+    /// muet.
     entete: Option<String>,
     lignes: Mutex<VecDeque<String>>,
 }
@@ -53,13 +60,19 @@ impl Journal {
     ///
     /// Séparé de `dernieres` : un échec de connexion se qualifie avec **ce qui a échoué**, pas
     /// avec les vingt dernières lignes, dont les trois du démarrage qui ont réussi.
-    pub fn echecs(&self) -> Vec<String> {
+    ///
+    /// **Le prédicat est passé, pas connu d'ici** (31 août 2026). Ce que « échec » veut dire tient
+    /// aux mots que l'outil emploie : `cloud-sql-proxy` écrit « failed to connect to instance »,
+    /// `kubectl` écrit « lost connection to pod ». Un prédicat en dur ici aurait fait du journal la
+    /// propriété de l'un des deux — et le second aurait été aveugle, en silence, sans qu'aucun test
+    /// portant sur le journal ne le voie.
+    pub fn echecs(&self, est_un_echec: fn(&str) -> bool) -> Vec<String> {
         let Ok(lignes) = self.lignes.lock() else {
             return Vec::new();
         };
         lignes
             .iter()
-            .filter(|ligne| super::sortie::est_un_echec(ligne))
+            .filter(|ligne| est_un_echec(ligne))
             .cloned()
             .collect()
     }
@@ -114,6 +127,29 @@ mod tests {
         let texte = journal.dernieres();
         assert!(texte.contains("binaire embarqué"), "{texte}");
         assert!(texte.contains("le proxy n'a rien écrit"), "{texte}");
+    }
+
+    #[test]
+    fn le_predicat_passe_decide_seul_de_ce_qui_est_un_echec() {
+        // Le garde-fou du paramétrage : deux prédicats sur les **mêmes** lignes doivent donner
+        // deux réponses. Sans ce test, un `echecs` qui ignorerait son paramètre pour retomber sur
+        // un prédicat en dur passerait — c'est exactement le défaut que le déplacement risquait.
+        let journal = Journal::default();
+        journal.noter("lost connection to pod".to_owned());
+        journal.noter("Forwarding from 127.0.0.1:5432 -> 5432".to_owned());
+
+        assert_eq!(
+            journal
+                .echecs(|ligne| ligne.contains("lost connection"))
+                .len(),
+            1
+        );
+        assert_eq!(
+            journal.echecs(|ligne| ligne.contains("Forwarding")).len(),
+            1
+        );
+        assert!(journal.echecs(|_| false).is_empty());
+        assert_eq!(journal.echecs(|_| true).len(), 2);
     }
 
     #[test]

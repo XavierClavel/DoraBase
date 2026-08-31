@@ -1,7 +1,13 @@
 //! Trouver le binaire `cloud-sql-proxy` — le sidecar embarqué d'abord, le `PATH` en repli.
+//!
+//! **Ce qui est parti dans `engine/programme.rs` le 31 août 2026** : le droit d'exécution, les
+//! emplacements de Homebrew, et la boucle qui essaie un répertoire après l'autre. Ce qui reste ici
+//! est la seule règle propre à `06h` — **l'embarqué gagne** —, et elle tient en une ligne : le
+//! répertoire de l'exécutable est mis en tête de la liste.
 
 use std::path::{Path, PathBuf};
 
+use crate::engine::programme;
 use crate::engine::EngineError;
 
 /// Le nom du binaire officiel, tel que Google le distribue. C'est aussi le nom sous lequel
@@ -72,20 +78,7 @@ pub fn est_embarque(chemin: &Path) -> bool {
 /// panne d'autant plus déroutante que `which cloud-sql-proxy` répond.
 pub fn emplacements_par_defaut() -> Vec<PathBuf> {
     let mut emplacements: Vec<PathBuf> = emplacement_embarque().into_iter().collect();
-
-    emplacements.extend(
-        std::env::var_os("PATH")
-            .map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
-            .unwrap_or_default(),
-    );
-
-    for usuel in ["/opt/homebrew/bin", "/usr/local/bin"] {
-        let chemin = PathBuf::from(usuel);
-        if !emplacements.contains(&chemin) {
-            emplacements.push(chemin);
-        }
-    }
-
+    emplacements.extend(programme::emplacements_usuels());
     emplacements
 }
 
@@ -99,37 +92,13 @@ pub fn localiser() -> Result<PathBuf, EngineError> {
 /// Séparée pour la même raison que `connect_via` l'est de `connect` en `06b` : un test n'a
 /// pas le droit de dépendre de ce qui est installé sur la machine qui l'exécute.
 pub fn localiser_dans(emplacements: &[PathBuf]) -> Result<PathBuf, EngineError> {
-    for repertoire in emplacements {
-        let candidat = repertoire.join(NOM);
-        if est_executable(&candidat) {
-            return Ok(candidat);
-        }
-    }
-
-    Err(EngineError::local(format!(
-        "le binaire « {NOM} » est introuvable — installez-le avec « brew install \
-         {NOM} », ou depuis https://cloud.google.com/sql/docs/mysql/sql-proxy, puis \
-         réessayez"
-    )))
-}
-
-/// Un fichier utilisable comme programme.
-///
-/// Le droit d'exécution est vérifié, et pas seulement la présence : un fichier du bon nom
-/// sans ce droit donnerait un « Permission denied » au lancement, moins clair que
-/// « introuvable, voilà comment l'installer ».
-fn est_executable(chemin: &Path) -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::metadata(chemin)
-            .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false)
-    }
-    #[cfg(not(unix))]
-    {
-        chemin.is_file()
-    }
+    programme::localiser_dans(emplacements, NOM).ok_or_else(|| {
+        EngineError::local(format!(
+            "le binaire « {NOM} » est introuvable — installez-le avec « brew install \
+             {NOM} », ou depuis https://cloud.google.com/sql/docs/mysql/sql-proxy, puis \
+             réessayez"
+        ))
+    })
 }
 
 #[cfg(test)]
@@ -251,6 +220,10 @@ mod tests {
         // shell de l'utilisateur : sur macOS, une app graphique hérite d'un PATH minimal.
         // Chercher dans les emplacements de Homebrew n'est donc pas un raffinement, c'est
         // le cas normal pour une app packagée.
+        //
+        // **Gardé ici après l'extraction du 31 août 2026**, alors que `programme` a le même :
+        // celui-ci mesure la liste *que ce scope compose*, et une délégation oubliée la laisserait
+        // sans Homebrew sans que le test de `programme` s'en aperçoive.
         let emplacements = emplacements_par_defaut();
         let en_texte: Vec<String> = emplacements
             .iter()

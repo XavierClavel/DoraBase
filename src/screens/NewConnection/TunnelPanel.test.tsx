@@ -17,7 +17,7 @@ function monter(onBrowseKey?: () => Promise<string | null>) {
 }
 
 /** Déplie le panneau et bascule son sélecteur « Type » sur la sorte demandée. */
-async function choisirLeType(libelle: 'SSH' | 'Cloud SQL') {
+async function choisirLeType(libelle: 'SSH' | 'Cloud SQL' | 'Kubernetes') {
   const panneau = await deplier()
   await choisirDansLaListe('Type', libelle)
   return panneau
@@ -58,12 +58,135 @@ test('déplié, les cinq champs du handoff sont là', async () => {
   }
 })
 
-test('le sélecteur de type propose les deux sortes', async () => {
+test('le sélecteur de type propose les trois sortes', async () => {
   monter()
   await deplier()
-  // `05d` donne deux sortes à `Proxy`, `06g` sait ouvrir la seconde : le sélecteur devient un
-  // vrai choix. Cloud SQL n'était pas dans le handoff : ces libellés sont inventés.
-  expect(await optionsDeLaListe('Type')).toEqual(['SSH', 'Cloud SQL'])
+  // `05d` donne ses sortes à `Proxy`, `06g` sait ouvrir la seconde, le 31 août 2026 la troisième :
+  // le sélecteur devient un vrai choix. Ni Cloud SQL ni Kubernetes n'étaient dans le handoff : ces
+  // libellés sont inventés.
+  //
+  // **Une égalité et non trois `toContain`** : c'est ce qui fait tomber le test le jour où une
+  // quatrième sorte arrive au modèle sans arriver ici — la liste déroulante afficherait alors un
+  // champ vide sur une connexion pourtant déclarée, le piège du sélecteur contrôlé.
+  expect(await optionsDeLaListe('Type')).toEqual(['SSH', 'Cloud SQL', 'Kubernetes'])
+})
+
+test('le visage Kubernetes montre ses trois champs, et aucun de ceux des autres sortes', async () => {
+  monter()
+  const panneau = await choisirLeType('Kubernetes')
+
+  for (const nom of ['Fichier kubeconfig', 'Espace de noms', 'Ressource']) {
+    expect(panneau.getByLabelText(nom)).toBeInTheDocument()
+  }
+  // L'autre moitié du critère, et la plus importante : les champs des autres sortes ne sont pas
+  // seulement vides, ils sont **absents**. Un champ masqué en CSS resterait dans l'arbre
+  // d'accessibilité et serait annoncé.
+  for (const nom of ['Hôte du bastion', 'Utilisateur', 'Clé privée', 'Instance']) {
+    expect(panneau.queryByLabelText(nom)).not.toBeInTheDocument()
+  }
+  // Et le bouton « Parcourir… » de la clé privée est parti avec elle : il vivait dans la même
+  // rangée pleine largeur que la ressource occupe désormais.
+  expect(panneau.queryByRole('button', { name: 'Parcourir…' })).not.toBeInTheDocument()
+})
+
+test('les champs Kubernetes disent ce que leur vide vaut', async () => {
+  monter()
+  const panneau = await choisirLeType('Kubernetes')
+
+  // **Le vide de l'espace de noms est une valeur, pas un oubli**, et rien ne le dit sauf le
+  // placeholder. Il doit nommer `default` — ce que `kubectl` emploie quand le contexte n'en déclare
+  // pas —, **et** dire que le contexte peut en imposer un autre : écrire « default » tout court
+  // serait faux pour un kubeconfig qui en déclare un, ce qui est le cas courant des fichiers
+  // engendrés par un outil.
+  const espace = panneau.getByLabelText('Espace de noms').getAttribute('placeholder') ?? ''
+  expect(espace).toContain('default')
+  expect(espace).toContain('contexte')
+  // La ressource, elle, est obligatoire : son placeholder enseigne la forme plutôt qu'une absence,
+  // et il propose `svc/` — qui survit à un redéploiement là où un nom de pod change.
+  expect(panneau.getByLabelText('Ressource')).toHaveAttribute(
+    'placeholder',
+    expect.stringContaining('svc/'),
+  )
+})
+
+test('aucun champ de contexte n’est proposé', async () => {
+  // **Retiré le 31 août 2026**, après essai : un kubeconfig désigne son contexte courant, et
+  // l'outil qui l'écrit en produit un par cluster — le déclarer revenait à recopier ce que le
+  // fichier porte déjà. Vérifié en négatif parce qu'un champ retiré revient plus facilement qu'il
+  // n'est parti, et parce que son retour rendrait au modèle un réglage que `kubectl` n'a plus.
+  monter()
+  const panneau = await choisirLeType('Kubernetes')
+  expect(panneau.queryByLabelText('Contexte')).not.toBeInTheDocument()
+})
+
+test('le champ kubeconfig dit ce que kubectl ferait sans lui', async () => {
+  monter()
+  const panneau = await choisirLeType('Kubernetes')
+
+  // **Les deux valeurs que `kubectl` emploierait doivent être nommées**, et dans cet ordre :
+  // `$KUBECONFIG` d'abord, `~/.kube/config` en second. Sans elles, un champ vide se lit comme un
+  // champ à remplir — alors que le vide est le cas de presque tout le monde.
+  const placeholder = panneau.getByLabelText('Fichier kubeconfig').getAttribute('placeholder') ?? ''
+  expect(placeholder).toContain('$KUBECONFIG')
+  expect(placeholder).toContain('~/.kube/config')
+  expect(placeholder.indexOf('$KUBECONFIG')).toBeLessThan(placeholder.indexOf('~/.kube/config'))
+})
+
+test('l’aide dit pourquoi le champ kubeconfig existe', async () => {
+  monter()
+  const panneau = await choisirLeType('Kubernetes')
+  const champ = panneau.getByLabelText('Ressource')
+  const aide = document.getElementById(champ.getAttribute('aria-describedby') ?? '')
+
+  // **Le fait qui justifie tout ce champ, et qu'on ne devine pas** : une application n'hérite pas
+  // du `$KUBECONFIG` du terminal. Sans cette phrase, quelqu'un dont les contextes vivent dans
+  // `~/.kube/prod` ne comprend pas pourquoi l'app ne les voit pas alors que `kubectl` les liste.
+  expect(aide?.textContent).toContain('$KUBECONFIG')
+  expect(aide?.textContent).toContain('kubeconfig')
+})
+
+test('saisir un kubeconfig déclare le proxy, comme n’importe quel autre champ', async () => {
+  monter()
+  const panneau = await choisirLeType('Kubernetes')
+  expect(panneau.queryByText('Kubernetes activé')).not.toBeInTheDocument()
+
+  // C'est la saisie qui déclare, et **n'importe laquelle des quatre** : un utilisateur qui commence
+  // par désigner son fichier a déjà dit qu'il voulait un transfert.
+  await userEvent.type(panneau.getByLabelText('Fichier kubeconfig'), '~/.kube/prod')
+  expect(panneau.getByText('Kubernetes activé')).toBeInTheDocument()
+})
+
+test('l’aide du visage Kubernetes décrit la ressource sans la nommer', async () => {
+  monter()
+  const panneau = await choisirLeType('Kubernetes')
+  const champ = panneau.getByLabelText('Ressource')
+
+  // **Le piège n° 4 d'accessibilité** : une infobulle *décrit*, elle ne *nomme* pas. Le champ
+  // s'annonce « Ressource » et l'aide vient s'y adjoindre par `aria-describedby` — un `aria-label`
+  // ferait s'annoncer le champ par son explication.
+  const description = champ.getAttribute('aria-describedby')
+  expect(description).toBeTruthy()
+  const aide = document.getElementById(description ?? '')
+  expect(aide).toBeTruthy()
+  // Les deux faits que l'aide porte et qu'aucun champ ne dit : la dépendance à `kubectl`, et que
+  // le « Port » du formulaire est celui de la base dans le pod là où l'hôte ne sert pas.
+  expect(aide?.textContent).toContain('kubectl')
+  expect(aide?.textContent).toContain('Port')
+  expect(aide?.textContent).toContain('pod')
+})
+
+test('changer de type ne déclare aucun proxy : pas de badge sur un formulaire vide', async () => {
+  monter()
+  const panneau = await choisirLeType('Kubernetes')
+  // Choisir une sorte n'est pas déclarer un proxy — sinon « Kubernetes activé » paraîtrait sur une
+  // ressource vide, ce que `06b` refuserait ensuite puisqu'il rejette une variante déclarant un
+  // proxy qu'on n'a pas ouvert.
+  expect(panneau.queryByText('Kubernetes activé')).not.toBeInTheDocument()
+
+  await userEvent.type(panneau.getByLabelText('Ressource'), 'svc/postgres')
+  // Saisir, en revanche, déclare : l'utilisateur qui nomme une ressource dit par là qu'il en veut
+  // un.
+  expect(panneau.getByText('Kubernetes activé')).toBeInTheDocument()
 })
 
 test('le visage Cloud SQL montre son seul champ, et aucun champ de bastion', async () => {
@@ -83,10 +206,10 @@ test('le visage Cloud SQL montre son seul champ, et aucun champ de bastion', asy
   }
 })
 
-test('le visage SSH ne montre aucun champ Cloud SQL', async () => {
+test('le visage SSH ne montre aucun champ des deux autres sortes', async () => {
   monter()
   const panneau = await deplier()
-  for (const nom of ['Instance']) {
+  for (const nom of ['Instance', 'Fichier kubeconfig', 'Espace de noms', 'Ressource']) {
     expect(panneau.queryByLabelText(nom)).not.toBeInTheDocument()
   }
 })
@@ -297,6 +420,61 @@ test('derrière un proxy Cloud SQL, le mot de passe est grisé', async () => {
   // un jeton. Et un œil qui dévoile un champ vide et grisé ne dévoile rien.
   expect(screen.queryByLabelText(/Afficher le mot de passe/)).not.toBeInTheDocument()
   expect(screen.queryByText('Trousseau')).not.toBeInTheDocument()
+})
+
+// --- Ce que le transfert Kubernetes décide à la place de l'utilisateur (31 août 2026) ---
+
+/** Déclare un transfert Kubernetes en saisissant une ressource — c'est la saisie qui le déclare. */
+async function declarerKubernetes() {
+  const panneau = await choisirLeType('Kubernetes')
+  await userEvent.type(panneau.getByLabelText('Ressource'), 'svc/postgres')
+  return panneau
+}
+
+test('derrière un transfert Kubernetes, l’hôte est grisé et vaut 127.0.0.1', async () => {
+  monter()
+  await declarerKubernetes()
+
+  const hote = screen.getByLabelText('Hôte') as HTMLInputElement
+  expect(hote).toBeDisabled()
+  // **La valeur dit ce qui *sera employé***, comme « auto » le dit pour le port derrière Cloud
+  // SQL : la connexion se fait sur le bout local du transfert. Un champ vide et grisé se lirait
+  // comme un champ oublié.
+  expect(hote.value).toBe('127.0.0.1')
+  // **Grisé et non masqué** : le faire disparaître ferait croire que la connexion n'a pas d'hôte,
+  // alors qu'elle en a un — simplement, ce n'est plus l'utilisateur qui le donne.
+  expect(hote).toBeInTheDocument()
+  // Et il dit **pourquoi**, la leçon de `09f` : un champ désactivé sans explication se lit comme un
+  // bug. Le titre doit nommer ce qui désigne la base à la place de l'hôte.
+  expect(hote.getAttribute('title')).toMatch(/ressource/i)
+})
+
+test('derrière un transfert Kubernetes, le port et le mot de passe restent saisissables', async () => {
+  monter()
+  await declarerKubernetes()
+
+  // **La différence de fond avec Cloud SQL, et il faut qu'elle se voie.** Le port est celui de la
+  // base *dans le pod* — le membre droit du `local:distant` que `kubectl` reçoit —, et un
+  // PostgreSQL dans un pod s'authentifie comme un autre : il n'y a pas d'équivalent de l'IAM
+  // d'`06k`. Griser l'un ou l'autre rendrait la connexion impossible à décrire.
+  const port = screen.getByLabelText('Port') as HTMLInputElement
+  expect(port).toBeEnabled()
+  expect(port.value).toBe('5432')
+  expect(screen.getByLabelText('Mot de passe')).toBeEnabled()
+  // Le badge « Trousseau » reste, lui aussi : il y a bien un secret à ranger.
+  expect(screen.getByText('Trousseau')).toBeInTheDocument()
+})
+
+test('sans transfert Kubernetes, l’hôte reste saisissable', async () => {
+  monter()
+  // L'autre moitié du critère. Il porte aussi sur le **moment** : choisir « Kubernetes » dans la
+  // liste ne déclare rien tant qu'aucune ressource n'est saisie, donc griser d'avance serait
+  // mentir sur une connexion qui n'existe pas encore.
+  const panneau = await choisirLeType('Kubernetes')
+  expect(screen.getByLabelText('Hôte')).toBeEnabled()
+
+  await userEvent.type(panneau.getByLabelText('Ressource'), 'svc/postgres')
+  expect(screen.getByLabelText('Hôte')).toBeDisabled()
 })
 
 test('sans proxy Cloud SQL, ni le port ni le mot de passe ne sont grisés', async () => {

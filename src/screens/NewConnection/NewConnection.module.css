@@ -484,7 +484,14 @@
 
 /* L'instance prend les trois colonnes restantes après « Type ». Un nom de connexion
  * `projet:région:instance` fait facilement quarante caractères ; le couper sur la colonne
- * `1fr` de l'hôte du bastion le rendrait illisible. */
+ * `1fr` de l'hôte du bastion le rendrait illisible.
+ *
+ * **Cette classe va sur une enveloppe, jamais sur le `Field`** (31 août 2026). `Field` pose son
+ * `className` sur l'`<input>` — voir son code —, et un `grid-column` sur un élément qui n'est pas
+ * enfant de la grille n'a **aucun effet, sans rien casser de visible** : la règle était inerte
+ * depuis `08k`, et le test de géométrie censé la garder passait grâce à un seuil trop lâche. C'est
+ * le même piège que le `var()` vers un jeton inexistant, que ce dépôt connaît déjà : une
+ * déclaration qui ne s'applique à rien ne se dénonce pas. */
 .tunnelInstance {
   grid-column: 2 / -1;
 }

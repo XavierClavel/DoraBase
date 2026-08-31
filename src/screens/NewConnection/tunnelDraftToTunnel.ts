@@ -46,5 +46,35 @@ function proxyDraftToProxy(proxy: TunnelDraft['proxy']): ProxyModele {
         kind: 'cloud-sql',
         instanceConnectionName: proxy.instanceConnectionName,
       }
+    case 'kubernetes':
+      return {
+        kind: 'kubernetes',
+        // **Le vide devient `null`, et les deux champs optionnels y tiennent leur sens.** Vide veut
+        // dire « celui que kubectl choisirait » — son kubeconfig, l'espace de noms du contexte ou
+        // `default` —, et une chaîne vide persistée se lirait comme un nom :
+        // `--namespace ''` ferait chercher dans un espace de noms qui n'existe pas, et
+        // `--kubeconfig ''` dans un fichier qui n'existe pas. Le Rust refuse aussi une valeur
+        // blanche (`valeur_utile`), parce qu'un fichier écrit à la main ne passe pas par ici.
+        //
+        // Le chemin est **rogné mais pas développé** : le `~/` est l'affaire du Rust, qui seul
+        // connaît le `HOME` du processus qui lancera `kubectl`.
+        kubeconfig: absentSiVide(proxy.kubeconfig),
+        namespace: absentSiVide(proxy.namespace),
+        // Rognée mais **jamais réécrite** : un espace de tête vient d'un copier-coller, un `svc/`
+        // ajouté d'office viserait un service là où l'utilisateur nommait un pod.
+        resource: proxy.resource.trim(),
+      }
   }
+}
+
+/**
+ * Le vide de l'écran devient l'absence du modèle.
+ *
+ * La convention de `draftToRequest` pour le certificat d'autorité et la base d'authentification,
+ * appliquée ici aux deux champs optionnels du transfert Kubernetes. Nommée plutôt que recopiée
+ * deux fois : `08e` avait déjà montré ce que coûte une conversion écrite deux fois.
+ */
+function absentSiVide(saisie: string): string | null {
+  const rognee = saisie.trim()
+  return rognee === '' ? null : rognee
 }

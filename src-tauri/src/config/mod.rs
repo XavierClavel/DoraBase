@@ -28,7 +28,7 @@ pub use enregistrer::{enregistrer, reference_de, NouvelleBase, SaveError};
 pub use model::{
     Accent, ConnectionSettings, Console, Database, Engine, EnvironmentColor,
     EnvironmentDeclaration, EnvironmentId, Guards, ModelError, Preferences, Project, Proxy,
-    ProxyCloudSql, ProxySsh, SavedQuery, SecretRef, SslMode, Theme, Tunnel,
+    ProxyCloudSql, ProxyKubernetes, ProxySsh, SavedQuery, SecretRef, SslMode, Theme, Tunnel,
 };
 pub use query::{databases_available, validate};
 pub use store::{load, save, ConfigStore, LoadOutcome, StoreError, VERSION_COURANTE};

@@ -122,6 +122,30 @@ export function ConnectionForm({
    * qu'aucune instance n'est saisie, il n'y a pas de proxy, et griser d'avance serait mentir.
    */
   const parCloudSql = draft.tunnel?.proxy.kind === 'cloud-sql'
+  /*
+   * **Ce que le transfert Kubernetes décide à la place de l'utilisateur** (31 août 2026).
+   *
+   * Un seul champ, et ce n'est pas le même que pour Cloud SQL : l'**hôte**. Une base qui vit dans
+   * un cluster n'a pas d'adresse joignable depuis le poste — c'est la ressource déclarée dans le
+   * panneau qui la désigne —, et la connexion se fait sur le bout local du transfert, donc sur
+   * `127.0.0.1`. C'est cette valeur qui s'affiche, comme `auto` s'affiche dans le port derrière
+   * Cloud SQL : dire ce qui *sera employé* plutôt que laisser un champ vide, qui se lirait comme un
+   * champ oublié.
+   *
+   * **Le port et le mot de passe restent saisissables, à l'inverse de Cloud SQL**, et les deux
+   * comptent : le port est celui de la base *dans le pod* — le membre droit du `local:distant` que
+   * `kubectl` reçoit —, et un PostgreSQL dans un pod s'authentifie comme n'importe quel autre. Il
+   * n'y a pas d'équivalent de l'IAM d'`06k` ici.
+   *
+   * **L'hôte n'est pas grisé derrière Cloud SQL**, où il est tout aussi inemployé. C'est une
+   * incohérence connue et laissée en place : le visage Cloud SQL n'a jamais été conçu et attend un
+   * passage de design (voir AGENTS.md), et le corriger au passage serait décider seul de ce qu'il
+   * doit montrer.
+   *
+   * Lu sur le tunnel **réellement déclaré**, et non sur la sorte affichée dans le panneau : tant
+   * qu'aucune ressource n'est saisie, il n'y a pas de proxy, et griser d'avance serait mentir.
+   */
+  const parKubernetes = draft.tunnel?.proxy.kind === 'kubernetes'
 
   return (
     <div className={styles.form}>
@@ -173,7 +197,9 @@ export function ConnectionForm({
           <Field
             label={t('newConnection.form.hostLabel')}
             mono
-            value={draft.host}
+            disabled={parKubernetes}
+            title={parKubernetes ? t('newConnection.form.reasons.hostKubernetes') : undefined}
+            value={parKubernetes ? '127.0.0.1' : draft.host}
             onChange={(event) => onChange({ host: event.target.value })}
           />
           <Field

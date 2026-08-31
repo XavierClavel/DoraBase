@@ -19,6 +19,13 @@ pub mod cloudsql;
 pub mod commands;
 mod error;
 mod introspection;
+/// Les dernières lignes écrites par un proxy en sous-processus.
+///
+/// **Remonté de `cloudsql/` le 31 août 2026**, quand `kubernetes/` a eu le même besoin — même
+/// mouvement, et pour la même raison, que `port` en `06g`.
+pub mod journal;
+/// Le transfert de port `kubectl` (31 août 2026) : joindre une base qui vit dans un cluster.
+pub mod kubernetes;
 pub mod mongo;
 pub mod mysql;
 /// Le choix du port local, commun au tunnel SSH (`06e`) et au proxy Cloud SQL (`06g`).
@@ -28,9 +35,13 @@ pub mod mysql;
 /// dépendance qui ne dit rien de vrai sur le domaine.
 pub mod port;
 pub mod postgres;
+/// Trouver un programme tiers, et lui donner un `PATH` utilisable depuis une app du Finder.
+pub mod programme;
 pub mod proxy;
 pub mod registry;
 mod rows;
+/// Le pilotage d'un proxy qui est un sous-processus, commun à `cloudsql` et `kubernetes`.
+pub mod sous_processus;
 pub mod sqlite;
 pub mod tls;
 pub mod tunnel;
