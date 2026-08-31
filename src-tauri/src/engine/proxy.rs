@@ -71,9 +71,9 @@ impl Surveillance {
 /// sans ça, le bastion tombé produit un « connection refused » sur `127.0.0.1`, qui envoie
 /// chercher un problème de PostgreSQL.
 ///
-/// `sujet` nomme le proxy — « le tunnel SSH », « le proxy Cloud SQL ». Un message
-/// générique obligerait l'utilisateur à deviner lequel des deux est en cause, ce qui est
-/// exactement le défaut que cette fonction corrige.
+/// `sujet` nomme le proxy — « le tunnel SSH », « le proxy Cloud SQL », « le transfert de port
+/// Kubernetes ». Un message générique obligerait l'utilisateur à deviner lequel des trois est en
+/// cause, ce qui est exactement le défaut que cette fonction corrige.
 ///
 /// En fonction libre pour être testable sans proxy réel : construire l'un ou l'autre exige
 /// un bastion ou un compte GCP, et garder cette logique en méthode obligerait à la recopier
@@ -96,9 +96,21 @@ pub fn qualifier_avec(etat: EtatProxy, sujet: &str, erreur: EngineError) -> Engi
 /// `port_local_tunnel` et `close` — quatre endroits où oublier l'un des deux. Ici,
 /// l'aiguillage est fait **une fois**, et l'ajout d'une troisième sorte fera échouer la
 /// compilation aux seuls endroits à traiter.
+///
+/// **La troisième sorte est arrivée le 31 août 2026**, et ce type est ce qui a rendu son ajout
+/// mécanique. Deux faits mesurés par sabotage, à ne pas confondre :
+///
+/// - `config::Proxy::Kubernetes` seule fait échouer la compilation à **un** endroit du dépôt,
+///   `ouvrir` ci-dessous — le seul `match` sur ce type-là. C'est peu, et c'est assez : on ne peut
+///   pas satisfaire `ouvrir` sans donner une variante à `ProxyOuvert`, qui fait alors échouer les
+///   trois autres `match` de ce fichier. La garantie est en deux temps, pas en un.
+/// - **rien d'autre dans le dépôt n'a eu une ligne à changer** : ni `registry`, ni `commands`, ni
+///   les trois adaptateurs, ni un seul écran. Tous parlent de « proxy » ou de « tunnel », jamais de
+///   sa sorte — et c'est cette discipline, plus que l'énumération, qui a fait le prix du chantier.
 pub enum ProxyOuvert {
     Ssh(crate::engine::tunnel::SshTunnel),
     CloudSql(crate::engine::cloudsql::CloudSqlProxy),
+    Kubernetes(crate::engine::kubernetes::KubernetesProxy),
 }
 
 /// `Debug` à la main, comme pour les deux types qu'il porte : le dérivé exposerait l'état
@@ -109,6 +121,7 @@ impl std::fmt::Debug for ProxyOuvert {
         match self {
             Self::Ssh(t) => write!(f, "ProxyOuvert::Ssh({t:?})"),
             Self::CloudSql(p) => write!(f, "ProxyOuvert::CloudSql({p:?})"),
+            Self::Kubernetes(p) => write!(f, "ProxyOuvert::Kubernetes({p:?})"),
         }
     }
 }
@@ -116,10 +129,15 @@ impl std::fmt::Debug for ProxyOuvert {
 impl ProxyOuvert {
     /// Ouvre le proxy décrit par la configuration, quelle que soit sa sorte.
     ///
-    /// `hote_cible` et `port_cible` ne servent qu'au tunnel SSH : c'est lui qui doit savoir
-    /// vers quoi rediriger. Le proxy Cloud SQL tient la cible de l'instance elle-même —
-    /// l'hôte et le port de la variante ne le concernent pas, et le lui passer suggérerait
-    /// le contraire.
+    /// `hote_cible` ne sert qu'au tunnel SSH : c'est lui qui doit savoir vers quel hôte rediriger,
+    /// *tel que le bastion le voit*. Le proxy Cloud SQL tient sa cible du nom d'instance, et le
+    /// transfert Kubernetes de la ressource — l'hôte de la variante ne les concerne pas, et le leur
+    /// passer suggérerait le contraire.
+    ///
+    /// `port_cible` sert à **deux** des trois (31 août 2026) : le tunnel SSH et le transfert
+    /// Kubernetes en ont besoin, parce que c'est le port sur lequel la base écoute de l'autre côté
+    /// — derrière le bastion pour l'un, dans le pod pour l'autre. Seul Cloud SQL l'ignore, la
+    /// cible d'une instance ne se désignant pas par un port.
     pub async fn ouvrir(
         tunnel: &crate::config::Tunnel,
         hote_cible: &str,
@@ -141,6 +159,15 @@ impl ProxyOuvert {
                     .await
                     .map(Self::CloudSql)
             }
+            crate::config::Proxy::Kubernetes(kube) => {
+                crate::engine::kubernetes::KubernetesProxy::ouvrir(
+                    kube,
+                    tunnel.local_port,
+                    port_cible,
+                )
+                .await
+                .map(Self::Kubernetes)
+            }
         }
     }
 
@@ -148,6 +175,7 @@ impl ProxyOuvert {
         match self {
             Self::Ssh(t) => t.port_local(),
             Self::CloudSql(p) => p.port_local(),
+            Self::Kubernetes(p) => p.port_local(),
         }
     }
 
@@ -155,16 +183,18 @@ impl ProxyOuvert {
         match self {
             Self::Ssh(t) => t.etat(),
             Self::CloudSql(p) => p.etat(),
+            Self::Kubernetes(p) => p.etat(),
         }
     }
 
-    /// **Asynchrone à cause de Cloud SQL seul** : le proxy Cloud SQL laisse une fenêtre
-    /// courte au sous-processus pour expliquer l'échec, qu'il écrit au moment du refus et non
-    /// avant. Le tunnel SSH, lui, sait déjà tout ce qu'il sait.
+    /// **Asynchrone à cause des deux proxys en sous-processus** : chacun laisse une fenêtre courte
+    /// au programme pour expliquer l'échec, qu'il écrit au moment du refus et non avant. Le tunnel
+    /// SSH, lui, sait déjà tout ce qu'il sait.
     pub async fn qualifier(&self, erreur: EngineError) -> EngineError {
         match self {
             Self::Ssh(t) => t.qualifier(erreur),
             Self::CloudSql(p) => p.qualifier(erreur).await,
+            Self::Kubernetes(p) => p.qualifier(erreur).await,
         }
     }
 
@@ -173,6 +203,7 @@ impl ProxyOuvert {
         match self {
             Self::Ssh(t) => t.fermer().await,
             Self::CloudSql(p) => p.fermer().await,
+            Self::Kubernetes(p) => p.fermer().await,
         }
     }
 }
@@ -258,6 +289,35 @@ mod tests {
             "{}",
             crate::engine::cloudsql::SUJET
         );
+    }
+
+    /// Même exigence pour la troisième sorte : c'est le contenu de **la constante que la
+    /// production emploie** qu'on constate. Un littéral retapé ici laisserait vider le sujet sans
+    /// qu'un test échoue, et un transfert mort dirait « est tombé » sans dire quoi.
+    #[test]
+    fn le_sujet_du_transfert_kubernetes_nomme_bien_kubernetes() {
+        assert!(
+            crate::engine::kubernetes::SUJET.contains("Kubernetes"),
+            "{}",
+            crate::engine::kubernetes::SUJET
+        );
+    }
+
+    /// Les trois sujets doivent être **distincts**, et c'est plus fort que « chacun nomme sa
+    /// sorte » : le point de `qualifier_avec` est que l'utilisateur sache lequel des trois est en
+    /// cause, ce qu'un sujet recopié rendrait impossible sans qu'aucun des trois tests ci-dessus
+    /// n'échoue.
+    #[test]
+    fn les_trois_sujets_sont_distincts() {
+        let sujets = [
+            crate::engine::tunnel::SUJET,
+            crate::engine::cloudsql::SUJET,
+            crate::engine::kubernetes::SUJET,
+        ];
+        let mut uniques = sujets.to_vec();
+        uniques.sort_unstable();
+        uniques.dedup();
+        assert_eq!(uniques.len(), sujets.len(), "{sujets:?}");
     }
 
     #[test]

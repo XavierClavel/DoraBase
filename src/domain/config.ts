@@ -383,17 +383,33 @@ environments: Array<EnvironmentDeclaration>, databases: Array<Database>,
 queries?: Array<SavedQuery>, };
 
 /**
- * Ce qui **diffère** entre les deux sortes de proxy.
+ * Ce qui **diffère** entre les trois sortes de proxy.
  *
  * **Une énumération et non des champs optionnels.** Un `Tunnel` plat portant les champs
- * des deux autoriserait `kind: "cloud-sql"` avec un bastion renseigné et aucune instance.
+ * des trois autoriserait `kind: "cloud-sql"` avec un bastion renseigné et aucune instance.
  * `05a` pose que les invariants sont portés par le typage plutôt qu'en commentaire ; c'en
  * est un. Le coût — un `match` là où il y avait un accès de champ — est le bénéfice :
  * l'ajout d'une troisième sorte fera échouer la compilation aux endroits à traiter.
  *
+ * **Et c'est ce qui s'est passé** (31 août 2026), à une nuance qui vaut d'être relevée. Mesuré par
+ * sabotage — variante ajoutée ici, `engine/proxy.rs` remis dans son état d'avant : `Kubernetes` a
+ * fait échouer la compilation en `E0004` à **un seul** endroit du dépôt, `ProxyOuvert::ouvrir`.
+ * Un seul, parce que c'est le seul `match` sur *ce* type : les trois autres de `proxy.rs` — port
+ * local, état, fermeture — portent sur `ProxyOuvert`, qui est une **autre** énumération et qui
+ * restait exhaustive tant qu'elle n'avait pas sa propre variante.
+ *
+ * La garantie n'en est pas affaiblie, elle est en **deux temps**, et il faut le savoir pour ne pas
+ * la croire plus courte qu'elle est : cette énumération oblige à traiter l'ouverture, et c'est
+ * l'ouverture qui oblige à donner une variante à `ProxyOuvert` — laquelle oblige alors les trois
+ * autres. Aucun des quatre n'aurait été retrouvé par relecture.
+ *
+ * **Aucun cran de migration n'a été nécessaire** : une variante *ajoutée* ne périme aucun fichier
+ * existant, dont l'étiquette reste lisible. C'est la règle des champs de `27a`, appliquée à une
+ * étiquette — et l'inverse d'un retrait, qui en demande un (`06j`).
+ *
  * Vérifié : un `match` omettant `CloudSql` échoue en `E0004` (relevé le 19 août 2026).
  */
-export type Proxy = { "kind": "ssh" } & ProxySsh | { "kind": "cloud-sql" } & ProxyCloudSql;
+export type Proxy = { "kind": "ssh" } & ProxySsh | { "kind": "cloud-sql" } & ProxyCloudSql | { "kind": "kubernetes" } & ProxyKubernetes;
 
 /**
  * Le Cloud SQL Auth Proxy de Google. Ouvert par `06g`.
@@ -418,6 +434,75 @@ export type ProxyCloudSql = {
  * — il donne seulement l'occasion de diverger.
  */
 instanceConnectionName: string, };
+
+/**
+ * Un transfert de port Kubernetes — `kubectl port-forward`, lancé en sous-processus.
+ *
+ * **Ce que cette sorte a de particulier** (31 août 2026) : une base dans un cluster n'a pas
+ * d'adresse joignable depuis le poste. Ce n'est donc pas un hôte qui la désigne, mais une
+ * **ressource** dans un **espace de noms**, lus dans un **kubeconfig**.
+ *
+ * **Le contexte ne se choisit pas : il vient du kubeconfig** (31 août 2026, second passage). Un
+ * champ `context` a existé ici une demi-journée, avec un long commentaire sur l'inconfort d'un
+ * contexte optionnel. Il est parti à l'usage : un kubeconfig désigne son contexte courant, et
+ * l'outil qui l'a écrit — Freelens, `gcloud`, `kind` — en produit un par cluster. Déclarer le
+ * contexte revenait donc à recopier une information que le **fichier** porte déjà, et le fichier,
+ * lui, se déclare.
+ *
+ * Ce qui reste de l'arbitrage d'origine : le contexte est **deviné**, toujours, donc il doit être
+ * **dit**. L'en-tête du journal du transfert porte celui que `kubectl config current-context` a
+ * rendu, et voyage dans tout message d'échec. C'est la seule façon de savoir quel cluster on a
+ * joint, et elle compte davantage maintenant qu'aucun champ ne l'affirme.
+ */
+export type ProxyKubernetes = { 
+/**
+ * Le fichier kubeconfig. `None` : celui que `kubectl` choisirait — `$KUBECONFIG`, à défaut
+ * `~/.kube/config`.
+ *
+ * **Ce champ existe parce qu'une app graphique n'hérite pas de `$KUBECONFIG`** (31 août 2026).
+ * C'est le même fait qui a imposé l'enrichissement du `PATH`, appliqué à une autre variable :
+ * macOS ne donne à une application lancée depuis le Finder aucun des exports du shell. Le
+ * défaut `~/.kube/config` survit — `HOME`, lui, est transmis —, mais un
+ * `export KUBECONFIG=~/.kube/prod:~/.kube/staging`, qui est la façon courante de tenir
+ * plusieurs clusters, ne parvient pas jusqu'à nous. Sans ce champ, les contextes de ces
+ * fichiers seraient **invisibles depuis l'app** alors que `kubectl config get-contexts` les
+ * liste dans un terminal, et l'échec dirait « context not found » : un message qui accuse une
+ * installation correcte.
+ *
+ * **Un chemin, pas une liste.** `$KUBECONFIG` accepte plusieurs fichiers séparés par `:`, que
+ * `kubectl` fusionne ; `--kubeconfig` n'en prend qu'un. Le cas de la fusion n'est donc pas
+ * couvert, et c'est assumé : une connexion vise **un** cluster, donc le fichier qui le déclare
+ * suffit à la décrire. Ce qui se perd est la commodité d'un réglage global, pas une capacité.
+ *
+ * Le `~/` de tête est développé (`programme::chemin_utilisateur`) : nous passons un argv direct,
+ * jamais un shell, donc rien ne le ferait à notre place.
+ */
+kubeconfig?: string | null, 
+/**
+ * L'espace de noms. `None` : celui que `kubectl` emploierait — celui du contexte s'il en
+ * déclare un, `default` sinon.
+ *
+ * **Un espace de noms absent est bénin, et c'est ce qui le distingue du cluster** : il fait
+ * échouer `kubectl` sur « not found », donc bruyamment. C'est aussi pourquoi il n'est pas tracé
+ * dans l'en-tête du journal alors que le contexte l'est : se tromper d'espace de noms se voit,
+ * se tromper de cluster **réussit**.
+ */
+namespace?: string | null, 
+/**
+ * La ressource à joindre, dans la forme que `kubectl port-forward` accepte : `svc/postgres`,
+ * `pod/postgres-0`, `statefulset/postgres`, ou un nom nu — que `kubectl` lit comme un pod.
+ *
+ * **Transmise telle quelle, jamais réécrite.** Deux raisons : la liste des types que `kubectl`
+ * accepte est la sienne et grandit sans nous, et le projet ne corrige aucune saisie (voir
+ * « Aucune correction automatique dans les champs »). Un `svc/` ajouté d'office viserait un
+ * service là où l'utilisateur nommait un pod.
+ *
+ * **Un pod nommé à la main se périme, et c'est à l'utilisateur de le savoir** : le suffixe
+ * aléatoire d'un `Deployment` change à chaque redéploiement. Le placeholder de `A2` propose
+ * donc `svc/…`, qui survit — mais refuser un nom de pod interdirait le seul geste possible
+ * quand aucun service n'expose la base.
+ */
+resource: string, };
 
 /**
  * Un bastion SSH. Le **chemin** de la clé privée est de la configuration, pas un

@@ -51,6 +51,89 @@ test('un brouillon Cloud SQL se convertit en proxy cloud-sql', () => {
   ])
 })
 
+test('un brouillon Kubernetes se convertit, le vide devenant une absence', () => {
+  const tunnel = tunnelDraftToTunnel({
+    localPort: null,
+    proxy: {
+      kind: 'kubernetes',
+      kubeconfig: '',
+      namespace: '   ',
+      resource: '  svc/postgres  ',
+    },
+  })
+
+  // **Le vide devient `null`, et c'est ce qui donne leur sens aux deux champs optionnels** : absent
+  // veut dire « celui que kubectl choisirait ». Une chaîne vide persistée se lirait comme un nom, et
+  // `--namespace ''` ferait chercher dans un espace de noms qui n'existe pas.
+  expect(tunnel?.proxy).toEqual({
+    kind: 'kubernetes',
+    kubeconfig: null,
+    namespace: null,
+    // Rognée — un espace de tête vient d'un copier-coller — mais **jamais réécrite** : pas de
+    // `svc/` ajouté d'office, qui viserait un service là où l'utilisateur nommait un pod.
+    resource: 'svc/postgres',
+  })
+})
+
+test('les coordonnées saisies sont transmises, kubeconfig compris', () => {
+  // Contrôle négatif du test précédent : sans lui, « le vide devient null » passerait aussi si la
+  // conversion mettait `null` partout.
+  const tunnel = tunnelDraftToTunnel({
+    localPort: null,
+    proxy: {
+      kind: 'kubernetes',
+      kubeconfig: '/etc/kubeconfig-prod',
+      namespace: 'bases',
+      resource: 'statefulset/postgres',
+    },
+  })
+  expect(tunnel?.proxy).toEqual({
+    kind: 'kubernetes',
+    kubeconfig: '/etc/kubeconfig-prod',
+    namespace: 'bases',
+    resource: 'statefulset/postgres',
+  })
+  expect(Object.keys(tunnelDraftToTunnel(emptyTunnel('kubernetes'))?.proxy ?? {}).sort()).toEqual([
+    'kind',
+    'kubeconfig',
+    'namespace',
+    'resource',
+  ])
+})
+
+test('le ~ du kubeconfig n’est pas développé côté écran', () => {
+  // **C'est le Rust qui développe**, et c'est le bon endroit : seul le processus qui lancera
+  // `kubectl` connaît son `HOME`. Le faire ici donnerait un chemin absolu **persisté**, donc une
+  // configuration qui cesse d'être vraie si elle change de machine ou d'utilisateur.
+  const tunnel = tunnelDraftToTunnel({
+    localPort: null,
+    proxy: {
+      kind: 'kubernetes',
+      kubeconfig: '  ~/.kube/prod  ',
+      namespace: '',
+      resource: 'svc/postgres',
+    },
+  })
+  // Rogné — un blanc de bord vient d'un copier-coller — mais le `~` reste.
+  expect(tunnel?.proxy).toMatchObject({ kubeconfig: '~/.kube/prod' })
+})
+
+test('une ressource nue n’est pas transformée en service', () => {
+  // `kubectl` lit un nom nu comme un **pod**, et c'est son contrat, pas le nôtre. Préfixer
+  // d'office changerait la cible sans le dire — et la liste des types qu'il accepte grandit sans
+  // nous.
+  const tunnel = tunnelDraftToTunnel({
+    localPort: null,
+    proxy: {
+      kind: 'kubernetes',
+      kubeconfig: '',
+      namespace: '',
+      resource: 'postgres-0',
+    },
+  })
+  expect(tunnel?.proxy).toMatchObject({ resource: 'postgres-0' })
+})
+
 test('un port de bastion illisible devient 0 plutôt que NaN', () => {
   // `NaN` ferait échouer `serde` avec une erreur de désérialisation illisible ; `0` laisse le
   // moteur rendre une erreur de connexion claire.

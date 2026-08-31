@@ -90,6 +90,21 @@ qu'il portait et que le rendu ne dit pas.
 - **Pas de composant natif** pour les listes déroulantes : la liste maison partout.
 - **Un `var()` vers un jeton inexistant ne casse rien de visible** — ni TypeScript, ni
   Vitest, ni l'œil. Vérifiez qu'un jeton existe avant de l'employer.
+- **Le formulaire d'`A2` est à deux colonnes qui s'apparient, et un champ de demi-largeur inséré
+  décale tout d'une cellule.** « Utilisateur | Mot de passe », « Mode SSL | interrupteurs » : ajouter
+  une demi-cellule au milieu laissait « Mot de passe » **seul sur sa rangée, avec un trou à sa
+  droite**. Mesuré sur une capture de fidélité le 31 août 2026, sur un champ depuis retiré — la
+  leçon reste : un champ qui s'ajoute au milieu prend la **rangée entière** (`grid-column: 1 / -1`,
+  comme trois autres de ce formulaire) ou se place en fin de flux. Le compte de pixels d'un diff ne
+  dit pas ça ; seules les deux images côte à côte le disent (règle n° 6).
+- **Et une propriété de grille posée sur un élément qui n'est pas enfant de la grille ne casse
+  rien non plus** (31 août 2026). `Field` pose son `className` sur l'`<input>`, jamais sur le
+  `<div>` racine qui porte l'étiquette : le `grid-column` de `.tunnelInstance` était donc **inerte
+  depuis `08k`**, et le test de géométrie qui prétendait le garder passait grâce à un seuil trop
+  lâche. Même famille que le `var()` mort — une déclaration qui ne s'applique à rien ne se dénonce
+  pas. Quand une classe porte `grid-column`, `grid-row` ou `grid-area`, **vérifiez à qui elle
+  atterrit**, et mesurez la largeur contre les pistes calculées de la grille, jamais par un ordre
+  de grandeur.
 
 ### Les arbitrages, avec leur raison
 
@@ -263,6 +278,149 @@ ce que l'écran *montrait*, dont deux qui lisaient franchement le mauvais serveu
 message qui donne la manœuvre. Quatre verdicts distincts là où `russh` n'en offre que
 deux. **L'écran de confiance à la première connexion serait la vraie réponse** — il reste
 à faire.
+
+**Une base dans un cluster se joint par `kubectl port-forward`, en sous-processus** (31 août 2026).
+C'est la **troisième sorte de proxy**, à côté du tunnel SSH et du proxy Cloud SQL, et rien d'autre
+n'a bougé : cinq écrans, le registre, les commandes et les trois adaptateurs parlent de « proxy »
+sans jamais nommer sa sorte.
+
+**Pourquoi `kubectl` et pas un client Kubernetes.** Le transfert de port n'est pas une redirection
+TCP : c'est un flux multiplexé (SPDY, WebSocket depuis la 1.30) au-dessus d'un appel authentifié au
+serveur d'API. L'écrire demanderait un client complet — kubeconfig, contextes, certificats, jetons —
+et surtout les *exec credential plugins* par lesquels GKE, EKS et l'OIDC délivrent leurs
+identifiants. Ce dernier point tranche seul : **ces plugins sont des programmes installés sur la
+machine**, donc même un client natif finirait par lancer un sous-processus, avec en plus toute la
+surface d'un client à tenir à jour. C'est l'arbitrage de `22b` pour le dump — déléguer à l'outil
+natif —, avec la même contrepartie assumée et **dite** : une dépendance externe, cherchée dans le
+`PATH` puis dans les emplacements usuels, et un message d'absence qui porte la commande
+d'installation.
+
+**Et `kubectl` n'est pas embarqué, contrairement au proxy Cloud SQL.** Trois raisons, chacune
+suffisante : il est **apparié au cluster** — au plus une version mineure d'écart avec le serveur
+d'API —, donc un exemplaire figé dans le bundle vieillirait contre les clusters de l'utilisateur ;
+il ne s'authentifie pas seul, et nous n'embarquerions pas ses plugins ; et il pèse une cinquantaine
+de mégaoctets, quand ce fichier trouve déjà lourds les 6,3 Mo d'`export-types`.
+
+**Le `PATH` du sous-processus est enrichi, et c'est le piège propre à cette sorte.** Trouver
+`kubectl` ne suffit pas : il cherche ses plugins d'authentification dans le `PATH` **qu'il hérite de
+nous**. Une app lancée depuis le Finder lui en transmettrait un minimal, et l'échec serait
+« executable gke-gcloud-auth-plugin not found in $PATH » — un message qui accuse une installation
+correcte. `programme::path_enrichi` y joint les emplacements usuels et le répertoire de `kubectl`
+lui-même. Le test qui le garde a d'abord été **vert sous sabotage** : il lisait tout le journal, où
+l'en-tête porte déjà le chemin du binaire, et le `PATH` de ce poste contient déjà Homebrew — il
+mesurait la machine. L'assertion qui mord est le répertoire du faux binaire, dans `/tmp`, qui ne
+peut pas venir du `PATH` hérité.
+
+**Le kubeconfig se déclare, parce qu'une app graphique n'hérite pas de `$KUBECONFIG`** (31 août
+2026, ajouté à la demande). C'est le **même fait** que celui qui a imposé l'enrichissement du `PATH`,
+appliqué à une autre variable : macOS ne transmet à une application lancée depuis le Finder aucun
+export du shell. Le défaut `~/.kube/config` survit — `HOME`, lui, est transmis —, mais un
+`export KUBECONFIG=~/.kube/prod:~/.kube/staging`, qui est la façon courante de tenir plusieurs
+clusters, ne parvient jamais jusqu'à nous. Sans ce champ, les contextes de ces fichiers seraient
+**invisibles depuis l'app** alors que `kubectl config get-contexts` les liste dans un terminal, et
+l'échec dirait « context not found » : un message qui accuse une installation correcte. Quatre
+points à ne pas défaire :
+
+- **`--kubeconfig` prend un chemin, `$KUBECONFIG` une liste** — le cas de la fusion de plusieurs
+  fichiers n'est donc pas couvert, et c'est assumé : une connexion vise **un** cluster, donc le
+  fichier qui le déclare suffit à la décrire. Ce qui se perd est la commodité d'un réglage global,
+  pas une capacité ;
+- **le même `--kubeconfig` va à `kubectl config current-context`**, et pas seulement au transfert.
+  Sans cela, l'en-tête du journal nommerait un contexte lu dans le fichier *par défaut* pendant que
+  le transfert emploierait celui qui est déclaré — donc affirmerait, avec aplomb, un cluster qui
+  n'est pas celui qu'on vise. **Un en-tête faux est pire que pas d'en-tête**, puisque c'est lui qu'on
+  croit en cherchant pourquoi une connexion a échoué. Vérifié par un faux `kubectl` qui répond un nom
+  *différent* selon qu'on lui passe le drapeau : un double qui rendrait toujours le même nom
+  laisserait ce défaut passer ;
+- **le `~/` de tête est développé, et ce n'est pas une « correction automatique »**
+  (`programme::chemin_utilisateur`). Nous passons un argv direct, jamais un shell, donc rien ne le
+  ferait à notre place : un `~/.kube/prod` littéral ferait chercher un répertoire **nommé `~`**. La
+  prohibition porte sur ce qu'on *devine* — une capitale, un préfixe ajouté —, pas sur une notation
+  que tous les shells développent. Ce que la fonction ne fait pas : ni `$VAR`, ni
+  `~autre-utilisateur`, ni chemin relatif ;
+- **l'écran ne développe rien, le Rust seul le fait.** Développer côté écran persisterait un chemin
+  absolu que l'utilisateur n'a pas saisi, donc une configuration qui cesse d'être vraie sur une autre
+  machine ou sous un autre compte. Seul le processus qui lance `kubectl` connaît son `HOME`.
+
+**Deux autres chemins saisis du produit ne sont pas développés, et c'est un défaut antérieur** :
+`ca_certificate`, lu en `std::fs::read` par `engine/tls.rs`, et `private_key_path`, ouvert par
+`engine/tunnel/`. Les deux **annoncent** pourtant un `~` — le `placeholder` du certificat propose
+`~/certs/interne.pem`, et la capture de fidélité du panneau remplit la clé privée avec
+`~/.ssh/id_ed25519`. `programme::chemin_utilisateur` est la fonction à leur brancher ; ce n'a pas été
+fait le 31 août pour ne pas mêler deux chantiers.
+
+**La cible est une ressource, pas un hôte — et le champ « Hôte » est donc grisé.** Une base qui vit
+dans un cluster n'a pas d'adresse joignable depuis le poste : ce sont trois coordonnées qui la
+désignent, `contexte / espace de noms / ressource`. Le champ affiche `127.0.0.1`, qui est vrai — la
+connexion se fait sur le bout local du transfert —, avec un `title` qui dit pourquoi ; c'est
+l'arbitrage du port « auto » derrière Cloud SQL, appliqué au champ que cette sorte-ci décide.
+**L'hôte n'est pas grisé derrière Cloud SQL**, où il est tout aussi inemployé : incohérence connue et
+laissée en place, le visage Cloud SQL n'ayant jamais été conçu.
+
+**Le port et le mot de passe, eux, restent saisissables**, et c'est la différence de fond avec Cloud
+SQL. Le port est celui de la base **dans le pod** — le membre droit du `local:distant` que `kubectl`
+reçoit, donc `ConnectionSettings.port` sans champ de plus, exactement comme le tunnel SSH l'emploie
+pour la cible derrière le bastion. Et un PostgreSQL dans un pod s'authentifie comme un autre : il n'y
+a pas d'équivalent de l'IAM d'`06k`, et `authentification_iam` reste faux pour cette sorte.
+
+**Le contexte ne se déclare pas : il vient du kubeconfig** (31 août 2026, après essai). Un champ
+« Contexte » a existé une demi-journée, avec un long arbitrage sur l'inconfort d'un contexte
+optionnel. Il est parti à l'usage, et la raison est simple : **un kubeconfig désigne son contexte
+courant**, et l'outil qui l'écrit — Freelens, `gcloud`, `kind` — en produit un par cluster. Déclarer
+le contexte revenait donc à recopier une information que le *fichier* porte déjà, et le fichier, lui,
+se déclare. Aucun `--context` n'est passé à `kubectl` ; un test le vérifie **en négatif**, un champ
+retiré revenant plus facilement qu'il n'est parti.
+
+Ce qui reste de l'arbitrage d'origine, et qui compte davantage maintenant : le contexte est
+**toujours deviné**, donc il doit être **dit**. L'en-tête du journal du transfert porte celui que
+`kubectl config current-context` a rendu — lu avec le `--kubeconfig` déclaré, sans quoi il nommerait
+le contexte d'un *autre* fichier — et voyage dans tout message d'échec. C'est la seule façon de
+savoir quel cluster on a joint.
+
+**Un « contexte » est un nom, pas un chemin** — la question s'est posée, donc elle vaut d'être
+écrite. Un kubeconfig déclare trois listes : des clusters, des utilisateurs, et des *contextes*. Un
+contexte est un triplet **nommé** `(cluster, utilisateur, espace de noms)` ; `kubectl config
+get-contexts` les liste. Le *fichier*, lui, est le champ « Fichier kubeconfig ».
+
+**L'espace de noms, lui, se déclare — et son vide vaut `default`.** L'asymétrie avec le contexte est
+ce qui décide : un espace de noms absent fait **échouer** `kubectl` sur « not found », donc
+bruyamment, là où un contexte absent le fait **réussir** contre le mauvais cluster. C'est pourquoi
+seul le contexte est tracé dans le journal. Le `placeholder` nomme `default` **et** dit que le
+contexte peut en imposer un autre : écrire « default » tout court serait faux pour un kubeconfig qui
+en déclare un, ce qui est le cas courant des fichiers engendrés par un outil.
+
+**La ressource est transmise telle quelle, jamais réécrite.** `kubectl` accepte `svc/postgres`,
+`pod/postgres-0`, `statefulset/postgres` ou un nom nu — qu'il lit comme un pod. La liste de ses
+types est la sienne et grandit sans nous, et le projet ne corrige aucune saisie : un `svc/` ajouté
+d'office viserait un service là où l'utilisateur nommait un pod. Le `placeholder` propose `svc/…`,
+qui survit à un redéploiement là où un nom de pod change, mais refuser un nom de pod interdirait le
+seul geste possible quand aucun service n'expose la base.
+
+**`--pod-running-timeout` est passé à `kubectl`, et il doit rester sous notre propre délai.** C'est
+l'ordre des deux délais qui décide du message que l'utilisateur lit : `kubectl` attend qu'un pod soit
+en cours d'exécution puis échoue en le disant — « pod is not running. Current status=Pending » —, et
+si notre délai expirait le premier, on le tuerait avant qu'il ait écrit cette phrase. La marge de
+cinq secondes est là pour **lui laisser le dernier mot**.
+
+**`kubectl port-forward` reste vivant quand le transfert casse**, et c'est le jumeau du défaut Cloud
+SQL du 24 août 2026 : mort du pod, redéploiement ou coupure réseau lui font écrire « lost connection
+to pod » sans qu'il s'arrête. `etat()` ne voit donc qu'un processus en bonne santé, et l'erreur du
+pilote — « connection reset » — n'apprend rien. D'où le troisième repère de `sortie.rs` et la fenêtre
+d'explication, comme pour Cloud SQL.
+
+**Aucun cran de migration n'a été nécessaire.** Une variante *ajoutée* à `Proxy` ne périme aucun
+fichier existant, dont l'étiquette reste lisible — la règle des champs de `27a`, appliquée à une
+étiquette, et l'inverse d'un *retrait*, qui en demande un (`06j`).
+
+**Le pilotage du sous-processus est désormais partagé** — `engine/sous_processus.rs`, extrait de
+`cloudsql/mod.rs`, plus `engine/journal.rs` et `engine/programme.rs` remontés d'un cran. Ce n'est pas
+la contradiction de « le patron est partagé, l'implémentation non » qu'`engine/proxy.rs` porte : cette
+phrase avait été écrite pour SSH contre Cloud SQL, où les mécaniques de détection *diffèrent*. Ici
+elle est la même — lancer, lire les deux sorties, guetter une ligne de disponibilité et un port
+annoncé, drainer, tuer sans orphelin — et chacun de ces quatre points a déjà coûté un défaut. Ce qui
+reste chez chaque appelant : sa ligne de commande, ses repères de lecture, ses messages. **Les tests
+de `cloudsql` n'ont pas bougé d'une ligne**, tous passant par l'API publique : leur vert est la
+preuve de l'extraction.
 
 **Le binaire `cloud-sql-proxy` est embarqué dans le bundle, et l'embarqué gagne contre le
 `PATH`.** Version épinglée dans `src-tauri/cloud-sql-proxy.lock`, empreinte SHA-256
@@ -1070,6 +1228,24 @@ anecdotes.
     pendu qu'un appel absent**, et le journal ne le disait pas parce qu'il n'imprimait pas le
     moteur.
 
+18. **Un test qui mesure un ordre de grandeur ne garde pas une cote.** Trois assertions de
+    géométrie écrites le 31 août 2026 sont restées vertes sur une mise en page fausse, et les trois
+    pour la même raison : elles comparaient deux valeurs entre elles — « le contexte est plus large
+    que l'espace de noms », « l'instance fait plus du double de Type » — là où l'exigence portait sur
+    le **nombre de pistes occupées**. Sans le `grid-column`, le champ tombe dans une piste voisine
+    plus étroite, donc l'inégalité tient encore. Le remède est de mesurer contre les pistes
+    **calculées** (`getComputedStyle(grille).gridTemplateColumns`) et l'écart de colonne, ce qui
+    donne une égalité et non une comparaison. Corollaire, et c'est le même que la règle n° 5 : un
+    décor où deux valeurs se ressemblent ne les distingue pas — les deux ports d'un
+    `local:distant` doivent être différents dans un test, sinon leur inversion passe.
+
+19. **Un décor de double de test doit répondre à *tous* les appels que la production fait, pas
+    seulement à celui auquel on a pensé.** Le faux `kubectl` du 31 août 2026 en reçoit deux :
+    `port-forward` et `config current-context`. Un décor qui n'aurait connu que le premier aurait pris
+    sa propre ligne « Forwarding from… » pour un nom de contexte, et l'en-tête du journal — qui est
+    tout le remède au contexte optionnel — se serait rempli de bruit sans qu'un test le voie. C'est
+    la règle n° 14 par l'autre bout : ce qu'un double **entend** compte autant que ce qu'il émet.
+
 **Et la méthode qui a le plus payé** : mesurer le rendu dans un navigateur plutôt que lire
 des valeurs déclarées, et comparer deux captures **côte à côte**. Une mesure vérifie une
 hypothèse ; un inventaire visuel en révèle l'absence.
@@ -1107,6 +1283,16 @@ présenter comme vérifiées tant qu'un humain ne les a pas faites :
   l'application sait écrire dans `/Applications`, que macOS accepte le bundle remplacé, et que
   le redémarrage rend une application qui s'ouvre. Aucun test ne peut le faire : Playwright ne
   pilote pas WKWebView, et le chemin passe par un vrai téléchargement depuis GitHub.
+- **Ouvrir une connexion Kubernetes contre un vrai cluster.** Tout le pilotage de `kubectl` est
+  couvert par un faux binaire en shell — port annoncé, mort avant l'ouverture, délai, transfert perdu
+  alors que le processus vit, arguments, `PATH` de l'enfant, en-tête du contexte — mais **aucun test
+  n'a parlé à un serveur d'API**. Ce qui reste à voir : qu'un `svc/postgres` d'un cluster réel
+  s'ouvre, que la grille lise des lignes à travers, et que fermer la connexion ne laisse pas de
+  `kubectl` orphelin (`ps -ax | grep port-forward`). Un cluster local — `kind`, `minikube`, Docker
+  Desktop — suffit pour les trois. Ce qui demande en plus un cluster **distant**, et qui est le seul
+  chemin réellement non exercé : le lancement d'un *exec credential plugin*, donc la raison d'être de
+  l'enrichissement du `PATH`. Le geste décisif est de lancer le bundle **depuis le Finder** et
+  d'ouvrir une connexion GKE : c'est là, et seulement là, que le `PATH` est minimal.
 - **Ouvrir le `.dmg` publié, sur un écran Retina et sur un écran 1×.** Que le fond soit
   *appliqué* se vérifie par script (`verifier-dmg-monte.sh` : le fichier est dans le volume et
   le `.DS_Store` le référence) ; qu'il soit **net**, cadré, et que les deux icônes tombent bien
@@ -1138,13 +1324,23 @@ présenter comme vérifiées tant qu'un humain ne les a pas faites :
 
 ---
 
-## Deux pièges propres à cette machine
+## Trois pièges propres à cette machine
 
 **`cargo` n'est pas dans le `PATH`** des commandes shell de cet outillage : `~/.zshenv`
 source `~/.cargo/env`, mais ce shell ne le relit pas.
 
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"   # devant toute commande cargo ou tauri
+```
+
+**`pyyaml` n'est pas installé pour le `python3` du système**, donc
+`scripts/verifier-ci.py` — la seule vérification que le fichier de CI décrit ce qu'on croit —
+s'arrête sur un `ModuleNotFoundError`, et `verifier-tout.sh` l'inscrit en ÉCHEC. Ce n'est pas un
+défaut du dépôt : la CI l'a. Un environnement jetable suffit, et ne touche à rien :
+
+```bash
+python3 -m venv /tmp/venv-dorabase && /tmp/venv-dorabase/bin/pip install -q pyyaml
+PATH="/tmp/venv-dorabase/bin:$PATH" ./scripts/verifier-tout.sh
 ```
 
 **Plusieurs worktrees de ce dépôt travaillent en parallèle, et le premier `pnpm dev`
@@ -1277,7 +1473,19 @@ Aucun de ces points ne bloque le code en place.
   pixels. Visible au Dock réduit, en vignette Finder, en barre des menus.
 - **Le visage Cloud SQL n'a jamais été conçu** : ses champs et ses libellés sont inventés.
   Un nom d'instance est long et prend trois colonnes de la grille, ce qui n'a pas été
-  composé.
+  composé. **Et il porte un champ « Hôte » inemployé et non grisé**, là où le visage Kubernetes
+  grise le sien : la cohérence demanderait de trancher les deux ensemble, ce qu'un passage de
+  design fera mieux qu'un alignement décidé au passage.
+- **Le visage Kubernetes n'a pas été conçu non plus** (31 août 2026) : trois champs, leurs libellés
+  et leur cote sont inventés sur le patron du visage SSH — hauteurs de 28 px, espace de noms sur une
+  piste, kubeconfig et ressource sur la rangée entière. Le kubeconfig n'a **pas** de bouton
+  « Parcourir… », à la différence de la clé privée SSH : chacun demande une prop injectée et un test
+  de câblage, le sélecteur natif ne répondant pas hors de la webview, et un chemin de kubeconfig est
+  presque toujours sous `~/.kube/`. À reprendre si l'usage dit le contraire. Ce qui manque le plus à l'œil : un contexte GKE fait
+  rien ne dit **à l'écran** quel contexte sera employé : l'information n'existe que dans l'en-tête du
+  journal, donc seulement en cas d'échec. C'est la réserve qui reste après le retrait du champ, et un
+  rappel discret sous le fichier serait la vraie réponse ; l'inventer aurait été inventer un état que
+  le handoff ne décrit pas.
 - **`export-types` voyage dans le bundle** — 6,3 Mo d'un outil de développement dans le `.app`
   livré, parce que le bundler copie tous les binaires de la crate. Ce n'était pas visible avant
   la cible universelle, qui a rendu la copie bruyante. Le retirer demande qu'il cesse d'être un
@@ -1298,6 +1506,17 @@ Aucun de ces points ne bloque le code en place.
   un drapeau silencieusement sans effet. Les deux **refusent avec leur raison** plutôt que
   de remplacer le mode en silence, et depuis le 26 août 2026 l'écran ne le leur propose plus
   — proposer un mode *et* le refuser était l'incohérence restante.
+- **Le chemin heureux Kubernetes contre un vrai cluster n'a jamais été exercé** — même réserve, et
+  pour la même raison qu'en Cloud SQL : tout le pilotage du sous-processus est couvert par un faux
+  binaire en shell, mais aucun test n'a parlé à un serveur d'API. Voir le geste à faire dans « Ce que
+  l'outillage ne peut pas voir ». Le décor qui manquerait le moins serait un `kind` en CI, mais il
+  n'exercerait pas le seul chemin qui compte vraiment : le lancement d'un *exec credential plugin*,
+  qui demande un cluster distant et un compte.
+- **Le dump ne connaît pas encore le transfert Kubernetes.** `dump/commands.rs` refuse une connexion
+  tunnelée **fermée** avec un message qui nomme « un tunnel SSH » ; le refus est juste — le transfert
+  ne vit que tant que la connexion est ouverte, et le port local vient de là —, mais le mot est faux
+  pour les deux autres sortes. Il l'était déjà pour Cloud SQL. Rien n'est cassé : le chemin ouvert
+  passe par `tunnel_local_port`, qui est indifférent à la sorte.
 - **Le chemin heureux Cloud SQL contre une vraie instance n'a jamais été exercé.** Tout le
   pilotage du sous-processus est couvert par un faux binaire en shell, mais aucun test n'a
   parlé à Google. Le test se déverrouille avec `DORABASE_TEST_CLOUDSQL_INSTANCE`,

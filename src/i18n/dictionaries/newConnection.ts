@@ -24,6 +24,8 @@ export const newConnectionFr: Dictionnaire = {
       lock: 'Ces champs identifient la connexion : les changer déplacerait son mot de passe et fermerait sa connexion.',
       lockName:
         'Le nom identifie la connexion. Pour le changer : menu « … » de sa ligne dans l’arbre, puis « Renommer… ».',
+      hostKubernetes:
+        "Une base qui vit dans un cluster n'a pas d'adresse joignable depuis ce poste : c'est la ressource déclarée dans le panneau « Proxy / tunnel » qui la désigne. La connexion se fait sur le bout local du transfert de port, d'où 127.0.0.1.",
     },
     nameLabel: 'Nom de la base',
     environmentLabel: 'Environnement',
@@ -54,13 +56,26 @@ export const newConnectionFr: Dictionnaire = {
   tunnel: {
     panelTitle: 'Proxy / tunnel',
     typeLabel: 'Type',
-    types: { ssh: 'SSH', cloudSql: 'Cloud SQL' },
-    badges: { ssh: 'SSH activé', cloudSql: 'Cloud SQL activé' },
+    types: { ssh: 'SSH', cloudSql: 'Cloud SQL', kubernetes: 'Kubernetes' },
+    badges: {
+      ssh: 'SSH activé',
+      cloudSql: 'Cloud SQL activé',
+      kubernetes: 'Kubernetes activé',
+    },
     bastionHostLabel: 'Hôte du bastion',
     portLabel: 'Port',
     usernameLabel: 'Utilisateur',
     instanceLabel: 'Instance',
     instancePlaceholder: 'projet:région:instance',
+    kubeconfigLabel: 'Fichier kubeconfig',
+    kubeconfigPlaceholder: 'vide : celui de kubectl — $KUBECONFIG, sinon ~/.kube/config',
+    namespaceLabel: 'Espace de noms',
+    namespacePlaceholder: 'vide : « default », ou celui que le contexte déclare',
+    resourceLabel: 'Ressource',
+    resourcePlaceholder: 'svc/postgres — ou pod/postgres-0',
+    kubernetesHintPrefix: 'Le transfert passe par le',
+    kubernetesHintSuffix:
+      " installé sur cette machine. Le champ « Port » est celui de la base *dans le pod* ; l'hôte n'est pas employé, c'est la ressource qui la désigne. Déclarez le fichier kubeconfig si vos contextes ne viennent pas de ~/.kube/config : une application n'hérite pas du $KUBECONFIG de votre terminal.",
     privateKeyLabel: 'Clé privée',
     browse: 'Parcourir…',
     cloudSqlAuthPrefix:
@@ -115,6 +130,8 @@ export const newConnectionEn: Dictionnaire = {
       lock: 'These fields identify the connection: changing them would move its password and close the open connection.',
       lockName:
         'The name identifies the connection. To change it: the “…” menu on its row in the tree, then “Rename…”.',
+      hostKubernetes:
+        'A database living in a cluster has no address reachable from this machine: the resource declared in the “Proxy / tunnel” panel is what locates it. The connection is made to the local end of the port forward, hence 127.0.0.1.',
     },
     nameLabel: 'Database name',
     environmentLabel: 'Environment',
@@ -145,13 +162,26 @@ export const newConnectionEn: Dictionnaire = {
   tunnel: {
     panelTitle: 'Proxy / tunnel',
     typeLabel: 'Type',
-    types: { ssh: 'SSH', cloudSql: 'Cloud SQL' },
-    badges: { ssh: 'SSH enabled', cloudSql: 'Cloud SQL enabled' },
+    types: { ssh: 'SSH', cloudSql: 'Cloud SQL', kubernetes: 'Kubernetes' },
+    badges: {
+      ssh: 'SSH enabled',
+      cloudSql: 'Cloud SQL enabled',
+      kubernetes: 'Kubernetes enabled',
+    },
     bastionHostLabel: 'Bastion host',
     portLabel: 'Port',
     usernameLabel: 'Username',
     instanceLabel: 'Instance',
     instancePlaceholder: 'project:region:instance',
+    kubeconfigLabel: 'Kubeconfig file',
+    kubeconfigPlaceholder: 'empty: kubectl’s own — $KUBECONFIG, else ~/.kube/config',
+    namespaceLabel: 'Namespace',
+    namespacePlaceholder: 'empty: “default”, or the one the context declares',
+    resourceLabel: 'Resource',
+    resourcePlaceholder: 'svc/postgres — or pod/postgres-0',
+    kubernetesHintPrefix: 'Forwarding goes through the',
+    kubernetesHintSuffix:
+      ' installed on this machine. The “Port” field is the database’s port *inside the pod*; the host is not used — the resource locates it. Declare the kubeconfig file if your contexts do not come from ~/.kube/config: an application does not inherit your terminal’s $KUBECONFIG.',
     privateKeyLabel: 'Private key',
     browse: 'Browse…',
     cloudSqlAuthPrefix:
