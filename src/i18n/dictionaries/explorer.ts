@@ -142,7 +142,7 @@ export const explorerFr: Dictionnaire = {
   },
   sidebar: {
     newProject: 'Nouveau projet',
-    newProjectTitle: 'Nouveau projet (⌘N)',
+    newProjectTitle: (p) => `Nouveau projet (${p.raccourci})`,
     treeLabel: 'Projets, environnements et connexions',
     noMatch: (p) => `Aucune ligne affichée ne correspond à « ${p.filtre} ».`,
     actionsFor: (p) => `Actions de ${p.cible}`,
@@ -331,7 +331,7 @@ export const explorerEn: Dictionnaire = {
   },
   sidebar: {
     newProject: 'New project',
-    newProjectTitle: 'New project (⌘N)',
+    newProjectTitle: (p) => `New project (${p.raccourci})`,
     treeLabel: 'Projects, environments and connections',
     noMatch: (p) => `No displayed row matches “${p.filtre}”.`,
     actionsFor: (p) => `Actions for ${p.cible}`,

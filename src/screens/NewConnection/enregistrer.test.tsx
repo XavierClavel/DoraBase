@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { Sprite } from '../../design/icons/Sprite'
 import type { Project, SaveDatabaseRequest } from '../../domain/config'
 import { LanguageProvider } from '../../i18n/LanguageContext'
+import { auModificateur } from '../../test/raccourcis'
 import { emptyDraft } from './ConnectionDraft'
 import { draftToSaveRequest } from './enregistrerLaBase'
 import { NewConnection } from './NewConnection'
@@ -128,7 +129,7 @@ test('les projets à jour sont remontés à l’appelant', async () => {
 
 test('⌘↩ enregistre', async () => {
   const espion = monter()
-  await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
+  await userEvent.keyboard(auModificateur('{Enter}'))
   await waitFor(() => expect(espion.requetes).toHaveLength(1))
 })
 
@@ -140,7 +141,7 @@ test('⌘↩ est inopérant quand le bouton est désactivé', async () => {
   const espion = monter({ projet: '', projects: [] })
   expect(enregistrer()).toBeDisabled()
 
-  await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
+  await userEvent.keyboard(auModificateur('{Enter}'))
   expect(espion.requetes).toHaveLength(0)
 })
 

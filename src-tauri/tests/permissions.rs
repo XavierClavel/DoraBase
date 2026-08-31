@@ -47,25 +47,70 @@ const ATTENDUES: &[(&str, &str)] = &[
         "log:allow-log",
         "les journaux du front, qui rendent le pont IPC observable (08d) — `log` seul",
     ),
+    // --- Windows seulement, depuis le 31 août 2026 (`capabilities/windows.json`) ---
+    //
+    // **Ces quatre-là n'existent pas sur macOS**, et c'est la raison du second fichier. La
+    // capacité porte `"platforms": ["windows"]`, donc la surface macOS reste à onze — celle que
+    // `01` a réduite de 92 à six, et que ce test garde. Une capacité sans ce champ aurait
+    // accordé quatre droits d'écriture sur la fenêtre à une plateforme qui n'en a pas l'usage.
+    //
+    // Elles sont nécessaires parce que `decorations: false` retire les boutons du système : ce
+    // sont les nôtres qui les remplacent, et `core:window:default` n'accorde **aucune**
+    // permission d'écriture (0 des 42, relevé au plan `01`).
+    (
+        "core:window:allow-minimize",
+        "le bouton de réduction de `TitleBar`, sous Windows",
+    ),
+    (
+        "core:window:allow-toggle-maximize",
+        "le bouton d'agrandissement / restauration — une seule bascule plutôt que \
+         `allow-maximize` **et** `allow-unmaximize`, qui feraient deux permissions pour un bouton",
+    ),
+    (
+        "core:window:allow-close",
+        "le bouton de fermeture. `⌘W`/`Alt+F4` passent par le menu natif, qui est du Rust et \
+         n'a besoin d'aucune capacité — celle-ci ne sert qu'au bouton de la webview",
+    ),
+    (
+        "core:window:allow-is-maximized",
+        "choisir le glyphe du bouton central : carré quand la fenêtre est normale, deux carrés \
+         décalés quand elle est agrandie. Sans lui le bouton mentirait sur ce qu'il va faire",
+    ),
 ];
 
-fn permissions_declarees() -> Vec<String> {
-    let chemin = concat!(env!("CARGO_MANIFEST_DIR"), "/capabilities/default.json");
-    let brut =
-        std::fs::read_to_string(chemin).expect("capabilities/default.json doit être lisible");
-    let json: serde_json::Value = serde_json::from_str(&brut).expect("JSON valable");
+/// Les deux fichiers de capacités, et pourquoi il y en a deux.
+///
+/// `default.json` vaut partout ; `windows.json` porte `"platforms": ["windows"]` et n'accorde
+/// donc rien sur macOS. Les lire tous les deux est ce qui fait que `ATTENDUES` reste la liste
+/// **complète** du projet : un fichier de capacités qu'aucun test ne lit serait exactement
+/// l'angle mort que ce test existe pour fermer.
+const FICHIERS: &[&str] = &["default.json", "windows.json"];
 
-    json["permissions"]
-        .as_array()
-        .expect("le tableau `permissions`")
-        .iter()
-        .map(|valeur| {
-            valeur
-                .as_str()
-                .expect("les permissions de ce projet sont toutes des chaînes")
-                .to_owned()
-        })
-        .collect()
+fn permissions_declarees() -> Vec<String> {
+    let mut toutes = Vec::new();
+
+    for fichier in FICHIERS {
+        let chemin = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/capabilities"))
+            .join(fichier);
+        let brut = std::fs::read_to_string(&chemin)
+            .unwrap_or_else(|_| panic!("capabilities/{fichier} doit être lisible"));
+        let json: serde_json::Value = serde_json::from_str(&brut).expect("JSON valable");
+
+        toutes.extend(
+            json["permissions"]
+                .as_array()
+                .expect("le tableau `permissions`")
+                .iter()
+                .map(|valeur| {
+                    valeur
+                        .as_str()
+                        .expect("les permissions de ce projet sont toutes des chaînes")
+                        .to_owned()
+                }),
+        );
+    }
+
+    toutes
 }
 
 #[test]
@@ -105,13 +150,52 @@ fn aucune_permission_par_defaut_de_plugin_n_est_prise() {
     }
 }
 
+/// **Les capacités Windows ne doivent rien accorder à macOS.**
+///
+/// C'est ce qui fait que la surface macOS reste à onze permissions alors que le projet en
+/// déclare quinze. La garantie tient à un seul champ, `"platforms"`, et rien ne la gardait :
+/// l'oublier n'aurait produit aucune erreur — Tauri accorde alors la capacité **partout** —, et
+/// un bundle macOS aurait embarqué quatre droits d'écriture sur la fenêtre que rien n'appelle.
+///
+/// Sabotage vérifié le 31 août 2026 : en retirant `"platforms"` de `windows.json`, ce test
+/// tombe et les trois autres restent verts.
+#[test]
+fn les_capacites_de_windows_sont_bornees_a_windows() {
+    let chemin = concat!(env!("CARGO_MANIFEST_DIR"), "/capabilities/windows.json");
+    let brut =
+        std::fs::read_to_string(chemin).expect("capabilities/windows.json doit être lisible");
+    let json: serde_json::Value = serde_json::from_str(&brut).expect("JSON valable");
+
+    let plateformes = json["platforms"].as_array().expect(
+        "`platforms` doit être déclaré : sans lui, Tauri accorde la capacité sur **toutes** les \
+         plateformes, et macOS reçoit quatre permissions d'écriture sur la fenêtre dont il n'a \
+         aucun usage (ses boutons sont dessinés par le système)",
+    );
+
+    let noms: Vec<&str> = plateformes.iter().filter_map(|v| v.as_str()).collect();
+    assert_eq!(
+        noms,
+        vec!["windows"],
+        "`platforms` doit valoir exactement [\"windows\"] — la casse compte, `Target` de \
+         tauri-utils sérialise « windows » en minuscules et « macOS » avec une majuscule"
+    );
+}
+
 #[test]
 fn la_surface_reste_tres_inferieure_au_jeu_par_defaut_de_tauri() {
     // 92 permissions dans le jeu par défaut, relevé au plan `01`. Le chiffre exact importe
     // moins que l'ordre de grandeur : ce test attrape une dérive lente.
+    //
+    // **Le plafond est passé de 12 à 15 le 31 août 2026**, pour les quatre boutons de fenêtre de
+    // Windows. C'est le geste que ce test veut rendre délibéré, et il l'a été : lever un plafond
+    // se voit en revue, contrairement à un ajout dans un fichier de capacités. À noter que
+    // **onze de ces quinze seulement s'appliquent à macOS** — les quatre autres portent
+    // `"platforms": ["windows"]`, donc la surface réellement accordée sur un bundle macOS n'a
+    // pas bougé.
     let compte = permissions_declarees().len();
     assert!(
-        compte <= 12,
-        "{compte} permissions : la surface dérive (six au plan 01, sept depuis 08c, huit depuis 10g)"
+        compte <= 15,
+        "{compte} permissions : la surface dérive (six au plan 01, sept depuis 08c, huit depuis \
+         10g, quinze depuis les boutons de fenêtre de Windows)"
     );
 }

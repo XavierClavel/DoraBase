@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { LanguageProvider } from '../../i18n/LanguageContext'
+import { raccourci } from '../plateforme'
 import { StatusBar } from './StatusBar'
 
 function monter(projectCount: number) {
@@ -30,5 +31,5 @@ test('affiche la version réelle, pas celle de la maquette', () => {
 
 test('affiche le rappel de palette de commandes', () => {
   monter(0)
-  expect(screen.getByText('⌘K palette')).toBeInTheDocument()
+  expect(screen.getByText(`${raccourci('K')} palette`)).toBeInTheDocument()
 })

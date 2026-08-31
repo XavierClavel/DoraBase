@@ -10,6 +10,7 @@ import type {
 } from '../../domain/config'
 import type { ConnectionRequest, ConnectionTest } from '../../domain/engine'
 import { useT } from '../../i18n/LanguageContext'
+import { modificateurActif, raccourci } from '../../shell/plateforme'
 import { Button } from '../../ui/Button/Button'
 import { Modal } from '../../ui/Modal/Modal'
 import { Stepper } from '../../ui/Stepper/Stepper'
@@ -375,7 +376,7 @@ export function NewConnection({
   // qui contourne l'état d'un bouton est un piège.
   useEffect(() => {
     function auClavier(evenement: KeyboardEvent) {
-      if (evenement.metaKey && evenement.key === 'Enter') {
+      if (modificateurActif(evenement) && evenement.key === 'Enter') {
         evenement.preventDefault()
         void enregistrer()
       }
@@ -484,7 +485,7 @@ export function NewConnection({
           {/* `08e` le branchera, avec son raccourci ⌘↩. */}
           <Button
             size="lg"
-            shortcut="⌘↩"
+            shortcut={raccourci('↩')}
             disabled={enregistrementBloque}
             onClick={() => void enregistrer()}
           >

@@ -67,13 +67,13 @@ export const preferencesFr: Dictionnaire = {
     titre: 'Garde-fous',
     pendingBeforeWrite: {
       libelle: 'Modifications en attente avant écriture',
-      detail:
-        'Toute édition passe par un diff à valider (⌘↩). Éteint, une cellule modifiée part directement dans la base.',
+      detail: (p) =>
+        `Toute édition passe par un diff à valider (${p.raccourci}). Éteint, une cellule modifiée part directement dans la base.`,
     },
     prodReadOnly: {
       libelle: 'Ouvrir les bases « prod » en lecture seule',
-      detail:
-        '⌘E déverrouille l’édition pour la session en cours. Éteint, une base de production s’ouvre modifiable.',
+      detail: (p) =>
+        `${p.raccourci} déverrouille l’édition pour la session en cours. Éteint, une base de production s’ouvre modifiable.`,
     },
     refuseUnrestrictedWrites: {
       libelle: 'Refuser DELETE/UPDATE sans clause WHERE',
@@ -181,13 +181,13 @@ export const preferencesEn: Dictionnaire = {
     titre: 'Guardrails',
     pendingBeforeWrite: {
       libelle: 'Pending changes before writing',
-      detail:
-        'Every edit goes through a diff to confirm (⌘↩). Off, an edited cell writes straight to the database.',
+      detail: (p) =>
+        `Every edit goes through a diff to confirm (${p.raccourci}). Off, an edited cell writes straight to the database.`,
     },
     prodReadOnly: {
       libelle: 'Open “prod” databases read-only',
-      detail:
-        '⌘E unlocks editing for the current session. Off, a production database opens editable.',
+      detail: (p) =>
+        `${p.raccourci} unlocks editing for the current session. Off, a production database opens editable.`,
     },
     refuseUnrestrictedWrites: {
       libelle: 'Refuse DELETE/UPDATE without a WHERE clause',

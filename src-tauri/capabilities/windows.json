@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/windows-schema.json",
+  "identifier": "windows",
+  "description": "les trois boutons de fenêtre que Windows ne dessine plus — voir AGENTS.md",
+  "platforms": ["windows"],
+  "windows": ["main"],
+  "permissions": [
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-is-maximized"
+  ]
+}

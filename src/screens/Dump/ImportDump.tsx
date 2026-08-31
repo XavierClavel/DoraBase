@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { DumpAvailability, Inspection } from '../../domain/dump'
 import { useT } from '../../i18n/LanguageContext'
+import { raccourci } from '../../shell/plateforme'
 import { Button } from '../../ui/Button/Button'
 import { Modal } from '../../ui/Modal/Modal'
 import type { CibleDeDump } from './cible'
@@ -145,7 +146,7 @@ export function ImportDump({
             {t('dump.import.close')}
           </Button>
           {pret && etat.phase === 'choix' && (
-            <Button variant="secondary" onClick={choisir} shortcut="⇧⌘I">
+            <Button variant="secondary" onClick={choisir} shortcut={raccourci('I', { maj: true })}>
               {t('dump.import.choose')}
             </Button>
           )}

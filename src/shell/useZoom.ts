@@ -1,5 +1,6 @@
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { useEffect, useRef } from 'react'
+import { estWindows, modificateurActif, type Plateforme, plateforme } from './plateforme'
 import { facteurSuivant, ZOOM_NEUTRE } from './zoom'
 
 export type PasserelleZoom = {
@@ -53,8 +54,21 @@ function dansTauri(): boolean {
  * invisible à Playwright, ne permet pas de vérifier autrement — et un refus qui ne vivrait que sous
  * Tauri ne serait couvert par aucun test. Le zoom du navigateur reste atteignable au clavier
  * (`⌘ +`/`⌘ -`), donc rien n'est perdu en développement.
+ *
+ * # Sous Windows, le refus tombe (31 août 2026)
+ *
+ * `Ctrl` + molette y **est** le geste de zoom volontaire, et le pincement du pavé de précision
+ * arrive par le même événement : cette fois ils sont indiscernables pour de bon. Les deux
+ * tombent donc dans le zoom à pas fin. Le détail est dans `auGeste`.
+ *
+ * `sur` est un paramètre pour la même raison que `passerelle` : sans lui, `estWindows()` lisant
+ * une constante de compilation, la branche Windows n'aurait été exercée par aucun test — celle
+ * qui vient d'être écrite, donc, et pas celle qui marchait déjà.
  */
-export function useZoom(passerelle: PasserelleZoom = PASSERELLE_ZOOM) {
+export function useZoom(
+  passerelle: PasserelleZoom = PASSERELLE_ZOOM,
+  sur: Plateforme = plateforme(),
+) {
   const facteur = useRef(ZOOM_NEUTRE)
 
   useEffect(() => {
@@ -63,11 +77,23 @@ export function useZoom(passerelle: PasserelleZoom = PASSERELLE_ZOOM) {
       // que de lui ou d'un `ctrl` + molette à la souris, que rien ne distingue — et personne n'emploie
       // le second sur ce système. `passive: false` plus `preventDefault` : sans les deux, la webview
       // applique son propre zoom par-dessus notre abstention.
-      if (evenement.ctrlKey && !evenement.metaKey) {
+      //
+      // **Et ce refus est macOS seulement, parce que sa prémisse l'est** (31 août 2026). Il tient
+      // à ce que `ctrl` + molette ne soit *pas* un geste de zoom sur ce système : `⌘` l'est, donc
+      // `ctrl` ne peut être que le pincement, donc le refuser ne coûte rien. Sous Windows,
+      // `Ctrl` + molette **est** le geste de zoom, celui de tous les logiciels, et le pincement
+      // du pavé de précision arrive par le même événement — indiscernables, cette fois pour de
+      // bon. Les refuser tous les deux retirerait le zoom au lieu de l'adoucir ; ils tombent donc
+      // ensemble dans le zoom à pas fin, juste en dessous.
+      //
+      // Ce n'est pas un retour en arrière sur la décision du 26 août : ce qu'elle refuse — que
+      // l'interface change d'échelle sans qu'on l'ait demandé — n'a pas lieu là où le geste est
+      // volontaire.
+      if (!estWindows(sur) && evenement.ctrlKey && !evenement.metaKey) {
         evenement.preventDefault()
         return
       }
-      if (!dansTauri() || !evenement.metaKey) return
+      if (!dansTauri() || !modificateurActif(evenement, sur)) return
       // Même nécessité de `preventDefault` ici : sans lui, le pas natif s'ajoute au nôtre.
       evenement.preventDefault()
       const suivant = facteurSuivant(facteur.current, evenement.deltaY)
@@ -80,7 +106,7 @@ export function useZoom(passerelle: PasserelleZoom = PASSERELLE_ZOOM) {
       if (!dansTauri()) return
       // `⌘0` rend sa taille d'origine, comme partout ailleurs. Sans ce retour, un zoom fin est long à
       // défaire — c'est le corollaire d'un petit pas.
-      if (!(evenement.metaKey && evenement.key === '0')) return
+      if (!(modificateurActif(evenement, sur) && evenement.key === '0')) return
       evenement.preventDefault()
       facteur.current = ZOOM_NEUTRE
       void passerelle.appliquer(ZOOM_NEUTRE)
@@ -109,5 +135,5 @@ export function useZoom(passerelle: PasserelleZoom = PASSERELLE_ZOOM) {
       for (const nom of ['gesturestart', 'gesturechange', 'gestureend'])
         window.removeEventListener(nom, auPincement)
     }
-  }, [passerelle])
+  }, [passerelle, sur])
 }

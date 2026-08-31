@@ -40,7 +40,7 @@ describe('le crochet (`useZoom`)', () => {
     // Le zoom est une capacité de la coquille : dans un navigateur, il n'y a pas de webview à
     // piloter, et reprendre le geste pour ne rien en faire retirerait le zoom natif sans rien offrir.
     // Ce test tourne sous jsdom, donc précisément hors de Tauri.
-    renderHook(() => useZoom({ appliquer }))
+    renderHook(() => useZoom({ appliquer }, 'macos'))
     const geste = new WheelEvent('wheel', { deltaY: 100, metaKey: true, cancelable: true })
     window.dispatchEvent(geste)
     expect(appliquer).not.toHaveBeenCalled()
@@ -49,7 +49,7 @@ describe('le crochet (`useZoom`)', () => {
 
   it('le pincement du trackpad est refusé, et ne zoome pas', () => {
     const appliquer = vi.fn(async () => {})
-    renderHook(() => useZoom({ appliquer }))
+    renderHook(() => useZoom({ appliquer }, 'macos'))
     // Le pincement, c'est `ctrlKey` sans `metaKey` — la convention de WebKit comme de Chromium.
     const pincement = new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, cancelable: true })
     window.dispatchEvent(pincement)
@@ -62,12 +62,41 @@ describe('le crochet (`useZoom`)', () => {
 
   it('le refus du pincement ne vaut pas refus de la molette', () => {
     const appliquer = vi.fn(async () => {})
-    renderHook(() => useZoom({ appliquer }))
+    renderHook(() => useZoom({ appliquer }, 'macos'))
     // Un défilement ordinaire ne porte aucun modificateur : le reprendre paralyserait toutes les
     // grilles du produit.
     const defilement = new WheelEvent('wheel', { deltaY: 100, cancelable: true })
     window.dispatchEvent(defilement)
     expect(defilement.defaultPrevented).toBe(false)
+  })
+
+  /**
+   * **Le refus du pincement est macOS seulement, et voici les deux moitiés du fait.**
+   *
+   * Les tests ci-dessus tournent sur la plateforme de cette machine ; celui-ci nomme la sienne,
+   * sans quoi la branche Windows — celle qui vient d'être écrite — ne serait exercée par aucun
+   * test. C'est la raison du paramètre `sur`.
+   *
+   * Sous Windows, `Ctrl` + molette est le geste de zoom volontaire de tous les logiciels, et le
+   * pincement du pavé de précision arrive par le même événement : le refuser retirerait le zoom
+   * au lieu de l'adoucir. L'événement n'est donc **pas** refusé sèchement — il tombe dans le
+   * chemin du zoom fin, qui hors de Tauri (donc sous jsdom) laisse le navigateur faire.
+   */
+  it('sous Windows, Ctrl + molette n’est pas refusé : c’est le geste de zoom', () => {
+    const appliquer = vi.fn(async () => {})
+    renderHook(() => useZoom({ appliquer }, 'windows'))
+    const geste = new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, cancelable: true })
+    window.dispatchEvent(geste)
+    // Le refus actif de macOS n'a pas eu lieu.
+    expect(geste.defaultPrevented).toBe(false)
+  })
+
+  it('sur macOS, le même événement est refusé — les deux branches diffèrent bien', () => {
+    const appliquer = vi.fn(async () => {})
+    renderHook(() => useZoom({ appliquer }, 'macos'))
+    const geste = new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, cancelable: true })
+    window.dispatchEvent(geste)
+    expect(geste.defaultPrevented).toBe(true)
   })
 
   it('la passerelle de production parle bien à la webview', () => {

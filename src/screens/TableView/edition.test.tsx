@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { ColumnInfo, DatabaseKey, RowQuery, Value } from '../../domain/engine'
 import { LanguageProvider } from '../../i18n/LanguageContext'
+import { auModificateur } from '../../test/raccourcis'
 import type { EnAttente, Modification, ModificationDeCellule } from './modifications'
 import { TableView } from './TableView'
 import type { PasserelleLignes } from './useLignes'
@@ -289,7 +290,7 @@ describe('⌘Z annule la dernière modification retenue', () => {
     await retenirDeux(utilisateur)
     await waitFor(() => expect(derniere()).toHaveLength(2))
 
-    await utilisateur.keyboard('{Meta>}z{/Meta}')
+    await utilisateur.keyboard(auModificateur('z'))
 
     await waitFor(() => expect(derniere()).toHaveLength(1))
     expect(derniere()[0]?.cle).toBe('184217')
@@ -306,7 +307,7 @@ describe('⌘Z annule la dernière modification retenue', () => {
     await utilisateur.click(
       screen.getAllByRole('button', { name: 'Modifier note' })[0] as HTMLElement,
     )
-    await utilisateur.keyboard('{Meta>}z{/Meta}')
+    await utilisateur.keyboard(auModificateur('z'))
 
     expect(derniere()).toHaveLength(2)
   })
@@ -315,7 +316,7 @@ describe('⌘Z annule la dernière modification retenue', () => {
     const utilisateur = userEvent.setup()
     const { derniere } = monter({ edition: false })
     await attendreLaGrille()
-    await utilisateur.keyboard('{Meta>}z{/Meta}')
+    await utilisateur.keyboard(auModificateur('z'))
     expect(derniere()).toHaveLength(0)
   })
 })

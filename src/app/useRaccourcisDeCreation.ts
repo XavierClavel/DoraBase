@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { seulLeModificateur } from '../shell/plateforme'
 
 type Gestes = {
   /** `⌘N`. */
@@ -47,9 +48,10 @@ type Gestes = {
 export function useRaccourcisDeCreation({ nouveauProjet }: Gestes) {
   useEffect(() => {
     function auClavier(evenement: KeyboardEvent) {
-      if (!evenement.metaKey || evenement.key.toLowerCase() !== 'n') return
-      // `⇧⌘N` n'est plus à nous : on le laisse passer sans le consommer.
-      if (evenement.shiftKey || evenement.ctrlKey || evenement.altKey) return
+      if (evenement.key.toLowerCase() !== 'n') return
+      // `⇧⌘N` n'est plus à nous : on le laisse passer sans le consommer. La touche à
+      // exclure n'est pas la même sur les deux plateformes — voir `seulLeModificateur`.
+      if (!seulLeModificateur(evenement)) return
       if (document.querySelector('[role=dialog]') !== null) return
       const cible = evenement.target
       if (

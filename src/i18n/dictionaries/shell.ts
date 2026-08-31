@@ -24,12 +24,19 @@ export const shellFr: Dictionnaire = {
   },
   statusBar: {
     projectCount: (p) => `${p.count} projet${Number(p.count) > 1 ? 's' : ''}`,
-    paletteHint: '⌘K palette',
+    paletteHint: (p) => `${p.raccourci} palette`,
     version: (p) => `DoraBase ${p.version}`,
   },
   titleBar: {
     preferences: 'Préférences',
     preferencesDisabledTitle: 'Les préférences ne sont pas montées sur cet exemplaire de la barre.',
+    // Les trois boutons de fenêtre, Windows seulement (31 août 2026). `decorations: false` retire
+    // ceux du système : ceux-ci les remplacent, donc ils ont besoin d'un nom accessible — l'icône
+    // seule ne dit rien à la voix.
+    reduire: 'Réduire',
+    agrandir: 'Agrandir',
+    restaurer: 'Restaurer',
+    fermer: 'Fermer',
   },
 }
 export const shellEn: Dictionnaire = {
@@ -55,11 +62,15 @@ export const shellEn: Dictionnaire = {
   },
   statusBar: {
     projectCount: (p) => `${p.count} project${Number(p.count) > 1 ? 's' : ''}`,
-    paletteHint: '⌘K palette',
+    paletteHint: (p) => `${p.raccourci} palette`,
     version: (p) => `DoraBase ${p.version}`,
   },
   titleBar: {
     preferences: 'Preferences',
     preferencesDisabledTitle: 'Preferences are not mounted on this instance of the bar.',
+    reduire: 'Minimise',
+    agrandir: 'Maximise',
+    restaurer: 'Restore',
+    fermer: 'Close',
   },
 }

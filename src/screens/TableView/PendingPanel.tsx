@@ -1,6 +1,7 @@
 import { Icon } from '../../design/icons/Icon'
 import type { Value } from '../../domain/engine'
 import { useT } from '../../i18n/LanguageContext'
+import { raccourci } from '../../shell/plateforme'
 import { Badge } from '../../ui/Badge/Badge'
 import { cx } from '../../ui/cx'
 import type { EnAttente, Modification, Saisie } from './modifications'
@@ -310,7 +311,7 @@ export function PendingPanel({
             >
               <Icon name="check" size={12} strokeWidth={2.6} />
               {enCours ? t('tableView.pendingPanel.writing') : t('tableView.pendingPanel.apply')}
-              <span className={styles.raccourci}>⌘↩</span>
+              <span className={styles.raccourci}>{raccourci('↩')}</span>
             </button>
           </>
         )}

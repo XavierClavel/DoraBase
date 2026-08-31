@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { LanguageProvider } from '../../../i18n/LanguageContext'
+import { raccourci } from '../../../shell/plateforme'
 import { WelcomeHero } from './WelcomeHero'
 
 function monter(onNewProject: () => void = () => {}) {
@@ -36,5 +37,5 @@ test('le bouton demande un nouveau projet', async () => {
 test('le raccourci ⌘N est affiché sans polluer le nom accessible', () => {
   monter()
   expect(screen.getByRole('button', { name: 'Nouveau projet' })).toBeInTheDocument()
-  expect(screen.getByText('⌘N')).toBeInTheDocument()
+  expect(screen.getByText(raccourci('N'))).toBeInTheDocument()
 })
