@@ -14,6 +14,24 @@ export const PASSERELLE_EXECUTION: PasserelleExecution = { runSql }
 /** La limite par défaut de la console, celle du mockup. */
 export const LIMITE_CONSOLE: RowLimit = 'oneThousand'
 
+/** Ce qu'une console garde de sa dernière requête. */
+type EtatConsole = {
+  aConfirmer: { sql: string; nature: ReturnType<typeof natureDe>; sansWhere: boolean } | null
+  enCours: boolean
+  resultat: QueryResult | null
+  erreur: string | null
+  vue: VueResultat
+}
+
+/** Une console qui n'a rien exécuté. */
+const AU_REPOS: EtatConsole = {
+  aConfirmer: null,
+  enCours: false,
+  resultat: null,
+  erreur: null,
+  vue: 'resultat',
+}
+
 export type Execution = {
   /** Demande l'exécution — passe par la confirmation si la requête écrit. */
   demander: (sql: string) => void
@@ -21,78 +39,128 @@ export type Execution = {
   executer: () => void
   annulerLaConfirmation: () => void
   /** La requête en attente de confirmation, s'il y en a une. */
-  aConfirmer: { sql: string; nature: ReturnType<typeof natureDe>; sansWhere: boolean } | null
+  aConfirmer: EtatConsole['aConfirmer']
   enCours: boolean
   resultat: QueryResult | null
   erreur: string | null
   vue: VueResultat
   setVue: (vue: VueResultat) => void
+  /**
+   * Fait suivre un changement d'identité d'onglet — un renommage, un brouillon baptisé.
+   *
+   * **C'est la quatrième table indexée par identité d'onglet**, après le texte, les modifications en
+   * attente et le mode édition : l'identité d'une console dérive de son nom et de celui de sa
+   * connexion (voir `idOnglet`), donc renommer l'une ou l'autre laisserait le résultat sous une clé
+   * que plus personne ne lit — la grille se viderait sur un renommage.
+   */
+  reindexer: (nouvelId: (id: string) => string) => void
 }
 
 /**
  * L'exécution d'une requête de console (`12c`).
  *
+ * **Le résultat appartient à la console qui l'a demandé**, pas à l'écran. Un état unique le faisait
+ * partager par toutes : basculer d'onglet montrait la grille de la console voisine sous le texte de
+ * celle-ci — deux requêtes différentes, un seul résultat, et rien pour dire laquelle on regardait.
+ * L'état est donc indexé par identité d'onglet, comme le texte de `12a` et les modifications en
+ * attente de `11b`, et `idConsole` désigne celle qu'on regarde.
+ *
+ * Corollaire, et c'est ce qui décide de l'indexation plutôt que d'un remontage : **l'onglet qui a
+ * lancé la requête reçoit sa réponse même s'il n'est plus actif**. `lancer` capture l'identité au
+ * départ ; une requête lente déposée pendant qu'on lit ailleurs se retrouve à sa place au retour,
+ * au lieu d'atterrir sur la console qu'on regarde ou d'être perdue.
+ *
  * **La confirmation dépend de ce que la requête fait, pas de l'environnement.** `11d` confirme sur la
  * production parce qu'il écrit toujours la même chose ; ici, c'est l'inverse — un `drop` sur une base
  * de développement mérite d'être confirmé, et un `select` en production non.
  */
-export function useExecution(cle: DatabaseKey | null, passerelle: PasserelleExecution): Execution {
-  const [aConfirmer, setAConfirmer] = useState<Execution['aConfirmer']>(null)
-  const [enCours, setEnCours] = useState(false)
-  const [resultat, setResultat] = useState<QueryResult | null>(null)
-  const [erreur, setErreur] = useState<string | null>(null)
-  const [vue, setVue] = useState<VueResultat>('resultat')
+export function useExecution(
+  cle: DatabaseKey | null,
+  passerelle: PasserelleExecution,
+  idConsole: string | null,
+): Execution {
+  const [parConsole, setParConsole] = useState<Readonly<Record<string, EtatConsole>>>({})
+  const etat = (idConsole === null ? undefined : parConsole[idConsole]) ?? AU_REPOS
+
+  const poser = useCallback((id: string, suite: (precedent: EtatConsole) => EtatConsole) => {
+    setParConsole((precedent) => ({ ...precedent, [id]: suite(precedent[id] ?? AU_REPOS) }))
+  }, [])
 
   const lancer = useCallback(
     (sql: string) => {
-      if (cle === null || sql.trim() === '') return
-      setEnCours(true)
-      setErreur(null)
+      if (cle === null || idConsole === null || sql.trim() === '') return
+      // **L'identité est capturée ici**, et non relue à la réponse : la requête peut revenir alors
+      // qu'un autre onglet est actif, et son résultat appartient à la console qui l'a demandée.
+      const id = idConsole
+      poser(id, (precedent) => ({ ...precedent, enCours: true, erreur: null }))
       passerelle
         .runSql(cle, sql, LIMITE_CONSOLE)
         .then((issue) => {
-          setEnCours(false)
-          setAConfirmer(null)
-          setResultat(issue)
+          poser(id, (precedent) => ({
+            ...precedent,
+            enCours: false,
+            aConfirmer: null,
+            resultat: issue,
+          }))
         })
         .catch((raison: unknown) => {
-          setEnCours(false)
-          setAConfirmer(null)
           // Le résultat précédent n'est **pas** effacé ici : `ConsoleResult` donne la priorité à
           // l'erreur, donc la grille disparaît de toute façon. Un `setResultat(null)` avait été
           // ajouté par prudence ; le retirer ne changeait aucune mesure, et la garantie — ne pas
           // laisser un ancien résultat à côté d'une erreur, qu'on lirait comme le sien — est portée
           // par l'ordre d'affichage.
-          setErreur(messageDe(raison))
+          poser(id, (precedent) => ({
+            ...precedent,
+            enCours: false,
+            aConfirmer: null,
+            erreur: messageDe(raison),
+          }))
         })
     },
-    [cle, passerelle],
+    [cle, idConsole, passerelle, poser],
   )
 
   const demander = useCallback(
     (sql: string) => {
+      if (idConsole === null) return
       const nature = natureDe(sql)
       if (demandeConfirmation(nature)) {
-        setAConfirmer({ sql, nature, sansWhere: sansRestriction(sql) })
+        poser(idConsole, (precedent) => ({
+          ...precedent,
+          aConfirmer: { sql, nature, sansWhere: sansRestriction(sql) },
+        }))
         return
       }
       lancer(sql)
     },
-    [lancer],
+    [idConsole, lancer, poser],
   )
+
+  const reindexer = useCallback((nouvelId: (id: string) => string) => {
+    setParConsole((precedent) =>
+      Object.fromEntries(Object.entries(precedent).map(([id, etat]) => [nouvelId(id), etat])),
+    )
+  }, [])
 
   return {
     demander,
-    vue,
-    setVue,
-    executer: () => {
-      if (aConfirmer) lancer(aConfirmer.sql)
+    reindexer,
+    vue: etat.vue,
+    setVue: (vue) => {
+      if (idConsole === null) return
+      poser(idConsole, (precedent) => ({ ...precedent, vue }))
     },
-    annulerLaConfirmation: () => setAConfirmer(null),
-    aConfirmer,
-    enCours,
-    resultat,
-    erreur,
+    executer: () => {
+      if (etat.aConfirmer) lancer(etat.aConfirmer.sql)
+    },
+    annulerLaConfirmation: () => {
+      if (idConsole === null) return
+      poser(idConsole, (precedent) => ({ ...precedent, aConfirmer: null }))
+    },
+    aConfirmer: etat.aConfirmer,
+    enCours: etat.enCours,
+    resultat: etat.resultat,
+    erreur: etat.erreur,
   }
 }
 

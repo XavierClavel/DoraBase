@@ -396,6 +396,32 @@ export function Workbench({
       }
     : null
 
+  // L'exécution des requêtes de console (`12c`). Elle vit ici parce que la confirmation est une
+  // sous-modale de l'écran, comme celle de `11d` — et **au-dessus des renommages**, qui appellent
+  // son `reindexer` : une dépendance de `useCallback` est évaluée à la déclaration, donc un
+  // `execution` déclaré plus bas lèverait un `ReferenceError` au montage.
+  /**
+   * **La clé d'exécution est celle de la console ouverte**, non celle du contexte de l'arbre.
+   *
+   * `contexte` exige un schéma — il sert la liste d'objets du centre — et une console n'en a pas :
+   * une console sélectionnée dans l'arbre laissait donc `cle` à `null`, et l'éditeur ne montait
+   * plus. Or une console *sait* sur quoi elle porte, depuis `12a` : sa propre `key`. La lui demander
+   * est à la fois ce qui répare le montage et ce qui est juste — deux onglets ouverts sur deux
+   * connexions ne doivent pas exécuter sur celle que l'arbre montre.
+   */
+  const cleConsole: DatabaseKey | null = consoleActive?.key ?? cle
+  /**
+   * **Le résultat suit la console, comme son texte.** L'identité de l'onglet actif est ce qui le dit
+   * à `useExecution` : sans elle, un état unique faisait voir la grille de la console voisine en
+   * basculant d'onglet — deux requêtes, un seul résultat.
+   */
+  const idConsoleActive = consoleActive === null ? null : idOnglet(consoleActive)
+  const execution = useExecution(
+    cleConsole,
+    passerelleExecution ?? PASSERELLE_EXECUTION,
+    idConsoleActive,
+  )
+
   /**
    * Le moteur de la base ouverte, pour l'édition de document en JSON (`18g`) — **dérivé de la
    * déclaration**, comme `dialecteDe`, jamais deviné depuis le contenu de l'écran.
@@ -508,10 +534,11 @@ export function Workbench({
   /**
    * Renomme une console, et fait suivre tout ce qui la désigne.
    *
-   * **Trois choses bougent avec le nom**, et en oublier une casse quelque chose de visible :
+   * **Quatre choses bougent avec le nom**, et en oublier une casse quelque chose de visible :
    * l'onglet ouvert (son libellé *et* son identité, qui dérive du nom), le texte indexé par cette
-   * identité — sans quoi l'éditeur se rouvrirait vide — et l'association qui dit où écrire, faute de
-   * quoi la frappe suivante viserait un nom que le disque ne connaît plus.
+   * identité — sans quoi l'éditeur se rouvrirait vide —, le résultat de sa dernière requête, indexé
+   * de la même façon, et l'association qui dit où écrire, faute de quoi la frappe suivante viserait
+   * un nom que le disque ne connaît plus.
    */
   const renommerUneConsole = useCallback(
     async (
@@ -534,13 +561,16 @@ export function Workbench({
         const { [ancienId]: _oublie, ...reste } = precedent
         return { ...reste, [nouvelId]: texte }
       })
+      // **Le résultat suit le nom, comme le texte** : son identité en dérive, et le laisser sous
+      // l'ancienne clé viderait la grille sur un renommage.
+      execution.reindexer((id) => (id === ancienId ? nouvelId : id))
       setConsolesOuvertes((precedent) => {
         if (!(ancienId in precedent)) return precedent
         const { [ancienId]: _oubliee, ...reste } = precedent
         return { ...reste, [nouvelId]: { project, database, environment, nom: nouveau } }
       })
     },
-    [onRenameConsole],
+    [onRenameConsole, execution.reindexer],
   )
 
   /**
@@ -548,9 +578,9 @@ export function Workbench({
    *
    * **L'écran de travail est le seul à pouvoir le faire.** La sidebar porte le geste, mais elle ne
    * connaît pas les onglets ; le cœur déplace le secret et ferme la connexion, mais il ne sait rien
-   * de ce qui est ouvert. Quatre tables indexées par identité d'onglet vivent ici, et en oublier une
-   * casse quelque chose de visible : le texte d'une console, ses modifications en attente, son mode
-   * édition, et l'association qui dit où écrire.
+   * de ce qui est ouvert. Cinq tables indexées par identité d'onglet vivent ici, et en oublier une
+   * casse quelque chose de visible : le texte d'une console, son dernier résultat, ses modifications
+   * en attente, son mode édition, et l'association qui dit où écrire.
    *
    * **Le refus n'est pas capturé** : il remonte à la sidebar, qui a ouvert le champ de saisie et sait
    * l'afficher. Le capturer ici renommerait sans rien renommer, en silence.
@@ -577,6 +607,7 @@ export function Workbench({
       setEtatOnglets((etat) => renommerLaConnexion(etat, key, nouveau))
       setTextes((precedent) => reindexerParConnexion(precedent, key, nouveau))
       setAttentes((precedent) => reindexerParConnexion(precedent, key, nouveau))
+      execution.reindexer((id) => idApresRenommage(id, key, nouveau))
       setOngletsEnEdition(
         (precedent) => new Set([...precedent].map((id) => idApresRenommage(id, key, nouveau))),
       )
@@ -610,7 +641,7 @@ export function Workbench({
       )
       return issue
     },
-    [onRenameDatabase, structures],
+    [onRenameDatabase, structures, execution.reindexer],
   )
 
   /**
@@ -676,20 +707,6 @@ export function Workbench({
       Record<string, { project: string; database: string; environment: EnvironmentId; nom: string }>
     >
   >({})
-  // L'exécution des requêtes de console (`12c`). Elle vit ici parce que la confirmation est une
-  // sous-modale de l'écran, comme celle de `11d`.
-  /**
-   * **La clé d'exécution est celle de la console ouverte**, non celle du contexte de l'arbre.
-   *
-   * `contexte` exige un schéma — il sert la liste d'objets du centre — et une console n'en a pas :
-   * une console sélectionnée dans l'arbre laissait donc `cle` à `null`, et l'éditeur ne montait
-   * plus. Or une console *sait* sur quoi elle porte, depuis `12a` : sa propre `key`. La lui demander
-   * est à la fois ce qui répare le montage et ce qui est juste — deux onglets ouverts sur deux
-   * connexions ne doivent pas exécuter sur celle que l'arbre montre.
-   */
-  const cleConsole: DatabaseKey | null = consoleActive?.key ?? cle
-  const execution = useExecution(cleConsole, passerelleExecution ?? PASSERELLE_EXECUTION)
-
   /**
    * Les colonnes des tables **déjà lues**, accumulées.
    *
@@ -900,7 +917,12 @@ export function Workbench({
                   const nom = await creerUneConsole(project, database, environment, sql)
                   if (nom === undefined) return
                   const id = idDeConsolePersistee({ project, database, environment }, nom)
-                  setEtatOnglets((etat) => baptiserLeBrouillon(etat, idOnglet(consoleActive), nom))
+                  const brouillon = idOnglet(consoleActive)
+                  setEtatOnglets((etat) => baptiserLeBrouillon(etat, brouillon, nom))
+                  // **Le baptême change l'identité de l'onglet** — du numéro au nom (voir
+                  // `idOnglet`) — donc le résultat déjà affiché doit la suivre, sans quoi
+                  // « Enregistrer » viderait la grille sous les yeux.
+                  execution.reindexer((autre) => (autre === brouillon ? id : autre))
                   setConsolesOuvertes((precedent) => ({
                     ...precedent,
                     [id]: { project, database, environment, nom },
