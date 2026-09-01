@@ -307,6 +307,36 @@ connaître, et la septième l'aurait oublié. Trois points à ne pas défaire :
   croisent — l'effet et le chargement —, et une lecture partie avant une ouverture peut répondre
   après elle. C'est le défaut n° 112 par un autre bout.
 
+**Ouvrir une console ouvre sa connexion** (1er septembre 2026). L'ouverture n'avait qu'un
+déclencheur — regarder ou déplier la ligne de la base dans l'arbre —, or une console s'ouvre
+ailleurs : le menu « … » d'une connexion est atteignable dès que son **environnement** est déplié, et
+il crée la console *et* l'ouvre du même geste. L'onglet passait donc au premier plan sur une
+connexion fermée : première exécution en « aucune connexion ouverte pour … », et catalogue
+d'autocomplétion **muet** — ni schéma, ni table, ni colonne, `charge.schemas` étant simplement vide.
+`useArbre.assurerLOuverture` ouvre par les coordonnées plutôt que par le nœud d'arbre, et les trois
+points d'ouverture d'une console l'appellent. Trois points à ne pas défaire :
+
+- **un échec n'est pas mémorisé comme un refus.** Les consoles d'une connexion s'affichent malgré son
+  échec, délibérément — une console est un texte qu'on a écrit —, donc le clic doit **retenter**
+  plutôt qu'ouvrir un onglet inerte. C'est ce que `charger` fait déjà sur une ligne d'arbre ;
+- **une ouverture en vol n'est pas relancée** (`enCours`), là où `charger` ne regarde que les schémas :
+  un clic sur une console n'est pas une bascule, donc rien n'empêche un second d'arriver pendant que
+  le premier ouvre — et ce serait deux connexions au même serveur ;
+- **ouvrir n'est pas déplier.** Le cache rempli sert la console ; la ligne d'arbre ne bouge que si on
+  la déplie, et `charger` n'y rouvrira pas ce qui est déjà là.
+
+**Et une purge ne conclut rien d'une lecture qu'une ouverture a périmée** (`ouverturesAbouties`).
+C'est le pendant de `tourDesEtats`, par l'autre bout : celui-ci empêche une lecture **dépassée**
+d'écraser une plus récente, il ne dit rien d'une lecture **à jour au départ** appliquée à un cache qui
+a grandi depuis. Or ouvrir une console fait exactement se croiser les deux — la création réécrit
+`projects`, donc déclenche la relecture du registre, pendant que la connexion s'ouvre : la lecture
+partait avant que le registre ne tienne la connexion, revenait après que ses schémas étaient en
+cache, et **les reprenait**. Console sans catalogue, ligne repliée, et rien pour le dire. Le témoin
+est incrémenté dans le même bloc synchrone que la mise en cache ; une purge qui le voit bouger
+pendant sa lecture s'abstient — la lecture des **états**, elle, reste appliquée, puisqu'elle est vraie
+de son instant. Ce qui se perd est une purge, pas une garantie : le prochain changement de
+configuration la refera.
+
 **L'arbre se lit sans réseau.** La configuration ne demande aucune connexion : l'arbre
 s'affiche immédiatement et chaque base porte son état. Une base injoignable reste
 **visible et marquée**, jamais masquée ni bloquante — attendre les connexions bloquerait

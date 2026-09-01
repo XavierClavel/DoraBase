@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { deplierUnEnvironnement } from './pourLesTests'
+import { deplierUnEnvironnement, ouvrirUneConsole } from './pourLesTests'
 
 // Les consoles persistées dans l'arborescence : de l'assemblage d'écran. Les règles — unicité du nom
 // dans la connexion, reprise des requêtes de `12f` — sont couvertes côté Rust.
@@ -116,4 +116,39 @@ test('le menu « … » d’une console renomme sur place, sans modale', async (
   // **Le même mécanisme que le double-clic** : l'entrée reste pour que le geste soit visible et
   // atteignable au clavier, mais elle ouvre le champ de la ligne, pas une fenêtre.
   await expect(page.getByLabel('Nouveau nom de CA par jour')).toBeFocused()
+})
+
+/**
+ * Le chemin qui n'ouvrait aucune connexion (1er septembre 2026).
+ *
+ * Le menu « … » d'une connexion est atteignable dès que son **environnement** est déplié : la ligne de
+ * la base, elle, peut n'avoir jamais été ouverte. La console paraissait alors au premier plan sur une
+ * connexion fermée — première exécution en « aucune connexion ouverte », et catalogue muet.
+ *
+ * **Un second `goto` pour replier l'arbre** : le `beforeEach` du fichier déplie `analytics`, ce qui
+ * ouvre sa connexion et masquerait donc précisément ce qui est mesuré ici. Remonter l'application est
+ * la seule façon de rendre l'arbre à son état initial.
+ */
+test.describe('une console ouverte sur une connexion jamais dépliée', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/?demo')
+    await deplierUnEnvironnement(page)
+    await expect(page.getByRole('treeitem', { name: 'public' })).toHaveCount(0)
+  })
+
+  test('voit les schémas de sa connexion', async ({ page }) => {
+    await ouvrirUneConsole(page, 'analytics')
+    await page.waitForSelector('.cm-content')
+    await page.locator('.cm-content').click()
+    // `insertText` ne déclenche pas la complétion — les specs de `12d` font de même : le dernier
+    // caractère est **tapé**.
+    await page.keyboard.insertText('select * from pub')
+    await page.keyboard.type('l')
+
+    // **Les schémas ne viennent que d'une connexion ouverte** : `listSchemas` les rend, et rien
+    // d'autre ne remplit le catalogue de la console. La liste vide était le symptôme visible.
+    const liste = page.locator('.cm-tooltip-autocomplete')
+    await expect(liste).toBeVisible()
+    await expect(liste).toContainText('public')
+  })
 })

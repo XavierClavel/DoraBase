@@ -215,14 +215,15 @@ export function Workbench({
    * le préchauffage l'alimente. Le poser dans l'un des deux l'aurait rendu inaccessible à l'autre.
    */
   const structures = useStructures(passerelleStructures)
-  const { deplies, charge, etatDeBase, basculer, charger, rafraichir } = useArbre(
-    projects,
-    passerelle,
-    structures.prechauffer,
-    // Le schéma qu'on vient de déplier passe **devant** le reste de la file : c'est le geste
-    // qui précède immédiatement l'ouverture d'une table.
-    structures.prechaufferLeSchema,
-  )
+  const { deplies, charge, etatDeBase, basculer, charger, assurerLOuverture, rafraichir } =
+    useArbre(
+      projects,
+      passerelle,
+      structures.prechauffer,
+      // Le schéma qu'on vient de déplier passe **devant** le reste de la file : c'est le geste
+      // qui précède immédiatement l'ouverture d'une table.
+      structures.prechaufferLeSchema,
+    )
 
   /**
    * « Rafraîchir l'arborescence » vide **aussi** les structures.
@@ -675,6 +676,18 @@ export function Workbench({
          20 août 2026 : le menu « … » d'une connexion est le seul chemin, et s'il fallait ensuite
          retrouver la console dans l'arbre pour la cliquer, créer coûterait deux gestes au lieu d'un.
          Personne ne crée une console pour ne pas l'ouvrir. */
+      /* **Et ouvrir une console ouvre sa connexion** (1er septembre 2026). C'est le chemin qui n'en
+         ouvrait aucune : le menu « … » d'une connexion est atteignable dès que son environnement est
+         déplié, la ligne de la base ne l'étant pas forcément — donc l'onglet passait au premier plan
+         sur une connexion fermée. Première exécution en « aucune connexion ouverte », et
+         autocomplétion muette, sans que rien le dise.
+
+         **Après `onCreateConsole`, non avant** : on n'ouvre pas la connexion d'une console dont la
+         création a échoué. Ce n'est pas ce qui décide de la course, en revanche — `onCreateConsole`
+         réécrit `projects`, ce changement fait relire le registre, et cette lecture peut partir avant
+         l'ouverture pour revenir après elle. C'est `useArbre.ouverturesAbouties` qui l'empêche de
+         reprendre les schémas obtenus entre-temps, et l'ordre ici n'y changerait rien. */
+      assurerLOuverture({ project, database, environment })
       setEtatOnglets((etat) =>
         ouvrirConsole(
           etat,
@@ -691,7 +704,7 @@ export function Workbench({
       setTextes((precedent) => ({ ...precedent, [id]: sql }))
       return nom
     },
-    [onCreateConsole, onSaveConsole, projects, dialecteDe],
+    [onCreateConsole, onSaveConsole, projects, dialecteDe, assurerLOuverture],
   )
   /**
    * Quelle console **persistée** chaque onglet ouvre, par identité d'onglet.
@@ -752,6 +765,12 @@ export function Workbench({
    * de sa connexion, sans être jamais passée par un schéma, se retrouvait alors sans aucun catalogue :
    * ni schémas, ni tables, ni mots-clés proposés, silencieusement. `cleConsole` porte l'identité de la
    * connexion **de la console elle-même** (`12a`), déjà employée pour l'exécution par la même raison.
+   *
+   * **La bonne clé ne suffisait pas : le cache pouvait être vide** (1er septembre 2026). `charge` ne
+   * se remplit qu'à l'ouverture d'une connexion, et le menu « … » ouvrait la console sans ouvrir sa
+   * connexion — donc `schemas[…]` était absent et le catalogue restait muet, exactement le symptôme
+   * que le paragraphe ci-dessus dit avoir corrigé. Une moitié du défaut était ici, l'autre chez
+   * l'appelant : voir `assurerLOuverture` dans `creerUneConsole`.
    */
   const schemasDeLaConnexion = useMemo(
     () =>
@@ -1310,6 +1329,15 @@ export function Workbench({
                           base.environment === identite.environment,
                       )
                       ?.consoles.find((console) => console.name === identite.nom)?.sql ?? ''
+                  /* **Le clic ouvre la connexion autant que la console.** Elle l'est déjà quand la
+                     ligne de la base a été dépliée — c'est ce qui a fait paraître la console —, mais
+                     pas quand cette ouverture a **échoué** : les consoles s'affichent malgré l'échec,
+                     délibérément, et le clic doit donc retenter plutôt qu'ouvrir un onglet inerte. */
+                  assurerLOuverture({
+                    project: identite.project,
+                    database: identite.database,
+                    environment: identite.environment,
+                  })
                   setEtatOnglets((etat) => {
                     const suivant = ouvrirConsole(
                       etat,
@@ -1438,7 +1466,15 @@ export function Workbench({
                         onOuvrirDansLaConsole={
                           cle === null
                             ? undefined
-                            : (ddl: string) =>
+                            : (ddl: string) => {
+                                /* **Troisième point d'ouverture d'une console, même règle.** Le DDL
+                                   affiché vient d'une connexion qui répondait, donc l'appel ne fait
+                                   le plus souvent rien — mais « le plus souvent » n'est pas
+                                   « jamais » : six commandes de configuration ferment des connexions
+                                   sans que le panneau de structure disparaisse, et le geste
+                                   retomberait alors sur une connexion fermée comme les deux
+                                   autres. */
+                                assurerLOuverture(cle)
                                 setEtatOnglets((etat) => {
                                   const suivant = ouvrirConsole(
                                     etat,
@@ -1456,6 +1492,7 @@ export function Workbench({
                                   }
                                   return suivant
                                 })
+                              }
                         }
                       />
                     ) : structureActive ? null : table &&

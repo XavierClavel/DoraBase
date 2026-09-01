@@ -16,7 +16,7 @@ import type {
   SchemaInfo,
   TableSummary,
 } from '../../domain/engine'
-import type { Charge, Noeud } from '../Explorer/arbre'
+import { type Charge, idBase, type Noeud } from '../Explorer/arbre'
 
 /**
  * Les commandes dont l'arbre a besoin, **injectables**.
@@ -41,6 +41,28 @@ export const PASSERELLE_TAURI: PasserelleArbre = {
 }
 
 const CHARGE_VIDE: Charge = { schemas: {}, objets: {}, enCours: new Set(), echecs: {} }
+
+/**
+ * De quoi ouvrir une connexion : ses coordonnées, et l'identité sous laquelle l'arbre la cache.
+ *
+ * **`chargerBase` prenait un `Noeud`**, ce qui liait l'ouverture d'une connexion à la ligne d'arbre
+ * qui la montre. Une console s'ouvre sans que cette ligne soit dépliée — le menu « … » d'une
+ * connexion crée la sienne et l'ouvre —, et fabriquer un faux nœud pour l'occasion aurait inventé une
+ * profondeur, un libellé et un chevron dont l'ouverture n'a que faire.
+ *
+ * **L'identité reste celle du nœud, et n'est jamais écrite à la main** : les deux appelants la
+ * tiennent d'`idBase`, l'un par le nœud qu'`arbre.ts` a composé, l'autre en l'appelant. Le défaut
+ * qu'elle a déjà coûté est là pour le rappeler : `chargerBase` composait un `idBase(project,
+ * database)` sans environnement quand la clé de connexion, deux lignes plus bas, en portait un — les
+ * deux identités divergeaient, et les schémas d'`analytics` en dev s'affichaient sous la ligne
+ * d'`analytics` en prod.
+ */
+type BaseAOuvrir = {
+  id: string
+  project: string
+  database: string
+  environment: EnvironmentId
+}
 
 /**
  * L'état de l'arbre : ce qui est déplié, ce qui est chargé, l'état de chaque base.
@@ -94,6 +116,23 @@ export function useArbre(
   const tourDesEtats = useRef(0)
 
   /**
+   * Le compte des ouvertures **abouties**, témoin d'une purge partie trop tôt (1er septembre 2026).
+   *
+   * `tourDesEtats` empêche une lecture dépassée d'écraser une plus récente ; il ne dit rien du cas
+   * inverse, où une lecture **à jour au départ** est appliquée à un cache qui a grandi entre-temps.
+   * C'est ce qui arrive dès qu'une ouverture et un changement de configuration partent du même geste
+   * — et « ouvrir une console » est exactement cela : la création réécrit `projects`, donc déclenche
+   * la relecture du registre, pendant que la connexion s'ouvre. La lecture partait avant que le
+   * registre ne tienne la connexion, revenait après que ses schémas étaient en cache, et **les
+   * reprenait** : console sans catalogue, ligne d'arbre repliée, et rien pour le dire.
+   *
+   * Le témoin est incrémenté quand des schémas entrent en cache. Une purge qui le voit bouger pendant
+   * sa lecture ne conclut rien : elle a mesuré un instant qui n'est plus. La lecture des **états**,
+   * elle, reste appliquée — elle est vraie de son instant, et `tourDesEtats` en garde l'ordre.
+   */
+  const ouverturesAbouties = useRef(0)
+
+  /**
    * Relit les états **au registre**, et fait suivre le cache.
    *
    * # Le défaut que cette fonction corrige (31 août 2026)
@@ -140,8 +179,13 @@ export function useArbre(
    * même.
    */
   const synchroniserAvecLeRegistre = useCallback(async () => {
+    const temoin = ouverturesAbouties.current
     const lus = await rafraichirEtats()
     if (!lus) return
+    // **Une ouverture aboutie pendant la lecture périme la purge, pas la lecture.** Voir
+    // `ouverturesAbouties` : sans ce contrôle, ouvrir une console reprenait aussitôt les schémas
+    // qu'elle venait d'obtenir. Le prochain changement de configuration purgera ce qui doit l'être.
+    if (ouverturesAbouties.current !== temoin) return
     const ouvertes = new Set(lus.map((entree) => identiteDeBase(entree.key)))
     setCharge((precedent) => oublierLesFermees(precedent, ouvertes))
     setDeplies((precedent) => replierLesFermees(precedent, ouvertes))
@@ -178,16 +222,7 @@ export function useArbre(
   }, [])
 
   const chargerBase = useCallback(
-    async (noeud: Noeud) => {
-      const { project, database, environment } = noeud
-      if (!project || !database || !environment) return
-      // **La clé de cache est l'identité du nœud, non une identité reconstruite.** Cette ligne
-      // appelait `idBase(project, database)` — sans environnement — alors que la clé de connexion
-      // juste en dessous en portait un. Les deux identités divergeaient : la connexion distinguait
-      // `analytics` en dev de `analytics` en prod, le cache d'arbre non, et les schémas de l'une
-      // s'affichaient sous la ligne de l'autre. `chargerSchema` lisait déjà `noeud.id` ; c'est la
-      // seule écriture qui ne peut pas se désynchroniser de ce que l'arbre a rendu.
-      const id = noeud.id
+    async ({ id, project, database, environment }: BaseAOuvrir) => {
       const cle = databaseKey(project, database, environment)
       // **La connexion est identifiée par son nom *et* son environnement** (`23b`) : deux connexions
       // homonymes coexistent, et n'en chercher qu'une par le nom ouvrirait la première venue — celle
@@ -207,6 +242,10 @@ export function useArbre(
           ...precedent,
           schemas: { ...precedent.schemas, [id]: schemas },
         }))
+        // **Dans le même bloc synchrone que la mise en cache**, et avant tout ce qui suit : une purge
+        // dont la lecture revient après cette ligne doit la voir bouger, sinon elle se croirait à jour
+        // et reprendrait les schémas posés juste au-dessus.
+        ouverturesAbouties.current += 1
         marquer(id, false)
         // **Après l'affichage, jamais avant** : la cascade de préchauffage est un service en fond, et
         // l'arbre doit avoir ses schémas à l'écran sans l'attendre.
@@ -260,10 +299,57 @@ export function useArbre(
    */
   const charger = useCallback(
     (noeud: Noeud) => {
-      if (noeud.kind === 'database' && !charge.schemas[noeud.id]) void chargerBase(noeud)
+      if (noeud.kind === 'database' && !charge.schemas[noeud.id]) {
+        const { project, database, environment } = noeud
+        // Les coordonnées d'un nœud sont optionnelles — un message n'en a pas —, et c'est ici
+        // qu'elles se contrôlent : `chargerBase` les reçoit désormais complètes.
+        if (project && database && environment) {
+          void chargerBase({ id: noeud.id, project, database, environment })
+        }
+      }
       if (noeud.kind === 'schema' && !charge.objets[noeud.id]) void chargerSchema(noeud)
     },
     [charge, chargerBase, chargerSchema],
+  )
+
+  /**
+   * Ouvre la connexion d'une base **sans passer par sa ligne d'arbre** (1er septembre 2026).
+   *
+   * # Le défaut
+   *
+   * L'ouverture n'avait qu'un déclencheur : regarder ou déplier la ligne de la connexion. Or une
+   * console s'ouvre ailleurs — le menu « … » d'une connexion crée la sienne et l'ouvre du même geste,
+   * sans que la ligne ait jamais été dépliée. L'onglet passait donc au premier plan et **rien
+   * n'était joignable** : la première exécution répondait « aucune connexion ouverte pour … », et
+   * l'autocomplétion ne proposait ni schéma, ni table, ni colonne — sans le dire, `charge.schemas`
+   * étant simplement vide.
+   *
+   * # Ce qu'elle garantit, et ce qu'elle ne fait pas
+   *
+   * **Idempotente** : ce qui est en cache ou en vol n'est pas redemandé. Un **échec**, en revanche,
+   * n'est pas mémorisé comme un refus — c'est ce qui laisse un second geste retenter, exactement
+   * comme `charger` le fait sur une ligne d'arbre, et il le faut : les consoles d'une connexion
+   * s'affichent malgré son échec, délibérément (voir `aplatir`).
+   *
+   * Et elle **ne déplie rien** : ouvrir une connexion n'est pas la montrer. Le cache qu'elle remplit
+   * sert la console ; la ligne d'arbre, elle, ne bouge que si on la déplie — et `charger` n'y
+   * rouvrira pas ce qui est déjà là.
+   */
+  const assurerLOuverture = useCallback(
+    (cle: DatabaseKey) => {
+      const id = idBase(cle.project, cle.environment, cle.database)
+      // **`enCours` en plus des schémas**, là où `charger` ne regarde que les schémas : un clic sur
+      // une console n'est pas une bascule, donc rien n'empêche un second d'arriver pendant que le
+      // premier ouvre.
+      if (charge.schemas[id] || charge.enCours.has(id)) return
+      void chargerBase({
+        id,
+        project: cle.project,
+        database: cle.database,
+        environment: cle.environment,
+      })
+    },
+    [charge, chargerBase],
   )
 
   /** Déplie ou replie un nœud, et charge ce que le dépliage rend visible. */
@@ -289,8 +375,8 @@ export function useArbre(
   }, [])
 
   return useMemo(
-    () => ({ deplies, charge, etatDeBase, basculer, charger, rafraichir }),
-    [deplies, charge, etatDeBase, basculer, charger, rafraichir],
+    () => ({ deplies, charge, etatDeBase, basculer, charger, assurerLOuverture, rafraichir }),
+    [deplies, charge, etatDeBase, basculer, charger, assurerLOuverture, rafraichir],
   )
 }
 
