@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -655,6 +655,80 @@ describe('la console SQL (`12a`)', () => {
     expect(texteDeLEditeur()).toBe('select 2')
   })
 
+  it('deux consoles gardent chacune son résultat', async () => {
+    const utilisateur = userEvent.setup()
+    // **Le décor distingue les deux résultats par la requête qui les a produits** : un pont qui
+    // rendrait toujours `RESULTAT` laisserait le partage passer, les deux grilles étant identiques
+    // (règle n° 5 — un décor trop régulier ne mesure que le décor).
+    monter({
+      passerelleExecution: {
+        runSql: async (_cle, sql) => ({ ...RESULTAT, columns: [sql], sql }),
+      },
+    })
+
+    await ouvrirUneConsole(utilisateur)
+    await saisir(utilisateur, 'select 1')
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+    expect(await screen.findByRole('columnheader', { name: /^select 1$/ })).toBeInTheDocument()
+
+    // **Le nerf du test** : une console neuve n'a rien exécuté, donc elle ne montre rien. Un état
+    // d'exécution unique lui faisait afficher le résultat de la voisine — sous un texte qui ne
+    // l'avait pas produit, donc sans rien pour dire laquelle on regardait.
+    await ouvrirUneConsole(utilisateur)
+    expect(screen.getByText(/Aucun résultat/)).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: /^select 1$/ })).not.toBeInTheDocument()
+
+    await saisir(utilisateur, 'select 2')
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+    expect(await screen.findByRole('columnheader', { name: /^select 2$/ })).toBeInTheDocument()
+
+    // Et revenir retrouve le premier résultat : basculer d'onglet ne relance rien, il rend ce que
+    // cette console avait déjà.
+    await utilisateur.click(screen.getByRole('tab', { name: /console 1/ }))
+    expect(screen.getByRole('columnheader', { name: /^select 1$/ })).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: /^select 2$/ })).not.toBeInTheDocument()
+  })
+
+  it('une requête lente rend son résultat à la console qui l’a demandée', async () => {
+    const utilisateur = userEvent.setup()
+    let repondre: ((resultat: typeof RESULTAT) => void) | null = null
+    monter({
+      passerelleExecution: {
+        runSql: async (_cle, sql) =>
+          sql === 'select lent'
+            ? new Promise((resolve) => {
+                repondre = (resultat) => resolve(resultat)
+              })
+            : { ...RESULTAT, columns: [sql], sql },
+      },
+    })
+
+    await ouvrirUneConsole(utilisateur)
+    await saisir(utilisateur, 'select lent')
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+
+    // **L'attente appartient à la console qui attend.** Une console neuve ouverte pendant ce
+    // temps-là ne doit pas hériter d'un « Exécution… » qui n'est pas le sien, ni voir sa toolbar
+    // désactivée par la requête d'une autre.
+    await ouvrirUneConsole(utilisateur)
+    expect(screen.getByText(/Aucun résultat/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Exécuter/ })).toBeEnabled()
+
+    // Le résultat arrive alors que l'onglet demandeur n'est plus actif : il se dépose chez lui.
+    // L'identité est capturée au départ, pas relue à la réponse — sinon la grille atterrirait sur
+    // la console qu'on regarde, ou serait perdue.
+    await act(async () => {
+      ;(repondre as unknown as (resultat: typeof RESULTAT) => void)({
+        ...RESULTAT,
+        columns: ['select lent'],
+        sql: 'select lent',
+      })
+    })
+    expect(screen.queryByRole('columnheader', { name: /^select lent$/ })).not.toBeInTheDocument()
+    await utilisateur.click(screen.getByRole('tab', { name: /console 1/ }))
+    expect(screen.getByRole('columnheader', { name: /^select lent$/ })).toBeInTheDocument()
+  })
+
   it('une console et une table cohabitent dans la même bande', async () => {
     const utilisateur = userEvent.setup()
     monter()
@@ -901,6 +975,40 @@ describe('la console SQL (`12a`)', () => {
     expect(await screen.findByRole('tab', { name: /console 1/ })).toBeInTheDocument()
   })
 
+  it('le résultat du brouillon survit à « Enregistrer »', async () => {
+    const utilisateur = userEvent.setup()
+    monter({ passerelleExecution: PASSERELLE_SQL })
+    // **Le seul chemin vers un onglet *volatile*** : « Nouvelle console » du menu d'une connexion
+    // crée une console persistée, dont l'onglet n'a rien à enregistrer. Un brouillon ne s'ouvre plus
+    // que par « Ouvrir dans la console » du DDL — et c'est là que « Enregistrer » a un objet.
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /^orders/ }))
+    await utilisateur.click(screen.getByRole('button', { name: 'Structure' }))
+    await screen.findByRole('table', { name: /Colonnes de public\.orders/ })
+    await utilisateur.click(screen.getByRole('button', { name: /Ouvrir dans la console/ }))
+
+    await saisir(utilisateur, 'select 1')
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+    expect(await screen.findByRole('columnheader', { name: 'n' })).toBeInTheDocument()
+
+    await utilisateur.click(
+      within(screen.getByRole('toolbar', { name: 'Actions de la console' })).getByRole('button', {
+        name: /Enregistrer/,
+      }),
+    )
+
+    // **Le baptême change l'identité de l'onglet** — du numéro au nom (voir `idOnglet`) : le
+    // résultat doit la suivre, sans quoi « Enregistrer » viderait la grille.
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('toolbar', { name: 'Actions de la console' })).getByRole('button', {
+          name: /Enregistrer/,
+        }),
+      ).toBeDisabled(),
+    )
+    expect(screen.getByRole('columnheader', { name: 'n' })).toBeInTheDocument()
+  })
+
   it('le nom par défaut prend le premier numéro libre de la connexion', async () => {
     const utilisateur = userEvent.setup()
     const creer = vi.fn(async () => {})
@@ -992,6 +1100,29 @@ describe('la console SQL (`12a`)', () => {
       'CA par jour',
       'Audit',
     )
+  })
+
+  it('le résultat de la console survit à son renommage', async () => {
+    const utilisateur = userEvent.setup()
+    monter({
+      projects: avecConsole('CA par jour', 'select 42'),
+      passerelleExecution: PASSERELLE_SQL,
+      onRenameConsole: async () => {},
+    })
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /CA par jour/ }))
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+    expect(await screen.findByRole('columnheader', { name: 'n' })).toBeInTheDocument()
+
+    await utilisateur.dblClick(await screen.findByRole('tab', { name: /CA par jour/ }))
+    const champ = screen.getByLabelText('Nouveau nom de CA par jour')
+    await utilisateur.clear(champ)
+    await utilisateur.type(champ, 'Audit{Enter}')
+
+    // **Le résultat est la quatrième table indexée par identité d'onglet**, et l'identité d'une
+    // console dérive de son nom : sans réindexation, renommer viderait la grille sous les yeux.
+    await waitFor(() => expect(screen.getByRole('tab', { name: /Audit/ })).toBeInTheDocument())
+    expect(screen.getByRole('columnheader', { name: 'n' })).toBeInTheDocument()
   })
 
   it('rouvrir une console déjà ouverte réactive son onglet au lieu d’en empiler un second', async () => {
@@ -1570,6 +1701,21 @@ describe('renommer une connexion (`26`)', () => {
     await waitFor(() =>
       expect(document.querySelector('.cm-content')?.textContent).toContain('select 42'),
     )
+  })
+
+  it('le résultat de la console ouverte survit au renommage', async () => {
+    const utilisateur = userEvent.setup()
+    pilote(avecConsole('CA par jour', 'select 42'))
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /CA par jour/ }))
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+    expect(await screen.findByRole('columnheader', { name: 'n' })).toBeInTheDocument()
+
+    await renommerAnalytics(utilisateur, 'entrepot')
+
+    // Même raison que pour le texte : l'identité d'onglet porte le nom de la connexion, et le
+    // résultat laissé sous l'ancienne clé donnerait une grille disparue sur un renommage.
+    await waitFor(() => expect(screen.getByRole('columnheader', { name: 'n' })).toBeInTheDocument())
   })
 })
 

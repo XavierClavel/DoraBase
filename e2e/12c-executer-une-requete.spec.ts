@@ -36,6 +36,23 @@ test('exécuter affiche le résultat sous l’éditeur, avec ses chiffres', asyn
   await expect(barre).toContainText('limité à 1000 par DoraBase')
 })
 
+test('le résultat appartient à sa console : basculer d’onglet le change', async ({ page }) => {
+  await page.keyboard.insertText('select 1')
+  await page.getByRole('button', { name: /Exécuter/ }).click()
+  await expect(page.getByRole('grid', { name: /Résultat de la requête/ })).toBeVisible()
+
+  // **Une console neuve n'a rien exécuté, donc elle ne montre rien.** Un état d'exécution unique lui
+  // faisait afficher le résultat de la voisine, sous un texte qui ne l'avait pas produit — deux
+  // requêtes, un seul résultat, et rien pour dire laquelle on regardait.
+  await ouvrirUneConsole(page, 'analytics')
+  await expect(page.getByRole('grid', { name: /Résultat de la requête/ })).toBeHidden()
+  await expect(page.getByText(/Aucun résultat/)).toBeVisible()
+
+  // Et revenir retrouve le premier résultat : basculer d'onglet ne relance rien.
+  await page.getByRole('tab', { name: /console 1/ }).click()
+  await expect(page.getByRole('grid', { name: /Résultat de la requête/ })).toBeVisible()
+})
+
 test('les nombres du résultat sont alignés à droite', async ({ page }) => {
   await page.keyboard.insertText('select 1')
   await page.getByRole('button', { name: /Exécuter/ }).click()
