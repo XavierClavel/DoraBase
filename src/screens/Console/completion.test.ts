@@ -81,13 +81,28 @@ describe('l’autocomplétion (`12d`)', () => {
     expect(proposer('select * from orders o where o.sta')).toBeNull()
   })
 
-  it('sans qualifiant, propose les tables et les mots-clés', () => {
-    const resultat = proposer('select * from ord')
-    const labels = resultat?.options.map((o) => o.label) ?? []
+  it('à la place d’une table, propose des tables et des schémas, rien d’autre', () => {
+    const labels = proposer('select * from ord')?.options.map((o) => o.label) ?? []
     expect(labels).toContain('orders')
-    expect(labels).toContain('where')
-    // Les tables d'abord : c'est ce qu'on cherche après `from`.
-    expect(labels.indexOf('orders')).toBeLessThan(labels.indexOf('where'))
+    // Un schéma s'y écrit aussi : `from sch.` commence par `sch`.
+    expect(labels).toContain('archives')
+    // **Aucun mot-clé** : à la place d'une table, `where` n'est pas encore écrivable, et le proposer
+    // là est du bruit.
+    expect(labels).not.toContain('where')
+    expect(labels).not.toContain('select')
+  })
+
+  it('après un `order by`, ni table, ni schéma, ni `select`', () => {
+    // **Le signalement à l'origine de la lecture par clause** : la liste proposait la même chose
+    // partout, donc les tables du catalogue et les trente mots-clés à un endroit où ni les unes ni
+    // les autres ne s'écrivent.
+    const labels = proposer('select * from users order by cou')?.options.map((o) => o.label) ?? []
+    expect(labels).toContain('country')
+    expect(labels).toContain('desc')
+    expect(labels).not.toContain('users')
+    expect(labels).not.toContain('archives')
+    expect(labels).not.toContain('select')
+    expect(labels).not.toContain('where')
   })
 
   it('sans qualifiant, une unique table citée propose aussi ses colonnes', () => {
@@ -97,8 +112,14 @@ describe('l’autocomplétion (`12d`)', () => {
     const labels = resultat?.options.map((o) => o.label) ?? []
     expect(labels).toContain('country')
     expect(labels).toContain('counter_signup')
-    // Les colonnes d'abord : c'est ce qu'on cherche après `where`.
-    expect(labels.indexOf('country')).toBeLessThan(labels.indexOf('users'))
+    // Dans un `where`, un nom de table nu ne s'écrit pas : il n'y en a plus à départager.
+    expect(labels).not.toContain('users')
+    // **Les colonnes d'abord, et c'est le `boost` qui le décide** : CodeMirror reclasse les options
+    // par qualité de correspondance et n'emploie pour rien l'ordre du tableau, donc une assertion
+    // d'index ne garderait pas l'ordre affiché.
+    const colonne = resultat?.options.find((o) => o.label === 'country')?.boost ?? 0
+    const motCle = resultat?.options.find((o) => o.label === 'and')?.boost ?? 0
+    expect(colonne).toBeGreaterThan(motCle)
     expect(resultat?.options.find((o) => o.label === 'country')?.detail).toBe('char(2)')
   })
 
