@@ -104,3 +104,24 @@ test('aucune requête n’est envoyée pendant la frappe', async ({ page }) => {
   // caractère ajouterait une latence à l'endroit le plus sensible de l'écran.
   expect(appels).toEqual([])
 })
+
+test('après un `order by`, ni table ni mot-clé étranger au tri', async ({ page }) => {
+  // **Le signalement à l'origine de la lecture par clause.** La liste proposait la même chose
+  // partout : après `order by o`, elle offrait `orders`, `order_items` et `orders_daily` — trois
+  // noms de tables qu'on ne peut pas écrire là — en plus des mots-clés de toute la grammaire.
+  await page.keyboard.type('select * from orders order by o')
+
+  const liste = page.locator('.cm-tooltip-autocomplete')
+  // La liste est attendue par une assertion positive **avant** les négatives : sans elle, celles-ci
+  // passeraient sur une liste pas encore ouverte (règle n° 15).
+  await expect(liste).toContainText('offset')
+  await expect(liste).not.toContainText('order_items')
+  await expect(liste).not.toContainText('orders_daily')
+
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Backspace')
+  await page.keyboard.type('s')
+  // Les colonnes du tri, oui ; `select` au milieu d'une requête, non.
+  await expect(liste).toContainText('status')
+  await expect(liste).not.toContainText('select')
+})

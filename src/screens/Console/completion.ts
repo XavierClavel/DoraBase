@@ -1,5 +1,6 @@
 import type { Completion, CompletionContext, CompletionResult } from '@codemirror/autocomplete'
 import { qualifiantAvant, tablesCitees } from './alias'
+import { accepteDesColonnes, clauseA, enPositionDeTable, motsClesDe } from './clause'
 
 /**
  * Ce que l'écran connaît déjà de la base, et qui suffit à l'autocomplétion (`12d`).
@@ -32,46 +33,6 @@ export type Catalogue = {
    */
   tablesParSchema: Readonly<Record<string, readonly string[]>>
 }
-
-/**
- * Les mots-clés proposés faute de mieux.
- *
- * **Toujours sûrs** : ils existent quelle que soit la base. C'est ce qu'on propose quand un alias
- * n'est pas résolu, plutôt que d'inventer des colonnes.
- */
-const MOTS_CLES = [
-  'select',
-  'from',
-  'where',
-  'group by',
-  'order by',
-  'having',
-  'limit',
-  'join',
-  'left join',
-  'inner join',
-  'on',
-  'as',
-  'and',
-  'or',
-  'not',
-  'null',
-  'is null',
-  'is not null',
-  'in',
-  'like',
-  'ilike',
-  'between',
-  'distinct',
-  'count(',
-  'sum(',
-  'avg(',
-  'min(',
-  'max(',
-  'coalesce(',
-  'date_trunc(',
-  'now()',
-]
 
 /**
  * La source de complétion de la console (`12d`).
@@ -146,34 +107,62 @@ export function sourceDeCompletion(catalogue: () => Catalogue) {
       }
     }
 
-    // L'unique table citée, sans alias à taper — `tablesCitees` indexe aussi par nom de table pour ce
-    // cas. Deux tables ou plus laissent `tableUnique` absent : voir la garde-fou ci-dessus.
-    const references = [...new Set(tablesCitees(texte).values())]
-    const tableUnique = references.length === 1 ? references[0] : undefined
-    const colonnesSansQualifiant = tableUnique ? (colonnes[tableUnique] ?? []) : []
+    // **À la place d'une table, une table et rien d'autre** : aucun mot-clé n'y est valide, et une
+    // colonne encore moins. Les schémas y restent, eux : `from sch.` commence par `sch`.
+    if (enPositionDeTable(texte, contexte.pos)) {
+      return {
+        from: mot.from,
+        options: [
+          ...tables.map(
+            (nom): Completion => ({ label: nom, type: 'class', detail: 'table', info: nom }),
+          ),
+          ...schemas.map(
+            (nom): Completion => ({ label: nom, type: 'namespace', detail: 'schéma', info: nom }),
+          ),
+        ],
+      }
+    }
+
+    // Ailleurs, la clause décide. **Ni table ni schéma** : hors de leur place, un nom nu ne s'écrit
+    // pas — ce qu'on qualifie, on l'écrit avec son point, et c'est la branche du qualifiant qui le
+    // sert.
+    const clause = clauseA(texte, contexte.pos)
+    const desColonnes = accepteDesColonnes(clause) ? colonnesCitees(texte, colonnes) : []
 
     return {
       from: mot.from,
       options: [
-        ...colonnesSansQualifiant.map(
-          (colonne): Completion => ({
-            label: colonne.name,
-            type: 'property',
-            detail: colonne.typeName,
-            info: tableUnique,
-          }),
-        ),
-        ...tables.map(
-          (nom): Completion => ({ label: nom, type: 'class', detail: 'table', info: nom }),
-        ),
-        // Les autres schémas de la connexion : taper leur nom insère de quoi continuer en `sch.table`.
-        ...schemas.map(
-          (nom): Completion => ({ label: nom, type: 'namespace', detail: 'schéma', info: nom }),
-        ),
-        ...MOTS_CLES.map((mot): Completion => ({ label: mot, type: 'keyword' })),
+        ...desColonnes,
+        ...motsClesDe(clause).map((mot): Completion => ({ label: mot, type: 'keyword' })),
       ],
     }
   }
+}
+
+/**
+ * Les colonnes de l'unique table citée, sans qualifiant.
+ *
+ * **La règle d'`ee3c86f` est gardée telle quelle** : deux tables citées ne proposent aucune colonne
+ * nue, parce qu'un nom seul ne dirait pas de laquelle il vient. Ce qui est ajouté ici est le `boost`.
+ *
+ * **Le `boost` est ce qui met les colonnes devant les mots-clés de la clause, pas la place dans le
+ * tableau** : CodeMirror reclasse les options par qualité de correspondance et n'emploie l'ordre reçu
+ * pour rien. La valeur reste minuscule — les pénalités du classeur vont par centaines —, donc elle
+ * départage les égalités sans jamais faire passer une correspondance médiocre devant une bonne.
+ */
+function colonnesCitees(texte: string, colonnes: Catalogue['colonnes']): Completion[] {
+  // `tablesCitees` indexe par alias **et** par nom : les valeurs se répètent, l'ensemble les réduit.
+  const references = [...new Set(tablesCitees(texte).values())]
+  const tableUnique = references.length === 1 ? references[0] : undefined
+  if (!tableUnique) return []
+
+  return (colonnes[tableUnique] ?? []).map((colonne) => ({
+    label: colonne.name,
+    type: 'property',
+    detail: colonne.typeName,
+    info: tableUnique,
+    boost: 2,
+  }))
 }
 
 /**

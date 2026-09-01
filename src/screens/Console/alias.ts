@@ -1,3 +1,5 @@
+import { sansCommentaires } from './clause'
+
 /**
  * La résolution des alias de tables dans une requête (`12d`), en fonctions **pures**.
  *
@@ -88,9 +90,4 @@ export function qualifiantAvant(texte: string, position: number): string | null 
   const avant = texte.slice(0, position)
   const trouve = /([a-z_][\w$]*)\.\s*([\w$]*)$/i.exec(avant)
   return trouve?.[1] ?? null
-}
-
-/** Le SQL sans ses commentaires. Pour l'analyse seulement — l'exécution garde le texte entier. */
-function sansCommentaires(sql: string): string {
-  return sql.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ')
 }
