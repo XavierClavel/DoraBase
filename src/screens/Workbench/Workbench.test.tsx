@@ -4,7 +4,15 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { Project } from '../../domain/config'
-import type { SchemaInfo, TableDetail, TableSummary, UpdatePlan } from '../../domain/engine'
+import type {
+  ConnectionState,
+  ConnectionStateEntry,
+  DatabaseKey,
+  SchemaInfo,
+  TableDetail,
+  TableSummary,
+  UpdatePlan,
+} from '../../domain/engine'
 import { LanguageProvider } from '../../i18n/LanguageContext'
 import { REGLAGES, TRIO_DE_TEST } from '../NewConnection/pourLesTests'
 import type { PasserelleLignes } from '../TableView/useLignes'
@@ -124,14 +132,35 @@ const DETAIL: TableDetail = {
 }
 
 function passerelles() {
+  /**
+   * Ce que le registre tient pour ouvert, **alimenté par les ouvertures du décor**.
+   *
+   * `connectionStates` rendait `[]` sans condition : un double qui ne répond pas à tous les appels
+   * que la production fait (règle n° 19). Et celui-là n'est pas décoratif — depuis le 31 août 2026,
+   * l'arbre purge son cache et replie ce que le registre ne tient plus **à chaque changement de
+   * `projects`**, donc à chaque console créée et à chaque frappe enregistrée. Un registre qui ne dit
+   * jamais rien décrète que tout est fermé : le décor annulait en boucle ce qu'une ouverture venait
+   * de mettre en cache, et un test posé dessus aurait mesuré ce reflux plutôt que l'écran.
+   *
+   * **Aucun test ne dépend de la version muette** — vérifié par sabotage, la suite reste verte avec
+   * elle. C'est le décor qui devient dicible, pas une assertion qui devient possible.
+   */
+  const ouvertes = new Map<string, ConnectionStateEntry>()
+  const identite = (cle: DatabaseKey) => `${cle.project}/${cle.environment}/${cle.database}`
   const passerelle: PasserelleArbre = {
-    openDatabase: vi.fn(async () => ({
-      kind: 'connected' as const,
-      serverVersion: 'PostgreSQL 17.6',
-      tunnelLocalPort: null,
-    })),
-    closeDatabase: vi.fn(async () => {}),
-    connectionStates: vi.fn(async () => []),
+    openDatabase: vi.fn(async (cle) => {
+      const state = {
+        kind: 'connected' as const,
+        serverVersion: 'PostgreSQL 17.6',
+        tunnelLocalPort: null,
+      }
+      ouvertes.set(identite(cle), { key: cle, state })
+      return state
+    }),
+    closeDatabase: vi.fn(async (cle) => {
+      ouvertes.delete(identite(cle))
+    }),
+    connectionStates: vi.fn(async () => [...ouvertes.values()]),
     listSchemas: vi.fn(async () => SCHEMAS),
     listObjects: vi.fn(async () => [objet('orders'), objet('order_items')]),
   }
@@ -617,6 +646,134 @@ describe('la console SQL (`12a`)', () => {
     // Une console sans base n'aurait rien à interroger : le bouton disparaît plutôt que d'ouvrir un
     // onglet inerte.
     expect(screen.queryByRole('button', { name: /Nouvelle console/ })).not.toBeInTheDocument()
+  })
+
+  /**
+   * Ouvre une console **sans avoir déplié sa base**.
+   *
+   * Le menu « … » d'une connexion est atteignable dès que son environnement est déplié : la base
+   * elle-même n'a pas à l'être, et c'est précisément le chemin qui n'ouvrait aucune connexion.
+   */
+  async function ouvrirUneConsoleSansDeplierLaBase(
+    utilisateur: ReturnType<typeof userEvent.setup>,
+  ) {
+    await ouvrirLesEnvironnements(utilisateur)
+    await utilisateur.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+    await utilisateur.click(screen.getByRole('button', { name: /Nouvelle console/ }))
+  }
+
+  it('« Nouvelle console… » ouvre la connexion de la base, jamais dépliée', async () => {
+    const utilisateur = userEvent.setup()
+    const { passerelle } = monter({ passerelleExecution: PASSERELLE_SQL })
+    await ouvrirLesEnvironnements(utilisateur)
+    // Le point de départ : l'arbre se lit sans réseau, donc rien n'est ouvert.
+    expect(passerelle.openDatabase).not.toHaveBeenCalled()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+    await utilisateur.click(screen.getByRole('button', { name: /Nouvelle console/ }))
+
+    // **La console est ouverte « sur » une connexion : elle ne peut rien interroger tant que celle-ci
+    // n'est pas ouverte.** Sans cet appel, la première exécution répondait « aucune connexion
+    // ouverte » sur un onglet que le geste venait de mettre au premier plan.
+    await waitFor(() => expect(passerelle.openDatabase).toHaveBeenCalledTimes(1))
+    expect(passerelle.openDatabase).toHaveBeenCalledWith(
+      { project: 'Atelier Nord', database: 'analytics', environment: 'prod' },
+      'postgresql',
+      REGLAGES,
+    )
+  })
+
+  it('la console ainsi ouverte propose les tables de sa connexion', async () => {
+    const utilisateur = userEvent.setup()
+    const { structures } = monter({ passerelleExecution: PASSERELLE_SQL })
+    await ouvrirUneConsoleSansDeplierLaBase(utilisateur)
+    // La cascade de préchauffage part de l'ouverture : attendre qu'elle ait décrit les deux tables du
+    // décor date la mesure de l'instant où l'autocomplétion peut répondre (règle n° 15).
+    await waitFor(() => expect(structures.describeTable).toHaveBeenCalledTimes(2))
+
+    // **Le corollaire visible de l'ouverture** : l'autocomplétion lit les schémas de la connexion
+    // *de la console* dans `charge.schemas`, que seule une ouverture remplit — et les tables de
+    // chacun dans le préchauffage, que seule une ouverture lance. Sans elle, `public.` ne proposait
+    // rien, silencieusement.
+    await saisir(utilisateur, 'select * from public.ord')
+    await waitFor(() =>
+      expect(document.querySelector('.cm-tooltip-autocomplete')?.textContent).toContain('orders'),
+    )
+  })
+
+  it('deux consoles créées de suite n’ouvrent la connexion qu’une fois', async () => {
+    const utilisateur = userEvent.setup()
+    const { passerelle } = passerelles()
+    // **Une ouverture qui ne rend jamais la main** : c'est la seule façon de tenir la connexion « en
+    // cours » pendant deux gestes. Un décor qui répond tout de suite fait passer le second geste par
+    // le cache des schémas, donc ne mesure pas le garde-fou visé (règle n° 5).
+    passerelle.openDatabase = vi.fn(
+      () =>
+        new Promise<ConnectionState>(() => {
+          /* jamais résolue */
+        }),
+    )
+    render(
+      <>
+        <Sprite />
+        <LanguageProvider preferences={{ language: 'fr' }}>
+          <Workbench
+            projects={PROJETS}
+            passerelle={passerelle}
+            passerelleDetail={{ describeTable: vi.fn(async () => DETAIL) }}
+            onCreateConsole={async () => {}}
+          />
+        </LanguageProvider>
+      </>,
+    )
+
+    await ouvrirLesEnvironnements(utilisateur)
+    for (let fois = 0; fois < 2; fois++) {
+      await utilisateur.click(screen.getByRole('button', { name: 'Actions de analytics' }))
+      await utilisateur.click(screen.getByRole('button', { name: /Nouvelle console/ }))
+    }
+
+    // Une ouverture en vol n'est pas relancée : deux connexions au même serveur pour un seul clic de
+    // plus, c'est ce que le garde-fou sur `enCours` empêche.
+    expect(passerelle.openDatabase).toHaveBeenCalledTimes(1)
+  })
+
+  it('cliquer une console de l’arbre retente une ouverture qui avait échoué', async () => {
+    const utilisateur = userEvent.setup()
+    const { passerelle } = passerelles()
+    passerelle.openDatabase = vi.fn(async () => {
+      throw new Error('hôte injoignable')
+    })
+    render(
+      <>
+        <Sprite />
+        <LanguageProvider preferences={{ language: 'fr' }}>
+          <Workbench
+            projects={avecConsole('CA par jour', 'select 42')}
+            passerelle={passerelle}
+            passerelleDetail={{ describeTable: vi.fn(async () => DETAIL) }}
+          />
+        </LanguageProvider>
+      </>,
+    )
+
+    await ouvrirLesEnvironnements(utilisateur)
+    await utilisateur.dblClick(await screen.findByRole('treeitem', { name: /analytics/ }))
+    expect(await screen.findByText(/hôte injoignable/)).toBeInTheDocument()
+    // **Le compte avant le geste, jamais un nombre écrit** : le dépliage lui-même en fait plus d'un
+    // (le clic sélectionne, le second déplie), et une constante en dur mesurerait ce détail plutôt
+    // que la reprise.
+    const avant = (passerelle.openDatabase as ReturnType<typeof vi.fn>).mock.calls.length
+
+    // **Les consoles s'affichent malgré l'échec**, délibérément : une console est un texte qu'on a
+    // écrit, et le rendre dépendant d'une connexion qui répond en ferait perdre l'accès au pire
+    // moment. Le clic doit donc **retenter** l'ouverture, plutôt que d'ouvrir un onglet inerte.
+    await utilisateur.click(await screen.findByRole('treeitem', { name: /CA par jour/ }))
+    await waitFor(() =>
+      expect((passerelle.openDatabase as ReturnType<typeof vi.fn>).mock.calls.length).toBe(
+        avant + 1,
+      ),
+    )
   })
 
   /**
