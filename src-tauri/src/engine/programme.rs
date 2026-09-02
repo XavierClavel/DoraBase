@@ -101,14 +101,38 @@ fn completer(
 pub fn chemin_utilisateur(saisie: &str) -> PathBuf {
     let saisie = saisie.trim();
     match saisie.strip_prefix("~/") {
-        // Sans `HOME`, un chemin en `~` ne désigne rien : le rendre tel quel vaut mieux que de
-        // fabriquer un chemin faux, et l'erreur d'ouverture nommera la saisie de l'utilisateur.
-        Some(relatif) => match std::env::var_os("HOME") {
-            Some(maison) => PathBuf::from(maison).join(relatif),
+        // Sans répertoire personnel, un chemin en `~` ne désigne rien : le rendre tel quel vaut
+        // mieux que de fabriquer un chemin faux, et l'erreur d'ouverture nommera la saisie de
+        // l'utilisateur.
+        Some(relatif) => match repertoire_personnel() {
+            Some(maison) => maison.join(relatif),
             None => PathBuf::from(saisie),
         },
         None => PathBuf::from(saisie),
     }
+}
+
+/// Le répertoire personnel de l'utilisateur, quelle que soit la plateforme.
+///
+/// **`USERPROFILE` est le `HOME` de Windows, et l'oublier ne plantait pas : ça mentait**
+/// (31 août 2026, trouvé par le job Windows de la CI). Windows ne pose pas `HOME` — un
+/// `var_os("HOME")` seul y rend donc `None`, et un `~/atelier.db` restait littéral. Conséquences
+/// mesurées, toutes du même genre : le fichier SQLite était cherché dans un répertoire **nommé
+/// `~`**, le certificat d'autorité aussi, et l'échec accusait un chemin correct.
+///
+/// **Une seule fonction, parce qu'il y en avait quatre.** `tls.rs`, `sqlite/connect.rs`,
+/// `engine/commands.rs` et celle-ci lisaient chacune `HOME` de son côté — et le commentaire de
+/// `chemin_absolu` dans `tls.rs` disait déjà « une seule fonction vaut mieux que trois ». C'est
+/// exactement ainsi qu'un défaut arrive à quatre endroits : la question « où habite
+/// l'utilisateur » n'a qu'une réponse, elle doit n'avoir qu'un lieu.
+///
+/// L'ordre — `HOME` d'abord — garde le comportement d'avant partout où il existe, y compris sous
+/// les shells POSIX de Windows (Git Bash, MSYS) où c'est `HOME` qui désigne le bon dossier et
+/// `USERPROFILE` qui peut pointer ailleurs.
+pub fn repertoire_personnel() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
 }
 
 /// Un fichier utilisable comme programme.

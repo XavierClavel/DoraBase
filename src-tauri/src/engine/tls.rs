@@ -28,6 +28,7 @@ use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{ClientConfig, DigitallySignedStruct, Error as RustlsError, RootCertStore};
 
 use crate::config::SslMode;
+use crate::engine::programme;
 use crate::engine::EngineError;
 
 /// Ce que chaque mode demande, sous une forme que les trois adaptateurs consomment.
@@ -314,19 +315,23 @@ pub fn chemin_absolu(brut: &str) -> String {
     expanser_le_tilde(brut)
 }
 
-/// Remplace un `~` de tête par le répertoire personnel.
+/// Remplace un `~/` de tête par le répertoire personnel.
 ///
-/// Le chemin est tapé à la main dans `A2`, et `~/certs/interne.pem` est ce qu'on écrit. Même fonction
-/// qu'en `17a` pour le chemin d'une base SQLite, et pour la même raison — sans elle, le fichier serait
-/// cherché dans un répertoire nommé `~`.
+/// Le chemin est tapé à la main dans `A2`, et `~/certs/interne.pem` est ce qu'on écrit. Sans cette
+/// expansion, le fichier serait cherché dans un répertoire nommé `~`.
+///
+/// **Délègue à `programme::chemin_utilisateur` depuis le 31 août 2026**, et le commentaire de
+/// `chemin_absolu` juste au-dessus disait déjà pourquoi : « une seule fonction vaut mieux que
+/// trois ». Il y en avait bien trois, chacune lisant `HOME` seul — donc chacune muette sous
+/// Windows, qui ne pose que `USERPROFILE`. Le job Windows de la CI l'a trouvé.
+///
+/// Deux différences avec la version d'avant, toutes deux voulues : un `~` **seul** et un
+/// `~autre-utilisateur` ne sont plus expansés. Le premier ne désigne pas un fichier, et le second
+/// donnait `<maison>autre-utilisateur/…` — un chemin fabriqué, jamais celui qu'on visait.
 fn expanser_le_tilde(brut: &str) -> String {
-    let Some(reste) = brut.strip_prefix('~') else {
-        return brut.to_owned();
-    };
-    match std::env::var_os("HOME") {
-        Some(maison) => format!("{}{}", maison.to_string_lossy(), reste),
-        None => brut.to_owned(),
-    }
+    programme::chemin_utilisateur(brut)
+        .to_string_lossy()
+        .into_owned()
 }
 
 #[cfg(test)]
@@ -422,9 +427,22 @@ mod tests {
 
     #[test]
     fn un_tilde_de_tete_est_expanse() {
+        // **Ce test exige un répertoire personnel, et le dit.** Sans `HOME` ni `USERPROFILE` il
+        // n'y a rien à développer, donc rien à mesurer : se sauter vaut mieux qu'échouer sur une
+        // machine qui n'en déclare aucun. Même forme que le test de `programme::chemin_utilisateur`.
+        if crate::engine::programme::repertoire_personnel().is_none() {
+            return;
+        }
         let expanse = expanser_le_tilde("~/certs/interne.pem");
         assert!(!expanse.starts_with('~'), "{expanse}");
-        assert!(expanse.ends_with("/certs/interne.pem"), "{expanse}");
+
+        // **Le séparateur est celui de la plateforme, pas `/`.** `ends_with("/certs/…")` a échoué
+        // sous Windows, où le chemin composé porte des `\` — un test plus strict que le contrat
+        // qu'il garde finit par mesurer la machine (règle des versions de `pg_dump`, autre bout).
+        // Ce qui est vrai partout : le chemin est absolu, et il finit par les deux segments saisis.
+        let chemin = std::path::Path::new(&expanse);
+        assert!(chemin.is_absolute(), "{expanse}");
+        assert!(chemin.ends_with("certs/interne.pem"), "{expanse}");
     }
 
     #[test]
