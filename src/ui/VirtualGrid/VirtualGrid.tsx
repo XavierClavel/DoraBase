@@ -34,6 +34,32 @@ const PAS_CLAVIER = 8
 /** Largeur minimale d'une colonne redimensionnée, faute d'un `minWidth` par colonne. */
 const LARGEUR_MIN_PAR_DEFAUT = 60
 
+/** Où un menu contextuel s'ouvre : les coordonnées de fenêtre du clic, ce qu'attend `MenuContextuel`. */
+export type PositionDuMenu = { x: number; y: number }
+
+/**
+ * Le clic secondaire : le bouton droit, ou `ctrl`+clic, qui en est l'équivalent sur macOS.
+ *
+ * # Pourquoi le menu ne s'ouvre pas au seul `contextmenu`
+ *
+ * **WebKit ne distribue pas `contextmenu` sur un élément en `-webkit-user-select: none`**, et
+ * `reset.css` le pose sur tout le `body` — « le chrome ne se sélectionne pas », décidé le 19 août
+ * 2026. Le geste marchait donc sous Chromium, donc dans toute la suite Playwright, et ne faisait
+ * **rien** dans la fenêtre de `pnpm tauri dev`. Signalé à l'écran le 2 septembre 2026, après deux
+ * livraisons vertes : c'est exactement l'angle mort que ce dépôt documente — « Playwright ne pilote
+ * pas WKWebView ».
+ *
+ * `pointerdown` sur le bouton secondaire, lui, est distribué partout. Les deux voies ouvrent donc le
+ * même menu aux mêmes coordonnées, et quand les deux arrivent — c'est le cas sous Chromium — la
+ * seconde repose le même état : rien ne bouge à l'écran.
+ *
+ * On ne peut pas se passer de `contextmenu` pour autant : c'est le seul événement dont le
+ * `preventDefault` retire le menu **natif** de la webview, là où celle-ci en propose un.
+ */
+function estUnClicSecondaire(evenement: ReactPointerEvent<HTMLElement>): boolean {
+  return evenement.button === 2 || (evenement.button === 0 && evenement.ctrlKey)
+}
+
 export type GridColumn<Row> = {
   /** Clé stable, employée pour le rendu et l'association en-tête ↔ cellule. */
   key: string
@@ -47,6 +73,22 @@ export type GridColumn<Row> = {
   cell: (row: Row, index: number) => ReactNode
   /** Cellule de la seconde ligne d'en-tête, quand `filterRow` est demandée. */
   filter?: ReactNode
+  /**
+   * Le nom accessible de la cellule d'en-tête, quand son contenu ne suffit plus à le porter.
+   *
+   * **Un contrôle imbriqué compte pour sa *valeur* dans le nom de ce qui l'entoure.** Une cellule
+   * d'en-tête tire son nom de son contenu, et un widget de plage rencontré au fil de ce contenu y
+   * compte pour sa **valeur** (accname 2F, « embedded control ») : dès que `onColumnResize` est
+   * fourni, la colonne `nom` s'annonce « nom 120 » — et le nom **change à chaque
+   * redimensionnement**.
+   *
+   * C'est le piège n° 1 d'accessibilité du projet, deux contenus qui se concatènent, par un bout
+   * qu'aucun espace explicite n'arrangerait : ce n'est pas l'espace qui manque, c'est le nombre qui
+   * n'a rien à faire là. Mesuré, pas supposé — un test le garde des deux côtés.
+   *
+   * Absent, le nom vient du contenu comme avant.
+   */
+  headerLabel?: string
   /**
    * Retire la poignée de redimensionnement de cette colonne, quand `onColumnResize` est fourni à
    * la grille. La gouttière `#` de `A5` n'a rien à redimensionner : elle n'a pas de contenu dont
@@ -146,6 +188,20 @@ type VirtualGridProps<Row> = {
    * dont une qui supprime une colonne.
    */
   onColumnReorder?: (order: readonly string[]) => void
+  /**
+   * Clic droit sur une cellule d'en-tête.
+   *
+   * **La grille n'ouvre rien elle-même**, et ne connaît aucune des actions proposées : masquer une
+   * colonne est une affaire de `A5`, qui tient déjà l'ensemble des masquées. Elle rend le geste et
+   * ses coordonnées ; l'écran décide de ce qu'on peut faire et le rend avec `MenuContextuel`, comme
+   * le panneau de ligne le fait déjà de son côté.
+   *
+   * Elle avale en revanche le menu **natif** de la webview : là où l'application propose le sien,
+   * en laisser deux se disputer le même clic droit n'a jamais de sens.
+   */
+  onHeaderContextMenu?: (key: string, position: PositionDuMenu) => void
+  /** Clic droit sur une cellule de donnée. Même partage que ci-dessus. */
+  onCellContextMenu?: (row: Row, key: string, index: number, position: PositionDuMenu) => void
   selectedId?: string | null
   onSelect?: (row: Row, index: number) => void
   /**
@@ -202,6 +258,8 @@ export function VirtualGrid<Row>({
   empty,
   onColumnResize,
   onColumnReorder,
+  onHeaderContextMenu,
+  onCellContextMenu,
 }: VirtualGridProps<Row>) {
   const [scrollTop, setScrollTop] = useState(0)
   const viewport = useRef<HTMLDivElement>(null)
@@ -358,6 +416,10 @@ export function VirtualGrid<Row>({
     evenement: ReactPointerEvent<HTMLButtonElement>,
     colonne: GridColumn<Row>,
   ) {
+    // **`ctrl` compris**, et pas seulement le bouton secondaire : sur macOS, `ctrl`+clic est le
+    // clic secondaire et arrive avec `button === 0`. Sans cette garde, il armerait un déplacement
+    // en même temps qu'il ouvre le menu contextuel de l'en-tête.
+    if (evenement.button !== 0 || evenement.ctrlKey) return
     evenement.preventDefault()
     const poignee = evenement.currentTarget
     poignee.setPointerCapture?.(evenement.pointerId)
@@ -526,6 +588,7 @@ export function VirtualGrid<Row>({
           colonneCiblee={colonneCiblee}
           onReorderPointerDown={debuterLeReordonnancement}
           onReorderKeyDown={deplacerColonneAuClavier}
+          onHeaderContextMenu={onHeaderContextMenu}
         />
         {rows.length === 0 && empty !== undefined ? (
           <div className={styles.empty}>{empty}</div>
@@ -577,6 +640,32 @@ export function VirtualGrid<Row>({
                     <div
                       key={colonne.key}
                       role="gridcell"
+                      onPointerDown={
+                        onCellContextMenu === undefined
+                          ? undefined
+                          : (evenement) => {
+                              if (!estUnClicSecondaire(evenement)) return
+                              onCellContextMenu(row, colonne.key, index, {
+                                x: evenement.clientX,
+                                y: evenement.clientY,
+                              })
+                            }
+                      }
+                      onContextMenu={
+                        onCellContextMenu === undefined
+                          ? undefined
+                          : (evenement) => {
+                              evenement.preventDefault()
+                              // La propagation s'arrête ici : sans cela, un second menu s'ouvrirait
+                              // par-dessus celui-ci le jour où un ancêtre en porte un, et le dernier
+                              // ouvert gagnerait — le même arbitrage que le panneau de ligne.
+                              evenement.stopPropagation()
+                              onCellContextMenu(row, colonne.key, index, {
+                                x: evenement.clientX,
+                                y: evenement.clientY,
+                              })
+                            }
+                      }
                       className={cx(
                         styles.td,
                         colonne.numeric && styles.numeric,
@@ -620,6 +709,7 @@ function EnTete<Row>({
   colonneCiblee,
   onReorderPointerDown,
   onReorderKeyDown,
+  onHeaderContextMenu,
 }: {
   columns: readonly GridColumn<Row>[]
   gabarit: string
@@ -637,6 +727,7 @@ function EnTete<Row>({
     colonne: GridColumn<Row>,
   ) => void
   onReorderKeyDown: (evenement: KeyboardEvent<HTMLButtonElement>, colonne: GridColumn<Row>) => void
+  onHeaderContextMenu?: (key: string, position: PositionDuMenu) => void
 }) {
   return (
     <div className={styles.head} role="rowgroup" style={{ width: largeur }}>
@@ -654,6 +745,30 @@ function EnTete<Row>({
             // dépôt ne passe plus par `onDrop` natif (voir `debuterLeReordonnancement`), donc rien
             // d'autre ne désigne cet en-tête comme la colonne survolée.
             data-colonne={onColumnReorder ? colonne.key : undefined}
+            aria-label={colonne.headerLabel}
+            onPointerDown={
+              onHeaderContextMenu === undefined
+                ? undefined
+                : (evenement) => {
+                    if (!estUnClicSecondaire(evenement)) return
+                    onHeaderContextMenu(colonne.key, {
+                      x: evenement.clientX,
+                      y: evenement.clientY,
+                    })
+                  }
+            }
+            onContextMenu={
+              onHeaderContextMenu === undefined
+                ? undefined
+                : (evenement) => {
+                    evenement.preventDefault()
+                    evenement.stopPropagation()
+                    onHeaderContextMenu(colonne.key, {
+                      x: evenement.clientX,
+                      y: evenement.clientY,
+                    })
+                  }
+            }
             className={cx(
               styles.th,
               colonne.numeric && styles.numeric,

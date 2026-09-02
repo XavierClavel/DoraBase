@@ -1,15 +1,25 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { QueryResult, Value } from '../../domain/engine'
 import { useT } from '../../i18n/LanguageContext'
 import { formatInteger } from '../../ui/format'
+import { MenuContextuel } from '../../ui/MenuContextuel/MenuContextuel'
 import { SegmentedControl } from '../../ui/SegmentedControl/SegmentedControl'
-import { type GridColumn, VirtualGrid } from '../../ui/VirtualGrid/VirtualGrid'
-import { estNumerique, rendreValeur } from '../TableView/cellule'
+import { largeurAjustee } from '../../ui/VirtualGrid/ajustement'
+import { type GridColumn, type PositionDuMenu, VirtualGrid } from '../../ui/VirtualGrid/VirtualGrid'
+import { estNumerique, rendreValeur, texteDeValeur } from '../TableView/cellule'
 import type { Dialecte } from '../Workbench/onglets'
 import { ArbreJson } from './ArbreJson'
 import styles from './ConsoleResult.module.css'
 import { documentsDe } from './documents'
 import { VueJson, VueMessages } from './vues'
+
+/**
+ * La largeur d'une colonne dont l'échantillon ne dit rien : la valeur unique de `12c`, devenue un
+ * repli depuis que les colonnes s'ajustent à leur contenu.
+ */
+const LARGEUR_PAR_DEFAUT = 160
+/** Combien de lignes l'ajustement regarde — même échantillon que `A5`, et pour la même raison. */
+const LIGNES_AJUSTEES = 200
 
 /** Les trois vues d'un résultat (`12e`). */
 export type VueResultat = 'resultat' | 'json' | 'messages'
@@ -53,6 +63,40 @@ export function ConsoleResult({
   // La ligne sélectionnée, pour la vue JSON : elle **suit la sélection**, comme le panneau de `10f`.
   // Sérialiser mille lignes pour l'affichage contredirait la contrainte transverse du projet.
   const [rangChoisi, setRangChoisi] = useState<number | null>(null)
+  // Le menu du clic droit sur une valeur ou un en-tête — le même geste et les mêmes libellés que
+  // dans la grille d'`A5` et le panneau de ligne : une valeur se copie de la même façon partout où
+  // elle s'affiche.
+  const [menu, setMenu] = useState<
+    | ({ sorte: 'cellule'; colonne: string; texte: string } & PositionDuMenu)
+    | ({ sorte: 'entete'; colonne: string } & PositionDuMenu)
+    | null
+  >(null)
+  // Les colonnes masquées, par nom — l'écart au défaut, comme dans `A5`. Elles survivent à une
+  // nouvelle exécution : corriger sa requête ne doit pas défaire la mise en page qu'on vient de
+  // régler, et un nom absent du nouveau résultat est simplement sans effet.
+  const [masquees, setMasquees] = useState<ReadonlySet<string>>(new Set())
+  /**
+   * La largeur ajustée de chaque colonne, par nom (`ajustement.ts`).
+   *
+   * **C'est ici qu'elle compte le plus** : une requête libre n'a aucun catalogue pour décider des
+   * largeurs, et la valeur unique de `12c` — 160 px pour tout le monde — était exactement le
+   * défaut faute de mieux qu'un ajustement remplace.
+   *
+   * Déclarée **avant les quatre issues courtes** ci-dessous, comme les états ci-dessus, et donc sur
+   * un résultat qui peut être nul.
+   */
+  const largeursAjustees = useMemo(() => {
+    const parNom: Record<string, number> = {}
+    if (resultat === null) return parNom
+    const echantillon = resultat.rows.slice(0, LIGNES_AJUSTEES)
+    for (const [index, nom] of resultat.columns.entries()) {
+      parNom[nom] = largeurAjustee(
+        nom,
+        echantillon.map((ligne) => texteDeValeur(ligne[index] ?? { kind: 'null' })),
+      )
+    }
+    return parNom
+  }, [resultat])
   // **L'erreur passe avant tout le reste**, y compris un résultat précédent encore en mémoire :
   // l'afficher à côté d'une erreur le ferait lire comme le résultat de la requête qui vient
   // d'échouer — la lecture la plus naturelle, et la plus fausse.
@@ -86,17 +130,27 @@ export function ConsoleResult({
 
   // **La grille de `10a`, avec ses colonnes décrites comme elle l'attend.** Une requête libre n'a que
   // des noms et des valeurs ; la largeur et l'alignement se déduisent donc du résultat lui-même.
-  const colonnes: GridColumn<readonly Value[]>[] = resultat.columns.map((nom, index) => ({
-    key: nom,
-    header: nom,
-    // Une largeur unique : sans catalogue, rien ne dit qu'une colonne est plus large qu'une autre, et
-    // la mesurer sur les valeurs demanderait de les parcourir toutes — ce que `10a` évite justement.
-    width: 160,
-    // L'alignement suit le **genre de la première valeur**, seule information disponible pour une
-    // colonne calculée : `count(*)` n'existe dans aucun catalogue.
-    numeric: estNumerique(resultat.rows[0]?.[index] ?? { kind: 'null' }),
-    cell: (ligne) => rendreValeur(ligne[index] ?? { kind: 'null' }),
-  }))
+  // Ce qui reste affiché : la liste de référence des deux entrées du menu d'en-tête — l'une refuse
+  // de masquer la dernière, l'autre ne paraît que s'il y a de quoi rendre.
+  const visibles = resultat.columns.filter((nom) => !masquees.has(nom))
+
+  const colonnes: GridColumn<readonly Value[]>[] = resultat.columns
+    .map((nom, index) => ({ nom, index }))
+    .filter(({ nom }) => !masquees.has(nom))
+    .map(({ nom, index }) => ({
+      key: nom,
+      header: nom,
+      // Le nom de la colonne, et **lui seul** : sans cela, la poignée de redimensionnement voisine
+      // ajoute son propre libellé au nom de la cellule d'en-tête.
+      headerLabel: nom,
+      // Ajustée au contenu, et à défaut la largeur unique de `12c` — celle d'une colonne dont
+      // l'échantillon ne dit rien.
+      width: largeursAjustees[nom] ?? LARGEUR_PAR_DEFAUT,
+      // L'alignement suit le **genre de la première valeur**, seule information disponible pour une
+      // colonne calculée : `count(*)` n'existe dans aucun catalogue.
+      numeric: estNumerique(resultat.rows[0]?.[index] ?? { kind: 'null' }),
+      cell: (ligne: readonly Value[]) => rendreValeur(ligne[index] ?? { kind: 'null' }),
+    }))
 
   const mongo = dialecte === 'mongo'
 
@@ -166,10 +220,75 @@ export function ConsoleResult({
           selectedId={rangChoisi === null ? null : String(rangChoisi)}
           onSelect={(_, index) => setRangChoisi(index)}
           viewportHeight={320}
+          onHeaderContextMenu={(cle, position) =>
+            setMenu({ sorte: 'entete', colonne: cle, ...position })
+          }
+          onCellContextMenu={(ligne, cle, _rang, position) => {
+            // L'indice du **résultat**, et non celui de l'affichage : c'est lui qui désigne la
+            // valeur dans la ligne reçue.
+            const index = resultat.columns.indexOf(cle)
+            const valeur = index === -1 ? undefined : ligne[index]
+            // Toute cellule d'un résultat a une valeur — `NULL` en est une, et se copie comme elle
+            // s'affiche. Il n'y a donc pas ici l'entrée désactivée qu'`A5` doit prévoir pour une
+            // ligne ajoutée dont la cellule attend encore le défaut de la base.
+            if (valeur === undefined) return
+            setMenu({ sorte: 'cellule', colonne: cle, texte: texteDeValeur(valeur), ...position })
+          }}
           empty={<span>{t('console.resultat.grilleVide')}</span>}
         />
       </div>
       <Barre resultat={resultat} dialecte={dialecte} />
+      {menu !== null &&
+        (menu.sorte === 'cellule' ? (
+          <MenuContextuel
+            x={menu.x}
+            y={menu.y}
+            label={t('console.resultat.menuDeLaValeur', { colonne: menu.colonne })}
+            entrees={[
+              {
+                libelle: t('console.resultat.copierLaValeur'),
+                // Le texte **tel qu'il est rendu** : `texteDeValeur` est la source de l'affichage
+                // comme du presse-papiers, donc un `NULL` copié dit « NULL » et un binaire sa taille.
+                onClick: () => void navigator.clipboard?.writeText(menu.texte),
+              },
+            ]}
+            onFermer={() => setMenu(null)}
+          />
+        ) : (
+          <MenuContextuel
+            x={menu.x}
+            y={menu.y}
+            label={t('console.resultat.menuDeLaColonne', { colonne: menu.colonne })}
+            entrees={[
+              {
+                libelle: t('console.resultat.masquerLaColonne'),
+                // **La dernière colonne ne se masque pas.** C'est ce qui garde le chemin du retour
+                // ouvert : « Réafficher » vit dans le menu d'un en-tête, et masquer le dernier
+                // en-tête retirerait le seul endroit d'où on pourrait revenir. `A5` n'a pas ce
+                // souci — sa barre d'outils compte les colonnes et les rend —, la console n'a pas
+                // cette barre.
+                onClick:
+                  visibles.length > 1
+                    ? () => setMasquees((precedent) => new Set(precedent).add(menu.colonne))
+                    : undefined,
+                raison: visibles.length > 1 ? undefined : t('console.resultat.derniereColonne'),
+              },
+              // **L'entrée n'existe que s'il y a de quoi rendre**, et elle dit combien : une entrée
+              // permanente à « (0) » se lirait comme une action cassée.
+              ...(visibles.length < resultat.columns.length
+                ? [
+                    {
+                      libelle: t('console.resultat.reafficherLesColonnes', {
+                        n: resultat.columns.length - visibles.length,
+                      }),
+                      onClick: () => setMasquees(new Set()),
+                    },
+                  ]
+                : []),
+            ]}
+            onFermer={() => setMenu(null)}
+          />
+        ))}
     </div>
   )
 }

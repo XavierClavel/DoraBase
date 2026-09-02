@@ -23,8 +23,16 @@ import type {
 import { useT } from '../../i18n/LanguageContext'
 import { modificateurActif } from '../../shell/plateforme'
 import { cx } from '../../ui/cx'
-import { type GridColumn, VirtualGrid } from '../../ui/VirtualGrid/VirtualGrid'
-import { apercuDeLaSaisie, estNumerique, rendreValeur } from './cellule'
+import { MenuContextuel } from '../../ui/MenuContextuel/MenuContextuel'
+import { largeurAjustee } from '../../ui/VirtualGrid/ajustement'
+import { type GridColumn, type PositionDuMenu, VirtualGrid } from '../../ui/VirtualGrid/VirtualGrid'
+import {
+  apercuDeLaSaisie,
+  estNumerique,
+  rendreValeur,
+  texteDeSaisie,
+  texteDeValeur,
+} from './cellule'
 import { DocumentJsonModal } from './DocumentJsonModal'
 import { diffCreation, diffDocument, documentDepuisTexte, documentJson } from './documentJson'
 import { EditableCell } from './EditableCell'
@@ -139,8 +147,33 @@ type Ligne = LigneLue | { sorte: 'ajoutee'; rang: number; cle: string }
 
 type LigneLue = { sorte: 'lue'; rang: number; valeurs: readonly Value[] }
 
-/** Largeur par défaut d'une colonne de données, faute de mesure du contenu. */
+/**
+ * Largeur d'une colonne de données dont on ne sait rien — avant la première lecture, et pour une
+ * colonne que l'échantillon ne montre pas.
+ */
 const LARGEUR_COLONNE = 130
+/**
+ * Combien de lignes l'ajustement automatique regarde.
+ *
+ * **Un échantillon, pas la fenêtre entière.** Cinq mille lignes par trente-quatre colonnes font
+ * cent soixante-dix mille valeurs à rendre en texte à chaque lecture, pour une différence que seule
+ * une valeur exceptionnellement longue, tout en bas, produirait — et l'ellipse la coupe déjà
+ * aujourd'hui. Deux cents lignes, c'est vingt écrans : bien au-delà de ce qu'on lit avant de
+ * redimensionner soi-même.
+ */
+const LIGNES_AJUSTEES = 200
+/**
+ * Ce que l'ajustement réserve dans l'en-tête de `A5` : la flèche de tri et son écart.
+ *
+ * Réservés **même sur une colonne non triée**, sans quoi trier prendrait cette place au nom de la
+ * colonne qu'on vient de trier — au moment précis où on la regarde.
+ *
+ * **C'est une marge de prudence, et aucun test de rendu ne la tient.** Ce que la réserve change à
+ * la largeur calculée est vérifié en pur (`ajustement.test.ts`) ; qu'elle soit *nécessaire* ne
+ * l'est pas : mise à zéro, aucune colonne du décor ne se tronque, l'estimation de l'en-tête — 7 px
+ * par caractère contre 6,3 mesurés au plus large — accumulant assez de mou pour absorber la flèche.
+ */
+const MARGE_DE_TRI = 15
 /** La gouttière `#`, à 30 px dans le mockup. */
 const LARGEUR_GOUTTIERE = 30
 /**
@@ -197,6 +230,13 @@ export function TableView({
   // l'ordre est celui de `colonnesEffectives` (le catalogue). Même écart-au-défaut que `masquees`
   // et `largeurs` : changer de table ne demande aucune remise à zéro.
   const [ordreColonnes, setOrdreColonnes] = useState<readonly string[] | null>(null)
+  // Le menu du clic droit — sur un en-tête, ou sur une cellule. **Un seul état pour les deux** :
+  // ils ne peuvent pas être ouverts ensemble, et le second clic droit remplace le premier.
+  const [menu, setMenu] = useState<
+    | ({ sorte: 'entete'; colonne: string } & PositionDuMenu)
+    | ({ sorte: 'cellule'; colonne: string; texte: string | null } & PositionDuMenu)
+    | null
+  >(null)
   const [enEdition, setEnEdition] = useState<EnEdition | null>(null)
   // Le document ouvert dans l'éditeur JSON (`18g`) : une ligne existante à éditer, ou `'creer'` pour
   // le geste du `+` sur une base NoSQL. Un seul état — les deux ne peuvent pas être ouverts ensemble.
@@ -417,6 +457,55 @@ export function TableView({
     return [...ordonnees, ...nouvelles]
   }, [colonnesAvecRang, ordreColonnes])
 
+  /**
+   * La largeur ajustée de chaque colonne, par nom — « auto fit », plafonnée (`ajustement.ts`).
+   *
+   * **Dérivée, jamais mémorisée dans un état.** Elle se recalcule donc à chaque lecture : filtrer
+   * ou changer de palier peut resserrer une colonne, ce qui est le comportement qu'on attend d'un
+   * ajustement. Une largeur posée à la main l'emporte toujours — c'est `largeurs` qui est consulté
+   * en premier — et c'est ce qui rend le recalcul sans conséquence : ce qu'on a réglé soi-même ne
+   * bouge plus.
+   */
+  const largeursAjustees = useMemo(() => {
+    const echantillon = lignes.slice(0, LIGNES_AJUSTEES)
+    const parNom: Record<string, number> = {}
+    for (const [rang, colonne] of colonnesEffectives.entries()) {
+      parNom[colonne.name] = largeurAjustee(
+        colonne.name,
+        echantillon.map((ligne) => texteDeValeur(ligne.valeurs[rang] ?? { kind: 'null' })),
+        { margeDEntete: MARGE_DE_TRI },
+      )
+    }
+    return parNom
+  }, [colonnesEffectives, lignes])
+
+  /**
+   * Le texte d'une cellule, pour « Copier la valeur » du menu contextuel — `null` quand il n'y a
+   * rien à copier.
+   *
+   * **C'est ce qui est *affiché*, pas ce que la base a rendu**, et l'ordre des trois cas est celui
+   * du rendu de la cellule quelques lignes plus bas : une saisie en attente prime sur la valeur
+   * d'origine, sans quoi copier une cellule qu'on vient de modifier rendrait l'ancienne valeur.
+   *
+   * **`null` sur une cellule d'une ligne ajoutée qu'on n'a pas remplie** : la grille y écrit
+   * « défaut », qui est un mot de l'interface et non une donnée. Le menu désactive alors l'entrée
+   * en disant pourquoi, plutôt que de copier ce mot ou de ne rien proposer.
+   */
+  function texteDeLaCellule(ligne: Ligne, nom: string): string | null {
+    if (ligne.sorte === 'ajoutee') {
+      const saisie = valeurDeLaLigne(attente, ligne.cle, nom)
+      return saisie === undefined ? null : texteDeSaisie(saisie)
+    }
+    const cle = cleDe(ligne)
+    const modifiee = cle === null ? undefined : modificationDe(attente, cle, nom)
+    if (modifiee !== undefined) return texteDeSaisie(modifiee.apres)
+    // Le rang du **catalogue** : c'est l'indice de la valeur dans la ligne reçue, que le
+    // déplacement des colonnes ne change pas.
+    const rang = colonnesEffectives.findIndex((colonne) => colonne.name === nom)
+    const valeur = rang === -1 ? undefined : ligne.valeurs[rang]
+    return valeur === undefined ? null : texteDeValeur(valeur)
+  }
+
   const colonnes: GridColumn<Ligne>[] = useMemo(
     () => [
       {
@@ -529,9 +618,12 @@ export function TableView({
                 )}
               </>
             ),
-            width: largeurs[colonne.name] ?? LARGEUR_COLONNE,
+            width: largeurs[colonne.name] ?? largeursAjustees[colonne.name] ?? LARGEUR_COLONNE,
             resizeLabel: t('tableView.grid.resizeColumn', { column: colonne.name }),
             reorderLabel: t('tableView.grid.reorderColumn', { column: colonne.name }),
+            // La cellule d'en-tête s'annonce par le nom de la colonne, pas par la somme des
+            // contrôles qu'elle contient — « Trier par id Redimensionner id ».
+            headerLabel: colonne.name,
             // **Le tri, sur une flèche à part** — jamais sur le nom (`23h`). Le `⌘`-clic empile un
             // second critère : la convention de tous les tableurs et de tous les clients SQL, que
             // le handoff ne dit pas et qu'inventer autrement serait gratuit.
@@ -656,6 +748,7 @@ export function TableView({
       appliquerFiltre,
       masquees,
       largeurs,
+      largeursAjustees,
       attente,
       enEdition,
       edition,
@@ -721,6 +814,22 @@ export function TableView({
               setLargeurs((precedent) => ({ ...precedent, [cle]: largeur }))
             }
             onColumnReorder={(ordre) => setOrdreColonnes(ordre)}
+            // **La gouttière est écartée des deux menus** : elle ne porte ni colonne à masquer —
+            // elle numérote les lignes — ni valeur à copier. Ouvrir un menu dessus proposerait un
+            // geste sans objet.
+            onHeaderContextMenu={(cle, position) => {
+              if (cle === '#') return
+              setMenu({ sorte: 'entete', colonne: cle, ...position })
+            }}
+            onCellContextMenu={(ligne, cle, _rang, position) => {
+              if (cle === '#') return
+              setMenu({
+                sorte: 'cellule',
+                colonne: cle,
+                texte: texteDeLaCellule(ligne, cle),
+                ...position,
+              })
+            }}
             {...(edition
               ? {
                   // Les teintes de `11b`/`A6` : une ligne qui porte une modification, une marque de
@@ -821,6 +930,47 @@ export function TableView({
           }}
         />
       )}
+      {menu !== null &&
+        (menu.sorte === 'entete' ? (
+          <MenuContextuel
+            x={menu.x}
+            y={menu.y}
+            label={t('tableView.grid.columnMenuLabel', { column: menu.colonne })}
+            entrees={[
+              {
+                libelle: t('tableView.grid.hideColumn'),
+                // **Masquer ne change pas la requête** — c'est le `masquees` de la barre d'outils,
+                // et rien d'autre. La colonne se retrouve donc au même endroit, dans le menu
+                // « colonnes » qui compte les visibles : le geste a un retour, ce qui est ce qui
+                // distingue un masquage d'une impasse.
+                onClick: () => setMasquees((precedent) => new Set(precedent).add(menu.colonne)),
+              },
+            ]}
+            onFermer={() => setMenu(null)}
+          />
+        ) : (
+          <MenuContextuel
+            x={menu.x}
+            y={menu.y}
+            label={t('tableView.rowPanel.contextMenuLabel', {
+              what: t('tableView.rowPanel.theValue'),
+              column: menu.colonne,
+            })}
+            entrees={[
+              {
+                libelle: t('tableView.rowPanel.copyWhat', {
+                  what: t('tableView.rowPanel.theValue'),
+                }),
+                onClick:
+                  menu.texte === null
+                    ? undefined
+                    : () => void navigator.clipboard?.writeText(menu.texte ?? ''),
+                raison: menu.texte === null ? t('tableView.grid.nothingToCopy') : undefined,
+              },
+            ]}
+            onFermer={() => setMenu(null)}
+          />
+        ))}
     </div>
   )
 }

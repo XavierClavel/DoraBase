@@ -190,6 +190,57 @@ qu'il portait et que le rendu ne dit pas.
 - **Aucune correction automatique dans les champs.** macOS transformait `localhost` en
   `Localhost` et le nom qu'on tapait dans un champ de renommage. Les quatre attributs
   vivent dans `Field` et doivent être réemployés par toute saisie qui n'y passe pas.
+- **Les colonnes s'ajustent à leur contenu, sous un plafond** (2 septembre 2026, `ajustement.ts`).
+  `A5` donnait 130 px à toutes ses colonnes et la console 160 : deux valeurs faute de mieux, qui
+  laissaient une colonne de booléens aussi large qu'une colonne de dates. Quatre points :
+  - **c'est un calcul, pas une mesure.** Les cellules sont en JetBrains Mono, dont tous les glyphes
+    ont la même avance : un compte de caractères donne la largeur au pixel près, sans rendre puis
+    corriger — donc sans saut visible —, et reste vérifiable sous Vitest, là où une mesure de rendu
+    ne l'est pas (règle n° 9). Les deux avances employées ont été **mesurées dans le navigateur**,
+    pas lues dans une table de police, et c'est un test de bout en bout qui les juge : aucune
+    cellule ni aucun en-tête ne doit être tronqué sous le plafond ;
+  - **le plafond est ce que la demande appelle « too large »** : au-delà, une seule colonne de texte
+    libre pousse toutes ses voisines hors de l'écran, ce qui est l'inverse d'un ajustement. Ce qui
+    dépasse est coupé par l'ellipse, et la poignée de redimensionnement reste là pour l'ouvrir ;
+  - **un échantillon, pas la fenêtre entière** — deux cents lignes. Cinq mille lignes par
+    trente-quatre colonnes font cent soixante-dix mille valeurs à rendre en texte **à chaque
+    lecture** ;
+  - **une largeur posée à la main l'emporte toujours**, et c'est ce qui rend le recalcul sans
+    conséquence : l'ajustement est dérivé, donc il se refait à chaque lecture — filtrer peut
+    resserrer une colonne —, mais ce qu'on a réglé soi-même ne bouge plus.
+- **La console peut masquer une colonne, et son menu porte le retour** (2 septembre 2026). Le
+  masquage y avait d'abord été refusé, faute de chemin de retour : `A5` rend une colonne masquée par
+  le menu « colonnes » de sa barre d'outils, que la console n'a pas. Plutôt qu'inventer cette barre,
+  l'aller porte son retour — « Réafficher les colonnes masquées (n) » vit dans le menu d'en-tête, et
+  n'y paraît que s'il y a de quoi rendre. Ce qui tient l'ensemble : **la dernière colonne visible ne
+  se masque pas**, l'entrée étant désactivée avec sa raison. Sans cette garde, masquer le dernier
+  en-tête retirerait le seul endroit d'où l'on pouvait revenir.
+- **Le clic droit ouvre un menu sur un en-tête et sur une cellule** (2 septembre 2026) — « Masquer
+  la colonne » et « Copier la valeur ». C'est le geste et le composant que le panneau de ligne
+  emploie déjà (`MenuContextuel`), et les libellés sont **les siens**, réemployés : la même action
+  sur la même donnée ne doit pas se dire de deux façons. Cinq points à ne pas défaire :
+  - **la grille n'ouvre rien elle-même.** Elle rend le geste et ses coordonnées ; masquer une
+    colonne appartient à `A5`, qui tient déjà l'ensemble des masquées, et la grille de la console
+    n'a pas la même liste d'actions ;
+  - **elle avale en revanche le menu natif** de la webview, là où l'application propose le sien :
+    deux menus qui se disputent un clic droit ne sont un choix pour personne ;
+  - **il ne suffit pas d'écouter `contextmenu`.** WebKit ne le distribue pas sur un élément en
+    `-webkit-user-select: none`, que `reset.css` pose sur tout le `body` : le geste marchait sous
+    Chromium, donc dans toute la suite Playwright, et **ne faisait rien** dans la fenêtre de
+    `pnpm tauri dev`. Les menus s'ouvrent donc aussi sur un `pointerdown` du bouton secondaire —
+    `ctrl`+clic compris, qui arrive avec `button === 0`. `contextmenu` reste indispensable : son
+    `preventDefault` est la seule façon de retirer le menu natif de la webview ;
+  - **le clic droit ne demande pas de jumeau au clavier**, contrairement au déplacement de colonne.
+    Les deux actions en ont déjà un : masquer se fait dans le menu « colonnes » de la barre
+    d'outils, et copier une valeur dans le panneau de ligne. Un menu contextuel qui redouble un
+    chemin existant n'est pas un chemin unique ;
+  - **« Copier la valeur » copie ce qui est *affiché*.** Une saisie en attente prime donc sur la
+    valeur de la base — copier l'ancienne rendrait une valeur que l'écran ne montre plus. Et une
+    cellule d'une ligne ajoutée qu'on n'a pas remplie affiche « défaut », qui est un mot de
+    l'interface : l'entrée y est **désactivée avec sa raison** plutôt que de copier ce mot ;
+  - **la console reçoit le menu de copie, pas celui de masquage à distance.** Le masquage lui-même
+    existe des deux côtés — `A5` par la barre d'outils et le menu d'en-tête, la console par le
+    seul menu d'en-tête, qui porte alors son propre retour (voir ci-dessus).
 
 ### La règle « ligne liée »
 
@@ -199,7 +250,7 @@ moins un champ lisible par un humain — liste blanche insensible à la casse : 
 `slug`, `code`, `reference`. Sinon, ne rien afficher : pas de dump d'identifiants
 techniques. Mentionner les champs détectés en légende.
 
-### Accessibilité — quatre pièges qui se sont répétés
+### Accessibilité — cinq pièges qui se sont répétés
 
 1. **Le nom accessible se concatène sans espace.** « Tables8 », « orders1.9 M » : quatre
    occurrences. Dès qu'un composant place deux contenus côte à côte, l'espace doit être
@@ -215,6 +266,14 @@ techniques. Mentionner les champs détectés en légende.
 4. **Une infobulle *décrit*, elle ne *nomme* pas** : `aria-describedby`, jamais
    `aria-label`, qui ferait s'annoncer le contrôle par sa limite plutôt que par sa
    fonction.
+5. **Un contrôle imbriqué compte pour sa *valeur* dans le nom de ce qui l'entoure.** Une cellule
+   d'en-tête tire son nom de son contenu, et un `role="slider"` rencontré au fil de ce contenu y
+   entre par son `aria-valuenow` (accname 2F, « embedded control ») : la poignée de
+   redimensionnement faisait s'annoncer `nom` « nom 120 », et **le nom de la colonne changeait à
+   chaque redimensionnement**. C'est le piège n° 1 par un bout qu'aucun espace explicite
+   n'arrangerait — ce n'est pas l'espace qui manque, c'est le nombre qui n'a rien à faire là. D'où
+   `GridColumn.headerLabel`, qui rend son nom à la cellule ; un test le garde **des deux côtés**,
+   avec et sans.
 
 **Les assertions de test passent par `getByRole` avec nom accessible**, et le motif doit
 être **ancré** : `/orders/` compte aussi `orders_by_day`. Biome n'a aucune règle de nom
