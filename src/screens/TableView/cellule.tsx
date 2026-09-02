@@ -118,3 +118,12 @@ export function apercuDeLaSaisie(saisie: Saisie): ReactNode {
   if (saisie.kind === 'null') return <span className={styles.nul}>NULL</span>
   return saisie.texte
 }
+
+/**
+ * La même saisie, **en texte** — le jumeau d'`apercuDeLaSaisie`, comme `texteDeValeur` l'est de
+ * `rendreValeur`, et pour la même raison : « Copier la valeur » copie ce qu'on lit, et une cellule
+ * qui porte une modification en attente affiche la valeur **saisie**, pas celle de la base.
+ */
+export function texteDeSaisie(saisie: Saisie): string {
+  return saisie.kind === 'null' ? 'NULL' : saisie.texte
+}

@@ -122,6 +122,13 @@ export const tableViewFr: Dictionnaire = {
     modifyColumn: (p) => `Modifier ${p.column}`,
     resizeColumn: (p) => `Redimensionner ${p.column}`,
     reorderColumn: (p) => `Déplacer ${p.column} (flèches gauche et droite)`,
+    // Les deux menus du clic droit. Le libellé de « Copier la valeur » et le nom du menu de cellule
+    // sont ceux du panneau de ligne (`rowPanel.copyWhat`, `rowPanel.contextMenuLabel`) : c'est la
+    // même action sur la même donnée, et deux formulations qui dériveraient se liraient comme deux
+    // gestes différents.
+    columnMenuLabel: (p) => `Actions sur la colonne ${p.column}`,
+    hideColumn: 'Masquer la colonne',
+    nothingToCopy: 'Cette cellule prend le défaut de la base : elle n’a pas encore de valeur.',
     noPrimaryKeyReason:
       'Cette table n’a pas de clé primaire : DoraBase ne saurait pas quelle ligne mettre à jour.',
     deletedRowReason: 'Cette ligne est marquée pour suppression : elle ne se modifie plus.',
@@ -267,6 +274,9 @@ export const tableViewEn: Dictionnaire = {
     modifyColumn: (p) => `Modify ${p.column}`,
     resizeColumn: (p) => `Resize ${p.column}`,
     reorderColumn: (p) => `Move ${p.column} (left and right arrows)`,
+    columnMenuLabel: (p) => `Actions on column ${p.column}`,
+    hideColumn: 'Hide column',
+    nothingToCopy: 'This cell takes the database default: it has no value yet.',
     noPrimaryKeyReason:
       'This table has no primary key: DoraBase would not know which row to update.',
     deletedRowReason: 'This row is marked for deletion: it can no longer be modified.',

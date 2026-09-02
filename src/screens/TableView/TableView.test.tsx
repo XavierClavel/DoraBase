@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
@@ -102,6 +102,75 @@ describe('TableView', () => {
   it('une table sans ligne le dit, et ne ressemble ni à un chargement ni à un échec', async () => {
     monter(fenetre([]))
     expect(await screen.findByText(/ne contient aucune ligne/)).toBeInTheDocument()
+  })
+
+  it('le clic droit sur un en-tête propose de masquer la colonne, et la masque', async () => {
+    const utilisateur = userEvent.setup()
+    monter(
+      fenetre([
+        [{ kind: 'int', value: 184_220 }, { kind: 'text', value: 'paid' }, { kind: 'null' }],
+      ]),
+    )
+
+    const grille = await screen.findByRole('grid', { name: 'Lignes de public.orders' })
+    const noms = () =>
+      within(grille)
+        .getAllByRole('columnheader')
+        .slice(0, 4)
+        .map((entete) => entete.textContent?.replace(/\s+/g, ' ').trim())
+    await waitFor(() => expect(noms()).toEqual(['#', 'id', 'status', 'shipped_at']))
+
+    const statut = within(grille).getByRole('columnheader', { name: 'status' })
+    fireEvent.contextMenu(statut, { clientX: 120, clientY: 20 })
+
+    const menu = await screen.findByRole('menu', { name: 'Actions sur la colonne status' })
+    await utilisateur.click(within(menu).getByRole('menuitem', { name: 'Masquer la colonne' }))
+
+    expect(noms().slice(0, 3)).toEqual(['#', 'id', 'shipped_at'])
+    // **Le masquage n'est pas une impasse** : la colonne reste comptée par le menu « colonnes » de
+    // la barre d'outils, qui est le chemin du retour.
+    expect(screen.getByRole('button', { name: /colonnes/i }).textContent).toContain('2/3')
+  })
+
+  it('le clic droit sur une cellule copie la valeur telle qu’elle est affichée', async () => {
+    const utilisateur = userEvent.setup()
+    const writeText = vi.fn(async (_texte: string) => {})
+    // `navigator.clipboard` n'a qu'un accesseur sous jsdom : il faut redéfinir la propriété.
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    monter(
+      fenetre([
+        [{ kind: 'int', value: 184_220 }, { kind: 'text', value: 'paid' }, { kind: 'null' }],
+      ]),
+    )
+
+    const grille = await screen.findByRole('grid', { name: 'Lignes de public.orders' })
+    await waitFor(() => expect(within(grille).getAllByRole('gridcell').length).toBeGreaterThan(3))
+    // La cellule d'`id` : sa valeur est **groupée** à l'affichage, et c'est ce texte-là qui doit
+    // partir au presse-papiers — la promesse de `texteDeValeur`, copier ce qu'on lit.
+    const cellule = within(grille).getAllByRole('gridcell')[1]
+    if (!cellule) throw new Error('cellule introuvable')
+    fireEvent.contextMenu(cellule, { clientX: 60, clientY: 60 })
+
+    const menu = await screen.findByRole('menu', { name: 'Actions sur la valeur de id' })
+    await utilisateur.click(within(menu).getByRole('menuitem', { name: 'Copier la valeur' }))
+    expect(writeText.mock.calls[0]?.[0]?.replace(/\s/g, ' ')).toBe('184 220')
+  })
+
+  it('la gouttière n’ouvre aucun des deux menus', async () => {
+    monter(
+      fenetre([[{ kind: 'int', value: 1 }, { kind: 'text', value: 'paid' }, { kind: 'null' }]]),
+    )
+    const grille = await screen.findByRole('grid', { name: 'Lignes de public.orders' })
+    await waitFor(() => expect(within(grille).getAllByRole('gridcell').length).toBeGreaterThan(3))
+
+    const gouttiere = within(grille).getAllByRole('columnheader')[0]
+    const cellule = within(grille).getAllByRole('gridcell')[0]
+    if (!gouttiere || !cellule) throw new Error('gouttière introuvable')
+    fireEvent.contextMenu(gouttiere)
+    fireEvent.contextMenu(cellule)
+
+    // Rien à masquer — elle numérote les lignes —, rien à copier : le rang n'est pas une donnée.
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
   it('un échec de lecture est affiché, et la grille ne prétend pas être vide', async () => {

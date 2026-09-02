@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -188,6 +188,29 @@ describe('valider, abandonner, retenir', () => {
     return screen.getByLabelText('Nouvelle valeur')
   }
 
+  it('« Copier la valeur » copie la saisie retenue, pas celle de la base', async () => {
+    const utilisateur = userEvent.setup()
+    const writeText = vi.fn(async (_texte: string) => {})
+    // `navigator.clipboard` n'a qu'un accesseur sous jsdom : il faut redéfinir la propriété.
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    monter()
+    const champ = await ouvrirStatus(utilisateur)
+
+    await utilisateur.clear(champ)
+    await utilisateur.type(champ, 'shipped{Enter}')
+    await waitFor(() => expect(screen.getAllByText('shipped')).not.toHaveLength(0))
+
+    // La cellule affiche désormais « shipped » ; c'est ce qu'on lit, donc ce qui doit être copié.
+    // Copier « paid » rendrait une valeur que l'écran ne montre plus nulle part.
+    const cellule = screen.getAllByText('shipped')[0]?.closest('[role="gridcell"]')
+    if (!(cellule instanceof HTMLElement)) throw new Error('cellule introuvable')
+    fireEvent.contextMenu(cellule, { clientX: 40, clientY: 40 })
+
+    const menu = await screen.findByRole('menu', { name: 'Actions sur la valeur de status' })
+    await utilisateur.click(within(menu).getByRole('menuitem', { name: 'Copier la valeur' }))
+    expect(writeText.mock.calls[0]?.[0]).toBe('shipped')
+  })
+
   it('↩ retient la modification, et rien n’est envoyé', async () => {
     const utilisateur = userEvent.setup()
     const { derniere, readRows } = monter()
@@ -365,6 +388,30 @@ describe('ajouter une ligne', () => {
     })
     expect(within(ajoutee).getAllByText('défaut')).toHaveLength(3)
     expect(within(ajoutee).queryByText('NULL')).not.toBeInTheDocument()
+  })
+
+  it('une cellule qui attend le défaut n’a pas de valeur à copier, et le dit', async () => {
+    const utilisateur = userEvent.setup()
+    monter()
+    const grille = await attendreLaGrille()
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Ajouter une ligne' }))
+    const ajoutee = await waitFor(() => {
+      const trouvee = within(grille)
+        .getAllByRole('row')
+        .find((ligne) => within(ligne).queryByText('+1') !== null)
+      if (trouvee === undefined) throw new Error('la ligne ajoutée n’est pas rendue')
+      return trouvee
+    })
+
+    const defaut = within(ajoutee).getAllByText('défaut')[0]?.closest('[role="gridcell"]')
+    if (!(defaut instanceof HTMLElement)) throw new Error('cellule introuvable')
+    fireEvent.contextMenu(defaut, { clientX: 40, clientY: 40 })
+
+    // **L'entrée est désactivée, pas absente** : un menu vide n'apprend rien, et « défaut » est un
+    // mot de l'interface — le copier rendrait un texte qui n'est la valeur de rien.
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).getByRole('menuitem', { name: 'Copier la valeur' })).toBeDisabled()
   })
 
   it('la clé primaire se saisit dans une ligne ajoutée, pas dans une ligne lue', async () => {

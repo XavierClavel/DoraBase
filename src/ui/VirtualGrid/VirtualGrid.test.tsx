@@ -208,6 +208,28 @@ describe('VirtualGrid', () => {
       expect(screen.queryByLabelText('Redimensionner id')).not.toBeInTheDocument()
     })
 
+    it('sans headerLabel, le nom de la cellule d’en-tête absorbe celui de la poignée', () => {
+      // Contrôle **positif** du test suivant : c'est ce qui arrive quand la cellule tire son nom de
+      // son contenu et que ce contenu comprend un contrôle. Sans ce test, `headerLabel` pourrait
+      // cesser de servir à quoi que ce soit sans que rien ne bouge.
+      //
+      // **Et ce qui s'y ajoute est la *valeur*, pas le libellé** : un widget de plage rencontré au
+      // fil du contenu compte pour son `aria-valuenow` (accname 2F), donc la colonne s'annonce
+      // « nom 120 » — et le nom d'une colonne **changerait à chaque redimensionnement**.
+      grille({ rows: lignes(3), onColumnResize: () => {} })
+      expect(screen.queryByRole('columnheader', { name: /^nom$/ })).not.toBeInTheDocument()
+      expect(screen.getByRole('columnheader', { name: 'nom 120' })).toBeInTheDocument()
+    })
+
+    it('headerLabel rend son nom à la cellule d’en-tête', () => {
+      grille({
+        rows: lignes(3),
+        onColumnResize: () => {},
+        columns: COLONNES.map((colonne) => ({ ...colonne, headerLabel: colonne.key })),
+      })
+      expect(screen.getByRole('columnheader', { name: /^nom$/ })).toBeInTheDocument()
+    })
+
     it('glisser la poignée redimensionne, et onColumnResize n’est appelé qu’au relâchement', () => {
       const largeurs: Array<[string, number]> = []
       grille({ rows: lignes(3), onColumnResize: (cle, largeur) => largeurs.push([cle, largeur]) })
@@ -446,6 +468,101 @@ describe('VirtualGrid', () => {
       // Seule la flèche dédiée le fait.
       await utilisateur.click(screen.getByRole('button', { name: 'Trier par nom' }))
       expect(tris).toEqual(['nom'])
+    })
+  })
+
+  describe('menus contextuels', () => {
+    it('sans les props, le clic droit laisse passer le menu natif', () => {
+      grille({ rows: lignes(3) })
+      const cellule = screen.getAllByRole('gridcell')[0]
+      const entete = screen.getAllByRole('columnheader')[0]
+      if (!cellule || !entete) throw new Error('cellule introuvable')
+      // `fireEvent` rend `false` quand le défaut a été empêché : ici rien ne doit l'être, sans quoi
+      // la webview n'aurait ni le menu de l'application ni le sien.
+      expect(fireEvent.contextMenu(cellule)).toBe(true)
+      expect(fireEvent.contextMenu(entete)).toBe(true)
+    })
+
+    it('le clic droit sur un en-tête rend sa clé et le point du clic', () => {
+      const appels: Array<[string, number, number]> = []
+      grille({
+        rows: lignes(3),
+        onHeaderContextMenu: (cle, position) => appels.push([cle, position.x, position.y]),
+      })
+      const entete = screen.getAllByRole('columnheader')[1]
+      if (!entete) throw new Error('en-tête introuvable')
+
+      expect(fireEvent.contextMenu(entete, { clientX: 40, clientY: 12 })).toBe(false)
+      expect(appels).toEqual([['nom', 40, 12]])
+    })
+
+    it('le bouton secondaire ouvre le menu sans passer par `contextmenu`', () => {
+      // **La voie que WebKit distribue.** `contextmenu` n'est pas émis sur un élément en
+      // `-webkit-user-select: none`, que `reset.css` pose sur tout le `body` : sans ce second
+      // chemin, le clic droit ne fait rien dans la fenêtre de `pnpm tauri dev` — et rien ne le dit,
+      // puisque Chromium, lui, émet les deux.
+      const entetes: string[] = []
+      const cellules: string[] = []
+      grille({
+        rows: lignes(3),
+        onHeaderContextMenu: (cle) => entetes.push(cle),
+        onCellContextMenu: (_ligne, cle) => cellules.push(cle),
+      })
+      const entete = screen.getAllByRole('columnheader')[1]
+      const cellule = screen.getAllByRole('gridcell')[1]
+      if (!entete || !cellule) throw new Error('cellule introuvable')
+
+      fireEvent.pointerDown(entete, { button: 2 })
+      fireEvent.pointerDown(cellule, { button: 2 })
+      expect(entetes).toEqual(['nom'])
+      expect(cellules).toEqual(['nom'])
+    })
+
+    it('`ctrl`+clic sur la poignée de glissement ouvre le menu, sans démarrer de déplacement', () => {
+      // Le clic secondaire de macOS arrive avec `button === 0` : sans la garde posée dans
+      // `debuterLeReordonnancement`, il armerait un déplacement en même temps qu'il ouvre le menu.
+      const entetes: string[] = []
+      const ordres: Array<readonly string[]> = []
+      const COLONNES_REORDER: GridColumn<Ligne>[] = [
+        { key: 'id', header: 'id', width: 64, cell: (l) => l.id, reorderable: false },
+        {
+          key: 'nom',
+          header: 'nom',
+          width: 120,
+          cell: (l) => l.nom,
+          reorderLabel: 'Déplacer nom (flèches gauche et droite)',
+        },
+      ]
+      grille({
+        columns: COLONNES_REORDER,
+        rows: lignes(3),
+        onColumnReorder: (ordre) => ordres.push(ordre),
+        onHeaderContextMenu: (cle) => entetes.push(cle),
+      })
+      const poignee = screen.getByLabelText('Déplacer nom (flèches gauche et droite)')
+      fireEvent.pointerDown(poignee, { button: 0, ctrlKey: true, clientX: 0, pointerId: 1 })
+      fireEvent.pointerMove(poignee, { clientX: 200, pointerId: 1 })
+      fireEvent.pointerUp(poignee, { clientX: 200, pointerId: 1 })
+
+      // Le menu s'ouvre — la voie `pointerdown` bulle depuis la poignée jusqu'à l'en-tête.
+      expect(entetes).toEqual(['nom'])
+      // Et le déplacement ne démarre pas : aucun écouteur n'a été posé.
+      expect(ordres).toEqual([])
+    })
+
+    it('le clic droit sur une cellule rend sa ligne, sa colonne et son rang', () => {
+      const appels: Array<[number, string, number]> = []
+      grille({
+        rows: lignes(3),
+        onCellContextMenu: (ligne, cle, rang) => appels.push([ligne.id, cle, rang]),
+      })
+      // La deuxième ligne, seconde colonne : trois coordonnées qui diffèrent toutes, sans quoi une
+      // permutation des arguments passerait inaperçue (règle n° 5).
+      const cellule = screen.getAllByRole('gridcell')[3]
+      if (!cellule) throw new Error('cellule introuvable')
+
+      expect(fireEvent.contextMenu(cellule)).toBe(false)
+      expect(appels).toEqual([[1, 'nom', 1]])
     })
   })
 })
