@@ -284,7 +284,65 @@ def verifier_publication() -> None:
               "publiée s'ouvrirait sur la vue Finder par défaut", file=sys.stderr)
         raise SystemExit(1)
 
-    print(f"publication.yml cohérent — {len(jobs)} job, tag ancré, release publiée")
+    # ── L'installateur Windows, depuis le 1er septembre 2026 ──────────────────────────────
+    #
+    # Il s'attache à une release que le job `macos` a déjà créée. Trois faits le tiennent, et
+    # aucun ne se remarquerait autrement qu'en regardant une release publiée :
+    windows = etapes_de(jobs, "windows", 14, "publication.yml")
+
+    # 1. L'ordre. Sans `needs: macos`, `gh release upload` court contre `gh release create` :
+    #    l'upload échoue si la release n'existe pas encore, et il échoue **par intermittence**,
+    #    ce qui est la pire façon d'échouer pour un workflow qui ne tourne que sur un tag.
+    if jobs["windows"].get("needs") != "macos":
+        print("publication.yml : le job « windows » doit déclarer `needs: macos` — il téléverse "
+              "dans une release que le job macOS crée, et sans l'ordre l'upload court contre "
+              "la création", file=sys.stderr)
+        raise SystemExit(1)
+
+    commandes_windows = commandes_de(windows)
+
+    # 2. Ce qu'il fait, et ce qu'il vérifie avant de publier.
+    for fragment, raison in (
+        ("pnpm proxy:embarquer",
+         "toute commande cargo échouerait sur l'`externalBin` absent (défaut n° 111)"),
+        ("verifier-conf-windows.py",
+         "le recouvrement de configuration pourrait perdre la fenêtre en silence"),
+        ("cargo test", "une release publique ne se pose pas sur des tests non joués"),
+        ("tauri build", "rien ne construirait l'installateur"),
+        ("verifier-aucun-decor-de-version.sh",
+         "la version de décor pourrait partir dans le binaire livré"),
+        ("cloud-sql-proxy.exe --version",
+         "le sidecar embarqué pourrait manquer, ou porter une autre version que le verrou"),
+        ("gh release upload", "l'installateur ne serait attaché à aucune release"),
+    ):
+        if fragment not in commandes_windows:
+            print(f"publication.yml : le job « windows » a perdu « {fragment} » — {raison}",
+                  file=sys.stderr)
+            raise SystemExit(1)
+
+    # 3. **Et surtout : il ne publie pas de mise à jour.** Faute de certificat Authenticode,
+    #    rien n'atteste qu'un exécutable téléchargé vient de nous — c'est « rien n'est proposé
+    #    qui n'ait été notarié », transposé. Téléverser l'archive `.nsis.zip` ou ajouter
+    #    `windows-x86_64` au manifeste ouvrirait cette voie **en silence**, chez des gens qui
+    #    n'ont rien demandé. Le jour où c'est décidé, c'est ce garde qu'il faut retirer, et le
+    #    retirer est alors un geste visible en revue.
+    if "nsis.zip" in commandes_windows:
+        print("publication.yml : le job « windows » téléverse une archive de mise à jour.\n"
+              "  Sans certificat Authenticode, rien n'atteste son origine — et le chemin de mise\n"
+              "  à jour n'a jamais été exercé, même sur macOS. Si c'est voulu, retirez ce garde\n"
+              "  avec sa raison.", file=sys.stderr)
+        raise SystemExit(1)
+
+    manifeste = commandes_de(etapes)
+    if "windows-x86_64" in manifeste:
+        print("publication.yml : le manifeste de mise à jour porte `windows-x86_64`.\n"
+              "  Les installations Windows se mettraient à jour avec un exécutable que rien\n"
+              "  n'authentifie. Si c'est voulu, retirez ce garde avec sa raison.",
+              file=sys.stderr)
+        raise SystemExit(1)
+
+    print(f"publication.yml cohérent — {len(jobs)} jobs, tag ancré, release publiée, "
+          "installateur Windows attaché sans voie de mise à jour")
 
 
 def verifier_playwright() -> None:

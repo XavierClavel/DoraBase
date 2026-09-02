@@ -1060,13 +1060,29 @@ a une. À reprendre quand la sélection sera transmise.
 
 ### Windows (31 août 2026)
 
-**Windows est une cible de développement et d'exécution ; ce n'est pas une cible de
-publication.** Le produit y compile, s'y lance et y fait tout ce qu'il fait sur macOS —
-Gestionnaire d'identifiants, SSH, dump, proxy Cloud SQL —, et `ci.yml` porte un job
-`windows-latest` qui le tient. Ce qui n'existe pas : **aucun installateur signé, aucune mise à
-jour en place**. Il n'y a pas de certificat Authenticode, donc SmartScreen avertit à chaque
-téléchargement ; c'est le même arbitrage que `signingIdentity: "-"` avant l'achat du Developer
-ID, un cran plus rude. `publication.yml` n'a pas bougé et ne fabrique toujours qu'un `.dmg`.
+**Windows est une cible de développement, d'exécution et — depuis le 1er septembre 2026 — de
+distribution.** Le produit y compile, s'y lance et y fait tout ce qu'il fait sur macOS —
+Gestionnaire d'identifiants, SSH, dump, proxy Cloud SQL —, `ci.yml` porte un job
+`windows-latest` qui le tient, et `publication.yml` attache un installateur NSIS à chaque
+release.
+
+**Ce qui n'existe toujours pas : la signature, et donc la mise à jour en place.** Il n'y a pas
+de certificat Authenticode, donc SmartScreen avertit à chaque téléchargement — c'est le même
+arbitrage que `signingIdentity: "-"` avant l'achat du Developer ID, un cran plus rude, et les
+notes de release le disent plutôt que de le laisser découvrir. Corollaire à ne pas défaire :
+`latest.json` ne porte que les deux clefs `darwin-*`, et l'archive `.nsis.zip` que
+`createUpdaterArtifacts` produit **n'est pas publiée**. C'est « rien n'est proposé qui n'ait été
+notarié » transposé : proposer un remplacement qu'on ne peut pas authentifier, chez des gens qui
+n'ont rien demandé, est pire que ne rien proposer. Deux gardes de `verifier-ci.py` le tiennent,
+et les retirer est le geste visible en revue qui ouvrirait cette voie.
+
+**L'installateur s'attache après coup, et c'est un ordre, pas une négligence.** Le job `windows`
+de `publication.yml` déclare `needs: macos` et emploie `gh release upload` — pas un second
+`gh release create`, dont l'unicité décide du `--latest`. La conséquence voulue : **un échec de
+la construction Windows ne coûte pas la release macOS**, qui reste l'artefact soutenu. Faire
+l'inverse rendrait la publication macOS tributaire d'une plateforme qui n'est même pas signée.
+Ce qui se paie en échange est quelques minutes entre la parution de la release et celle du
+`.exe`.
 
 **La plateforme est une constante de construction, `__APP_PLATFORM__`** — posée par
 `vite.config.ts` depuis `process.platform`, comme `__APP_ARCH__` et pour la raison qui y est
@@ -1135,6 +1151,35 @@ prudence, et le résultat aurait été un **fichier chiffré à vie**, y compris
 fidèlement par le badge d'`A2` sans que personne se demande pourquoi. `selectionner` porte donc
 un `if cfg!(windows)`, en `cfg!` et non `#[cfg]` pour que les deux branches restent compilées
 partout.
+
+**`USERPROFILE` est le `HOME` de Windows, et l'oublier ne plante pas : ça ment.** Windows ne pose
+pas `HOME`, donc un `var_os("HOME")` seul y rend `None` — et un `~/` de tête restait **littéral**.
+Le fichier SQLite était alors cherché dans un répertoire **nommé `~`**, le certificat d'autorité
+aussi, et le `known_hosts` devenant relatif, **toute** connexion tunnelée était refusée avec le
+message qui donne la manœuvre. Trois réponses fausses avec l'aplomb d'un diagnostic, là où une
+panne franche aurait été plus honnête.
+
+**Le défaut était à quatre endroits, et c'est la leçon.** `tls.rs`, `sqlite/connect.rs`,
+`engine/commands.rs` et `programme.rs` lisaient chacun `HOME` de son côté — et le commentaire de
+`chemin_absolu` dans `tls.rs` annonçait déjà « une seule fonction vaut mieux que trois », en
+comptant juste. C'est ainsi qu'un défaut arrive à quatre exemplaires : la question « où habite
+l'utilisateur » n'a qu'une réponse, elle doit n'avoir qu'un lieu. C'est
+`programme::repertoire_personnel` désormais, et les trois autres y délèguent.
+
+Deux conséquences voulues de cette délégation, au passage : un `~` **seul** et un
+`~autre-utilisateur` ne sont plus développés. Le premier ne désigne pas un fichier ; le second
+donnait `<maison>autre-utilisateur/…`, un chemin fabriqué qui n'était jamais celui qu'on visait.
+
+**Et c'est le job Windows de la CI qui l'a trouvé, pas la compilation croisée.** `cargo xwin
+clippy --all-targets` **compile** les tests sans les **exécuter** — le même piège que le job macOS
+avait connu le 5 août 2026 avec `clippy --all-targets`. Un `cargo test` pour Windows ne peut pas
+tourner depuis un Mac, faute de pouvoir exécuter le binaire produit. Ce qui s'en approche le plus
+localement, et qui aurait suffi ici : lancer la suite **sans `HOME`**, avec `USERPROFILE` seul —
+c'est la forme d'environnement que Windows présente, et elle se simule en une ligne.
+
+```bash
+env -u HOME USERPROFILE=/tmp/faux-home target/debug/deps/dorabase_lib-<empreinte>
+```
 
 **Deux pièges de configuration mesurés plutôt que supposés :**
 
