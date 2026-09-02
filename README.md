@@ -1,17 +1,17 @@
 # DoraBase
 
-Un explorateur de bases de données desktop pour macOS : la densité de l'explorateur
+Un explorateur de bases de données desktop pour macOS et Windows : la densité de l'explorateur
 d'IntelliJ, sans l'IDE. Quatre moteurs — **PostgreSQL**, **MySQL / MariaDB**, **SQLite**,
 **MongoDB** — derrière un seul arbre, une grille dense, une console SQL et un écran de
 structure.
 
 Tauri 2 + React / TypeScript / Vite.
 
-**Windows se compile et se lance, mais n'est pas publié** (31 août 2026) : le produit y fait
-tout ce qu'il fait sur macOS, et la CI le vérifie à chaque commit — mais il n'y a **pas
-d'installateur signé ni de mise à jour en place**, faute de certificat Authenticode. Il faut
-donc le construire soi-même (voir *Développer*), et Windows avertira au lancement. Les versions
-publiées ci-dessous sont macOS seulement.
+**Windows est distribué, mais non signé.** Chaque version publiée porte un installateur
+`.exe` à côté du `.dmg` : le produit y fait tout ce qu'il fait sur macOS, et la CI le vérifie à
+chaque commit. Ce qui manque est un certificat Authenticode, donc **Windows avertira au
+téléchargement** et **les installations Windows ne se mettent pas à jour seules** — il faut
+retélécharger l'installateur à chaque version.
 
 ---
 
@@ -27,7 +27,9 @@ empreinte SHA-256 :
 | `DoraBase-X.Y.Z-universal.dmg` | l'application, à glisser dans *Applications* |
 | `DoraBase-X.Y.Z-universal.dmg.sha256` | l'empreinte, à comparer avant d'ouvrir |
 | `DoraBase-X.Y.Z-universal.app.tar.gz` | la mise à jour, que l'application va chercher elle-même |
-| `latest.json` | ce que l'application lit pour savoir qu'une version existe |
+| `latest.json` | ce que l'application lit pour savoir qu'une version existe (macOS seulement) |
+| `DoraBase-X.Y.Z-x64-setup.exe` | l'installateur Windows, **non signé** — voir plus bas |
+| `DoraBase-X.Y.Z-x64-setup.exe.sha256` | son empreinte |
 
 **macOS 13 Ventura** au minimum. Toutes les versions sont sur la
 [page des releases](https://github.com/g3wis/DoraBase/releases).
@@ -52,6 +54,24 @@ L'empreinte du `.dmg` est publiée à côté de lui :
 shasum -a 256 ~/Téléchargements/DoraBase-*.dmg
 ```
 
+### Installer sur Windows
+
+Télécharger `DoraBase-X.Y.Z-x64-setup.exe` et l'exécuter. **Windows affichera un avertissement
+SmartScreen** — « Windows a protégé votre ordinateur » —, à passer par *Informations
+complémentaires → Exécuter quand même*.
+
+Ce n'est pas un défaut de l'installateur : il n'est signé par aucun certificat Authenticode, donc
+rien n'atteste son origine, et SmartScreen le dit. Comparer l'empreinte publiée à côté est la
+vérification qui reste :
+
+```powershell
+Get-FileHash DoraBase-X.Y.Z-x64-setup.exe -Algorithm SHA256
+```
+
+**Il n'y a pas de mise à jour automatique sous Windows** : l'application ne propose rien, et il
+faut retélécharger l'installateur à chaque version. C'est délibéré — proposer un remplacement que
+personne ne peut authentifier serait pire que de ne rien proposer.
+
 ### Mettre à jour
 
 Rien à télécharger. Quand une version plus récente existe, DoraBase l'annonce dans sa **barre
@@ -73,11 +93,11 @@ ne l'a pas, et le dit plutôt que d'échouer en silence — dans ce cas, retél�
 
 ### Essayer un commit, sans attendre une version
 
-Chaque commit poussé produit un `.dmg` en artefact de CI, gardé **sept jours** : ouvrir le
+Chaque commit poussé produit deux artefacts de CI, gardés **sept jours** : ouvrir le
 [job CI](https://github.com/g3wis/DoraBase/actions/workflows/ci.yml) du commit, section
-*Artifacts*, `DoraBase-<sha>-dmg`. Il faut un accès au dépôt, et il n'est
-**mono-architecture** — celle du runner GitHub. Pour installer, préférez une version
-publiée.
+*Artifacts*, puis `DoraBase-<sha>-dmg` ou `DoraBase-<sha>-nsis`. Il faut un accès au dépôt, et
+le `.dmg` est **mono-architecture** — celle du runner GitHub. Pour installer, préférez une
+version publiée.
 
 ---
 
@@ -110,7 +130,9 @@ branche de travail  ──PR──▶  main (CI verte)  ──version.sh──�
 3. **Le tag `vX.Y.Z` déclenche `publication.yml`** : construction du bundle universel,
    signature et notarisation Apple, vérifications, puis release GitHub avec le `.dmg`,
    l'archive de mise à jour, le manifeste `latest.json` et les notes de version — celles-ci
-   listent les commits depuis le tag précédent.
+   listent les commits depuis le tag précédent. Un second job construit ensuite
+   l'installateur Windows et l'attache à la même release : **après** elle, pour qu'un échec
+   de ce côté ne coûte pas la publication macOS.
 
 Ce que le script refuse, et pourquoi : une branche autre que `main` (le tag désignerait un
 état que la CI n'a pas validé), un arbre sale (le commit de relèvement emporterait du

@@ -494,6 +494,20 @@ jobs:
             echo
             echo "macOS 13 Ventura ou plus récent. Bundle universel : Apple Silicon et Intel."
             echo
+            # **Windows, et ce qu'il n'a pas.** Dit dans les notes plutôt que découvert au
+            # téléchargement : l'avertissement de SmartScreen ressemble à une application
+            # cassée, et l'absence de mise à jour automatique se remarquerait des semaines
+            # plus tard. Les deux sont des conséquences du même manque — pas de certificat
+            # Authenticode — et il vaut mieux les lire ici qu'ailleurs.
+            echo "### Windows"
+            echo
+            echo "\`DoraBase-$VERSION-x64-setup.exe\` ci-dessous. L'installateur **n'est pas"
+            echo "signé** : Windows affichera un avertissement SmartScreen, à passer par"
+            echo "*Informations complémentaires → Exécuter quand même*."
+            echo
+            echo "Et **les installations Windows ne se mettent pas à jour seules** : il faut"
+            echo "retélécharger l'installateur à chaque version."
+            echo
             echo "## Changements"
             echo
             if [[ -n $precedent ]]; then
@@ -604,3 +618,146 @@ jobs:
             --notes-file publication/notes.md \
             --latest \
             "${assets[@]}"
+
+  # ── L'installateur Windows ───────────────────────────────────────────────────────────
+  #
+  # **Demandé le 1er septembre 2026 : la release porte aussi le `.exe`.** Ce qui change par
+  # rapport à la décision d'origine — « Windows n'est pas une cible de publication » — est le
+  # seul point de l'installateur ; tout le reste de cette décision tient toujours, et
+  # notamment : **aucune mise à jour en place sous Windows**, voir plus bas.
+  #
+  # **Pourquoi `needs: macos` plutôt qu'un job parallèle.** La release est créée par le job
+  # macOS, en un seul `gh release create` qui décide du titre, des notes et du `--latest` — et
+  # son commentaire dit pourquoi il doit rester unique. Ce job-ci **ajoute** un asset à la
+  # release existante (`gh release upload`), ce qui n'est pas un second `create` : la remarque
+  # ne s'applique pas.
+  #
+  # La conséquence assumée est un ordre, pas une perte : **un échec de la construction Windows
+  # ne coûte pas la release macOS**, qui est l'artefact soutenu. L'inverse — faire dépendre le
+  # `.dmg` d'un `tauri build` Windows — rendrait la publication macOS tributaire d'une
+  # plateforme qui n'est même pas signée. Contrepartie : le `.exe` paraît quelques minutes
+  # après la release, pas avec elle.
+  windows:
+    needs: macos
+    runs-on: windows-latest
+    # Pas de construction universelle ici, donc pas de double compilation : vingt-cinq minutes
+    # laissent la même marge que les quarante du job macOS.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: le tag correspond à la version des fichiers
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=${GITHUB_REF_NAME#v}
+          python3 scripts/verifier-version.py "$version"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+
+      # `working-directory` est nécessaire : `rust-toolchain.toml` vit dans `src-tauri/`, et
+      # rustup résout la toolchain au répertoire courant.
+      - run: rustup show
+        working-directory: src-tauri
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      # Avant toute commande cargo, et c'est structurel (défaut n° 111). Sous Windows le fichier
+      # attendu porte l'extension — `cloud-sql-proxy-x86_64-pc-windows-msvc.exe`.
+      - run: pnpm proxy:embarquer
+        shell: bash
+
+      # ── Ce qui doit être vrai avant de publier un binaire ─────────────────────────────
+      #
+      # Le même principe que dans le job macOS : le tag est *censé* être posé sur un `main`
+      # vert, mais « censé » n'est pas une vérification et une release est publique. Ne sont
+      # rejouées ici que les vérifications qui disent quelque chose de **cette** plateforme —
+      # la moitié web est indépendante du système et le job macOS l'a déjà passée.
+      - run: ./scripts/verifier-aucun-sabotage.sh
+        shell: bash
+      - run: python3 scripts/verifier-conf-windows.py
+      - run: cargo clippy --all-targets -- -D warnings
+        working-directory: src-tauri
+      - run: cargo test
+        working-directory: src-tauri
+
+      # `createUpdaterArtifacts` fait échouer tout `tauri build` qui trouve une clé publique
+      # dans `tauri.conf.json` sans clé privée en face. La vraie clé est donc donnée ici, comme
+      # au job macOS — mais **l'archive qu'elle signe n'est pas publiée** : voir l'étape de
+      # téléversement.
+      - name: construire l'installateur
+        run: pnpm tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      # La version affichée vient du build : le décor de Playwright ne doit pas partir dans un
+      # binaire livré. Même raison, même script que côté macOS.
+      - run: ./scripts/verifier-aucun-decor-de-version.sh
+        shell: bash
+
+      # Le sidecar embarqué, constaté plutôt que supposé — le pendant de l'étape « le proxy
+      # Cloud SQL est bien dans le bundle » du job macOS. C'est ici que se voit le défaut de
+      # nommage : sans l'extension, le fichier n'est pas là où l'application le cherche.
+      - name: le proxy Cloud SQL est bien dans le bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f src-tauri/target/release/cloud-sql-proxy.exe
+          attendue=$(sed -n 's/^version *= *//p' src-tauri/cloud-sql-proxy.lock | head -1)
+          src-tauri/target/release/cloud-sql-proxy.exe --version | grep -F "$attendue"
+
+      # Tauri nomme l'installateur `DoraBase_<version>_x64-setup.exe`. Renommé sur la
+      # convention du dépôt — `DoraBase-<version>-x64-setup.exe` —, avec son empreinte à côté,
+      # comme le `.dmg`.
+      - name: nommer l'installateur
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p publication
+          exe=$(ls src-tauri/target/release/bundle/nsis/*.exe)
+          # Un seul attendu. Deux voudraient dire qu'un ancien traîne dans le cache, et `ls` en
+          # choisirait un au hasard — donc peut-être la version d'avant.
+          test "$(wc -l <<<"$exe")" -eq 1
+          cp "$exe" "publication/DoraBase-$VERSION-x64-setup.exe"
+          sha256sum "publication/DoraBase-$VERSION-x64-setup.exe" \
+            | sed "s|publication/||" > "publication/DoraBase-$VERSION-x64-setup.exe.sha256"
+          ls -lh publication/
+
+      # **L'installateur seul, et pas les artefacts de mise à jour.**
+      #
+      # `tauri build` vient de produire un `.nsis.zip` et sa signature minisign, qui suffiraient
+      # techniquement à faire se mettre à jour une installation Windows. Ils ne sont pas publiés,
+      # et `latest.json` — écrit par le job macOS — ne porte toujours que les deux clefs
+      # `darwin-*`. Trois raisons, chacune suffisante :
+      #
+      #   - **il n'y a pas de certificat Authenticode**, donc rien n'atteste que l'exécutable
+      #     téléchargé vient de nous. C'est l'exact arbitrage de « rien n'est proposé qui n'ait
+      #     été notarié », transposé : proposer un remplacement qu'on ne peut pas authentifier
+      #     chez des gens qui n'ont rien demandé est pire que ne rien proposer ;
+      #   - **le chemin de mise à jour n'a jamais été exercé**, même sur macOS — c'est écrit dans
+      #     AGENTS.md. L'ouvrir sur une seconde plateforme doublerait une dette non payée ;
+      #   - **ce qui a été demandé est l'installateur.** La mise à jour Windows est une décision
+      #     séparée, et elle tiendrait en peu de lignes le jour où on la prend : ajouter
+      #     `windows-x86_64` au manifeste et téléverser les deux fichiers ci-dessous.
+      - name: attacher l'installateur à la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload "$GITHUB_REF_NAME" \
+            "publication/DoraBase-$VERSION-x64-setup.exe" \
+            "publication/DoraBase-$VERSION-x64-setup.exe.sha256" \
+            --clobber
+          echo "::notice::installateur Windows attaché — non signé, SmartScreen avertira au"
+          echo "  téléchargement, et les installations Windows ne se mettent pas à jour seules."
