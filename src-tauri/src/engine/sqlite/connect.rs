@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::{Connection, OpenFlags};
 
 use crate::config::ConnectionSettings;
+use crate::engine::programme;
 use crate::engine::EngineError;
 
 /// Le chemin du fichier que cette variante désigne, **après vérification**.
@@ -41,21 +42,10 @@ pub fn chemin_de(variante: &ConnectionSettings) -> Result<PathBuf, EngineError> 
              ouverture. Indiquez le chemin d'un fichier",
         ));
     }
-    Ok(PathBuf::from(expanser_le_tilde(brut)))
-}
-
-/// Remplace un `~` de tête par le répertoire personnel.
-///
-/// Le champ est tapé à la main dans `A2`, et `~/bases/atelier.db` est ce qu'on écrit. Sans cette
-/// expansion, le fichier serait cherché dans un répertoire nommé `~`.
-fn expanser_le_tilde(brut: &str) -> String {
-    let Some(reste) = brut.strip_prefix('~') else {
-        return brut.to_owned();
-    };
-    match std::env::var_os("HOME") {
-        Some(maison) => format!("{}{}", maison.to_string_lossy(), reste),
-        None => brut.to_owned(),
-    }
+    // **Le `~/` de tête est développé par `programme`, et pas ici.** Une copie locale de cette
+    // expansion lisait `HOME` seul, donc ne faisait rien sous Windows : le fichier était cherché
+    // dans un répertoire littéralement nommé « ~ », et l'échec accusait un chemin correct.
+    Ok(programme::chemin_utilisateur(brut))
 }
 
 /// Ouvre le fichier, **sans le créer**.
@@ -161,6 +151,13 @@ mod tests {
     fn un_tilde_de_tete_est_expanse() {
         // `~/bases/atelier.db` est ce qu'on tape. Sans expansion, le fichier serait cherché dans un
         // répertoire littéralement nommé « ~ ».
+        // **Ce test exige un répertoire personnel, et le dit.** Sans `HOME` ni `USERPROFILE` il
+        // n'y a rien à développer, donc rien à mesurer : se sauter vaut mieux qu'échouer sur une
+        // machine qui n'en déclare aucun. Même forme que le test de `programme::chemin_utilisateur`.
+        if crate::engine::programme::repertoire_personnel().is_none() {
+            return;
+        }
+
         let chemin = chemin_de(&variante("~/atelier.db")).unwrap();
         assert!(chemin.is_absolute(), "{chemin:?}");
         assert!(!chemin.to_string_lossy().starts_with('~'), "{chemin:?}");

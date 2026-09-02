@@ -626,7 +626,7 @@ fn repertoire_de_configuration(app: &tauri::AppHandle) -> Result<std::path::Path
 /// shells POSIX de Windows (Git Bash, MSYS) où c'est `HOME` qui désigne le bon dossier et
 /// `USERPROFILE` qui peut pointer ailleurs.
 fn known_hosts_utilisateur() -> std::path::PathBuf {
-    known_hosts_dans(std::env::var_os("HOME"), std::env::var_os("USERPROFILE"))
+    known_hosts_dans(crate::engine::programme::repertoire_personnel())
 }
 
 /// La même chose, l'environnement en paramètre.
@@ -635,15 +635,8 @@ fn known_hosts_utilisateur() -> std::path::PathBuf {
 /// droit de dépendre de ce qui est posé sur la machine qui l'exécute — et ici il ne peut même
 /// pas le poser, `std::env::set_var` étant partagé par tous les tests du binaire, qui
 /// s'exécutent en parallèle.
-fn known_hosts_dans(
-    home: Option<std::ffi::OsString>,
-    userprofile: Option<std::ffi::OsString>,
-) -> std::path::PathBuf {
-    home.or(userprofile)
-        .map(std::path::PathBuf::from)
-        .unwrap_or_default()
-        .join(".ssh")
-        .join("known_hosts")
+fn known_hosts_dans(maison: Option<std::path::PathBuf>) -> std::path::PathBuf {
+    maison.unwrap_or_default().join(".ssh").join("known_hosts")
 }
 
 #[cfg(test)]
@@ -651,41 +644,25 @@ mod tests_known_hosts {
     use super::known_hosts_dans;
     use std::path::PathBuf;
 
-    fn valeur(brut: &str) -> Option<std::ffi::OsString> {
-        Some(std::ffi::OsString::from(brut))
-    }
-
     #[test]
-    fn home_decide_quand_il_est_la() {
+    fn le_repertoire_personnel_porte_le_known_hosts() {
         assert_eq!(
-            known_hosts_dans(valeur("/home/dora"), valeur(r"C:\Users\Dora")),
+            known_hosts_dans(Some(PathBuf::from("/home/dora"))),
             PathBuf::from("/home/dora").join(".ssh").join("known_hosts")
         );
     }
 
-    /// **Le cas Windows, et le défaut qu'il garde.**
-    ///
-    /// Sabotage vérifié le 31 août 2026 : en retirant le repli sur `USERPROFILE`, ce test
-    /// tombe et aucun autre ne bouge.
-    #[test]
-    fn userprofile_prend_le_relais_sans_home() {
-        assert_eq!(
-            known_hosts_dans(None, valeur(r"C:\Users\Dora")),
-            PathBuf::from(r"C:\Users\Dora")
-                .join(".ssh")
-                .join("known_hosts")
-        );
-    }
-
-    /// Sans les deux, le chemin est **relatif** — et c'est ce qui rendait tout hôte inconnu.
+    /// Sans répertoire personnel, le chemin est **relatif** — et c'est ce qui rendait tout hôte
+    /// inconnu sous Windows, avant que `programme::repertoire_personnel` ne connaisse
+    /// `USERPROFILE`.
     ///
     /// Le test ne demande pas mieux : il n'y a rien de juste à rendre quand on ne sait pas où
     /// habite l'utilisateur. Il fixe le fait pour que « relatif » reste une conséquence connue
     /// plutôt qu'une surprise, et pour que le jour où quelqu'un veut un vrai refus, il sache
-    /// qu'il change ceci.
+    /// qu'il change ceci. Le repli lui-même est gardé par les tests de `programme`.
     #[test]
-    fn sans_home_ni_userprofile_le_chemin_est_relatif() {
-        let chemin = known_hosts_dans(None, None);
+    fn sans_repertoire_personnel_le_chemin_est_relatif() {
+        let chemin = known_hosts_dans(None);
         assert_eq!(chemin, PathBuf::from(".ssh").join("known_hosts"));
         assert!(chemin.is_relative());
     }
