@@ -154,7 +154,19 @@ mod tests {
         // rendre le « No such file or directory » du système. C'est la même exigence que
         // `06e` applique à un hôte inconnu de `known_hosts`.
         assert!(erreur.message.contains("cloud-sql-proxy"), "{erreur}");
-        assert!(erreur.message.contains("install"), "{erreur}");
+        // **La manœuvre nommée est celle du système, et un conseil faux serait pire que rien** :
+        // « brew install » sous Windows enverrait chercher un outil qui n'existe pas là. Les deux
+        // messages gardent en commun l'URL de Google, qui est la vraie réponse dans les deux cas.
+        let manoeuvre = if cfg!(windows) {
+            "téléchargez"
+        } else {
+            "install"
+        };
+        assert!(erreur.message.contains(manoeuvre), "{erreur}");
+        assert!(
+            erreur.message.contains("cloud.google.com"),
+            "l'URL vaut sur les deux systèmes : {erreur}"
+        );
     }
 
     #[test]
@@ -233,28 +245,42 @@ mod tests {
     }
 
     #[test]
-    fn les_emplacements_par_defaut_incluent_homebrew() {
-        // Le PATH d'une application lancée depuis le Finder ne contient **pas** celui du
-        // shell de l'utilisateur : sur macOS, une app graphique hérite d'un PATH minimal.
-        // Chercher dans les emplacements de Homebrew n'est donc pas un raffinement, c'est
-        // le cas normal pour une app packagée.
-        //
-        // **Gardé ici après l'extraction du 31 août 2026**, alors que `programme` a le même :
-        // celui-ci mesure la liste *que ce scope compose*, et une délégation oubliée la laisserait
-        // sans Homebrew sans que le test de `programme` s'en aperçoive.
+    fn les_emplacements_par_defaut_incluent_le_path_et_les_usuels() {
         let emplacements = emplacements_par_defaut();
         let en_texte: Vec<String> = emplacements
             .iter()
             .map(|c| c.display().to_string())
             .collect();
-        assert!(
-            en_texte.iter().any(|c| c == "/opt/homebrew/bin"),
-            "{en_texte:?}"
-        );
-        assert!(
-            en_texte.iter().any(|c| c == "/usr/local/bin"),
-            "{en_texte:?}"
-        );
+
+        // **L'invariant des deux plateformes** : l'embarqué d'abord, le `PATH` ensuite. C'est la
+        // préséance de `06h` — si le `PATH` passait devant, le comportement dépendrait de ce que
+        // l'utilisateur a installé, et un proxy d'une autre version écrirait des journaux que
+        // `sortie::est_pret` ne reconnaît pas.
+        for du_path in programme::dossiers_du_path() {
+            assert!(
+                emplacements.contains(&du_path),
+                "{en_texte:?} sans {du_path:?}"
+            );
+        }
+
+        // Homebrew : macOS seulement. `programme::EMPLACEMENTS_USUELS` est **vide** sous Windows,
+        // où le motif qui rend cette liste nécessaire — le `PATH` minimal d'une app lancée depuis
+        // le Finder — n'a pas cours. Voir sa déclaration.
+        //
+        // **Gardé ici après l'extraction du 31 août 2026**, alors que `programme` a le même :
+        // celui-ci mesure la liste *que ce scope compose*, et une délégation oubliée la laisserait
+        // sans Homebrew sans que le test de `programme` s'en aperçoive.
+        #[cfg(not(windows))]
+        {
+            assert!(
+                en_texte.iter().any(|c| c == "/opt/homebrew/bin"),
+                "{en_texte:?}"
+            );
+            assert!(
+                en_texte.iter().any(|c| c == "/usr/local/bin"),
+                "{en_texte:?}"
+            );
+        }
     }
 
     #[test]

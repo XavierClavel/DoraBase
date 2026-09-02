@@ -32,11 +32,28 @@ pub const NOM: &str = "kubectl";
 /// fiable : Rancher Desktop pose son propre répertoire, Docker Desktop garde ses binaires dans le
 /// bundle de l'app, et le SDK Google en installe un exemplaire à côté de `gcloud`. Un `~` de tête
 /// est développé depuis `HOME` ; une app graphique en hérite toujours, contrairement au `PATH`.
+#[cfg(not(windows))]
 const EMPLACEMENTS_CONNUS: &[&str] = &[
     "~/.rd/bin",
     "/Applications/Docker.app/Contents/Resources/bin",
     "~/google-cloud-sdk/bin",
 ];
+
+/// Les mêmes sous Windows (31 août 2026), et la liste y est **plus courte pour une raison**.
+///
+/// Les deux chemins en `~` valent là-bas aussi : Rancher Desktop pose bien `%USERPROFILE%\.rd\bin`,
+/// et le SDK Google s'installe couramment dans le répertoire personnel. Ils ne coûtent rien et
+/// `programme::chemin_utilisateur` sait les développer depuis le 31 août 2026 — c'est même le
+/// défaut que le job Windows a trouvé.
+///
+/// **Docker Desktop n'y figure pas, et c'est délibéré.** Son chemin Windows
+/// (`C:\Program Files\Docker\Docker\resources\bin`) n'a **pas été mesuré**, contrairement à
+/// celui de macOS ; et le motif qui rend cette liste nécessaire est bien plus faible ici — un
+/// processus Windows hérite du `PATH` de la machine, où l'installateur de Docker Desktop met son
+/// `bin`. L'ajouter serait inventer un fait pour couvrir un cas que le `PATH` couvre déjà. À
+/// reprendre si l'usage dit le contraire.
+#[cfg(windows)]
+const EMPLACEMENTS_CONNUS: &[&str] = &["~/.rd/bin", "~/google-cloud-sdk/bin"];
 
 /// Les répertoires fouillés, dans l'ordre : le `PATH`, les emplacements usuels, puis ceux des
 /// installeurs de Kubernetes.
@@ -118,20 +135,51 @@ mod tests {
             .map(|c| c.display().to_string())
             .collect();
 
-        // Homebrew, hérité de `programme` : le `PATH` d'une app lancée depuis le Finder ne le
-        // contient pas.
+        // **Ce que les deux plateformes partagent, et c'est l'invariant qui compte** : le `PATH`
+        // passe en tête (celui du terminal de l'utilisateur, dont les contextes lui sont
+        // familiers), puis viennent les emplacements devinés. Un `EMPLACEMENTS_CONNUS` qui
+        // cesserait d'être ajouté ferait tomber ceci sur les deux systèmes.
+        let du_path = programme::dossiers_du_path();
         assert!(
-            en_texte.iter().any(|c| c == "/opt/homebrew/bin"),
-            "{en_texte:?}"
+            emplacements.len() > du_path.len(),
+            "la liste doit ajouter au `PATH`, pas s'y réduire : {en_texte:?}"
         );
-        // Et Docker Desktop, qui garde son `kubectl` dans le bundle de l'app et ne le lie nulle
-        // part de façon fiable.
         assert!(
-            en_texte
+            emplacements.starts_with(&du_path),
+            "le `PATH` doit venir en tête : {en_texte:?}"
+        );
+
+        // Et les deux emplacements en `~` sont **développés**, sur les deux systèmes : un `~`
+        // littéral désignerait un répertoire nommé « ~ ». C'est le défaut que le job Windows a
+        // trouvé, ici en contrôle positif.
+        if programme::repertoire_personnel().is_some() {
+            assert!(
+                !en_texte.iter().any(|c| c.starts_with('~')),
+                "aucun `~` ne doit subsister : {en_texte:?}"
+            );
+            let rd = emplacements
                 .iter()
-                .any(|c| c == "/Applications/Docker.app/Contents/Resources/bin"),
-            "{en_texte:?}"
-        );
+                .find(|c| c.ends_with(".rd/bin") || c.ends_with(r".rd\bin"));
+            assert!(rd.is_some(), "Rancher Desktop attendu : {en_texte:?}");
+        }
+
+        // Homebrew et Docker Desktop sont des chemins de macOS : sous Windows la liste ne les
+        // porte pas, et `programme::EMPLACEMENTS_USUELS` y est vide — voir leurs déclarations.
+        #[cfg(not(windows))]
+        {
+            assert!(
+                en_texte.iter().any(|c| c == "/opt/homebrew/bin"),
+                "{en_texte:?}"
+            );
+            // Docker Desktop garde son `kubectl` dans le bundle de l'app et ne le lie nulle part
+            // de façon fiable.
+            assert!(
+                en_texte
+                    .iter()
+                    .any(|c| c == "/Applications/Docker.app/Contents/Resources/bin"),
+                "{en_texte:?}"
+            );
+        }
     }
 
     #[test]
