@@ -204,7 +204,7 @@ async fn le_dump_porte_le_pied_de_completude() {
         .collect();
 
     assert!(
-        queue.iter().any(|ligne| *ligne == PIED_DE_COMPLETUDE),
+        queue.contains(&PIED_DE_COMPLETUDE),
         "le pied de complétude manque : {queue:?}"
     );
     // Contrôle positif de la fenêtre : le pied doit être en **queue** de fichier, pas
