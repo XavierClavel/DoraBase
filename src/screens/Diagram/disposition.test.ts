@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import type { ColumnInfo, Relation } from '../../domain/engine'
 import {
   type Boite,
+  cheminEntre,
   type Disposition,
   disposition,
   type EntreeDeTable,
+  type Etape,
   idDeTable,
   LARGEUR_BOITE_MAX,
   LARGEUR_BOITE_MIN,
@@ -1098,5 +1100,169 @@ it('rend une toile vide sans table, sans inventer de dimension', () => {
     largeur: 0,
     hauteur: 0,
     liensExternes: 0,
+  })
+})
+
+describe('le chemin entre deux tables', () => {
+  /** Une seconde table qui référence `users` : c'est elle qui rend le parcours non orienté. */
+  const INVOICES: EntreeDeTable = {
+    schema: 'public',
+    name: 'invoices',
+    columns: [
+      colonne({ position: 1, name: 'id', key: 'primary' }),
+      colonne({ position: 2, name: 'billed_to', key: 'foreign' }),
+    ],
+    relations: [sortante('invoices_billed_to_fkey', 'billed_to', 'users')],
+  }
+
+  /** Le chemin sous une forme qui se lit dans une assertion : « de.colonne → vers.colonne ». */
+  function lu(etapes: readonly Etape[] | null): readonly string[] | null {
+    if (etapes === null) return null
+    return etapes.map((etape) => {
+      const gauche = etape.remonte ? etape.lien.colonnesCibles : etape.lien.colonnes
+      const droite = etape.remonte ? etape.lien.colonnes : etape.lien.colonnesCibles
+      return `${etape.de}.${gauche.join('+')} ${etape.remonte ? '←' : '→'} ${etape.vers}.${droite.join('+')}`
+    })
+  }
+
+  it('rend la clé qui relie deux tables voisines', () => {
+    const vue = disposition(TROIS)
+
+    expect(lu(cheminEntre(vue.liens, 'public.orders', 'public.users'))).toEqual([
+      'public.orders.user_id → public.users.id',
+    ])
+  })
+
+  it('rend la même clé vue de l’autre bout, et le dit', () => {
+    /*
+     * **Le sens du chemin n'est pas celui de la clé**, et c'est `remonte` qui les sépare. Partir de
+     * `users` donne exactement le même lien, franchi à l'envers : dire l'inverse ferait écrire la
+     * jointure dans le mauvais sens, ce qu'aucun autre champ ne rattraperait.
+     */
+    const vue = disposition(TROIS)
+
+    expect(lu(cheminEntre(vue.liens, 'public.users', 'public.orders'))).toEqual([
+      'public.users.id ← public.orders.user_id',
+    ])
+  })
+
+  it('traverse les tables intermédiaires, dans l’ordre où on les parcourt', () => {
+    const vue = disposition(TROIS)
+
+    // C'est la réponse que le dessin seul ne donnait pas : `order_items` et `users` ne se touchent
+    // pas, et c'est précisément le cas où l'on ne sait pas répondre soi-même.
+    expect(lu(cheminEntre(vue.liens, 'public.order_items', 'public.users'))).toEqual([
+      'public.order_items.order_id → public.orders.id',
+      'public.orders.user_id → public.users.id',
+    ])
+  })
+
+  it('relie deux tables qui référencent la même troisième', () => {
+    /*
+     * **Le contrôle qui dit que le parcours n'est pas orienté**, et le cas le plus courant de tous :
+     * `orders` et `invoices` ne se référencent pas l'une l'autre, elles visent toutes deux `users`.
+     * Un parcours qui ne suivrait que le sens des flèches ne trouverait rien à dire d'elles — or
+     * c'est exactement la jointure qu'on cherche à écrire.
+     */
+    const vue = disposition([...TROIS, INVOICES])
+
+    expect(lu(cheminEntre(vue.liens, 'public.orders', 'public.invoices'))).toEqual([
+      'public.orders.user_id → public.users.id',
+      'public.users.id ← public.invoices.billed_to',
+    ])
+  })
+
+  it('rend `null` quand rien ne relie les deux tables', () => {
+    const seule: EntreeDeTable = {
+      schema: 'public',
+      name: 'zz_seule',
+      columns: [colonne({ position: 1, name: 'id', key: 'primary' })],
+      relations: [],
+    }
+    const vue = disposition([...TROIS, seule])
+
+    // `null` et non un tableau vide : « aucun chemin » n'est pas « un chemin de zéro étape », qui
+    // est ce que rend une table comparée à elle-même.
+    expect(cheminEntre(vue.liens, 'public.orders', 'public.zz_seule')).toBeNull()
+    expect(cheminEntre(vue.liens, 'public.orders', 'public.orders')).toEqual([])
+  })
+
+  it('prend le plus court, et non le premier venu', () => {
+    /*
+     * **Le décor doit rendre une file et une pile distinguables** (règle n° 5), et la première
+     * version ne le faisait pas : elle opposait un chemin d'un saut à un chemin de deux, or le saut
+     * unique part du **départ**, donc il est vu au premier tour quel que soit l'ordre de visite. Un
+     * parcours en profondeur y répondait juste, et le test restait vert sous sabotage.
+     *
+     * Celui-ci oppose deux et trois sauts, et le détour est celui que le tri des liens visite en
+     * **second** — donc celui qu'une pile dépilerait en premier. Une pile rendrait ici les trois
+     * étapes du détour ; la file rend les deux qui suffisent, qui sont la jointure à écrire.
+     */
+    const detour: EntreeDeTable = {
+      schema: 'public',
+      name: 'zz_detour',
+      columns: [
+        colonne({ position: 1, name: 'id', key: 'primary' }),
+        colonne({ position: 2, name: 'second_id', key: 'foreign' }),
+      ],
+      relations: [sortante('zz_detour_second_id_fkey', 'second_id', 'zz_second')],
+    }
+    const second: EntreeDeTable = {
+      schema: 'public',
+      name: 'zz_second',
+      columns: [
+        colonne({ position: 1, name: 'id', key: 'primary' }),
+        colonne({ position: 2, name: 'user_id', key: 'foreign' }),
+      ],
+      relations: [sortante('zz_second_user_id_fkey', 'user_id', 'users')],
+    }
+    const embranchement: EntreeDeTable = {
+      ...ORDER_ITEMS,
+      columns: [
+        ...ORDER_ITEMS.columns,
+        colonne({ position: 3, name: 'zz_detour_id', key: 'foreign' }),
+      ],
+      relations: [
+        ...ORDER_ITEMS.relations,
+        sortante('order_items_zz_detour_id_fkey', 'zz_detour_id', 'zz_detour'),
+      ],
+    }
+    const vue = disposition([embranchement, ORDERS, USERS, detour, second])
+
+    expect(lu(cheminEntre(vue.liens, 'public.order_items', 'public.users'))).toEqual([
+      'public.order_items.order_id → public.orders.id',
+      'public.orders.user_id → public.users.id',
+    ])
+  })
+
+  it('ne compte pas une clé réflexive comme une étape', () => {
+    /*
+     * Un `parent_id` est trop courant pour ne pas se présenter, et il ne mène à personne. **Rien
+     * dans le parcours ne le nomme** : une table déjà vue est écartée, et une clé réflexive vise
+     * précisément celle d'où l'on part. La garde explicite qui vivait là a été retirée — le
+     * sabotage a montré qu'elle ne gardait rien que celle-ci ne gardait déjà.
+     */
+    const arbre: EntreeDeTable = {
+      ...ORDERS,
+      columns: [...ORDERS.columns, colonne({ position: 4, name: 'parent_id', key: 'foreign' })],
+      relations: [...ORDERS.relations, sortante('orders_parent_id_fkey', 'parent_id', 'orders')],
+    }
+    const vue = disposition([ORDER_ITEMS, arbre, USERS])
+
+    expect(lu(cheminEntre(vue.liens, 'public.order_items', 'public.users'))).toEqual([
+      'public.order_items.order_id → public.orders.id',
+      'public.orders.user_id → public.users.id',
+    ])
+  })
+
+  it('ne dépend pas de l’ordre dans lequel les tables arrivent', () => {
+    // Les structures arrivent une par une : un chemin qui changerait d'une lecture à l'autre ferait
+    // afficher deux réponses différentes à la même question.
+    const ordre = disposition([...TROIS, INVOICES])
+    const inverse = disposition([INVOICES, USERS, ORDERS, ORDER_ITEMS])
+
+    expect(lu(cheminEntre(inverse.liens, 'public.orders', 'public.invoices'))).toEqual(
+      lu(cheminEntre(ordre.liens, 'public.orders', 'public.invoices')),
+    )
   })
 })

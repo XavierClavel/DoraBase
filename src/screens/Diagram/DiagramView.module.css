@@ -118,6 +118,42 @@
   white-space: nowrap;
 }
 
+/*
+ * Le vidage du champ, à sa droite.
+ *
+ * **Une icône nue qui *agit*, donc un retour au survol** — et c'est celui des actions de la bande en
+ * tête de sidebar, `--hover-row`, repris avec sa raison du 26 août 2026 : sans lui, une icône nue se
+ * lit comme une décoration alors qu'elle fait quelque chose. La valeur est un jeton déjà employé
+ * pour cette forme exacte de contrôle, ce n'est donc pas un survol inventé.
+ *
+ * 16 px est un littéral commenté, et non un jeton approximatif : aucune cote de contrôle n'existe
+ * sous les 23 px du plus petit bouton, qui ne tiendrait pas dans un champ de 25.
+ */
+.chercherVider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--ink-4);
+  cursor: pointer;
+}
+
+.chercherVider:hover {
+  background: var(--hover-row);
+  color: var(--ink);
+}
+
+.chercherVider:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
 .chargement {
   display: flex;
   align-items: center;
@@ -202,6 +238,79 @@
 .echelle:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
+}
+
+/* --- La bande de relation ----------------------------------------------- */
+
+/*
+ * Ce qui relie les deux tables choisies, écrit sous la bande d'outils.
+ *
+ * **Dans le flux, et non posée sur la toile.** Une carte flottante n'aurait rien décalé, mais elle
+ * aurait recouvert une part du dessin — or ce qu'elle nomme est justement ce qu'on est en train d'y
+ * regarder. Elle prend donc les vingt-six pixels de la barre d'état, la plus légère des deux cotes
+ * de bande du produit, et le dessin ne bouge pas pour autant : la toile défile depuis son coin
+ * haut-gauche, qui reste où il est.
+ *
+ * **Le fond est celui d'une en-tête de boîte, non celui de la barre d'outils** : deux bandes en
+ * `--bar` empilées se seraient lues comme une seule barre de soixante pixels.
+ */
+.relation {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+  height: var(--h-statusbar);
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--divider);
+  background: var(--paper-alt);
+  font: var(--weight-medium) var(--text-label) / 1 var(--font-ui);
+  color: var(--ink-8);
+}
+
+.relationIcone {
+  flex: none;
+  color: var(--ink-4);
+}
+
+/*
+ * Le texte, qui défile chez lui plutôt que de pousser le bouton hors de la bande.
+ *
+ * Un chemin de trois sauts dépasse la largeur du centre sur une fenêtre étroite. Le replier sur
+ * deux lignes ferait changer la bande de hauteur — donc le dessin de place — selon ce qu'on vient
+ * de choisir ; le couper à l'ellipse tairait la fin du chemin, qui est la moitié de la réponse. Il
+ * défile donc, et les barres du produit ne réservent aucune place (voir `reset.css`).
+ */
+.relationTexte {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.relationPoint {
+  color: var(--ink-3);
+}
+
+/* Les deux bouts d'une étape, en mono comme les lignes des boîtes : ce sont les mêmes colonnes. */
+.bout {
+  font: var(--weight-normal) var(--text-dense) / 1 var(--font-mono);
+  color: var(--ink);
+}
+
+.fleche {
+  padding: 0 var(--space-2);
+  color: var(--accent-deep);
+}
+
+/* Un texte que seules les voix lisent — `clip-path` et non `display: none`, qui le retirerait de
+   l'arbre d'accessibilité au lieu de le masquer. La convention de `StructureView`. */
+.pourLaVoix {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* --- La toile ------------------------------------------------------------ */
@@ -353,6 +462,19 @@
 
 .boiteEteinte {
   opacity: 0.32;
+}
+
+/*
+ * Une table que le chemin **traverse**, sans qu'on l'ait désignée.
+ *
+ * L'anneau d'accent la rattache aux deux bouts choisis — c'est la même réponse —, et l'absence
+ * d'en-tête teintée et d'ombre la distingue d'eux : « on passe par ici » n'est pas « j'ai désigné
+ * ceci ». La bande nomme les trois par écrit, donc aucune couleur ne porte seule l'information.
+ */
+.boiteSurLeChemin {
+  box-shadow:
+    inset 0 0 0 1px var(--accent),
+    var(--shadow-cell);
 }
 
 .boiteChoisie:hover,

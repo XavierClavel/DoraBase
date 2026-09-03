@@ -240,6 +240,269 @@ test('l’interrupteur « Toutes les colonnes » ouvre ce que l’aperçu résum
   expect(screen.queryByText(/autres/)).not.toBeInTheDocument()
 })
 
+// --- Deux tables choisies, et ce qui les relie ---
+
+/**
+ * Le décor de ces tests porte **trois** tables en chaîne, et c'est ce qui les rend probants.
+ *
+ * `order_items` et `users` ne se touchent pas : c'est le cas où l'on ne sait pas répondre soi-même,
+ * donc celui qui justifie la fonction. À deux tables, un chemin trouvé et un simple lien incident
+ * seraient indiscernables (règle n° 5).
+ */
+const VERS_ORDERS: Relation = {
+  constraintName: 'order_items_order_id_fkey',
+  direction: 'outgoing',
+  columns: ['order_id'],
+  targetSchema: 'public',
+  targetTable: 'orders',
+  targetColumns: ['id'],
+}
+
+const ORDER_ITEMS: EntreeDeTable = {
+  schema: 'public',
+  name: 'order_items',
+  columns: [
+    colonne({ position: 1, name: 'id', key: 'primary' }),
+    colonne({ position: 2, name: 'order_id', key: 'foreign' }),
+  ],
+  relations: [VERS_ORDERS],
+}
+
+/** Une table qu'aucune clé du décor ne relie aux trois autres. */
+const AUDIT: EntreeDeTable = {
+  schema: 'public',
+  name: 'audit_events',
+  columns: [colonne({ position: 1, name: 'id', key: 'primary' })],
+  relations: [],
+}
+
+const CHAINE = [ORDER_ITEMS, ORDERS, USERS]
+
+function bande() {
+  return screen.getByRole('status', { name: 'Ce qui relie les tables choisies' })
+}
+
+/**
+ * Un ⇧-clic.
+ *
+ * `userEvent.click` ne prend pas de modificateur : on tient la touche **autour** du clic, ce qui est
+ * aussi ce que fait la main. Le second argument que l'on serait tenté d'écrire n'existe pas, et
+ * fabriquer l'événement à la main manquerait les `pointerdown`/`pointerup` que la boîte écoute.
+ */
+async function clicMaj(utilisateur: ReturnType<typeof userEvent.setup>, cible: HTMLElement) {
+  await utilisateur.keyboard('{Shift>}')
+  await utilisateur.click(cible)
+  await utilisateur.keyboard('{/Shift}')
+}
+
+test('la bande paraît à la première table choisie, et annonce le geste qui en désigne une seconde', async () => {
+  const utilisateur = userEvent.setup()
+  monter(<DiagramView schema="public" tables={CHAINE} total={3} />)
+
+  // Au repos, rien : une bande permanente prendrait vingt-six pixels pour ne rien dire.
+  expect(screen.queryByRole('status', { name: 'Ce qui relie les tables choisies' })).toBeNull()
+
+  await utilisateur.click(screen.getByRole('button', { name: /^orders ·/ }))
+  /*
+   * **Le geste est annoncé là où il sert, et nulle part ailleurs.** Le `⇧`-clic est le geste
+   * d'extension universel, mais rien dans le produit ne l'annonçait : un geste qu'on ne peut pas
+   * deviner n'existe pas. L'invite paraît donc dès qu'il y a une première table, c'est-à-dire dès
+   * qu'il y a quelque chose à en faire.
+   */
+  expect(bande()).toHaveTextContent('orders')
+  expect(bande()).toHaveTextContent('seconde table')
+})
+
+test('un ⇧-clic adjoint une seconde table, et la bande dit la clé qui les relie', async () => {
+  const utilisateur = userEvent.setup()
+  monter(<DiagramView schema="public" tables={CHAINE} total={3} />)
+
+  await utilisateur.click(screen.getByRole('button', { name: /^orders ·/ }))
+  await clicMaj(utilisateur, screen.getByRole('button', { name: /^users ·/ }))
+
+  // Les deux sont désignées : `aria-pressed` doit être vrai des deux côtés, sans quoi l'état de la
+  // première serait perdu pour une voix.
+  expect(screen.getByRole('button', { name: /^orders ·/ })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('button', { name: /^users ·/ })).toHaveAttribute('aria-pressed', 'true')
+
+  expect(bande()).toHaveTextContent('Reliées par une clé')
+  // **Les colonnes, et pas seulement les tables** : ce qu'on vient chercher est la jointure.
+  expect(bande()).toHaveTextContent('orders.user_id')
+  expect(bande()).toHaveTextContent('users.id')
+  /*
+   * **Le sens de la clé est *dit*, pas seulement dessiné.** La flèche est retirée de l'arbre
+   * d'accessibilité — une voix qui rendrait « orders.user_id users.id » ne dirait plus laquelle
+   * référence l'autre — et un verbe masqué en `clip-path` la remplace, avec ses espaces (piège
+   * n° 1).
+   */
+  expect(bande()).toHaveTextContent('référence')
+})
+
+test('elle traverse les tables intermédiaires, et les marque sans les confondre avec les choisies', async () => {
+  const utilisateur = userEvent.setup()
+  const { container } = monter(<DiagramView schema="public" tables={CHAINE} total={3} />)
+
+  await utilisateur.click(screen.getByRole('button', { name: /^order_items ·/ }))
+  await clicMaj(utilisateur, screen.getByRole('button', { name: /^users ·/ }))
+
+  // La question à laquelle le dessin seul ne répondait pas : deux tables que rien ne relie
+  // directement.
+  expect(bande()).toHaveTextContent('Reliées en 2 étapes')
+  expect(bande()).toHaveTextContent('order_items.order_id')
+  expect(bande()).toHaveTextContent('orders.id')
+  expect(bande()).toHaveTextContent('orders.user_id')
+  expect(bande()).toHaveTextContent('users.id')
+
+  const marquees = (classe: string) =>
+    [...container.querySelectorAll('[data-boite]')]
+      .filter((boite) => boite.className.includes(classe))
+      .map((boite) => boite.getAttribute('data-boite'))
+      .sort()
+
+  // **Traversée n'est pas choisie**, et les deux marques doivent se distinguer : `orders` est la
+  // réponse à « par où passe-t-on », pas une table qu'on a désignée.
+  expect(marquees('boiteSurLeChemin')).toEqual(['orders'])
+  expect(marquees('boiteChoisie')).toEqual(['order_items', 'users'])
+})
+
+test('un chemin resserre les colonnes éclairées sur lui seul', async () => {
+  /*
+   * **Le contrôle négatif de la marque.** `orders` porte deux clés : celle qui la relie à
+   * `order_items` et celle qui la relie à `users`. Quand on demande le chemin d'`order_items` à
+   * `orders`, seule la première est la réponse — garder l'autre allumerait une table centrale en
+   * entier, au milieu de laquelle les deux colonnes cherchées se perdraient.
+   */
+  const utilisateur = userEvent.setup()
+  const { container } = monter(<DiagramView schema="public" tables={CHAINE} total={3} />)
+
+  const eclairees = () =>
+    [...container.querySelectorAll('[data-colonne]')]
+      .filter((ligne) => ligne.className.includes('EnEvidence'))
+      .map(
+        (ligne) =>
+          `${ligne.closest('[data-boite]')?.getAttribute('data-boite')}.${ligne.getAttribute('data-colonne')}`,
+      )
+      .sort()
+
+  await utilisateur.click(screen.getByRole('button', { name: /^orders ·/ }))
+  // Une seule table choisie : tous ses liens, dans les deux sens — le comportement d'avant.
+  expect(eclairees()).toEqual(['order_items.order_id', 'orders.id', 'orders.user_id', 'users.id'])
+
+  await clicMaj(utilisateur, screen.getByRole('button', { name: /^order_items ·/ }))
+  expect(eclairees()).toEqual(['order_items.order_id', 'orders.id'])
+})
+
+test('elle dit qu’il n’y a aucun chemin, et autrement sur un dessin incomplet', async () => {
+  const utilisateur = userEvent.setup()
+  const { rerender } = monter(<DiagramView schema="public" tables={[...CHAINE, AUDIT]} total={4} />)
+
+  await utilisateur.click(screen.getByRole('button', { name: /^users ·/ }))
+  await clicMaj(utilisateur, screen.getByRole('button', { name: /^audit_events ·/ }))
+  expect(bande()).toHaveTextContent('Aucun chemin de clés entre users et audit_events')
+  expect(bande()).not.toHaveTextContent('dessinées')
+
+  /*
+   * **« Aucun » ne peut pas vouloir dire « aucun dans la base » tant que le dessin est incomplet.**
+   * Lecture en cours ou plafond qui mord, le chemin passe peut-être par une table qui n'est pas là :
+   * l'affirmer serait le pire défaut que cette vue puisse avoir, celui d'un diagramme amputé qui se
+   * lit comme un schéma complet.
+   */
+  rerender(
+    <LanguageProvider preferences={{ language: 'fr' }}>
+      <Sprite />
+      <DiagramView schema="public" tables={[...CHAINE, AUDIT]} total={9} loading />
+    </LanguageProvider>,
+  )
+  expect(bande()).toHaveTextContent('parmi les tables dessinées')
+})
+
+test('un troisième ⇧-clic remplace la seconde, jamais l’ancre', async () => {
+  /*
+   * **C'est ce qui rend le geste utile plus d'une fois** : on garde `users` sous la main et l'on
+   * essaie l'une après l'autre les tables dont on se demande comment elles s'y rattachent.
+   * Remplacer la première rendrait chaque comparaison indépendante de la précédente.
+   */
+  const utilisateur = userEvent.setup()
+  monter(<DiagramView schema="public" tables={CHAINE} total={3} />)
+
+  await utilisateur.click(screen.getByRole('button', { name: /^users ·/ }))
+  await clicMaj(utilisateur, screen.getByRole('button', { name: /^orders ·/ }))
+  expect(bande()).toHaveTextContent('Reliées par une clé')
+
+  await clicMaj(utilisateur, screen.getByRole('button', { name: /^order_items ·/ }))
+  expect(bande()).toHaveTextContent('Reliées en 2 étapes')
+  expect(screen.getByRole('button', { name: /^users ·/ })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('button', { name: /^orders ·/ })).toHaveAttribute('aria-pressed', 'false')
+})
+
+test('⇧Espace fait au clavier ce que le ⇧-clic fait à la souris', async () => {
+  // **Un geste qui n'existerait qu'à la souris serait invisible et inatteignable au clavier**, ce
+  // que le renommage des consoles a déjà tranché — et la comparaison de deux tables, qui est tout
+  // l'intérêt du geste, le mérite d'autant plus.
+  const utilisateur = userEvent.setup()
+  monter(<DiagramView schema="public" tables={CHAINE} total={3} />)
+
+  screen.getByRole('button', { name: /^orders ·/ }).focus()
+  await utilisateur.keyboard(' ')
+  screen.getByRole('button', { name: /^users ·/ }).focus()
+  await utilisateur.keyboard('{Shift>} {/Shift}')
+
+  expect(bande()).toHaveTextContent('Reliées par une clé')
+  expect(screen.getByRole('button', { name: /^orders ·/ })).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('le bouton de la bande et Échap rendent le dessin au repos', async () => {
+  // Les boîtes choisies peuvent être hors de l'écran sur une toile de plusieurs milliers de pixels :
+  // on ne devrait pas avoir à les retrouver pour tout relâcher.
+  const utilisateur = userEvent.setup()
+  monter(<DiagramView schema="public" tables={CHAINE} total={3} />)
+
+  await utilisateur.click(screen.getByRole('button', { name: /^orders ·/ }))
+  await clicMaj(utilisateur, screen.getByRole('button', { name: /^users ·/ }))
+  await utilisateur.click(screen.getByRole('button', { name: 'Ne plus rien choisir' }))
+
+  expect(screen.queryByRole('status', { name: 'Ce qui relie les tables choisies' })).toBeNull()
+  expect(screen.getByRole('button', { name: /^orders ·/ })).toHaveAttribute('aria-pressed', 'false')
+
+  await utilisateur.click(screen.getByRole('button', { name: /^orders ·/ }))
+  await utilisateur.keyboard('{Escape}')
+  expect(screen.queryByRole('status', { name: 'Ce qui relie les tables choisies' })).toBeNull()
+})
+
+test('adjoindre une seconde table efface la recherche, qui masquait la réponse', async () => {
+  /*
+   * **Rapporté à l'usage : « la relation est partiellement masquée ».**
+   *
+   * Les deux gestes emploient les mêmes canaux en sens contraire. Une recherche efface les tables
+   * qu'elle ne désigne pas ; or le chemin entre deux tables passe justement par des tables qu'on n'a
+   * pas cherchées — `orders` ici, que ni `order_items` ni `users` ne nomment. Elles arrivaient donc
+   * à 32 % d'opacité, et la réponse était à moitié illisible au moment même où on la demandait.
+   */
+  const utilisateur = userEvent.setup()
+  const { container } = monter(<DiagramView schema="public" tables={CHAINE} total={3} />)
+  const champ = screen.getByRole('textbox', { name: /Chercher/ })
+
+  await utilisateur.type(champ, 'order_items')
+  const eteintes = () =>
+    [...container.querySelectorAll('[data-boite]')]
+      .filter((boite) => boite.className.includes('boiteEteinte'))
+      .map((boite) => boite.getAttribute('data-boite'))
+      .sort()
+  // Le décor doit rendre le défaut visible : la table que le chemin traverse est bien éteinte.
+  expect(eteintes()).toEqual(['orders', 'users'])
+
+  await utilisateur.click(screen.getByRole('button', { name: /^order_items ·/ }))
+  // **Une table choisie et une recherche coexistent** : c'est ce qu'`Entrée` produit, qui désigne la
+  // correspondance où il emmène. Effacer dès la première rendrait ce parcours impossible.
+  expect(champ).toHaveValue('order_items')
+
+  await clicMaj(utilisateur, screen.getByRole('button', { name: /^users ·/ }))
+  expect(champ).toHaveValue('')
+  expect(eteintes()).toEqual([])
+  // Et la réponse est là, entière.
+  expect(bande()).toHaveTextContent('Reliées en 2 étapes')
+})
+
 // --- La recherche ---
 
 /**
@@ -312,6 +575,41 @@ test('elle dit « aucune » plutôt que de laisser croire qu’elle cherche enco
   // Tout est éteint, et rien n'est marqué : l'état est lisible, pas ambigu.
   expect(chercher(container).trouvees()).toEqual([])
   expect(chercher(container).eteintes()).toEqual(['orders', 'users'])
+})
+
+test('le champ se vide par son bouton, qui lui rend le focus', async () => {
+  const utilisateur = userEvent.setup()
+  const { container } = monter(<DiagramView schema="public" tables={DEUX} total={2} />)
+  const champ = screen.getByRole('textbox', { name: /Chercher/ })
+
+  // **Rien à vider, aucun bouton** : un contrôle inerte mais actif se lit comme une panne, et le
+  // désactiver reviendrait au même sans le gain d'un pixel.
+  expect(screen.queryByRole('button', { name: 'Effacer la recherche' })).toBeNull()
+
+  await utilisateur.type(champ, 'status')
+  await utilisateur.click(screen.getByRole('button', { name: 'Effacer la recherche' }))
+
+  expect(champ).toHaveValue('')
+  // Le dessin revient entier : plus rien n'est marqué ni éteint.
+  expect(chercher(container).trouvees()).toEqual([])
+  expect(chercher(container).eteintes()).toEqual([])
+  // **Le focus revient au champ** : un bouton qui le garde après avoir effacé oblige à revenir au
+  // champ à la souris pour taper la recherche suivante.
+  expect(champ).toHaveFocus()
+})
+
+test('Échap vide le champ, comme partout où l’on abandonne ce qu’on a tapé', async () => {
+  // Le jumeau au clavier du bouton voisin, et l'idiome déjà en place dans la cellule de filtre, le
+  // renommage et le nom de projet.
+  const utilisateur = userEvent.setup()
+  monter(<DiagramView schema="public" tables={DEUX} total={2} />)
+  const champ = screen.getByRole('textbox', { name: /Chercher/ })
+
+  await utilisateur.type(champ, 'status')
+  await utilisateur.keyboard('{Escape}')
+
+  expect(champ).toHaveValue('')
+  expect(champ).toHaveFocus()
 })
 
 test('elle trouve une colonne que l’aperçu masque', async () => {

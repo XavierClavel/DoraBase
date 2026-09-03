@@ -326,6 +326,114 @@ export function comptesDeLiens(tables: readonly EntreeDeTable[]): {
 }
 
 /**
+ * Une étape d'un chemin entre deux tables : le lien franchi, et le sens dans lequel on le franchit.
+ *
+ * **Les deux sens ne se confondent pas.** Un lien en a un — la table qui référence vers la table
+ * référencée — et un chemin en a un autre, celui de la lecture : « comment aller d'`order_items` à
+ * `users` ». Deux tables qui référencent la même troisième sont reliées par un chemin dont une
+ * étape **remonte** sa clé, et le taire ferait écrire la jointure à l'envers.
+ */
+export type Etape = {
+  lien: Lien
+  /** La table d'où part l'étape, dans l'ordre de lecture du chemin. */
+  de: string
+  /** La table où elle arrive. */
+  vers: string
+  /** Vrai quand l'étape **remonte** la clé : c'est `vers` qui référence `de`, et non l'inverse. */
+  remonte: boolean
+}
+
+/**
+ * Le plus court chemin de clés étrangères entre deux tables, ou `null` s'il n'y en a aucun.
+ *
+ * # Ce que la question veut dire
+ *
+ * « Qu'est-ce qui relie ces deux tables ? » est la question qu'on pose devant un schéma qu'on ne
+ * connaît pas, et c'est aussi celle qu'on se pose avant d'écrire une jointure. Le diagramme
+ * répondait déjà pour **une** table et ses voisines immédiates — c'est ce que la sélection éclaire —
+ * mais il ne disait rien de deux tables qu'aucune clé ne relie *directement*, alors que c'est
+ * précisément le cas où l'on ne sait pas répondre soi-même.
+ *
+ * # Non orienté, et c'est le point
+ *
+ * `orders` et `invoices` qui référencent toutes deux `users` sont bel et bien reliées, par un chemin
+ * dont la seconde étape remonte une clé. Un parcours qui ne suivrait que le sens des flèches
+ * n'aurait rien à dire de ce cas-là, qui est le plus courant des deux. Le sens de chaque clé n'est
+ * pas perdu pour autant : `Etape.remonte` le porte, et c'est lui qui décide de la flèche affichée.
+ *
+ * # Le plus court, et un seul
+ *
+ * Un parcours en largeur, donc le chemin au moins de sauts : c'est le plus court à lire et la
+ * jointure la plus courte à écrire. Il peut en exister plusieurs de même longueur ; celui qui sort
+ * est décidé par l'ordre de `liens`, trié par identité (voir `tracerTout`), donc le même schéma rend
+ * toujours le même chemin. En proposer plusieurs demanderait de les départager, et rien dans le
+ * catalogue ne le permet.
+ *
+ * # Les clés réflexives ne demandent aucune garde
+ *
+ * Un `parent_id` mène d'une table à **elle-même**, donc à une table déjà vue : la marque du parcours
+ * l'écarte sans qu'on ait à la nommer. Une garde explicite avait été écrite là ; le sabotage l'a
+ * dénoncée — la retirer laissait la suite verte, et deux gardes qui se couvrent l'une l'autre ne se
+ * dénoncent pas (la leçon du chargeur de structures).
+ */
+export function cheminEntre(
+  liens: readonly Lien[],
+  depuis: string,
+  jusqua: string,
+): readonly Etape[] | null {
+  if (depuis === jusqua) return []
+
+  const voisins = new Map<string, Lien[]>()
+  const ajouter = (table: string, lien: Lien) => {
+    voisins.set(table, [...(voisins.get(table) ?? []), lien])
+  }
+  for (const lien of liens) {
+    ajouter(lien.source, lien)
+    ajouter(lien.cible, lien)
+  }
+
+  /** L'étape par laquelle une table a été atteinte — de quoi remonter le chemin une fois arrivé. */
+  const venuePar = new Map<string, Etape>()
+  const vues = new Set([depuis])
+  // **Une file, et c'est elle qui rend le chemin le plus court** : premier entré, premier sorti,
+  // donc les tables à un saut avant celles à deux. Une pile rendrait le premier chemin trouvé, qui
+  // n'est pas le plus court. Le curseur, lui, n'est qu'une économie — `shift()` recopie le tableau
+  // à chaque tour.
+  const file = [depuis]
+  for (let rang = 0; rang < file.length; rang += 1) {
+    const table = file[rang] as string
+    for (const lien of voisins.get(table) ?? []) {
+      const autre = lien.source === table ? lien.cible : lien.source
+      if (vues.has(autre)) continue
+      vues.add(autre)
+      // `remonte` se lit du lien, pas du parcours : on remonte la clé quand la table d'où l'on part
+      // est celle que le lien **vise**.
+      venuePar.set(autre, { lien, de: table, vers: autre, remonte: lien.cible === table })
+      if (autre === jusqua) return remonterLeChemin(venuePar, depuis, jusqua)
+      file.push(autre)
+    }
+  }
+  return null
+}
+
+/** Le chemin dans l'ordre de la lecture, reconstruit depuis son arrivée. */
+function remonterLeChemin(
+  venuePar: ReadonlyMap<string, Etape>,
+  depuis: string,
+  jusqua: string,
+): readonly Etape[] {
+  const etapes: Etape[] = []
+  let table = jusqua
+  while (table !== depuis) {
+    const etape = venuePar.get(table)
+    if (!etape) break
+    etapes.unshift(etape)
+    table = etape.de
+  }
+  return etapes
+}
+
+/**
  * Place les tables et trace leurs clés étrangères.
  *
  * L'ordre du résultat est **déterminé par les données**, jamais par celui des entrées : deux

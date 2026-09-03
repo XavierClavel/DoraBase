@@ -337,7 +337,13 @@ qu'il portait et que le rendu ne dit pas.
       traits gardent toute leur force au-dessus d'un dessin éteint et le dominent. Ni l'un ni l'autre
       n'emprunte l'accent, qui dit « désigné ».
     Le déplacement, lui, est explicite : **`Entrée` emmène** à la correspondance suivante et boucle,
-    la frappe se contentant de marquer. Faire défiler à chaque caractère serait désorientant sur une
+    la frappe se contentant de marquer. **`Échap` et un bouton la vident** (3 septembre 2026, à la
+    demande) : la recherche éteint la moitié du dessin, donc en sortir doit coûter un geste et non
+    huit reculs. Le bouton ne paraît que s'il y a de quoi vider — un contrôle inerte mais actif se
+    lit comme une panne —, il **rend le focus** au champ, et `Échap` est son jumeau au clavier,
+    l'idiome qu'ont déjà la cellule de filtre, le renommage et le nom de projet. Le champ a cessé
+    d'être un `<label>` pour l'accueillir : une étiquette ne doit contenir aucun contenu interactif
+    hors le champ qu'elle nomme, et elle ne nommait rien — l'`aria-label` du champ l'emporte. Faire défiler à chaque caractère serait désorientant sur une
     toile de plusieurs milliers de pixels, et le compte affiché dans le champ dit d'avance s'il y a
     quelque part où aller — « aucune » plutôt qu'un champ muet qui laisserait croire qu'il cherche
     encore.
@@ -413,6 +419,59 @@ qu'il portait et que le rendu ne dit pas.
     du trackpad y est refusé activement depuis le 26 août 2026 : un second zoom sur les mêmes gestes
     ferait dépendre l'échelle de qui écoute l'événement le premier. Les paliers sont donc des boutons,
     et le glissement du fond déplace la vue.
+  - **et deux tables choisies disent ce qui les relie** (3 septembre 2026, à la demande).
+    Sélectionner **une** table éclaire ses voisines immédiates : « qu'est-ce qui touche `orders` ? ».
+    L'autre question restait sans réponse nulle part — « qu'est-ce qui relie `orders` à
+    `shipment_batches` ? » —, et c'est celle qu'on se pose avant d'écrire une jointure, précisément
+    parce qu'aucune clé ne relie directement ces deux tables-là. Un `⇧`-clic adjoint donc une seconde
+    table, et le plus court chemin de clés paraît **écrit**, colonne par colonne, dans une bande sous
+    la barre d'outils. Sept décisions :
+    - **le parcours est non orienté, et c'est tout l'intérêt.** `orders` et `invoices` qui
+      référencent toutes deux `users` sont bel et bien reliées ; ne suivre que le sens des flèches
+      n'aurait rien eu à dire du cas le plus courant. Le sens de chaque clé n'est pas perdu pour
+      autant — `Etape.remonte` le porte, et c'est lui qui décide de la flèche affichée, `←` ou `→`.
+      Dire l'inverse ferait écrire la jointure à l'envers, ce qu'aucun autre champ ne rattraperait ;
+    - **le plus court, par parcours en largeur** : c'est le plus court à lire et la jointure la plus
+      courte à écrire. Il peut en exister plusieurs de même longueur ; celui qui sort est décidé par
+      l'ordre des liens, trié par identité, donc le même schéma rend toujours la même réponse ;
+    - **la première choisie est l'ancre.** Un troisième `⇧`-clic remplace la **seconde**, jamais la
+      première : on garde `users` sous la main et l'on essaie l'une après l'autre les tables dont on
+      se demande comment elles s'y rattachent. Remplacer la première rendrait chaque comparaison
+      indépendante de la précédente, ce qui n'est jamais ce qu'on veut ;
+    - **la bande paraît dès la première table choisie**, pour y annoncer le geste. `⇧`-clic est le
+      geste d'extension universel et ne s'annonçait nulle part : un geste qu'on ne peut pas deviner
+      n'existe pas. Elle est **dans le flux**, non posée sur la toile — une carte flottante n'aurait
+      rien décalé, mais elle aurait recouvert le dessin dont elle parle. Et `⇧Espace` fait au clavier
+      ce que le `⇧`-clic fait à la souris, pour la raison du renommage des consoles ;
+    - **un chemin resserre la marque sur lui seul.** Quand deux tables sont choisies et qu'une suite
+      de clés les relie, la question n'est plus « qu'est-ce qui touche cette table » mais « par où
+      passe-t-on » : garder en plus tous les liens incidents des deux bouts allumerait un hub comme
+      `users` en entier. Les tables **traversées** portent l'anneau d'accent sans l'en-tête teintée
+      des deux choisies — « on passe par ici » n'est pas « j'ai désigné ceci », et la bande nomme les
+      trois par écrit ;
+    - **et adjoindre une seconde table efface la recherche** (rapporté à l'usage : « la relation est
+      partiellement masquée »). Les deux gestes emploient les mêmes canaux en sens contraire : une
+      recherche **efface** les tables qu'elle ne désigne pas, or le chemin passe justement par des
+      tables qu'on n'a pas cherchées — elles arrivaient à 32 % d'opacité, et la réponse était à
+      moitié illisible au moment même où on la demandait. Marquer le chemin plus fort n'aurait rien
+      réglé : ce qui manque à une table éteinte est le contraste, pas l'accent. **Seulement à la
+      seconde table** : une table choisie et une recherche coexistent très bien — c'est même ce
+      qu'`Entrée` produit, qui désigne la correspondance où il emmène —, et effacer dès la première
+      rendrait ce parcours impossible, chaque `Entrée` vidant le champ qu'on vient de remplir.
+    - **« aucun chemin » ne prétend jamais plus que ce que le dessin contient.** Tant que toutes les
+      tables du schéma n'y sont pas — lecture en cours, ou plafond qui mord —, la phrase devient
+      « parmi les tables dessinées ». C'est l'honnêteté des deux nombres de la barre d'état, sur une
+      autre affirmation. Et **la flèche est retirée de l'arbre d'accessibilité**, un verbe masqué en
+      `clip-path` la remplaçant avec ses espaces : une voix qui rendrait « orders.user_id users.id »
+      ne dirait plus laquelle référence l'autre (pièges n° 1 et n° 2 dans la même ligne).
+
+    **Deux gardes de moins, dénoncées par le sabotage** (règle n° 1), et ce sont les deux mêmes
+    familles que celles déjà relevées ici. Le parcours écartait explicitement les clés réflexives :
+    inutile, une table déjà vue étant déjà écartée, et la retirer laissait la suite verte. Et le
+    décor qui prétendait garder « le plus court chemin » opposait un saut à deux — or le saut unique
+    part du **départ**, donc il est vu au premier tour quel que soit l'ordre de visite : un parcours
+    en profondeur y répondait juste. Il oppose désormais deux sauts à trois, avec le détour placé là
+    où le tri des liens le fait visiter en second, donc là où une pile le prendrait en premier.
 
   **Trois choses apprises en le vérifiant, et les trois par sabotage.** Elles valent au-delà de cet
   écran :

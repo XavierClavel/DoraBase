@@ -5,6 +5,7 @@ import {
   plateforme,
   raccourci,
   seulLeModificateur,
+  toucheMajuscule,
 } from './plateforme'
 
 /*
@@ -13,6 +14,15 @@ import {
  * figé à la compilation, une seule des deux branches aurait jamais été mesurée — et ce serait
  * celle qui marchait déjà.
  */
+
+describe('toucheMajuscule', () => {
+  it('écrit le pictogramme sur macOS et le mot sous Windows', () => {
+    // La règle de `TOUCHES_WINDOWS`, appliquée à une touche que `raccourci` ne sait pas écrire
+    // seule : `⇧`-clic est un geste de souris, où le modificateur de l'application n'entre pas.
+    expect(toucheMajuscule('macos')).toBe('⇧')
+    expect(toucheMajuscule('windows')).toBe('Shift')
+  })
+})
 
 describe('raccourci', () => {
   it('écrit la convention macOS : symboles collés, ⌘ juste avant la touche', () => {

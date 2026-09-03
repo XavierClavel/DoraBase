@@ -368,3 +368,76 @@ test('la recherche éteint ce qu’elle ne désigne pas, et le dit quand elle ne
   await champ.fill('')
   expect(await eteintes()).toEqual([])
 })
+
+test('un ⇧-clic sur deux boîtes écrit le chemin de clés qui les relie', async ({ page }) => {
+  /*
+   * **Ce que ce niveau ajoute aux deux autres.**
+   *
+   * `disposition.test.ts` garde le chemin lui-même et `DiagramView.test.tsx` la bande et ses gestes.
+   * Deux faits leur échappent, et ce sont ceux d'une mise en page : que le `⇧`-clic passe **dans un
+   * vrai navigateur** — le geste part d'un `pointerdown` que la toile écoute aussi pour se déplacer,
+   * et rien sous jsdom ne dit lequel des deux gagne — et que la bande prenne sa place **dans le
+   * flux** au lieu de recouvrir le dessin.
+   */
+  const toileHaut = () =>
+    page.evaluate(() => document.querySelector('[data-toile]')?.getBoundingClientRect().top ?? null)
+  const avant = await toileHaut()
+
+  await page.getByRole('button', { name: /^order_items ·/ }).click()
+  await page.getByRole('button', { name: /^users ·/ }).click({ modifiers: ['Shift'] })
+
+  // `inventory_movements` → `order_items` → `orders` → `users` : les deux bouts choisis ne se
+  // touchent pas, ce qui est le cas où l'on ne sait pas répondre soi-même.
+  const bande = page.getByRole('status', { name: 'Ce qui relie les tables choisies' })
+  await expect(bande).toContainText('Reliées en 2 étapes')
+  await expect(bande).toContainText('order_items.order_id')
+  await expect(bande).toContainText('orders.id')
+  await expect(bande).toContainText('orders.user_id')
+  await expect(bande).toContainText('users.id')
+
+  /*
+   * **La bande est au-dessus de la toile, et lui prend exactement sa hauteur.**
+   *
+   * Une carte flottante n'aurait rien décalé, mais elle aurait recouvert une part du dessin — or ce
+   * qu'elle nomme est justement ce qu'on y regarde. Les deux mesures se tiennent : le haut de la
+   * toile descend de la hauteur de la bande, et le bas de la bande touche ce haut. Une bande
+   * *posée* satisferait la seconde et pas la première.
+   *
+   * La tolérance est d'un demi-pixel, ce que peut coûter un arrondi de `getBoundingClientRect` :
+   * les cotes sont entières de bout en bout. **Le rectangle mesuré contient déjà le filet du bas** —
+   * `.relation` n'est pas en `border-box`, comme `.barre` avant elle : ses 26 px de `--h-statusbar`
+   * plus 1 px de bordure font les 27 px qu'elle prend au flux, et c'est cette même valeur que le
+   * haut de la toile doit descendre.
+   */
+  const geometrie = await page.evaluate(() => {
+    const dansLaBande = document.querySelector(
+      '[role=status][aria-label="Ce qui relie les tables choisies"]',
+    )
+    const toile = document.querySelector('[data-toile]')
+    if (!dansLaBande || !toile) return null
+    return {
+      basDeLaBande: dansLaBande.getBoundingClientRect().bottom,
+      hautDeLaToile: toile.getBoundingClientRect().top,
+      hauteurDeLaBande: dansLaBande.getBoundingClientRect().height,
+    }
+  })
+  if (geometrie === null || avant === null) throw new Error('la bande ou la toile manque')
+  expect(Math.abs(geometrie.basDeLaBande - geometrie.hautDeLaToile)).toBeLessThan(0.5)
+  expect(Math.abs(geometrie.hautDeLaToile - avant - geometrie.hauteurDeLaBande)).toBeLessThan(0.5)
+})
+
+test('deux tables que rien ne relie le disent, plutôt que de ne rien afficher', async ({
+  page,
+}) => {
+  // `pricing_rules` ne porte qu'une clé réflexive : aucune suite de clés ne mène de là à `users`.
+  // Une bande muette laisserait croire que la question n'a pas été comprise.
+  await page.getByRole('button', { name: /^users ·/ }).click()
+  await page.getByRole('button', { name: /^pricing_rules ·/ }).click({ modifiers: ['Shift'] })
+
+  const bande = page.getByRole('status', { name: 'Ce qui relie les tables choisies' })
+  await expect(bande).toContainText('Aucun chemin de clés entre users et pricing_rules')
+
+  // Et le dessin revient au repos par le bouton de la bande, sans avoir à retrouver les boîtes.
+  await page.getByRole('button', { name: 'Ne plus rien choisir' }).click()
+  await expect(bande).toHaveCount(0)
+})

@@ -1,15 +1,18 @@
 import { type PointerEvent as PointerEventReact, useId, useMemo, useRef, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import { useT } from '../../i18n/LanguageContext'
+import { toucheMajuscule } from '../../shell/plateforme'
 import { cx } from '../../ui/cx'
 import { SANS_CORRECTION } from '../../ui/Field/Field'
 import { Toggle } from '../../ui/Toggle/Toggle'
 import styles from './DiagramView.module.css'
 import {
   type Boite,
+  cheminEntre,
   comptesDeLiens,
   disposition,
   type EntreeDeTable,
+  type Etape,
   HAUTEUR_ENTETE,
   HAUTEUR_LIGNE,
   idDeTable,
@@ -69,6 +72,13 @@ export type DiagramViewProps = {
  * HTML ne sait pas dessiner : des traits coudés. C'est aussi ce qui rend le contenu vérifiable par
  * `getByRole` plutôt qu'en comptant des pixels.
  *
+ * # Une table choisie, deux tables comparées
+ *
+ * Choisir **une** boîte éclaire les colonnes de ses clés, aux deux bouts : « qu'est-ce qui touche
+ * `orders` ? ». Un `⇧`-clic en adjoint une **seconde**, et la bande écrit alors le plus court chemin
+ * de clés entre les deux — l'autre question, celle qu'on se pose avant d'écrire une jointure, et que
+ * rien dans le produit ne savait poser. Voir `BandeDeRelation`, qui porte les arbitrages.
+ *
  * # Le zoom est à boutons, et c'est délibéré
  *
  * La molette **défile**, elle ne zoome pas. `⌘` + molette appartient au zoom de l'application
@@ -97,10 +107,25 @@ export function DiagramView({
   const [toutesLesColonnes, setToutesLesColonnes] = useState(false)
   const [palier, setPalier] = useState(ZOOM_NEUTRE)
   /**
-   * La table choisie, **par identité et non par nom** : c'est déjà celle que les liens emploient,
-   * et en tenir une seconde forme aurait demandé de les traduire à chaque comparaison.
+   * Les tables choisies — **une, ou deux**, par identité et non par nom : c'est déjà celle que les
+   * liens emploient, et en tenir une seconde forme aurait demandé de les traduire à chaque
+   * comparaison.
+   *
+   * # Pourquoi deux et pas une
+   *
+   * Choisir **une** table éclaire ses voisines immédiates, ce qui répond à « qu'est-ce qui touche
+   * `orders` ? ». La question qui restait sans réponse est l'autre : « qu'est-ce qui relie `orders`
+   * à `shipment_batches` ? » — deux tables qu'aucune clé ne relie *directement*, donc le cas où
+   * l'on ne sait pas répondre soi-même, et celui qu'on se pose avant d'écrire une jointure.
+   *
+   * # La première est l'ancre
+   *
+   * Un troisième `⇧`-clic remplace la **seconde**, jamais la première. C'est ce qui rend le geste
+   * utile plus d'une fois : on garde `users` sous la main et l'on essaie l'une après l'autre les
+   * tables dont on se demande comment elles s'y rattachent. Remplacer la première rendrait chaque
+   * comparaison indépendante de la précédente, ce qui n'est jamais ce qu'on veut.
    */
-  const [choisie, setChoisie] = useState<string | null>(null)
+  const [selection, setSelection] = useState<readonly string[]>([])
   /**
    * Ce qu'on cherche — un nom de table **ou** de colonne.
    *
@@ -111,6 +136,8 @@ export function DiagramView({
   const [recherche, setRecherche] = useState('')
   /** Le rang de la correspondance qu'`Entrée` amènera à l'écran — voir `allerA`. */
   const visee = useRef(0)
+  /** Le champ lui-même : le vider par le bouton doit lui **rendre** le focus, non le lui prendre. */
+  const champ = useRef<HTMLInputElement>(null)
   const toile = useRef<HTMLDivElement>(null)
   /** Le préfixe des flèches : deux diagrammes ouverts partageraient sinon leurs `marker`. */
   const marques = useId().replace(/:/g, '')
@@ -185,11 +212,40 @@ export function DiagramView({
     // **Désigner d'abord, déplacer ensuite.** La désignation est ce que le geste *veut* — elle
     // allume les liens et les colonnes de la table trouvée — et le défilement n'en est que la
     // courtoisie. Dans l'autre ordre, un défilement qui échoue emporterait la désignation avec lui.
-    setChoisie(boite.id)
+    // **Et elle repart d'une sélection simple.** `Entrée` emmène à une table, pas à une paire :
+    // garder la comparaison en cours ferait afficher un chemin dont un bout n'est plus celui qu'on
+    // regarde.
+    setSelection([boite.id])
     const zone = toile.current
     const element = zone?.querySelector(`[data-boite="${CSS.escape(boite.table)}"]`)
     element?.scrollIntoView({ block: 'center', inline: 'center' })
   }
+
+  /**
+   * Le chemin de clés entre les deux tables choisies, quand il y en a deux et qu'il en existe un.
+   *
+   * `null` recouvre **deux** situations que le dessin ne distingue pas — moins de deux tables
+   * choisies, ou deux tables qu'aucune suite de clés ne relie —, et c'est voulu : dans les deux cas,
+   * le dessin retombe sur la marque d'une sélection simple. C'est la bande qui les sépare, parce que
+   * c'est elle qui a des mots pour le faire.
+   */
+  const chemin = useMemo(
+    () =>
+      selection.length === 2
+        ? cheminEntre(vue.liens, selection[0] as string, selection[1] as string)
+        : null,
+    [vue.liens, selection],
+  )
+
+  /** Les liens du chemin, et les tables qu'il traverse — deux marques distinctes, voir `Cadre`. */
+  const liensDuChemin = useMemo(
+    () => new Set((chemin ?? []).map((etape) => etape.lien.id)),
+    [chemin],
+  )
+  const tablesDuChemin = useMemo(
+    () => new Set((chemin ?? []).flatMap((etape) => [etape.de, etape.vers])),
+    [chemin],
+  )
 
   /**
    * Les colonnes que la sélection met en évidence, **aux deux bouts de chaque lien**.
@@ -199,19 +255,68 @@ export function DiagramView({
    * Marquer les deux bouts — la clé étrangère chez celle qui référence, la colonne référencée chez
    * l'autre — fait lire la relation d'un coup d'œil, sans suivre le trait jusqu'à sa pointe.
    *
+   * **Un chemin resserre la marque sur lui seul.** Quand deux tables sont choisies et qu'une suite
+   * de clés les relie, ce qu'on demande n'est plus « qu'est-ce qui touche cette table » mais « par
+   * où passe-t-on » : garder en plus tous les liens incidents des deux bouts allumerait un hub comme
+   * `users` en entier, au milieu duquel les deux ou trois colonnes de la réponse se perdraient.
+   *
    * L'identité est `table.colonne`, celle des liens : deux tables du dessin peuvent avoir une
    * colonne `id`, et une clé indexée par le seul nom de colonne les allumerait toutes les deux.
    */
   const enEvidence = useMemo(() => {
     const marquees = new Set<string>()
-    if (choisie === null) return marquees
-    for (const lien of vue.liens) {
-      if (lien.source !== choisie && lien.cible !== choisie) continue
+    if (selection.length === 0) return marquees
+    const retenus = chemin
+      ? chemin.map((etape) => etape.lien)
+      : vue.liens.filter(
+          (lien) => selection.includes(lien.source) || selection.includes(lien.cible),
+        )
+    for (const lien of retenus) {
       for (const colonne of lien.colonnes) marquees.add(`${lien.source}.${colonne}`)
       for (const colonne of lien.colonnesCibles) marquees.add(`${lien.cible}.${colonne}`)
     }
     return marquees
-  }, [choisie, vue.liens])
+  }, [selection, chemin, vue.liens])
+
+  /**
+   * Vide le champ de recherche.
+   *
+   * `rendreLeFocus` distingue les deux appelants, et ils ne veulent pas la même chose : le bouton et
+   * `Échap` partent **du champ**, donc on doit pouvoir continuer d'y taper — un bouton qui garde le
+   * focus après avoir effacé oblige à revenir au champ à la souris. Le `⇧`-clic, lui, part d'une
+   * boîte : lui voler le focus déplacerait le clavier à l'autre bout de l'écran sans qu'on l'ait
+   * demandé.
+   */
+  function viderLaRecherche(rendreLeFocus: boolean) {
+    setRecherche('')
+    // Le rang d'`Entrée` repart de zéro, comme à chaque frappe : le laisser au milieu d'une liste
+    // qui n'existe plus ferait sauter la recherche suivante à un rang que personne ne connaît.
+    visee.current = 0
+    if (rendreLeFocus) champ.current?.focus()
+  }
+
+  /** Choisir une table, ou l'adjoindre à celle qui l'est déjà — voir `basculer`. */
+  function choisir(id: string, etendre: boolean) {
+    const suivante = basculer(selection, id, etendre)
+    setSelection(suivante)
+    /*
+     * **Une paire éteint la recherche** (3 septembre 2026, rapporté à l'usage : « la relation est
+     * partiellement masquée »).
+     *
+     * Les deux gestes emploient les mêmes canaux en sens contraire. Une recherche **efface** les
+     * tables qu'elle ne désigne pas, et leurs liens avec elles ; or le chemin entre deux tables
+     * passe justement par des tables qu'on n'a pas cherchées — elles arrivaient donc à 32 %
+     * d'opacité, et la réponse était à moitié illisible au moment même où on la demandait. Marquer
+     * le chemin plus fort n'aurait rien réglé : ce qui manque à une table éteinte est le contraste,
+     * pas l'accent.
+     *
+     * **Seulement à la seconde table.** Une table choisie et une recherche coexistent très bien —
+     * c'est même ce qu'`Entrée` produit, qui désigne la correspondance où il emmène. Effacer dès la
+     * première rendrait donc ce parcours impossible : chaque `Entrée` viderait le champ qu'on vient
+     * de remplir.
+     */
+    if (suivante.length === 2) viderLaRecherche(false)
+  }
 
   /**
    * Le glissement du fond déplace la vue.
@@ -315,11 +420,20 @@ export function DiagramView({
         )}
         {/* **Le champ suit l'idiome du fil d'Ariane** — même hauteur, même icône, même
             `SANS_CORRECTION` : macOS transformerait `orders` en `Orders` et la recherche ne
-            trouverait plus rien. */}
-        <label className={styles.chercher}>
+            trouverait plus rien.
+
+            **Un `<div>` et non un `<label>`** : une étiquette ne doit contenir aucun contenu
+            interactif hors le champ qu'elle nomme, et celle-ci en porte un depuis qu'un bouton la
+            vide. Elle ne nommait de toute façon rien — l'`aria-label` du champ l'emporte sur le
+            texte d'une étiquette englobante —, et c'est la forme qu'a déjà `SidebarFilterBar`, le
+            premier champ de recherche du produit. Ce qui se perd est le clic sur la marge du cadre,
+            qui donnait le focus ; ce qui s'évite est un clic sur le bouton que l'étiquette pourrait
+            aussi vouloir transmettre au champ. */}
+        <div className={styles.chercher}>
           <Icon name="search" size={12} strokeWidth={2} className={styles.chercherIcone} />
           <input
             {...SANS_CORRECTION}
+            ref={champ}
             type="text"
             className={styles.chercherChamp}
             value={recherche}
@@ -333,6 +447,14 @@ export function DiagramView({
               visee.current = 0
             }}
             onKeyDown={(evenement) => {
+              // **`Échap` vide le champ**, comme dans tout champ du produit qui abandonne ce qu'on y
+              // a tapé — la cellule de filtre, le renommage, le nom de projet. C'est le jumeau au
+              // clavier du bouton voisin, au même endroit que lui.
+              if (evenement.key === 'Escape' && recherche !== '') {
+                evenement.preventDefault()
+                viderLaRecherche(true)
+                return
+              }
               if (evenement.key !== 'Enter' || trouvees.length === 0) return
               evenement.preventDefault()
               allerA(visee.current)
@@ -349,7 +471,20 @@ export function DiagramView({
                 : t('diagram.recherche.compte', { count: trouvees.length })}
             </span>
           )}
-        </label>
+          {/* **Il ne paraît que s'il y a de quoi vider.** Un bouton d'effacement au-dessus d'un
+              champ vide est inerte, et un contrôle inerte mais actif se lit comme une panne
+              (défaut n° 36) — le désactiver reviendrait au même sans le gain d'un pixel. */}
+          {chercheQuelqueChose && (
+            <button
+              type="button"
+              className={styles.chercherVider}
+              aria-label={t('diagram.recherche.effacer')}
+              onClick={() => viderLaRecherche(true)}
+            >
+              <Icon name="x" size={10} strokeWidth={2} />
+            </button>
+          )}
+        </div>
         <span className={styles.espace} />
         <div className={styles.zoom}>
           <button
@@ -382,6 +517,23 @@ export function DiagramView({
           </button>
         </div>
       </div>
+
+      {/* **La bande paraît à la première table choisie, et pas avant.** Elle porte deux choses qui
+          n'ont de sens qu'alors : ce qui relie les deux tables, et — tant qu'il n'y en a qu'une — le
+          geste qui en désigne une seconde. Un `⇧`-clic ne s'annonce nulle part ailleurs, et un geste
+          qu'on ne peut pas deviner n'existe pas. */}
+      {selection.length > 0 && (
+        <BandeDeRelation
+          boites={vue.boites}
+          selection={selection}
+          chemin={chemin}
+          // Le dessin est incomplet tant que toutes les tables du schéma n'y sont pas — lecture en
+          // cours, ou plafond qui mord. « Aucun chemin » ne peut pas alors vouloir dire « aucun dans
+          // la base » : la bande le dit autrement.
+          partiel={tables.length < total}
+          onEffacer={() => setSelection([])}
+        />
+      )}
 
       {/* **Un `pointerdown` sur un élément sans rôle, et sans suppression de règle.** Biome ne s'en
           plaint pas — la règle ne couvre pas les événements de pointeur —, et une suppression posée
@@ -424,8 +576,11 @@ export function DiagramView({
                 <Fleche id={`${marques}-fleche-choisie`} className={styles.pointeChoisie} />
               </defs>
               {vue.liens.map((lien) => {
-                const touche =
-                  choisie !== null && (lien.source === choisie || lien.cible === choisie)
+                /* **Quand un chemin existe, c'est lui qu'on accentue, et lui seul.** Sinon, tous
+                   les liens incidents à ce qui est choisi — ce que fait une sélection simple. */
+                const touche = chemin
+                  ? liensDuChemin.has(lien.id)
+                  : selection.includes(lien.source) || selection.includes(lien.cible)
                 /* **Un lien s'éteint quand la recherche ne concerne aucun de ses bouts.** Sans
                    cela, les traits gardent toute leur force au-dessus de boîtes éteintes et
                    dominent le dessin — l'inverse de ce qu'une recherche doit produire. */
@@ -452,14 +607,16 @@ export function DiagramView({
                 key={boite.id}
                 boite={boite}
                 liens={vue.liens}
-                choisie={choisie === boite.id}
+                choisie={selection.includes(boite.id)}
+                // Une table que le chemin **traverse** sans qu'on l'ait désignée : c'est la réponse
+                // à « par où passe-t-on », et elle doit se distinguer des deux bouts qu'on a choisis.
+                surLeChemin={tablesDuChemin.has(boite.id) && !selection.includes(boite.id)}
                 enEvidence={enEvidence}
                 trouvee={correspondances.tables.has(boite.id)}
                 eteinte={chercheQuelqueChose && !correspondances.tables.has(boite.id)}
                 colonnesTrouvees={correspondances.colonnes}
-                // **Choisir bascule.** Un second clic relâche, ce qui rend `aria-pressed` vrai des
-                // deux côtés et donne le moyen d'éteindre le surlignage sans viser le fond.
-                onChoisir={() => setChoisie((deja) => (deja === boite.id ? null : boite.id))}
+                onChoisir={(etendre) => choisir(boite.id, etendre)}
+                onEffacer={() => setSelection([])}
                 onOuvrir={onOuvrirLaTable}
               />
             ))}
@@ -488,6 +645,146 @@ function Fleche({ id, className }: { id: string; className: string | undefined }
 }
 
 /**
+ * La bande qui dit ce qui relie les tables choisies.
+ *
+ * # Ce qu'elle répond, et que le dessin seul ne répondait pas
+ *
+ * Choisir une table éclaire ses voisines immédiates : « qu'est-ce qui touche `orders` ? ». Deux
+ * tables posent l'autre question — « qu'est-ce qui relie `orders` à `shipment_batches` ? » — et
+ * c'est celle qu'on se pose avant d'écrire une jointure, précisément parce qu'aucune clé ne les
+ * relie directement. Le dessin trace le chemin ; la bande l'**écrit**, colonne par colonne, dans
+ * l'ordre où on le parcourt.
+ *
+ * # Les trois états, qui ne se confondent pas
+ *
+ * Une seule table choisie : la bande dit laquelle, et **le geste** qui en désigne une seconde —
+ * `⇧`-clic ne s'annonce nulle part ailleurs, et un geste qu'on ne peut pas deviner n'existe pas.
+ * Deux tables et un chemin : le chemin. Deux tables et aucun chemin : la phrase qui le dit, et elle
+ * ne prétend rien de plus que ce que le dessin contient — voir `partiel`.
+ *
+ * # Une flèche pour l'œil, un verbe pour la voix
+ *
+ * `→` se lit d'un coup d'œil et ne s'annonce pas : une voix qui rendrait « orders.user_id users.id »
+ * ne dirait plus dans quel sens va la clé, ce qui est exactement l'information. Le verbe est donc
+ * posé en texte masqué (`clip-path`, jamais `display: none`), **avec ses espaces**, et la flèche
+ * retirée de l'arbre d'accessibilité — le piège n° 1 et le piège n° 2 dans la même ligne.
+ */
+function BandeDeRelation({
+  boites,
+  selection,
+  chemin,
+  partiel,
+  onEffacer,
+}: {
+  boites: readonly Boite[]
+  /** Une ou deux identités de tables — voir `selection` chez l'appelant. */
+  selection: readonly string[]
+  chemin: readonly Etape[] | null
+  /**
+   * Le dessin ne contient pas encore tout le schéma — lecture en cours, ou plafond qui mord.
+   *
+   * **« Aucun chemin » ne peut alors pas vouloir dire « aucun dans la base »** : le chemin passe
+   * peut-être par une table qui n'est pas là. C'est la même honnêteté que les deux nombres de la
+   * barre d'état — un diagramme amputé en silence se lirait comme un schéma complet.
+   */
+  partiel: boolean
+  onEffacer: () => void
+}) {
+  const t = useT()
+  const nomDe = (id: string) => boites.find((boite) => boite.id === id)?.table ?? id
+  const [premiere, seconde] = selection
+
+  return (
+    <div className={styles.relation} role="status" aria-label={t('diagram.relation.ariaLabel')}>
+      <Icon name="link" size={12} strokeWidth={2} className={styles.relationIcone} />
+      <div className={styles.relationTexte}>
+        {premiere === undefined ? null : seconde === undefined ? (
+          t('diagram.relation.invite', { table: nomDe(premiere), maj: toucheMajuscule() })
+        ) : chemin === null ? (
+          t(partiel ? 'diagram.relation.aucunePartielle' : 'diagram.relation.aucune', {
+            a: nomDe(premiere),
+            b: nomDe(seconde),
+          })
+        ) : (
+          <>
+            {chemin.length === 1
+              ? t('diagram.relation.directe')
+              : t('diagram.relation.indirecte', { count: chemin.length })}
+            {chemin.map((etape) => {
+              // Le lien va de `source` vers `cible` ; l'étape va de `de` vers `vers`. Quand elle
+              // **remonte** la clé, les deux ordres sont inverses, et c'est la flèche qui le dit —
+              // pas l'ordre de lecture, qui reste celui du chemin.
+              const gauche = etape.remonte ? etape.lien.colonnesCibles : etape.lien.colonnes
+              const droite = etape.remonte ? etape.lien.colonnes : etape.lien.colonnesCibles
+              return (
+                <span key={etape.lien.id}>
+                  {/* Le point porte ses espaces : sans elles, la voix rendrait
+                      « users.idorders.user_id » (piège n° 1). C'est le séparateur du pied. */}
+                  <span className={styles.relationPoint}>{' · '}</span>
+                  <code className={styles.bout}>{qualifier(nomDe(etape.de), gauche)}</code>
+                  <span className={styles.fleche} aria-hidden="true">
+                    {etape.remonte ? '←' : '→'}
+                  </span>
+                  <span className={styles.pourLaVoix}>
+                    {t(
+                      etape.remonte
+                        ? 'diagram.relation.referenceePar'
+                        : 'diagram.relation.reference',
+                    )}
+                  </span>
+                  <code className={styles.bout}>{qualifier(nomDe(etape.vers), droite)}</code>
+                </span>
+              )
+            })}
+          </>
+        )}
+      </div>
+      {/* Le bouton du zoom, réemployé : même cote, même bordure, même survol — celui du bouton
+          secondaire. Il existe parce que les boîtes choisies peuvent être hors de l'écran, et qu'on
+          ne devrait pas avoir à les retrouver pour rendre le dessin au repos. `Échap` sur une boîte
+          fait la même chose au clavier. */}
+      <button
+        type="button"
+        className={styles.bouton}
+        aria-label={t('diagram.relation.effacer')}
+        onClick={onEffacer}
+      >
+        <Icon name="x" size={11} strokeWidth={2} />
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Ce que devient la sélection quand on désigne `id`.
+ *
+ * **Trois règles, et la bascule est ce qui rend `aria-pressed` honnête des deux côtés** : le même
+ * geste doit pouvoir relâcher ce qu'il vient de désigner. `⇧` étend — c'est le geste d'extension
+ * partout ailleurs —, et la première choisie reste l'**ancre** : un troisième `⇧`-clic remplace la
+ * seconde, pour la raison écrite sur `selection`.
+ *
+ * Pure, et hors du composant : c'est la seule part de ce geste qui se raisonne sans rendu.
+ */
+function basculer(selection: readonly string[], id: string, etendre: boolean): readonly string[] {
+  if (!etendre) return selection.length === 1 && selection[0] === id ? [] : [id]
+  if (selection.includes(id)) return selection.filter((autre) => autre !== id)
+  if (selection.length === 0) return [id]
+  return [selection[0] as string, id]
+}
+
+/**
+ * Une colonne nommée par sa table : `orders.user_id`.
+ *
+ * **Une clé composite garde ses colonnes groupées** — `orders.(tenant_id, id)`. Sans les
+ * parenthèses, `orders.tenant_id, id` laisserait croire à deux bouts dont le second n'a pas de
+ * table, ce qui est faux et se lit mal.
+ */
+function qualifier(table: string, colonnes: readonly string[]): string {
+  if (colonnes.length > 1) return `${table}.(${colonnes.join(', ')})`
+  return `${table}.${colonnes[0] ?? ''}`
+}
+
+/**
  * Une table dessinée.
  *
  * **Un `role="button"` sur un `div`, plutôt qu'un vrai `<button>`** : le contenu d'un bouton doit
@@ -505,16 +802,20 @@ function Cadre({
   boite,
   liens,
   choisie,
+  surLeChemin,
   enEvidence,
   trouvee,
   eteinte,
   colonnesTrouvees,
   onChoisir,
+  onEffacer,
   onOuvrir,
 }: {
   boite: Boite
   liens: readonly Lien[]
   choisie: boolean
+  /** Le chemin entre les deux tables choisies traverse celle-ci, sans qu'on l'ait désignée. */
+  surLeChemin: boolean
   /** Les `table.colonne` que la sélection éclaire — voir `enEvidence` chez l'appelant. */
   enEvidence: ReadonlySet<string>
   /** La recherche désigne cette table. */
@@ -523,7 +824,9 @@ function Cadre({
   eteinte: boolean
   /** Les `table.colonne` que la recherche a fait correspondre. */
   colonnesTrouvees: ReadonlySet<string>
-  onChoisir: () => void
+  /** `etendre` : le geste portait `⇧`, donc il **adjoint** au lieu de remplacer. */
+  onChoisir: (etendre: boolean) => void
+  onEffacer: () => void
   onOuvrir?: (table: string) => void
 }) {
   const t = useT()
@@ -541,6 +844,11 @@ function Cadre({
       className={cx(
         styles.boite,
         choisie && styles.boiteChoisie,
+        /* **Traversée n'est pas choisie**, et les deux se lisent ensemble : l'anneau d'accent dit
+           « ce chemin passe par ici », l'en-tête teinté dit « c'est une des deux que j'ai
+           désignées ». La bande nomme les trois par écrit — une couleur seule ne porte jamais une
+           information. */
+        surLeChemin && styles.boiteSurLeChemin,
         /* **La marque de recherche et la sélection sont deux choses**, et se distinguent par leur
            teinte : `--info` pour ce qu'on a cherché, l'accent pour ce qu'on a désigné. Une seule
            couleur pour les deux aurait fait lire « trouvée » comme « choisie », alors qu'`Entrée`
@@ -563,21 +871,25 @@ function Cadre({
          écrivant le test — c'est lui qui a dit lequel des deux comportements sortait. */
       onClick={(evenement) => {
         if (evenement.detail > 1) return
-        onChoisir()
+        onChoisir(evenement.shiftKey)
       }}
       onDoubleClick={() => onOuvrir?.(boite.table)}
       onKeyDown={(evenement) => {
-        // **`Entrée` ouvre, `Espace` choisit.** Le double-clic est le geste de la souris ; un geste
-        // qui n'existerait qu'au double-clic serait invisible et inatteignable au clavier, ce que
-        // le renommage des consoles a déjà tranché.
+        // **`Entrée` ouvre, `Espace` choisit, `⇧Espace` adjoint.** Le double-clic et le `⇧`-clic
+        // sont les gestes de la souris ; un geste qui n'existerait qu'à la souris serait invisible
+        // et inatteignable au clavier, ce que le renommage des consoles a déjà tranché — et la
+        // comparaison de deux tables, qui est tout l'intérêt du second, le mérite d'autant plus.
         if (evenement.key === 'Enter') {
           evenement.preventDefault()
           onOuvrir?.(boite.table)
         }
         if (evenement.key === ' ') {
           evenement.preventDefault()
-          onChoisir()
+          onChoisir(evenement.shiftKey)
         }
+        // `Échap` rend le dessin au repos sans avoir à retrouver les boîtes choisies, qui peuvent
+        // être hors de l'écran : c'est la sortie de la bande, au clavier.
+        if (evenement.key === 'Escape') onEffacer()
       }}
     >
       <div className={styles.tete} style={{ height: HAUTEUR_ENTETE }}>
