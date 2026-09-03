@@ -171,6 +171,22 @@ fn abreger_version(complete: &str) -> String {
         .join(" ")
 }
 
+impl PostgresAdapter {
+    /// Le détail de **plusieurs** tables, en six allers-retours quel qu'en soit leur nombre.
+    ///
+    /// **Une méthode inhérente et non une entrée du contrat de moteur** : c'est une lecture
+    /// ensembliste que seul un catalogue SQL rend possible, et l'inscrire au contrat obligerait les
+    /// quatre autres moteurs à déclarer une optimisation qu'ils n'ont pas. `AnyEngine` la choisit
+    /// pour PostgreSQL et boucle pour les autres — voir `AnyEngine::table_details`.
+    pub async fn table_details(
+        &self,
+        schema: &str,
+        tables: &[String],
+    ) -> Result<Vec<TableDetail>, EngineError> {
+        introspect::table_details(&self.client, schema, tables).await
+    }
+}
+
 impl EngineAdapter for PostgresAdapter {
     async fn probe(&self) -> Result<ConnectionProbe, EngineError> {
         // La durée court jusqu'à une connexion **interrogeable** : l'aller-retour de version
@@ -469,6 +485,66 @@ mod tests {
             requete.contains("pg_total_relation_size"),
             "la taille doit être calculée côté serveur"
         );
+    }
+
+    /// La requête des objets **peut se borner à une liste de noms**, et c'est ce qui a fait passer
+    /// `table_detail` d'un balayage de schéma à une ligne.
+    ///
+    /// # Pourquoi c'est structurel, et pourquoi ça ne pouvait pas l'être autrement
+    ///
+    /// Mesuré : rejouer la séquence de soixante `table_detail` coûtait 183 ms de requêtes sur un
+    /// schéma de deux cents relations **vides**, contre 7,4 ms avec ce filtre. Mais neutraliser le
+    /// filtre ne change **rien** au résultat — la table demandée est retrouvée en Rust de toute
+    /// façon —, donc les soixante-et-un tests de base restaient verts sous ce sabotage précis. Un
+    /// test chronométré, lui, serait un tirage au sort (règle n° 3).
+    ///
+    /// Ce qui se garde est donc le réglage : le filtre est **dans la requête**, donc appliqué par le
+    /// serveur avant que la projection ne calcule une taille par relation.
+    #[test]
+    fn la_requete_des_objets_peut_se_borner_a_une_liste_de_noms() {
+        let requete = super::introspect::requete_objets_pour_test();
+        assert!(
+            requete.contains("c.relname = any($2::text[])"),
+            "sans ce filtre, décrire une table balaye tout le schéma : {requete}"
+        );
+        // Et elle doit **aussi** savoir tout rendre : `list_objects` en dépend.
+        assert!(
+            requete.contains("$2::text[] is null"),
+            "un filtre nul doit rendre tout le schéma : {requete}"
+        );
+    }
+
+    /// Les cinq requêtes de détail lisent un **ensemble**, non une table.
+    ///
+    /// Même raison que le test ci-dessus, et même impossibilité : les réécrire pour une seule table
+    /// rendrait les mêmes structures en soixante fois plus d'allers-retours — trois cent soixante au
+    /// lieu de six pour un schéma de soixante tables, ce qui faisait quelques minutes à travers un
+    /// tunnel. Aucun test de comportement ne peut voir la différence ; celui-ci voit le réglage.
+    ///
+    /// `pg_indexes` est le seul à se borner par **nom** : cette vue ne porte pas d'oid.
+    #[test]
+    fn les_cinq_requetes_de_detail_lisent_un_ensemble() {
+        for (nom, requete) in super::introspect::requetes_de_detail_pour_test() {
+            // **Le paramètre ensembliste, et non la façon de le consommer** : quatre requêtes le
+            // passent à `any(…)`, celle des relations à `unnest(…)` — il lui faut une ligne par
+            // couple (sujet, contrainte), ce qu'un `any` dans un `where` ne produit pas. Ce qui
+            // compte est qu'elles reçoivent un **ensemble**.
+            let attendu = if nom == "index" {
+                "$2::text[]"
+            } else {
+                "$1::oid[]"
+            };
+            assert!(
+                requete.contains(attendu),
+                "la requête « {nom} » doit lire un ensemble ({attendu}) : {requete}"
+            );
+            // Et aucune ne doit être revenue à la désignation par nom qualifié, qui est ce que la
+            // version par table employait.
+            assert!(
+                !requete.contains("::text::regclass"),
+                "la requête « {nom} » désigne une table unique : {requete}"
+            );
+        }
     }
 
     /// Une variante minimale, sans tunnel — l'appelant lui en assigne un au besoin. Ne
@@ -2104,6 +2180,134 @@ mod tests_db {
         // parce qu'elle cherchait l'attribut n°2 dans `users` au lieu d'`orders`.
         assert_eq!(entrante.columns, vec!["id".to_owned()]);
         assert_eq!(entrante.target_columns, vec!["user_id".to_owned()]);
+    }
+
+    // --- La lecture groupée (3 septembre 2026) ---------------------------------------------------
+
+    /// **Le test d'équivalence, et la seule chose qui compte de cette optimisation.**
+    ///
+    /// `table_details` a réécrit les cinq requêtes de `table_detail` en ensemblistes — filtrées sur
+    /// un ensemble d'oid, groupées en Rust — pour que décrire soixante tables coûte six
+    /// allers-retours au lieu de trois cent soixante. Une réécriture de SQL ne vaut que si elle
+    /// rend **exactement** la même chose, et rien dans le type ne le garantit : deux `TableDetail`
+    /// se ressemblent beaucoup en étant faux.
+    ///
+    /// D'où la comparaison terme à terme avec la lecture une par une, sur des tables du décor
+    /// choisies pour porter chacune quelque chose : `orders` a des index, des contraintes, un
+    /// trigger, une identité et une clé étrangère sortante ; `users` la même clé vue en entrée ;
+    /// `montants` des types numériques ; `identites` des colonnes commentées.
+    #[tokio::test]
+    async fn la_lecture_groupee_rend_exactement_ce_que_la_lecture_par_table_rend() {
+        let tables = [
+            "orders".to_owned(),
+            "users".to_owned(),
+            "montants".to_owned(),
+            "identites".to_owned(),
+        ];
+        let adaptateur = adaptateur().await;
+
+        let groupes = adaptateur
+            .table_details("introspection", &tables)
+            .await
+            .expect("la lecture groupée aboutit");
+
+        // Le décor doit bien contenir les quatre, sinon ce test se vérifierait lui-même.
+        assert_eq!(groupes.len(), 4, "quatre tables décrites : {groupes:?}");
+        // **L'ordre est celui demandé**, et non celui du catalogue, qui trie par nom : `orders`
+        // vient avant `users`, `montants` et `identites` alors que l'alphabet dit l'inverse.
+        assert_eq!(
+            groupes.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(),
+            vec!["orders", "users", "montants", "identites"]
+        );
+
+        for (groupe, nom) in groupes.iter().zip(tables.iter()) {
+            let seul = detail_de_test(nom).await;
+            // `TableDetail` dérive `PartialEq` : la comparaison porte sur **tout** — colonnes,
+            // index, contraintes, triggers, relations, DDL, compte de lignes, taille, commentaire.
+            // C'est ce qui fait de ce test un contrôle d'équivalence et non un échantillonnage.
+            assert_eq!(
+                *groupe, seul,
+                "la table {nom} diffère selon le chemin de lecture"
+            );
+        }
+    }
+
+    /// Une table absente est **omise** d'une lecture groupée, et **refusée** d'une lecture unique.
+    ///
+    /// La différence est délibérée : une lecture de schéma part d'une liste établie un instant plus
+    /// tôt, et une table retirée entre-temps ne doit pas emporter les autres ; une lecture unique,
+    /// elle, répond à une demande nommée, et se taire y serait rendre une table vide pour une table
+    /// qui n'existe pas.
+    #[tokio::test]
+    async fn une_table_absente_est_omise_du_groupe_et_refusee_seule() {
+        let adaptateur = adaptateur().await;
+        let groupes = adaptateur
+            .table_details(
+                "introspection",
+                &["orders".to_owned(), "fantome".to_owned()],
+            )
+            .await
+            .expect("une table absente n'échoue pas");
+        assert_eq!(
+            groupes.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(),
+            vec!["orders"]
+        );
+
+        let refus = adaptateur.table_detail("introspection", "fantome").await;
+        assert!(
+            refus.is_err(),
+            "une table nommée absente doit être refusée, pas rendue vide"
+        );
+    }
+
+    /// Les deux bouts d'une même clé étrangère, **dans un seul groupe**.
+    ///
+    /// C'est le cas que la version ensembliste pouvait perdre : une contrainte concerne deux tables
+    /// demandées — l'une la déclare en sortie, l'autre en entrée — et un filtre sur `conrelid in
+    /// (…)` n'en aurait rendu qu'une ligne. D'où le `join` sur la liste des sujets, qui rend une
+    /// ligne par couple.
+    #[tokio::test]
+    async fn une_cle_partagee_par_deux_tables_du_groupe_est_rendue_aux_deux() {
+        let groupes = adaptateur()
+            .await
+            .table_details("introspection", &["orders".to_owned(), "users".to_owned()])
+            .await
+            .expect("la lecture groupée aboutit");
+
+        let orders = groupes.iter().find(|d| d.name == "orders").expect("orders");
+        let users = groupes.iter().find(|d| d.name == "users").expect("users");
+
+        let sortante = orders
+            .relations
+            .iter()
+            .find(|r| r.direction == crate::engine::RelationDirection::Outgoing)
+            .unwrap_or_else(|| panic!("orders référence users : {:?}", orders.relations));
+        assert_eq!(sortante.columns, vec!["user_id".to_owned()]);
+        assert_eq!(sortante.target_columns, vec!["id".to_owned()]);
+
+        let entrante = users
+            .relations
+            .iter()
+            .find(|r| r.direction == crate::engine::RelationDirection::Incoming)
+            .unwrap_or_else(|| panic!("users est référencée : {:?}", users.relations));
+        // **Le sens s'inverse, pas les tables** : les colonnes du sujet se cherchent dans le sujet.
+        assert_eq!(entrante.columns, vec!["id".to_owned()]);
+        assert_eq!(entrante.target_columns, vec!["user_id".to_owned()]);
+    }
+
+    /// Un groupe vide ne demande rien.
+    ///
+    /// Pas une précaution : `= any('{}')` ne rend aucune ligne, donc les cinq requêtes partiraient
+    /// pour rien — cinq allers-retours pour un diagramme dont tout le schéma est déjà en cache,
+    /// c'est-à-dire le cas courant d'un second affichage.
+    #[tokio::test]
+    async fn un_groupe_vide_ne_lit_rien() {
+        let groupes = adaptateur()
+            .await
+            .table_details("introspection", &[])
+            .await
+            .expect("un groupe vide aboutit");
+        assert!(groupes.is_empty());
     }
 
     // --- Le TLS de `06f` -------------------------------------------------------------------------

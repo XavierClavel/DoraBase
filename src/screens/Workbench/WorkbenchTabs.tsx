@@ -52,6 +52,24 @@ export function WorkbenchTabs({
         renommable: onglet.nom !== undefined,
       }
     }
+    if (onglet.sorte === 'diagramme') {
+      return {
+        id: idOnglet(onglet),
+        // `plan` était la seule icône du sprite que rien n'employait, et c'est un graphe de boîtes
+        // reliées par des traits : le dessin dit déjà ce que l'onglet ouvre, sans qu'il faille en
+        // ajouter une — et une icône du sprite est un décor partagé qu'on ne touche pas sans raison.
+        icon: 'plan' as const,
+        // **Une encre neutre, et non une cinquième couleur.** Les quatre teintes de la bande
+        // nomment des *natures d'objet* — table, vue, console — et un diagramme n'en est pas une :
+        // c'est une façon de regarder un schéma. C'est déjà pour cette raison que la ligne d'une
+        // console porte `--ink-3` dans l'arbre.
+        iconColor: 'var(--ink-2)',
+        accentColor: 'var(--accent)',
+        // Le nom du schéma : c'est de lui que le diagramme parle. L'icône le distingue d'un onglet
+        // de table, comme elle distingue une console.
+        label: onglet.schema,
+      }
+    }
     return {
       id: idOnglet(onglet),
       icon: onglet.kind === 'view' ? ('view' as const) : ('table' as const),

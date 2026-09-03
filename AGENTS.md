@@ -241,6 +241,197 @@ qu'il portait et que le rendu ne dit pas.
   - **la console reçoit le menu de copie, pas celui de masquage à distance.** Le masquage lui-même
     existe des deux côtés — `A5` par la barre d'outils et le menu d'en-tête, la console par le
     seul menu d'en-tête, qui porte alors son propre retour (voir ci-dessus).
+- **Un schéma se regarde aussi en diagramme** (3 septembre 2026, `src/screens/Diagram/`). `A9`
+  décrit **une** table et son bloc « Relations » nomme celles qu'elle touche ; l'arbre liste les
+  tables sans jamais dire ce qui les relie. La forme d'un schéma — quelles tables sont au centre,
+  lesquelles sont des feuilles, où sont les cycles — n'était donc lisible nulle part, alors que c'est
+  la première question qu'on se pose devant une base qu'on ne connaît pas. **Aucune commande
+  nouvelle** : le dessin est fait de `describe_table`, ceux-là mêmes que le panneau de détail, la vue
+  Structure et l'autocomplétion lisent déjà, et il les pose dans le même cache. Neuf décisions à ne
+  pas défaire :
+  - **c'est un onglet, pas une troisième valeur de `VueObjet`.** Le couple « Données / Structure » est
+    un état *de la table ouverte* ; un diagramme parle d'un **schéma**, et il n'y a pas de table dont
+    il serait la troisième vue. Conséquence voulue, et c'est tout l'intérêt : il survit à l'ouverture
+    et à la fermeture des tables qu'il montre ;
+  - **il s'ouvre du menu de la ligne de schéma**, qui gagne ainsi le premier menu du dépôt à ne pas
+    porter de configuration. La raison écrite dans `entreesDe` — « il n'y a rien à configurer sur un
+    schéma » — reste vraie ; ce qui décide est que cette ligne est **le seul endroit du produit qui
+    nomme un schéma à tout moment**. Le fil d'Ariane du centre en nomme un aussi, mais il disparaît
+    dès qu'un onglet s'ouvre, c'est-à-dire précisément quand on voudrait revenir au diagramme ;
+  - **la disposition est un calcul, pas une mesure** (`disposition.ts`) — l'arbitrage d'`ajustement.ts`
+    à deux dimensions, et les avances de police sont **importées de lui**, pas recopiées. Mesurer le
+    rendu coûterait un premier dessin à la mauvaise taille puis un repositionnement de tout le graphe
+    à chaque table qui arrive, et surtout la mesure est hors de portée de Vitest (règle n° 9) ;
+  - **une table se place à gauche de celles qu'elle référence**, par relaxation bornée plutôt que par
+    parcours récursif : un schéma réel a des cycles, et la borne les plafonne sans demander de
+    marquage. Les liens réflexifs sont écartés du calcul des couches — une table ne peut pas être à
+    gauche d'elle-même — et tracés en boucle à droite, `parent_id` étant trop courant pour n'être
+    rien ;
+  - **la flèche s'ancre sur la *ligne* de la colonne**, aux deux bouts. C'est ce qui distingue un
+    diagramme de schéma d'un graphe de dépendances : ce qu'on vient y lire est quelle colonne
+    référence quelle colonne. D'où l'invariant qui gouverne l'aperçu de colonnes : **une colonne qui
+    porte une clé ne se masque jamais**, même au-delà du compte d'aperçu, sans quoi une flèche
+    arriverait sur « + n autres » ;
+  - **des traits coudés et des couloirs, pas des courbes** (rapporté à l'usage, après essai). Le
+    premier dessin employait des Béziers, chacune juste, et **elles se confondaient** : deux clés
+    visant la même région donnaient ce qui se lisait comme une seule ligne épaisse, et suivre une
+    flèche du regard demandait de la sélectionner. Trois segments orthogonaux aux angles arrondis
+    remplacent la courbe — deux droites qui se croisent se lisent comme un croisement — et chaque
+    lien reçoit un **couloir** dans la gouttière qu'il traverse, attribué du plus court parcours
+    vertical au plus long, de sorte qu'aucune verticale n'en recouvre une autre. Le compte de
+    couloirs est **dérivé de l'écart horizontal**, jamais posé à côté : élargir la gouttière en offre
+    davantage sans qu'on y pense, la rétrécir en retire plutôt que de faire passer un trait sous une
+    boîte. Le coude se place dans la gouttière qui précède la **cible**, pour que toutes les flèches
+    entrant dans une table y arrivent droit, à des hauteurs séparées ;
+  - **choisir une table éclaire les colonnes de ses clés, aux deux bouts** (rapporté à l'usage).
+    Surligner les traits dit *qu'*une table en référence une autre, pas **par quelle colonne** — or
+    c'est la question qu'on se pose en choisissant une boîte. La clé étrangère s'allume chez celle
+    qui référence, la colonne référencée chez l'autre, et l'un ou l'autre bout donne le même couple.
+    La marque porte sur le **fond et l'encre** : une couleur seule ne doit pas porter une
+    information ;
+  - **les deux moitiés d'une clé sont le même lien.** Le catalogue la rend sortante chez l'une et
+    entrante chez l'autre ; les collecter des deux côtés puis dédupliquer par `(source, contrainte)`
+    fait paraître la flèche dès que **l'un** des deux bouts est lu — ce qui compte, les structures
+    arrivant une par une. Le nom de la contrainte fait partie de l'identité : `created_by` et
+    `updated_by` vers `users` sont deux flèches ;
+  - **le plafond de tables valait soixante, et c'était un jugement pris à la place de
+    l'utilisateur** (3 septembre 2026, après la question « pourquoi 60 des 124 tables ? lesquelles ne
+    sont pas affichées ? »). Les deux raisons qui le justifiaient avaient disparu entre-temps : la
+    lecture est douze fois plus rapide depuis les lectures ensemblistes et les lots, et les trois
+    défauts de disposition qui rendaient un grand dessin illisible sont corrigés. Ne restait qu'un
+    « au-delà, ça ne se lit plus » qui retirait du dessin soixante-quatre tables sur cent
+    vingt-quatre. Il vaut **trois cents**, le nombre que le préchauffage emploie déjà avec la
+    justification que ce fichier avait reprise. Et quand il mord, l'infobulle dit désormais le
+    **critère** — l'ordre alphabétique — puis **les noms** : un compte dit qu'il manque quelque
+    chose, une liste dit quoi. Le critère est avoué parce qu'il n'en est pas un : rien de ce qu'on
+    sait avant d'avoir lu les structures — un `TableSummary` ne porte ni clé étrangère ni degré — ne
+    permettrait de garder « les plus reliées » plutôt que « les premières de l'alphabet ». Le tri
+    rend au moins la coupe reproductible.
+  - **ce qui n'est pas dessiné est dit.** Les clés dont l'autre bout est hors du schéma n'ont pas de
+    boîte où arriver, et les tables au-delà du plafond ne sont pas demandées : la barre d'état porte
+    les deux nombres. Un diagramme amputé en silence se lirait comme un schéma complet, ce qui est le
+    pire défaut que cette vue puisse avoir ;
+  - **les boîtes sont du HTML, les liens du SVG.** Tout en SVG aurait demandé de réinventer l'ellipse
+    d'un nom trop long, le survol, le focus, un rôle et un nom accessible — or une boîte est
+    **cliquable**, un diagramme dont on ne peut pas ouvrir une table étant une image. Corollaire :
+    son nom accessible vient d'un `aria-label`, le contenu concaténé rendant
+    « ordersidint8user_id… » — le piège n° 1 dans une forme qu'aucune espace explicite n'arrangerait ;
+  - **on y cherche une table *ou* une colonne, et la recherche ne redispose rien** (3 septembre
+    2026, à la demande). Deux décisions, chacune avec sa raison :
+    - **les deux, tables et colonnes.** « Où est `orders` ? » et « qui porte un `deleted_at` ? » sont
+      les deux questions qu'on pose à un schéma, et la seconde n'avait aucune réponse dans le
+      produit : l'arbre ne filtre que des libellés, la vue Structure ne cherche que dans **une**
+      table. La recherche porte sur les **structures**, non sur le dessin — chercher dans les seules
+      lignes visibles aurait rendu « aucune » pour une colonne que l'aperçu masque. Conséquence
+      assumée : une table peut être trouvée par une colonne qu'on ne voit pas, et l'interrupteur
+      « Toutes les colonnes » est juste à côté pour voir pourquoi. Ne pas la marquer aurait été taire
+      une réponse juste ;
+    - **elle marque, elle ne filtre pas.** Masquer les tables qui ne correspondent pas aurait
+      redisposé le graphe à chaque frappe — or la disposition est *dérivée*, donc elle se refait
+      entièrement, et le dessin sauterait sous les doigts de celui qui tape. Les tables trouvées sont
+      donc **cerclées** en `--info`, les autres s'**effacent** — leurs liens avec elles, sinon les
+      traits gardent toute leur force au-dessus d'un dessin éteint et le dominent. Ni l'un ni l'autre
+      n'emprunte l'accent, qui dit « désigné ».
+    Le déplacement, lui, est explicite : **`Entrée` emmène** à la correspondance suivante et boucle,
+    la frappe se contentant de marquer. Faire défiler à chaque caractère serait désorientant sur une
+    toile de plusieurs milliers de pixels, et le compte affiché dans le champ dit d'avance s'il y a
+    quelque part où aller — « aucune » plutôt qu'un champ muet qui laisserait croire qu'il cherche
+    encore.
+  - **un interrupteur nommé « Toutes les colonnes », et non un contrôle segmenté « Clés | Toutes »**
+    (rapporté à l'usage). Les deux mots ne disaient pas ce que le réglage *fait* : on lisait « Clés »
+    comme un filtre sur une nature de colonne, sans comprendre que des lignes étaient **masquées**.
+    La forme d'un interrupteur éteint l'annonce, et la ligne « + n autres » de chaque boîte dit
+    combien. C'est le `Toggle` de `ui/`, avec son libellé posé dans le diagramme — non le
+    `ToggleWithLabel` d'`A2`, qui l'habille avec la feuille de style de son écran ;
+  - **un témoin tourne pendant la lecture, dans la bande d'outils** (rapporté à l'usage) — et la
+    barre d'état garde le compte. Les deux ne se répètent pas : le témoin dit **que** ça travaille,
+    là où le regard est en attendant un dessin ; la barre dit **où en est** la lecture, à vingt-six
+    pixels du bas où personne ne la regarde à ce moment-là. La rotation est celle de `Toolbar`,
+    valeurs comprises, et `prefers-reduced-motion` la retire en laissant le texte — ignorer ce
+    réglage est un défaut d'accessibilité, pas un choix esthétique ;
+  - **chaque table se pose en face de celles auxquelles elle est liée, et les tables sans lien
+    sortent du flux** (rapporté à l'usage, sur un vrai schéma). Deux règles, un même défaut : « un
+    très grand espace vide, puis quatre tables tout à droite ». La première version centrait chaque
+    colonne sur la hauteur de la plus haute — juste quand elles se ressemblent, faux dès qu'une seule
+    les dépasse : une colonne de cinquante tables plaçait les quatre de la dernière à trois mille
+    pixels du haut, seules au milieu d'un vide. L'ordonnée d'une boîte est donc le **barycentre des
+    centres de ses voisines déjà placées**, l'empilement ne l'écartant que pour éviter un
+    chevauchement — le pendant vertical du barycentre qui ordonne déjà les colonnes. Et une table
+    qu'aucun lien du schéma ne touche n'appartient pas à un flux de références : c'est une **liste**,
+    rangée en grille sous le graphe. C'est elle qui gonflait la première colonne, une base réelle en
+    comptant des dizaines ; mesuré, un schéma de soixante tables dont quarante-quatre sans clé passe
+    d'une colonne de plus de quatre mille pixels à une toile de 974 × 1788. Cas limite voulu : un
+    schéma sans aucune clé étrangère devient une grille compacte. Corollaire à ne pas perdre : une
+    boîte peut se poser **au-dessus de zéro** quand son souhait vient d'une voisine plus haute, donc
+    la toile est renormalisée sur sa marge — un dessin au coin haut-gauche négatif sortirait de sa
+    zone défilante par le haut, là où aucun défilement ne va ;
+  - **le graphe est rendu acyclique avant d'être stratifié** (rapporté à l'usage, troisième tour :
+    « des tables tout à droite, et des flèches extrêmement longues »). C'est la première étape du
+    dessin en couches, et les deux corrections précédentes l'avaient sautée. Le calcul relâchait
+    `couche(cible) ≥ couche(source) + 1` sur **tous** les liens, borné au nombre de tables : sur un
+    graphe acyclique il se stabilise et rend le plus long chemin, sur un cycle il ne se stabilise
+    **jamais** et la borne devient la réponse. Le commentaire qui vivait là affirmait le contraire —
+    « un cycle plafonne simplement à la longueur du chemin qu'il permet » — et c'était faux : il
+    plafonne au nombre de tables du schéma. Mesuré sur trente tables, une étoile banale plus **un
+    seul** cycle de trois : **quatre-vingt-onze colonnes**, une toile de 20 164 px, et les trois
+    tables du cycle abandonnées aux colonnes 88 à 90 pendant que les vingt-sept autres tenaient dans
+    les deux premières. Après : **trois colonnes**, 628 px. Un parcours en profondeur écarte donc les
+    liens qui referment un chemin — de ce calcul et de lui seul : ils restent tracés, vers l'arrière.
+    **Aucun décor ne l'avait vu** : le seul qui portait un cycle n'avait que deux tables, où une
+    borne de deux itérations ne peut pas faire de mal. Un décor trop petit ne mesure que le décor
+    (règle n° 5), et c'est ici que ça a coûté le plus cher.
+  - **et chaque table se resserre contre ses voisines** (rapporté à l'usage : « des liens
+    extrêmement longs »). Le calcul des couches place chaque table à sa colonne **minimale**, donc
+    une table qu'aucune autre ne référence reste en colonne 0 même quand rien ne l'y oblige. Sur un
+    schéma réel, cela donne exactement le signalement : une table centrale — `users`, `account` — est
+    poussée loin à droite par la plus longue chaîne qui la référence, et **toutes** ses autres
+    référentes lui tirent un trait depuis l'autre bout du dessin. Mesuré sur un décor de dix tables
+    en chaîne plus six feuilles vers la dernière : six liens de neuf colonnes de portée, 1862 px
+    chacun ; après resserrage, une colonne et 86 px — l'écart horizontal, donc le minimum possible.
+    La règle n'a pas de réglage : la longueur totale des liens d'une table vaut
+    `colonne × (entrants − sortants)` plus une constante, donc son minimum est toujours à une
+    **borne** — au plancher quand les entrants dominent, au plafond quand ce sont les sortants, et
+    sur place à égalité, parce qu'un déplacement qui ne gagne rien ferait changer le dessin d'une
+    lecture à l'autre. Chaque déplacement fait strictement décroître une somme entière positive : la
+    boucle converge d'elle-même. Un cycle rend les deux bornes contradictoires — la table reste alors
+    où la relaxation l'a mise, faute d'une position qui satisfasse tout le monde.
+  - **il lit son schéma par lots, et c'est ce qui l'a rendu utilisable** (rapporté à l'usage : « il
+    faut quelques minutes sur une grosse base »). Le chargeur lisait table par table, et sur un
+    schéma de soixante tables cela faisait soixante traversées de l'IPC, soixante prises du verrou du
+    registre et trois cent soixante allers-retours SQL, tous sérialisés — le verrou du registre est
+    tenu pendant chaque opération, délibérément, donc **la concurrence côté écran n'y aurait rien
+    changé**, ce qui est la première idée qu'on a et la mauvaise. Les lots de douze ramènent cela à
+    cinq traversées et trente allers-retours. Deux raisons de ne pas tout demander d'un coup, qui
+    seraient le plus rapide au chronomètre : le verrou serait tenu le temps du schéma entier — donc
+    la table qu'on clique pendant le dessin attendrait derrière lui — et le dessin arriverait d'un
+    bloc après une attente muette, là où les lots le remplissent par paliers visibles.
+  - **la molette défile, elle ne zoome pas.** `⌘` + molette appartient à `useZoom`, et le pincement
+    du trackpad y est refusé activement depuis le 26 août 2026 : un second zoom sur les mêmes gestes
+    ferait dépendre l'échelle de qui écoute l'événement le premier. Les paliers sont donc des boutons,
+    et le glissement du fond déplace la vue.
+
+  **Trois choses apprises en le vérifiant, et les trois par sabotage.** Elles valent au-delà de cet
+  écran :
+
+  - **le rendu ne tombait pas où le calcul le mettait.** Le dépôt ne pose aucun reset `box-sizing`
+    (voir `reset.css`) : la bordure d'une boîte décalait son contenu d'un pixel et le filet de son
+    en-tête d'un second, si bien que les flèches arrivaient deux pixels sous leurs lignes. Le DOM
+    était juste, tous les tests unitaires verts. La bordure est donc peinte en **ombre interne**, de
+    sorte que la boîte occupe exactement ses cotes calculées ; l'autre issue aurait été d'apprendre
+    l'épaisseur du trait au module de calcul, donc de faire vivre un même fait dans une constante
+    *et* dans une feuille de style ;
+  - **le chrome d'une ligne se compte, il ne s'estime pas.** La première version réservait 30 px hors
+    texte « comme une cellule de grille » ; la CSS en consomme 36, et les six pixels manquants
+    coupaient **tous** les `timestamptz` du décor — vu à l'œil sur une capture, invisible à la suite
+    entière. Un test de bout en bout garde désormais qu'aucun nom ni aucun type n'est coupé **sous le
+    plafond**, comme `ajustement.ts` a le sien ;
+  - **deux gardes qui se couvrent l'une l'autre ne se dénoncent pas.** Le chargeur testait son témoin
+    de démontage avant *et* après son `await` : retirer l'une laissait la suite verte, donc aucune des
+    deux n'était gardée (règle n° 1). En n'en laissant qu'une, on gagne au passage le bon
+    comportement — une table déjà payée est posée dans le cache même si l'onglet s'est fermé, ce
+    cache appartenant à l'écran et non à l'onglet. Et le test qui l'observe ne mord que si le double
+    **tient ses réponses à la main** : quand il répond tout de suite, la boucle s'achève avant qu'on
+    ait pu l'interrompre, et il n'y a plus rien à mesurer.
 
 ### La règle « ligne liée »
 
@@ -672,6 +863,48 @@ décisions à ne pas défaire :
   saisies emporterait les lignes voisines identiques. Le patch porte donc une phrase en tête plutôt
   que d'être silencieusement incomplet. C'est le seul geste de l'écran qui ne s'annule pas après
   écriture, et c'est ce qui justifie que le bandeau nomme « lignes ajoutées » à part.
+
+**L'introspection PostgreSQL lit des ensembles, pas des tables** (3 septembre 2026). Deux défauts
+de coût, trouvés en cherchant pourquoi le diagramme d'un grand schéma prenait quelques minutes, et
+tous deux propres à PostgreSQL — MySQL lit son résumé par un `exec_first` et SQLite par un
+`query_row`, une ligne chacun.
+
+- **`table_detail` balayait tout le schéma pour lire une ligne.** Il appelait `objects(schema)` —
+  `pg_total_relation_size` par relation, trois sous-requêtes corrélées, une jointure sur
+  `pg_stat_all_tables` — puis cherchait sa table en Rust. Mesuré sur un schéma synthétique de deux
+  cents relations **vides**, donc le plancher : rejouer soixante `table_detail` coûtait 183 ms de
+  requêtes, contre 7,4 ms avec un filtre de noms. La requête en prend un désormais ; `NULL` rend
+  tout le schéma, ce dont `list_objects` a besoin.
+- **Les cinq requêtes de détail portaient sur une table.** Elles filtrent sur un ensemble d'oid et
+  rendent leur `relid`, que `table_details` regroupe : six allers-retours pour un schéma entier au
+  lieu de six par table. `pg_indexes` est le seul à se borner par nom — cette vue ne porte pas
+  d'oid.
+
+**Il n'y a pas deux versions de ces requêtes** : `table_detail` passe par `table_details` avec un
+seul nom. C'est la même SQL pour une table et pour soixante, donc les tests qui existaient
+l'exercent toujours, et aucune forme « pour une table » ne vieillit à part. Ce qui reste propre à
+`table_detail` est le **refus** : une table nommée absente est une erreur, là où une lecture de
+schéma l'omet — celle-ci part d'une liste établie un instant plus tôt, et une table retirée
+entre-temps ne doit pas emporter les cinquante-neuf autres.
+
+**Et `table_details` n'entre pas au contrat de moteur.** La lecture ensembliste n'a d'équivalent
+chez aucun des quatre autres — MongoDB échantillonne collection par collection, SQLite interroge un
+`pragma` par table, BigQuery un appel REST par table — et l'inscrire au contrat aurait obligé chacun
+à déclarer une optimisation qu'il n'a pas. C'est une méthode inhérente à `PostgresAdapter`, et
+`AnyEngine::table_details` choisit : PostgreSQL, ou une boucle pour les quatre autres, qui gagnent
+quand même la prise de verrou unique et les traversées d'IPC économisées. **Le `match` reste
+exhaustif** — les quatre sont nommés, pas absorbés par un `autre =>` : c'est la leçon du défaut
+n° 16, et un sixième moteur fera échouer la compilation là où son auteur doit choisir.
+
+**Ce qu'aucun test de comportement ne pouvait garder.** Neutraliser le filtre de noms rend
+**exactement** les mêmes structures, en soixante fois plus de travail : les soixante-et-un tests sur
+base réelle restaient verts sous ce sabotage. Réécrire les cinq requêtes pour une seule table, de
+même. Ce sont donc des **réglages** qui sont gardés, par deux tests structurels sur le texte des
+requêtes — la leçon de la règle n° 3 et du `nodelay` de `russh`, où un test calé sur une durée
+aurait été un tirage au sort. Ce que les tests de base gardent, eux, est l'**équivalence** : un
+`assert_eq!` entre le `TableDetail` d'une lecture groupée et celui d'une lecture unique, sur quatre
+tables du décor choisies pour porter chacune quelque chose. Une réécriture de SQL ne vaut que si elle
+rend la même chose, et deux `TableDetail` se ressemblent beaucoup en étant faux.
 
 **Convention Rust à 4 espaces**, pas de `rustfmt.toml` alignant Rust sur le JS du projet.
 
@@ -1913,6 +2146,31 @@ Aucun de ces points ne bloque le code en place.
   binaire (un `examples/`, par exemple), ce qui touche `domain:build`, la clef `default-run` et
   le garde `verifier-default-run.py` — donc trois décisions déjà prises, à rejouer ensemble.
   Rien n'est cassé en attendant ; c'est du poids, pas un défaut.
+- **Un long lien reste long, et c'est la limite du dessin en couches.** Trois défauts de disposition
+  ont été corrigés à l'usage — le centrage des colonnes, les tables isolées, les cycles — et il reste
+  un cas que ni l'un ni l'autre n'atteint : un schéma dont la plus longue chaîne de références est
+  profonde *et* dont une table centrale est référencée depuis toute cette profondeur. Mesuré sur un
+  décor de soixante tables, trois moyeux et des chaînes : vingt colonnes, une toile de 4 402 px, et
+  dix-huit liens sur soixante-quinze qui traversent presque tout — cinquante-sept sont à une colonne.
+  Ces liens-là sont **justes** : la table de la colonne 0 référence bien celle de la colonne 19, et
+  aucune stratification ne peut les rapprocher sans cesser de dessiner la chaîne comme une chaîne.
+  Deux réponses possibles, et c'est un arbitrage de produit : router ces liens par des **nœuds
+  fictifs**, ce qui ne les raccourcit pas mais les empêche de traverser les boîtes ; ou **plafonner
+  le nombre de colonnes**, ce qui les raccourcit au prix de quelques flèches qui pointeront vers
+  l'arrière. Rien n'est cassé en attendant : le dessin est juste et se défile — et la recherche donne
+  le moyen d'y retrouver une table sans la chercher des yeux.
+- **Le diagramme de schéma place ses boîtes tout seul, et rien ne se déplace à la main.** La
+  disposition est **dérivée** — donc reproductible, comparable d'une lecture à l'autre, et refaite
+  gratuitement quand une table arrive. Un placement à la main demanderait l'inverse : le persister
+  (où ? sous quelle clé ? avec quel sort pour une table renommée ou retirée ?), et décider ce
+  qu'advient une boîte posée à la main quand le schéma change sous elle. Trois questions de
+  conception, aucune urgence — le graphe automatique se lit. À rouvrir si l'usage dit que les
+  croisements gênent : le passage de barycentre ne fait qu'**une** passe, et la version complète de
+  l'algorithme qui les minimise est le prochain cran naturel.
+- **Et il ne s'exporte pas** — ni en image, ni en SVG. Même obstacle que l'export CSV, `blob:`
+  n'étant pas autorisé par la CSP, et la même conclusion : l'écriture appartient au Rust. Ce qui
+  reste à trancher est ce qu'on exporte au juste — le dessin visible, ou le schéma entier au-delà du
+  plafond de soixante tables.
 - **Déplacer une connexion d'un environnement à un autre** n'existe pas, délibérément : cela
   demande de déplacer un secret du Trousseau, donc son geste et sa conception. La
   confirmation de suppression ne le propose pas — offrir une action absente est pire que

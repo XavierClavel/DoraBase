@@ -100,6 +100,27 @@ export async function describeTable(
 }
 
 /**
+ * Le détail de **plusieurs** tables, en une seule traversée de l'IPC (3 septembre 2026).
+ *
+ * Le diagramme de schéma décrit toutes les tables d'un schéma : en passant par `describeTable`,
+ * soixante tables coûtaient soixante traversées, soixante prises du verrou du registre et — côté
+ * PostgreSQL — trois cent soixante allers-retours SQL, tous sérialisés. Quelques minutes à travers
+ * un tunnel, rapporté à l'usage.
+ *
+ * **Ce qui n'existe pas est omis, pas refusé** : le résultat peut être plus court que la liste
+ * demandée. C'est voulu — une lecture de schéma part d'une liste établie un instant plus tôt, et
+ * une table retirée entre-temps ne doit pas emporter les autres. L'appelant compare ce qu'il a
+ * demandé à ce qu'il reçoit.
+ */
+export async function describeTables(
+  key: DatabaseKey,
+  schema: string,
+  tables: readonly string[],
+): Promise<TableDetail[]> {
+  return invoke<TableDetail[]>('describe_tables', { key, schema, tables })
+}
+
+/**
  * Une **fenêtre** de lignes — jamais un jeu complet.
  *
  * `RowQuery.limit` est une énumération fermée (`RowLimit`) : « demander tout » n'est pas

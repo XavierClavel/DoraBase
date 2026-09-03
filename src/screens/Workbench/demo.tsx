@@ -7,7 +7,13 @@ import type {
   Preferences,
   Project,
 } from '../../domain/config'
-import type { SchemaInfo, TableDetail, TableSummary } from '../../domain/engine'
+import type {
+  ColumnInfo,
+  Relation,
+  SchemaInfo,
+  TableDetail,
+  TableSummary,
+} from '../../domain/engine'
 import { LanguageProvider, langueAppliquee } from '../../i18n/LanguageContext'
 import { NewConnection } from '../NewConnection/NewConnection'
 import { ParcoursDeCreation } from '../NewProject/ParcoursDeCreation'
@@ -16,7 +22,7 @@ import { jetonsDe, PREFERENCES_PAR_DEFAUT, themeApplique } from '../Preferences/
 import type { PasserelleLignes } from '../TableView/useLignes'
 import type { PasserelleArbre } from './useArbre'
 import type { PasserelleDetail } from './useDetailTable'
-import type { PasserelleStructures } from './useStructures'
+import { grouperParBoucle, type PasserelleStructures } from './useStructures'
 import { Workbench } from './Workbench'
 
 /**
@@ -527,10 +533,155 @@ const DETAIL_USERS: TableDetail = {
   relations: [],
 }
 
+/**
+ * Une colonne, en un appel plutôt qu'en dix lignes.
+ *
+ * Les deux structures écrites à la main au-dessus les épellent, et c'était tenable pour deux. Les
+ * cinq qui suivent en portent vingt : les épeler aussi aurait noyé la seule chose qu'elles ont à
+ * dire, qui est **quelle colonne référence quelle table**.
+ */
+const col = (
+  position: number,
+  name: string,
+  typeName: string,
+  over: Partial<ColumnInfo> = {},
+): ColumnInfo => ({
+  position,
+  name,
+  typeName,
+  category: typeName.startsWith('int') || typeName === 'numeric' ? 'number' : 'text',
+  nullable: false,
+  default: null,
+  identity: null,
+  key: null,
+  comment: null,
+  frequency: null,
+  ...over,
+})
+
+const pk = (position: number, name = 'id') => col(position, name, 'int8', { key: 'primary' })
+const fk = (position: number, name: string) => col(position, name, 'int8', { key: 'foreign' })
+
+/** Une clé étrangère sortante du schéma `public` de la démo. */
+const vers = (contrainte: string, colonne: string, cible: string, schema = 'public'): Relation => ({
+  constraintName: contrainte,
+  direction: 'outgoing',
+  columns: [colonne],
+  targetSchema: schema,
+  targetTable: cible,
+  targetColumns: ['id'],
+})
+
+/**
+ * Les cinq tables que le décor ne décrivait pas (3 septembre 2026).
+ *
+ * # Pourquoi il a fallu les écrire
+ *
+ * `describeTable` retombait sur `DETAIL` pour tout nom qui n'était pas `users` — donc rendait une
+ * structure **nommée `orders`** pour `shipment_batches`, `pricing_rules` et les autres. Un panneau
+ * de détail y survivait : on n'y regarde qu'une table à la fois, et ses colonnes ressemblaient à des
+ * colonnes. Le diagramme, lui, identifie ses boîtes par `schema.name` — celui que le moteur rend, et
+ * non celui qu'on a demandé, parce que c'est ce nom que les relations emploient pour désigner leur
+ * cible. Les six tables sans description propre se confondaient donc en **une seule boîte**, nommée
+ * `orders`. C'est la règle n° 5 : un décor trop régulier ne mesure que le décor.
+ *
+ * # Ce que ce graphe rend distinguable
+ *
+ * Quatre choses, chacune un cas que le dessin traite à part, et qu'aucun décor plus simple
+ * n'aurait exercées dans `?demo` — le seul décor où Playwright puisse les regarder :
+ *
+ * - **une chaîne de trois références** (`inventory_movements` → `order_items` → `orders` →
+ *   `users`), sans quoi toutes les boîtes tomberaient dans deux colonnes et l'ordre des couches ne
+ *   se vérifierait pas ;
+ * - **une référence réflexive** (`pricing_rules.parent_id`), le cas qui ferait tourner en rond un
+ *   calcul de couches naïf ;
+ * - **une clé déclarée des deux côtés** — sortante chez `inventory_movements`, entrante chez
+ *   `shipment_batches` — comme le catalogue les rend vraiment : c'est ce qui exerce la
+ *   déduplication, sans laquelle chaque flèche serait tracée deux fois ;
+ * - **une clé qui sort du schéma** (`audit_events.snapshot_id` vers `archive.snapshots`), dont la
+ *   boîte n'existe pas et que la barre d'état doit donc compter au lieu de la taire.
+ */
+const DETAILS: Readonly<Record<string, TableDetail>> = {
+  order_items: {
+    ...DETAIL,
+    name: 'order_items',
+    columns: [
+      pk(1),
+      fk(2, 'order_id'),
+      col(3, 'product_ref', 'text'),
+      col(4, 'quantity', 'int4'),
+      col(5, 'unit_price_cents', 'int4'),
+    ],
+    relations: [vers('order_items_order_id_fkey', 'order_id', 'orders')],
+  },
+  shipment_batches: {
+    ...DETAIL,
+    name: 'shipment_batches',
+    columns: [pk(1), col(2, 'code', 'text'), col(3, 'dispatched_at', 'timestamptz')],
+    // **Déclarée en *entrant*** : c'est la même clé que celle qu'`inventory_movements` déclare en
+    // sortant, et le catalogue les rend toutes les deux. Le décor doit donc le faire aussi
+    // (règle n° 14 : ce qu'un double émet vient d'une observation de l'original).
+    relations: [
+      {
+        constraintName: 'inventory_movements_batch_id_fkey',
+        direction: 'incoming',
+        columns: ['id'],
+        targetSchema: 'public',
+        targetTable: 'inventory_movements',
+        targetColumns: ['batch_id'],
+      },
+    ],
+  },
+  inventory_movements: {
+    ...DETAIL,
+    name: 'inventory_movements',
+    columns: [
+      pk(1),
+      fk(2, 'order_item_id'),
+      fk(3, 'batch_id'),
+      col(4, 'delta', 'int4'),
+      col(5, 'moved_at', 'timestamptz'),
+    ],
+    relations: [
+      vers('inventory_movements_order_item_id_fkey', 'order_item_id', 'order_items'),
+      vers('inventory_movements_batch_id_fkey', 'batch_id', 'shipment_batches'),
+    ],
+  },
+  pricing_rules: {
+    ...DETAIL,
+    name: 'pricing_rules',
+    columns: [
+      pk(1),
+      col(2, 'label', 'text'),
+      col(3, 'parent_id', 'int8', { key: 'foreign', nullable: true }),
+      col(4, 'rate', 'numeric'),
+    ],
+    relations: [vers('pricing_rules_parent_id_fkey', 'parent_id', 'pricing_rules')],
+  },
+  audit_events: {
+    ...DETAIL,
+    name: 'audit_events',
+    columns: [
+      pk(1),
+      fk(2, 'actor_id'),
+      col(3, 'snapshot_id', 'int8', { key: 'foreign', nullable: true }),
+      col(4, 'action', 'text'),
+      col(5, 'occurred_at', 'timestamptz'),
+    ],
+    relations: [
+      vers('audit_events_actor_id_fkey', 'actor_id', 'users'),
+      vers('audit_events_snapshot_id_fkey', 'snapshot_id', 'snapshots', 'archive'),
+    ],
+  },
+  users: DETAIL_USERS,
+}
+
 const PASSERELLE_DETAIL: PasserelleDetail = {
   describeTable: async (cle, _schema, table) => {
     if (estMongo(cle.database)) return DETAIL_MONGO
-    return table === 'users' ? DETAIL_USERS : DETAIL
+    // Le repli sur `DETAIL` reste, pour une table que le décor n'aurait pas prévue — mais il ne
+    // couvre plus les tables *listées*, qui sont désormais toutes décrites sous leur propre nom.
+    return DETAILS[table] ?? DETAIL
   },
 }
 
@@ -544,6 +695,9 @@ const PASSERELLE_DETAIL: PasserelleDetail = {
 const PASSERELLE_STRUCTURES: PasserelleStructures = {
   listObjects: PASSERELLE.listObjects,
   describeTable: PASSERELLE_DETAIL.describeTable,
+  // Le décor n'a pas de serveur à qui grouper quoi que ce soit : la boucle rend les mêmes
+  // structures. Voir `grouperParBoucle`.
+  describeTables: grouperParBoucle(PASSERELLE_DETAIL.describeTable),
 }
 
 /**

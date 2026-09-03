@@ -20,7 +20,7 @@ import { REGLAGES, TRIO_DE_TEST } from '../NewConnection/pourLesTests'
 import type { PasserelleLignes } from '../TableView/useLignes'
 import type { PasserelleArbre } from './useArbre'
 import type { PasserelleDetail } from './useDetailTable'
-import type { PasserelleStructures } from './useStructures'
+import { grouperParBoucle, type PasserelleStructures } from './useStructures'
 import { Workbench } from './Workbench'
 
 const variante = {
@@ -322,6 +322,8 @@ function monter(over: Partial<Parameters<typeof Workbench>[0]> = {}) {
   const structures: PasserelleStructures = over.passerelleStructures ?? {
     listObjects: vi.fn(async () => [objet('orders'), objet('order_items')]),
     describeTable: vi.fn((over.passerelleDetail ?? detail).describeTable),
+    // Le décor n'a pas de serveur à qui grouper quoi que ce soit — voir `grouperParBoucle`.
+    describeTables: vi.fn(grouperParBoucle((over.passerelleDetail ?? detail).describeTable)),
   }
 
   function Pilote() {
@@ -1452,7 +1454,11 @@ describe('la console SQL (`12a`)', () => {
       // La même liste, côté préchauffage : dans l'application ce sont la même commande — un décor qui
       // les dédoublerait rendrait des tables différentes selon le chemin, une divergence que la
       // réalité n'a pas.
-      passerelleStructures: { listObjects, describeTable },
+      passerelleStructures: {
+        listObjects,
+        describeTable,
+        describeTables: grouperParBoucle(describeTable),
+      },
     })
     // Ni dblclick ni clic sur `archives` : seule `ouvrirUneConsole` déplie `public`, le schéma
     // courant. `archives` n'est connu que du préchauffage de fond.
@@ -1508,7 +1514,11 @@ describe('la console SQL (`12a`)', () => {
         ],
         listObjects,
       },
-      passerelleStructures: { listObjects, describeTable },
+      passerelleStructures: {
+        listObjects,
+        describeTable,
+        describeTables: grouperParBoucle(describeTable),
+      },
     })
     // Ni la table ni le schéma ne sont jamais cliqués : seule la cascade de fond les lit.
     await ouvrirUneConsole(utilisateur)
@@ -2211,5 +2221,167 @@ describe('les structures en mémoire', () => {
     await ouvrirLesEnvironnements(utilisateur)
     await utilisateur.click(await screen.findByRole('treeitem', { name: /analytics/ }))
     await waitFor(() => expect(structures.describeTable).toHaveBeenCalledTimes(4))
+  })
+})
+
+/**
+ * Le diagramme de schéma (3 septembre 2026), **depuis l'écran assemblé**.
+ *
+ * `DiagramView.test.tsx` mesure la vue montée à la main, `disposition.test.ts` la géométrie en pur.
+ * Ni l'un ni l'autre ne dit que l'écran de travail sait ouvrir cet onglet, lui donner les
+ * structures, et monter sa barre d'état : c'est le trou de la règle n° 8 — « un composant vérifié
+ * pièce par pièce n'est pas un écran livré ».
+ */
+describe('le diagramme de schéma', () => {
+  /**
+   * Un décor où **les deux tables sont décrites sous leur propre nom**, et reliées.
+   *
+   * Le décor par défaut de ce fichier rend `DETAIL` — nommée `orders` — pour n'importe quelle table
+   * demandée. C'est indifférent au panneau de détail, qui n'en regarde qu'une à la fois, et mortel
+   * ici : le diagramme identifie ses boîtes par le nom que le **moteur** rend, parce que c'est ce
+   * nom que les relations emploient pour désigner leur cible. Les deux tables se confondaient donc
+   * en une seule boîte (règle n° 5).
+   *
+   * **Les noms sont ceux que la passerelle de l'arbre liste** — `orders` et `order_items` — et non
+   * une paire choisie ici. C'est ce qui a fait échouer la première version de ce décor : il
+   * décrivait `users`, que `listObjects` ne rend jamais, donc le diagramme n'en demandait jamais la
+   * structure et la seconde boîte n'existait pas. Un double doit répondre aux appels que la
+   * production fait, pas à ceux qu'on avait en tête (règle n° 19).
+   */
+  const ORDER_ITEMS: TableDetail = {
+    ...DETAIL,
+    name: 'order_items',
+    columns: [
+      { ...(DETAIL.columns[0] as (typeof DETAIL.columns)[number]) },
+      {
+        position: 2,
+        name: 'order_id',
+        typeName: 'int8',
+        category: 'number',
+        nullable: false,
+        default: null,
+        identity: null,
+        key: 'foreign',
+        comment: null,
+        frequency: null,
+      },
+    ],
+    relations: [
+      {
+        constraintName: 'order_items_order_id_fkey',
+        direction: 'outgoing',
+        columns: ['order_id'],
+        targetSchema: 'public',
+        targetTable: 'orders',
+        targetColumns: ['id'],
+      },
+    ],
+  }
+  const decor = (): PasserelleStructures => {
+    const describeTable = vi.fn(async (_cle: DatabaseKey, _schema: string, table: string) =>
+      table === 'order_items' ? ORDER_ITEMS : DETAIL,
+    )
+    return {
+      listObjects: vi.fn(async () => [objet('orders'), objet('order_items')]),
+      describeTable,
+      // **C'est ce pont que le diagramme emploie**, et non `describeTable` : le décor le fournit
+      // donc en propre, pour qu'un test puisse constater le chemin plutôt que le supposer.
+      describeTables: vi.fn(grouperParBoucle(describeTable)),
+    }
+  }
+
+  /** Déplie l'arbre jusqu'au schéma, puis ouvre son diagramme depuis le menu de sa ligne. */
+  async function ouvrirLeDiagramme(utilisateur: ReturnType<typeof userEvent.setup>) {
+    await ouvrirLArbreJusquAuSchema(utilisateur)
+    await utilisateur.click(screen.getByRole('button', { name: 'Actions de public' }))
+    await utilisateur.click(screen.getByRole('button', { name: 'Diagramme du schéma' }))
+  }
+
+  it('s’ouvre depuis le menu d’un schéma, dans un onglet nommé par ce schéma', async () => {
+    const utilisateur = userEvent.setup()
+    monter({ passerelleStructures: decor() })
+    await ouvrirLeDiagramme(utilisateur)
+
+    // L'onglet porte le nom du **schéma** : c'est de lui que le diagramme parle, et l'icône le
+    // distingue d'un onglet de table comme elle distingue une console.
+    expect(screen.getByRole('tab', { name: /public/ })).toHaveAttribute('aria-selected', 'true')
+    // Les deux tables du schéma, chacune dans sa boîte — donc décrites sous leur propre nom.
+    //
+    // **Deux attentes, et non une lecture sèche après la première** (règle n° 15) : les structures
+    // arrivent **une par une**, `orders` avant `users` par l'ordre alphabétique. Un `getByRole` sur
+    // la seconde juste après avoir attendu la première mesurerait l'instant d'avant sa réponse — et
+    // passerait sur cette machine pour échouer sur un runner chargé.
+    expect(await screen.findByRole('button', { name: /^orders · 3 colonnes/ })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: /^order_items · 2 colonnes/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('monte sa barre d’état au niveau de l’écran, et y compte ses liens', async () => {
+    const utilisateur = userEvent.setup()
+    monter({ passerelleStructures: decor() })
+    await ouvrirLeDiagramme(utilisateur)
+
+    // **Sous les trois colonnes**, comme celle de la structure : la barre d'état vit au niveau de
+    // l'écran, pas du centre.
+    const pied = await screen.findByRole('status', { name: 'Résumé du diagramme' })
+    // **« 2 tables » n'arrive qu'une fois les deux structures lues** : avant, la barre dit
+    // honnêtement « 1 / 2 tables lues ». C'est l'attente qui date la mesure du bon instant.
+    await waitFor(() => expect(pied).toHaveTextContent('2 tables'))
+    await waitFor(() => expect(pied).toHaveTextContent('1 lien'))
+  })
+
+  it('survit à l’ouverture d’une table, parce qu’il parle du schéma et non d’elle', async () => {
+    const utilisateur = userEvent.setup()
+    monter({ passerelleStructures: decor() })
+    await ouvrirLeDiagramme(utilisateur)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^orders ·/ })).toBeInTheDocument(),
+    )
+
+    // **C'est toute la raison d'un onglet plutôt qu'une troisième valeur de `VueObjet`** : le
+    // couple « Données / Structure » est un état de la table ouverte et disparaît avec elle, là où
+    // un diagramme reste ouvert pendant qu'on parcourt les tables qu'il montre.
+    await utilisateur.dblClick(screen.getByRole('button', { name: /^orders ·/ }))
+    expect(screen.getByRole('tab', { name: /^orders/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /public/ })).toBeInTheDocument()
+
+    await utilisateur.click(screen.getByRole('tab', { name: /public/ }))
+    expect(await screen.findByRole('button', { name: /^order_items ·/ })).toBeInTheDocument()
+  })
+
+  it('n’ouvre qu’un diagramme par schéma', async () => {
+    const utilisateur = userEvent.setup()
+    monter({ passerelleStructures: decor() })
+    await ouvrirLeDiagramme(utilisateur)
+    await utilisateur.click(screen.getByRole('button', { name: 'Actions de public' }))
+    await utilisateur.click(screen.getByRole('button', { name: 'Diagramme du schéma' }))
+
+    // Deux diagrammes du même schéma montreraient le même dessin, avec deux échelles et deux
+    // sélections qui divergeraient. C'est la règle d'`ouvrir`, pas celle d'`ouvrirConsole`.
+    expect(screen.getAllByRole('tab', { name: /public/ })).toHaveLength(1)
+  })
+
+  it('occupe toute la largeur : aucun panneau droit à côté du dessin', async () => {
+    const utilisateur = userEvent.setup()
+    monter({ passerelleStructures: decor() })
+    await ouvrirLeDiagramme(utilisateur)
+    expect(await screen.findByRole('button', { name: /^orders ·/ })).toBeInTheDocument()
+
+    /*
+     * **La sonde est la colonne elle-même**, et c'est un correctif : la première version cherchait
+     * l'absence du couple « Données / Structure », qui est absent de toute façon dès qu'aucune table
+     * n'est ouverte (`vue={table ? vue : undefined}`). Elle restait donc verte avec le diagramme
+     * *dans* le partage — vert sous sabotage, donc à réécrire (règle n° 1).
+     *
+     * Le panneau droit proposerait ici la ligne sélectionnée d'une grille qui n'existe pas, et un
+     * dessin est ce qui profite le plus de la largeur qu'on lui laisse.
+     */
+    expect(screen.queryByTestId('colonne-droite')).not.toBeInTheDocument()
+
+    // Le contrôle positif : la colonne existe bel et bien sur l'onglet d'une table, sinon ce test
+    // passerait aussi sur un écran qui ne la monterait jamais.
+    await utilisateur.dblClick(screen.getByRole('button', { name: /^orders ·/ }))
+    expect(screen.getByTestId('colonne-droite')).toBeInTheDocument()
   })
 })

@@ -1,6 +1,8 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import type { EnvironmentDeclaration } from '../../domain/config'
 import type { ColumnInfo, RowLimit } from '../../domain/engine'
+import { DiagramStatusBar, DiagramView } from '../../screens/Diagram/DiagramView'
+import type { EntreeDeTable } from '../../screens/Diagram/disposition'
 import {
   type Charge,
   idBase,
@@ -2016,6 +2018,145 @@ function DetailPanelGallery() {
   )
 }
 
+/**
+ * Le diagramme de structure d'un schéma (3 septembre 2026).
+ *
+ * **Le décor est un vrai petit schéma**, et non deux boîtes : ce que cette section a à montrer est
+ * ce qu'aucune boîte seule ne montre — l'ordre des couches, une courbe qui s'ancre sur *la* ligne
+ * d'une clé, une référence réflexive, et une clé dont l'autre bout n'est pas là.
+ */
+const TABLES_DE_GALERIE: readonly EntreeDeTable[] = (() => {
+  const col = (
+    position: number,
+    name: string,
+    typeName: string,
+    key: ColumnInfo['key'] = null,
+  ): ColumnInfo => ({
+    position,
+    name,
+    typeName,
+    category: typeName === 'text' ? 'text' : 'number',
+    nullable: key === null,
+    default: null,
+    identity: null,
+    key,
+    comment: null,
+    frequency: null,
+  })
+  const vers = (contrainte: string, colonne: string, cible: string, schema = 'public') => ({
+    constraintName: contrainte,
+    direction: 'outgoing' as const,
+    columns: [colonne],
+    targetSchema: schema,
+    targetTable: cible,
+    targetColumns: ['id'],
+  })
+  return [
+    {
+      schema: 'public',
+      name: 'users',
+      columns: [col(1, 'id', 'int8', 'primary'), col(2, 'email', 'text')],
+      relations: [],
+    },
+    {
+      schema: 'public',
+      name: 'orders',
+      columns: [
+        col(1, 'id', 'int8', 'primary'),
+        col(2, 'user_id', 'int8', 'foreign'),
+        col(3, 'status', 'text'),
+        col(4, 'total_cents', 'int4'),
+      ],
+      relations: [vers('orders_user_id_fkey', 'user_id', 'users')],
+    },
+    {
+      schema: 'public',
+      name: 'order_items',
+      columns: [
+        col(1, 'id', 'int8', 'primary'),
+        col(2, 'order_id', 'int8', 'foreign'),
+        col(3, 'quantity', 'int4'),
+      ],
+      relations: [vers('order_items_order_id_fkey', 'order_id', 'orders')],
+    },
+    {
+      schema: 'public',
+      name: 'pricing_rules',
+      columns: [
+        col(1, 'id', 'int8', 'primary'),
+        col(2, 'label', 'text'),
+        col(3, 'parent_id', 'int8', 'foreign'),
+      ],
+      // La référence réflexive : le cas qui ferait tourner en rond un calcul de couches naïf.
+      relations: [vers('pricing_rules_parent_id_fkey', 'parent_id', 'pricing_rules')],
+    },
+    {
+      schema: 'public',
+      name: 'audit_events',
+      columns: [
+        col(1, 'id', 'int8', 'primary'),
+        col(2, 'actor_id', 'int8', 'foreign'),
+        col(3, 'snapshot_id', 'int8', 'foreign'),
+      ],
+      relations: [
+        vers('audit_events_actor_id_fkey', 'actor_id', 'users'),
+        // Hors du schéma : sa boîte n'existe pas, donc la courbe non — et la barre d'état le dit.
+        vers('audit_events_snapshot_id_fkey', 'snapshot_id', 'snapshots', 'archive'),
+      ],
+    },
+  ]
+})()
+
+function DiagrammeGallery() {
+  return (
+    <Section title="Diagramme de schéma">
+      <Note>
+        Une boîte par table, une courbe par clé étrangère, et la flèche s’ancre sur la **ligne** de
+        la colonne — c’est ce qui distingue un diagramme de schéma d’un graphe de dépendances. Les
+        coordonnées sont **calculées** et non mesurées, pour la raison d’`ajustement.ts` : jsdom ne
+        calcule aucune mise en page, donc une disposition mesurée ne serait vérifiable nulle part.
+      </Note>
+      <Note>
+        Les boîtes sont du HTML positionné, les liens du SVG. Tout en SVG aurait demandé de
+        réinventer l’ellipse d’un nom trop long, le survol, le focus et le nom accessible — or une
+        boîte est cliquable : un diagramme dont on ne peut pas ouvrir une table est une image.
+      </Note>
+      <Sub title="Cinq tables, une référence réflexive, une clé hors du schéma">
+        <div
+          data-testid="diagramme"
+          style={{ height: 460, border: '1px solid var(--divider)', display: 'flex' }}
+        >
+          <DiagramView
+            schema="public"
+            tables={TABLES_DE_GALERIE}
+            total={TABLES_DE_GALERIE.length}
+          />
+        </div>
+        <DiagramStatusBar
+          tables={TABLES_DE_GALERIE}
+          demandees={TABLES_DE_GALERIE.length}
+          total={TABLES_DE_GALERIE.length}
+        />
+      </Sub>
+      <Sub title="Les deux états vides, qui ne se ressemblent pas">
+        <div style={{ height: 120, border: '1px solid var(--divider)', display: 'flex' }}>
+          <DiagramView schema="public" tables={[]} total={0} />
+        </div>
+        <div
+          style={{
+            height: 120,
+            marginTop: 'var(--space-3)',
+            border: '1px solid var(--divider)',
+            display: 'flex',
+          }}
+        >
+          <DiagramView schema="public" tables={[]} total={9} loading />
+        </div>
+      </Sub>
+    </Section>
+  )
+}
+
 export function Gallery() {
   return (
     <div className={styles.root}>
@@ -2035,6 +2176,7 @@ export function Gallery() {
       <TitleBarGallery />
       <ExplorerSidebarGallery />
       <CentreGallery />
+      <DiagrammeGallery />
       <VirtualGridGallery />
       <ToolbarGallery />
       <PopoverGallery />

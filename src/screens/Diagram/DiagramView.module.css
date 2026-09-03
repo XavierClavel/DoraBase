@@ -1,0 +1,514 @@
+/*
+ * Le diagramme de structure d'un schéma.
+ *
+ * **Aucune couleur littérale**, comme partout : les boîtes réemploient les surfaces et les encres
+ * déjà nommées, et « Nuit » suit donc sans une entrée de plus à tenir en phase. Les deux jetons
+ * qu'on pourrait croire manquants n'en sont pas : le fond de la toile est `--canvas`, celui d'une
+ * boîte `--paper-bright`, et c'est exactement le rapport d'une carte posée sur un bureau.
+ *
+ * **Les hauteurs viennent de `disposition.ts`**, posées en style *inline* par le composant. Une
+ * seconde valeur ici aurait fait arriver les flèches à côté des lignes : le calcul ancre un lien au
+ * centre d'une ligne, et ce centre n'existe que si la ligne est vraiment haute de ce qu'il croit.
+ */
+
+.root {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--paper);
+}
+
+.vide {
+  margin: auto;
+  padding: var(--space-8);
+  font: var(--weight-medium) var(--text-dense) / var(--leading-ui) var(--font-ui);
+  color: var(--ink-8);
+  text-align: center;
+}
+
+/* --- La bande d'outils --------------------------------------------------- */
+
+.barre {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+  height: var(--h-bar);
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--divider);
+  background: var(--bar);
+}
+
+.espace {
+  flex: 1;
+}
+
+/* --- Le réglage des colonnes et le témoin de lecture -------------------- */
+
+.reglage {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.reglageNom {
+  font: var(--weight-semibold) var(--text-label) / 1 var(--font-ui);
+  color: var(--ink);
+}
+
+/* Le libellé d'une bascule **éteinte** est en encre secondaire, celui d'une bascule allumée en
+   encre pleine : c'est la règle relevée sur les deux instances d'`A2`, et non une invention. */
+.reglageNomEteint {
+  color: var(--ink-2);
+}
+
+/* --- Le champ de recherche ---------------------------------------------- */
+
+/*
+ * **L'idiome du fil d'Ariane, repris et non réinventé** : même hauteur, même icône, même bordure,
+ * même anneau de focus. Un second dessin de champ dans le même produit se serait remarqué.
+ */
+.chercher {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  height: var(--h-btn-sm);
+  /* La largeur du champ du fil d'Ariane, et le droit de rétrécir : la bande cède par le champ
+     avant de céder par le réglage ou le zoom, qui ont des cotes fixes. */
+  flex: 0 1 210px;
+  min-width: 96px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--field);
+}
+
+.chercher:focus-within {
+  box-shadow: var(--shadow-focus);
+}
+
+.chercherIcone {
+  flex: none;
+  color: var(--ink-4);
+}
+
+.chercherChamp {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+}
+
+.chercherChamp:focus {
+  outline: none;
+}
+
+/* Le compte tient dans le champ, à droite : c'est la réponse à ce qu'on vient d'y taper. */
+.chercherCompte {
+  flex: none;
+  font: var(--weight-semibold) var(--text-meta) / 1 var(--font-ui);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.chargement {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font: var(--weight-medium) var(--text-label) / 1 var(--font-ui);
+  color: var(--ink-8);
+}
+
+/*
+ * **La rotation est celle de `Toolbar`**, reprise à l'identique — 900 ms, `linear`, infinie : assez
+ * lente pour qu'on lise une rotation plutôt qu'un scintillement, assez régulière pour ne pas
+ * suggérer une progression que rien ne mesure. Elle dit une **attente**, pas un succès.
+ *
+ * Recopiée plutôt que partagée, comme la première l'a été : une animation de 900 ms n'est pas ce
+ * qui vaut un module commun, et `Toolbar` porte déjà la raison de ces valeurs.
+ */
+@keyframes tourne {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+.tourne {
+  flex: none;
+  animation: tourne 900ms linear infinite;
+}
+
+/* **Le mouvement part, l'information reste.** Ignorer ce réglage est un défaut d'accessibilité :
+   pour une part des utilisateurs, une rotation continue provoque un vrai malaise. Le texte
+   « Lecture… » demeure, et la barre d'état porte le compte. */
+@media (prefers-reduced-motion: reduce) {
+  .tourne {
+    animation: none;
+  }
+}
+
+.zoom {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.bouton,
+.echelle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--h-btn-xs);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--paper-bright);
+  font: var(--weight-semibold) var(--text-label) / 1 var(--font-ui);
+  color: var(--ink-6);
+  cursor: pointer;
+}
+
+.bouton {
+  width: var(--h-btn-xs);
+  font-size: var(--text-control);
+}
+
+.echelle {
+  min-width: 46px;
+  padding: 0 var(--space-2);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Le seul survol de cet écran, et il reprend celui du bouton secondaire — pas une invention. */
+.bouton:hover:not(:disabled),
+.echelle:hover {
+  background: var(--hover-bg);
+  border-color: var(--hover-border);
+}
+
+.bouton:disabled {
+  color: var(--ink-5);
+  cursor: default;
+}
+
+.bouton:focus-visible,
+.echelle:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* --- La toile ------------------------------------------------------------ */
+
+.toile {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--canvas);
+  /* Le glissement du fond déplace la vue : sans ceci, il sélectionnerait du texte en chemin. */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/*
+ * Le cadre porte la taille **mise à l'échelle**, le plan les coordonnées du calcul.
+ *
+ * `transform` ne change pas la place qu'un élément occupe : sans ce cadre, la zone défilante
+ * garderait la taille de l'échelle 1 et le zoom rognerait le dessin au lieu de l'agrandir.
+ */
+.cadre {
+  position: relative;
+}
+
+.plan {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+/* --- Les liens ---------------------------------------------------------- */
+
+.liens {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* **Sous les boîtes, et transparent au pointeur.** Un trait qui passe derrière une boîte se
+     lit ; un trait qui capterait les clics empêcherait de choisir la table qu'il traverse. */
+  pointer-events: none;
+}
+
+.lien {
+  fill: none;
+  stroke: var(--ink-5);
+  stroke-width: 1.4;
+}
+
+.lienChoisi {
+  stroke: var(--accent);
+  stroke-width: 1.8;
+}
+
+/* Un lien dont aucun bout n'est cherché : il s'efface comme les boîtes, sinon les traits gardent
+   toute leur force au-dessus d'un dessin éteint et le dominent. */
+.lienEteint {
+  opacity: 0.25;
+}
+
+.pointe {
+  fill: none;
+  stroke: var(--ink-3);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pointeChoisie {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* --- Une boîte ---------------------------------------------------------- */
+
+/*
+ * **La bordure est *dedans*, et ce n'est pas un raffinement de rendu.**
+ *
+ * Le dépôt ne pose aucun reset `box-sizing` (voir `reset.css`) : une `border: 1px` décalait donc le
+ * contenu d'un pixel, et le `border-bottom` de l'en-tête d'un second. Les lignes tombaient deux
+ * pixels plus bas que là où `disposition` avait ancré leurs flèches — un décalage qu'aucun test
+ * unitaire ne pouvait voir, jsdom ne calculant aucune mise en page, et que seul le test de bout en
+ * bout a dénoncé.
+ *
+ * D'où `border-box` et une bordure peinte en ombre **interne** : la boîte occupe exactement les
+ * cotes calculées, ses lignes commencent à son bord, et le trait ne coûte plus un pixel de flux. La
+ * seule autre issue aurait été d'apprendre l'épaisseur du trait au module de calcul — donc de faire
+ * vivre un même fait dans une constante *et* dans une feuille de style, ce qui est précisément ce
+ * que le partage des hauteurs évite.
+ */
+.boite {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--radius-control-2);
+  background: var(--paper-bright);
+  box-shadow:
+    inset 0 0 0 1px var(--border),
+    var(--shadow-cell);
+  text-align: left;
+  cursor: pointer;
+}
+
+.boite:hover {
+  box-shadow:
+    inset 0 0 0 1px var(--hover-border),
+    var(--shadow-cell);
+}
+
+.boite:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 0 0 0 1px var(--border),
+    var(--shadow-focus);
+}
+
+.boiteChoisie {
+  box-shadow:
+    inset 0 0 0 1px var(--accent),
+    var(--shadow-accent);
+}
+
+/*
+ * **Ce que la recherche a trouvé, et ce qu'elle a écarté.**
+ *
+ * Deux états, deux canaux : la table trouvée est **cerclée** en `--info`, celles qui ne
+ * correspondent pas s'**effacent**. Ni l'un ni l'autre n'emprunte l'accent, qui dit « désigné » —
+ * `Entrée` fait pourtant les deux à la fois, et il faut que ça se voie comme deux choses.
+ *
+ * L'effacement porte sur l'opacité et non sur une couleur : une boîte éteinte doit rester lisible
+ * si on s'y attarde — ce n'est pas un contrôle indisponible, c'est du contexte.
+ */
+.boiteTrouvee {
+  box-shadow:
+    inset 0 0 0 2px var(--info),
+    var(--shadow-cell);
+}
+
+.boiteChoisie.boiteTrouvee {
+  box-shadow:
+    inset 0 0 0 2px var(--info),
+    var(--shadow-accent);
+}
+
+.boiteEteinte {
+  opacity: 0.32;
+}
+
+.boiteChoisie:hover,
+.boiteChoisie:focus-visible {
+  box-shadow:
+    inset 0 0 0 1px var(--accent),
+    var(--shadow-accent);
+}
+
+.tete {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--divider);
+  background: var(--paper-alt);
+}
+
+.boiteChoisie .tete {
+  background: var(--selected);
+}
+
+.teteIcone {
+  flex: none;
+  color: var(--success);
+}
+
+.teteNom {
+  overflow: hidden;
+  font: var(--weight-bold) var(--text-label) / 1 var(--font-ui);
+  color: var(--ink);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* --- Une ligne de colonne ----------------------------------------------- */
+
+.ligne {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  padding: 0 var(--space-3);
+  font: var(--weight-normal) var(--text-dense) / 1 var(--font-mono);
+}
+
+.ligne:hover {
+  background: var(--hover-row);
+}
+
+/*
+ * La ligne d'une colonne qu'un lien de la table choisie touche.
+ *
+ * **Le fond *et* l'encre**, comme partout dans ce dépôt où une couleur seule ne doit pas porter une
+ * information : `--selected` est déjà la teinte de ce qui est désigné, et l'encre passe à l'accent
+ * profond pour que la marque tienne aussi sans distinguer les couleurs. La colonne reste lisible en
+ * « Nuit » sans entrée de plus — les deux jetons y sont redéfinis.
+ */
+.ligneEnEvidence {
+  background: var(--selected);
+}
+
+.ligneEnEvidence .nom {
+  font-weight: var(--weight-bold);
+  color: var(--accent-deeper);
+}
+
+.ligneEnEvidence .type,
+.ligneEnEvidence .cle,
+.ligneEnEvidence .cleEtrangere {
+  color: var(--accent-deep);
+}
+
+/* La colonne qui a fait correspondre sa table — même teinte que le cerclage de la boîte, pour
+   qu'on lise « c'est par là que la recherche l'a trouvée ». */
+.ligneTrouvee {
+  background: var(--info-bg);
+}
+
+.ligneTrouvee .nom {
+  font-weight: var(--weight-bold);
+  color: var(--info);
+}
+
+.cle {
+  flex: none;
+  color: var(--gold);
+}
+
+.cleEtrangere {
+  flex: none;
+  color: var(--info);
+}
+
+.nom {
+  overflow: hidden;
+  color: var(--ink-6);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.nomCle {
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+}
+
+/*
+ * Le décalage des colonnes sans clé, pour que les noms s'alignent en colonne.
+ *
+ * 9 px de glyphe plus les 5 px du `gap` : l'icône d'une clé occupe la même place qu'un nom sans
+ * clé décalé d'autant. Sans cela, les noms sautent de quatorze pixels d'une ligne à l'autre selon
+ * qu'elle porte une clé — le seul endroit du dessin où l'œil cherche une colonne droite.
+ */
+.nomSansCle {
+  margin-left: 14px;
+}
+
+.type {
+  overflow: hidden;
+  margin-left: auto;
+  padding-left: var(--space-2);
+  color: var(--ink-4);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.reste {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  flex: none;
+  padding: 0 var(--space-3);
+  border-top: 1px dashed var(--border-dashed);
+  font: var(--weight-medium) var(--text-meta) / 1 var(--font-ui);
+  color: var(--ink-8);
+}
+
+/* --- Le pied ------------------------------------------------------------ */
+
+.pied {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+  height: var(--h-statusbar);
+  padding: 0 var(--space-6);
+  border-top: 1px solid var(--divider);
+  background: var(--bar);
+  font: var(--weight-medium) var(--text-label) / 1 var(--font-mono);
+  color: var(--ink-8);
+}
+
+.piedPoint {
+  margin-right: var(--space-3);
+  color: var(--ink-3);
+}

@@ -71,6 +71,16 @@ function passerelleDe(
         appels.push(`describe:${nom}.${table}`)
         return surDescribe ? surDescribe(table) : detail(table)
       },
+      /* **Le préchauffage ne l'emploie pas**, et c'est ce que ce décor doit refléter : sa file est
+         de fond, une requête à la fois, là où un appel groupé tiendrait le verrou du registre le
+         temps de soixante tables — devant celle que l'utilisateur vient de cliquer. Le double la
+         fournit donc en journalisant, pour qu'un test puisse constater qu'elle **ne** sert pas. */
+      describeTables: async (_cle: DatabaseKey, nom: string, tables: readonly string[]) => {
+        appels.push(`describeTables:${nom}.${tables.join('+')}`)
+        return Promise.all(
+          tables.map((table) => (surDescribe ? surDescribe(table) : detail(table))),
+        )
+      },
     } satisfies PasserelleStructures,
   }
 }
@@ -244,6 +254,12 @@ test('un schéma illisible n’arrête pas les suivants, et ne remonte rien', as
       if (nom === 'atelier') throw new Error('permission refusée')
       return [objet('journal')]
     },
+    // Le préchauffage n'emploie pas la lecture groupée : ce double la fournit pour honorer le
+    // type, et son absence dans `appels` est ce que les tests constatent.
+    describeTables: async (_cle, nom, tables) => {
+      appels.push(`describeTables:${nom}.${tables.join('+')}`)
+      return []
+    },
     describeTable: async (_cle, nom, table) => {
       appels.push(`describe:${nom}.${table}`)
       return detail(table)
@@ -335,6 +351,10 @@ describe('la priorité du schéma déplié', () => {
           appels.push(`describe:${nom}.${table}`)
           await bloquer()
           return detail(table)
+        },
+        describeTables: async (_cle: DatabaseKey, nom: string, tables: readonly string[]) => {
+          appels.push(`describeTables:${nom}.${tables.join('+')}`)
+          return []
         },
       } satisfies PasserelleStructures,
     }

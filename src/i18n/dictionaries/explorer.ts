@@ -159,6 +159,7 @@ export const explorerFr: Dictionnaire = {
       removeEllipsis: 'Retirer…',
       newConsole: 'Nouvelle console…',
       edit: 'Modifier…',
+      openDiagram: 'Diagramme du schéma',
     },
     raisons: {
       renameUnavailable: 'Cet écran n’est pas relié à la commande de renommage.',
@@ -168,6 +169,7 @@ export const explorerFr: Dictionnaire = {
       refreshUnavailable: 'Cet écran ne charge pas l’arborescence.',
       consoleUnavailable: 'Cet écran n’est pas relié à la création de consoles.',
       addUnavailable: 'Cet écran n’est pas relié à la déclaration de connexions.',
+      diagramUnavailable: 'Cet écran n’ouvre pas d’onglet.',
     },
   },
   // L'aplatissement de l'arbre (`arbre.ts`) — une fonction pure, mais qui produit du texte
@@ -348,6 +350,7 @@ export const explorerEn: Dictionnaire = {
       removeEllipsis: 'Remove…',
       newConsole: 'New console…',
       edit: 'Edit…',
+      openDiagram: 'Schema diagram',
     },
     raisons: {
       renameUnavailable: 'This screen is not wired to the rename command.',
@@ -357,6 +360,7 @@ export const explorerEn: Dictionnaire = {
       refreshUnavailable: 'This screen does not load the tree.',
       consoleUnavailable: 'This screen is not wired to console creation.',
       addUnavailable: 'This screen is not wired to declaring connections.',
+      diagramUnavailable: 'This screen does not open tabs.',
     },
   },
   arbre: {

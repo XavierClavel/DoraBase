@@ -64,24 +64,58 @@ export type OngletConsole = {
 export type Dialecte = 'sql' | 'mongo'
 
 /**
+ * Le diagramme de structure d'un schéma (3 septembre 2026).
+ *
+ * **Un onglet et non une troisième valeur de `VueObjet`.** Le couple « Données / Structure » est un
+ * état *de la table ouverte* : il vit par onglet et se lit dans la colonne de droite. Un diagramme
+ * ne parle pas d'une table, il parle d'un **schéma** — il n'y a pas de table dont il serait la
+ * troisième vue, et le loger là aurait demandé d'en désigner une arbitrairement.
+ *
+ * **Il porte le schéma, pas la table** : c'est toute la différence avec `OngletTable`, et c'est ce
+ * qui fait qu'un diagramme survit à l'ouverture et à la fermeture des tables qu'il montre.
+ */
+export type OngletDiagramme = {
+  sorte: 'diagramme'
+  key: DatabaseKey
+  schema: string
+}
+
+/**
  * Ce qu'un onglet de l'écran de travail peut être.
  *
  * **Une union, depuis `12a`.** L'onglet était « une table ouverte » ; `A7` en fait aussi une console,
  * dans la **même bande** — un second système d'onglets à côté du premier doublerait la navigation
- * pour un seul écran.
+ * pour un seul écran. Le diagramme de schéma est le troisième membre, et il y entre pour la même
+ * raison : c'est un contenu du centre, qui se ferme et se réordonne comme les autres.
  */
-export type Onglet = OngletTable | OngletConsole
+export type Onglet = OngletTable | OngletConsole | OngletDiagramme
 
-/** L'identité d'un onglet, **dérivée de la base et de ce qu'il ouvre**. */
+/**
+ * L'identité d'un onglet, **dérivée de la base et de ce qu'il ouvre**.
+ *
+ * **Un `switch` exhaustif, et non un test de la sorte qui compte** (`sorte !== 'console'`). Cette
+ * fonction s'écrivait ainsi tant que l'union n'avait que deux membres : le troisième aurait alors
+ * été traité comme une table, et l'accès à `onglet.table` aurait rendu `undefined` dans une chaîne —
+ * donc une identité `…::undefined.undefined`, partagée par tous les diagrammes, sans que rien
+ * échoue. C'est le défaut n° 16 par avance : un bras attrape-tout absorbe le membre suivant.
+ */
 export function idOnglet(onglet: Onglet): string {
   const { project, database, environment } = onglet.key
   const coordonnees = `${project}/${database}/${environment}`
-  if (onglet.sorte !== 'console') return `${coordonnees}::${onglet.schema}.${onglet.table}`
-  // Une console persistée est identifiée par son nom ; un brouillon, par son numéro. Les deux
-  // espaces ne se croisent pas : le préfixe les sépare.
-  return onglet.nom === undefined
-    ? `${coordonnees}::console/${onglet.numero}`
-    : `${coordonnees}::console:${onglet.nom}`
+  switch (onglet.sorte) {
+    case 'table':
+      return `${coordonnees}::${onglet.schema}.${onglet.table}`
+    case 'diagramme':
+      // Le préfixe sépare cet espace de celui des tables : un schéma nommé `diagramme` et une table
+      // nommée `x` ne peuvent pas produire la même chaîne, `::diagramme/` n'étant pas `::diagramme.`.
+      return `${coordonnees}::diagramme/${onglet.schema}`
+    case 'console':
+      // Une console persistée est identifiée par son nom ; un brouillon, par son numéro. Les deux
+      // espaces ne se croisent pas : le préfixe les sépare.
+      return onglet.nom === undefined
+        ? `${coordonnees}::console/${onglet.numero}`
+        : `${coordonnees}::console:${onglet.nom}`
+  }
 }
 
 export type EtatOnglets = {
@@ -168,6 +202,22 @@ export function ouvrirConsole(
 
   const console: OngletConsole = { sorte: 'console', key, numero, dialecte }
   return { onglets: [...etat.onglets, console], actif: idOnglet(console) }
+}
+
+/**
+ * Ouvre le diagramme d'un schéma, ou **active celui qui l'est déjà**.
+ *
+ * Comme `ouvrir` et contrairement à `ouvrirConsole` : deux diagrammes du même schéma montreraient
+ * le même dessin, avec deux échelles et deux sélections qui divergeraient. On ouvre une seconde
+ * console *parce qu'on veut* garder la première ; personne ne veut deux fois le même diagramme.
+ */
+export function ouvrirDiagramme(etat: EtatOnglets, key: DatabaseKey, schema: string): EtatOnglets {
+  const onglet: OngletDiagramme = { sorte: 'diagramme', key, schema }
+  const id = idOnglet(onglet)
+  if (etat.onglets.some((existant) => idOnglet(existant) === id)) {
+    return { onglets: etat.onglets, actif: id }
+  }
+  return { onglets: [...etat.onglets, onglet], actif: id }
 }
 
 function memeBase(a: DatabaseKey, b: DatabaseKey): boolean {

@@ -20,6 +20,8 @@ import {
   type PasserelleExecution,
   useExecution,
 } from '../Console/useExecution'
+import { DiagramStatusBar, DiagramView } from '../Diagram/DiagramView'
+import { useDiagramme } from '../Diagram/useDiagramme'
 import { idBase, idSchema, type Noeud } from '../Explorer/arbre'
 import { BreadcrumbBar, type TypeObjet } from '../Explorer/BreadcrumbBar'
 import type { CibleDeSuppression } from '../Explorer/DeleteConnectionDialog'
@@ -52,6 +54,7 @@ import {
   ongletActif,
   ouvrir,
   ouvrirConsole,
+  ouvrirDiagramme,
   reindexerParConnexion,
   renommerLaConnexion,
   renommerLaConsole,
@@ -293,6 +296,41 @@ export function Workbench({
   // vingt endroits, et laisse le compilateur refuser un accès à `.table` sur une console.
   const table = actif?.sorte === 'table' ? actif : null
   const consoleActive = actif?.sorte === 'console' ? actif : null
+  /**
+   * Le diagramme ouvert (3 septembre 2026) — la troisième vue de l'union.
+   *
+   * Il ne passe **pas** par `contexte` : celui-ci retombe sur la sélection de l'arbre, et un
+   * diagramme sait de quel schéma il parle depuis son propre onglet. C'est la leçon de `cleConsole`,
+   * un cran plus loin — un onglet qui dépend de ce que l'arbre montre change de sujet dès qu'on
+   * clique ailleurs.
+   */
+  const diagramme = actif?.sorte === 'diagramme' ? actif : null
+
+  /**
+   * Les structures du schéma que le diagramme dessine.
+   *
+   * **Les objets de l'arbre lui sont passés quand il les a**, parce qu'ils vivent dans deux caches
+   * distincts : `charge.objets` est celui du dépliage, `structures` celui du préchauffage, et
+   * `prechaufferLeSchema` ne recopie pas le premier dans le second. Sans ce passage de main, ouvrir
+   * le diagramme d'un schéma qu'on vient de déplier redemanderait la liste que le dépliage a déjà
+   * payée.
+   */
+  const diagrammeCharge = useDiagramme(
+    diagramme?.key ?? null,
+    diagramme?.schema ?? null,
+    structures,
+    passerelleStructures,
+    diagramme
+      ? charge.objets[
+          idSchema(
+            diagramme.key.project,
+            diagramme.key.environment,
+            diagramme.key.database,
+            diagramme.schema,
+          )
+        ]
+      : undefined,
+  )
 
   // Le contexte du **centre** : le schéma de l'onglet actif, sinon celui que la sidebar désigne.
   // Distinct de la barre de titre, qui suit la base ouverte — `09e` a posé la distinction, et
@@ -330,9 +368,14 @@ export function Workbench({
     ? { project: table.key.project, environment: table.key.environment }
     : consoleActive
       ? { project: consoleActive.key.project, environment: consoleActive.key.environment }
-      : selection?.project
-        ? { project: selection.project, environment: selection.environment ?? null }
-        : null
+      : // Un diagramme appartient à une connexion comme une console : la barre de titre doit
+        // l'annoncer, sans quoi elle indiquerait le projet de la dernière ligne cliquée dans
+        // l'arbre pendant qu'on regarde le schéma d'une autre.
+        diagramme
+        ? { project: diagramme.key.project, environment: diagramme.key.environment }
+        : selection?.project
+          ? { project: selection.project, environment: selection.environment ?? null }
+          : null
 
   /**
    * Il n'y a rien à montrer : aucun onglet ouvert, et aucun schéma en vue.
@@ -1033,6 +1076,35 @@ export function Workbench({
                 }
           }
         />
+      ) : diagramme ? (
+        // Le diagramme du schéma (3 septembre 2026). **Aucune commande nouvelle** : il lit les
+        // mêmes `describe_table` que le panneau de détail et la vue Structure, et les pose dans le
+        // même cache — une table qu'il a lue est ensuite servie sans aller-retour.
+        <DiagramView
+          // Une instance par schéma : changer de diagramme remet l'échelle et la sélection à zéro
+          // sans effet de nettoyage, comme `TableView` le fait pour les filtres et le tri.
+          key={idOnglet(diagramme)}
+          schema={diagramme.schema}
+          tables={diagrammeCharge.tables}
+          total={diagrammeCharge.total}
+          loading={diagrammeCharge.loading}
+          error={diagrammeCharge.error}
+          // **Double-clic sur une boîte : la table s'ouvre.** C'est le geste de la liste d'objets du
+          // centre, et le diagramme est une autre façon de regarder cette liste.
+          onOuvrirLaTable={(nom) =>
+            setEtatOnglets((etat) =>
+              ouvrir(etat, {
+                sorte: 'table',
+                key: diagramme.key,
+                schema: diagramme.schema,
+                table: nom,
+                // Le diagramme ne dessine que des tables (`useDiagramme` écarte les vues) : il n'y
+                // a pas de `kind` à deviner.
+                kind: 'table',
+              }),
+            )
+          }
+        />
       ) : structureActive && table ? (
         // La structure de la table ouverte (`14a` → `14c`). **Aucune lecture nouvelle** : `detail`
         // est celui que la sidebar et le panneau droit lisent déjà.
@@ -1209,6 +1281,18 @@ export function Workbench({
                       declaration.name === nomBase && declaration.environment === environnement,
                   )
                 if (base) onEditDatabase?.(nomProjet, base)
+              }}
+              /* **Ouvrir un diagramme ouvre sa connexion**, comme ouvrir une console (1er
+                 septembre 2026). Le menu d'un schéma n'est atteignable que si la ligne de la base
+                 est dépliée, donc la connexion répondait — mais « répondait » n'est pas « répond » :
+                 six commandes de configuration en ferment sans que l'arbre se replie, et le
+                 diagramme se serait alors ouvert sur une toile vide. C'est le quatrième point
+                 d'ouverture, et il suit la même règle que les trois autres. */
+              onOpenDiagram={(project, database, environment, schema) => {
+                assurerLOuverture({ project, database, environment })
+                setEtatOnglets((etat) =>
+                  ouvrirDiagramme(etat, { project, database, environment }, schema),
+                )
               }}
               onRenameDatabase={onRenameDatabase === undefined ? undefined : renommerUneConnexion}
               onEditProject={onRenameProject === undefined ? undefined : ouvrirLEditionDe}
@@ -1411,7 +1495,11 @@ export function Workbench({
                 start={<AucuneSelection />}
                 end={<AucuneSelection variante="colonne" />}
               />
-            ) : consoleActive ? (
+            ) : consoleActive || diagramme ? (
+              // **Une console occupe toute la largeur ; un diagramme aussi, et pour la même
+              // raison.** Le panneau droit n'a rien à y montrer — il proposerait la ligne
+              // sélectionnée d'une grille qui n'existe pas —, et un dessin est ce qui profite le
+              // plus de la largeur qu'on lui laisse.
               centre
             ) : (
               <SplitPane
@@ -1585,6 +1673,18 @@ export function Workbench({
           afficher sous une console annoncerait « 500 lignes · limit 500 » pour une requête qui n'a
           pas tourné. Vu à l'écran en assemblant `12a`. La console porte son propre pied. */}
       {structureActive && detail && <StructureStatusBar detail={detail} />}
+      {/* Le pied du diagramme, au niveau de l'écran comme celui de la structure : il dit combien de
+          tables sont dessinées, combien de liens les relient, et surtout ce qui **manque** — les
+          clés dont l'autre bout est ailleurs, les tables au-delà du plafond. */}
+      {diagramme && (
+        <DiagramStatusBar
+          tables={diagrammeCharge.tables}
+          demandees={diagrammeCharge.demandees}
+          total={diagrammeCharge.total}
+          omises={diagrammeCharge.omises}
+          loading={diagrammeCharge.loading}
+        />
+      )}
       {table && !structureActive && (
         <TableStatusBar
           fenetre={lecture.fenetre}
