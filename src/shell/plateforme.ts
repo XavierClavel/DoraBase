@@ -124,3 +124,16 @@ export function raccourci(
   // L'ordre du guide d'Apple : ⌥ puis ⇧ puis ⌘, la touche en dernier.
   return `${alt ? '⌥' : ''}${maj ? '⇧' : ''}⌘${touche}`
 }
+
+/**
+ * Le nom de la touche majuscule, dans la convention de la plateforme.
+ *
+ * **Elle n'a pas sa place dans `raccourci`**, qui écrit les raccourcis de l'*application* et pose
+ * donc toujours `⌘` / `Ctrl`. Ce que ce nom sert à dire est un **geste de souris** — `⇧`-clic —, où
+ * le modificateur de l'application n'entre pas. La règle, elle, est la même que celle de
+ * `TOUCHES_WINDOWS` : macOS écrit les touches en pictogrammes, Windows en mots, et `⇧` ne dit rien
+ * sur un clavier Windows.
+ */
+export function toucheMajuscule(sur: Plateforme = plateforme()): string {
+  return estWindows(sur) ? 'Shift' : '⇧'
+}

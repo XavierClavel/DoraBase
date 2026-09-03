@@ -2121,6 +2121,12 @@ function DiagrammeGallery() {
         réinventer l’ellipse d’un nom trop long, le survol, le focus et le nom accessible — or une
         boîte est cliquable : un diagramme dont on ne peut pas ouvrir une table est une image.
       </Note>
+      <Note>
+        Un clic choisit une table et éclaire les colonnes de ses clés ; un ⇧-clic en adjoint une
+        seconde, et une bande écrit alors le plus court chemin de clés entre les deux — c’est la
+        jointure qu’on cherchait. Le parcours est **non orienté** : deux tables qui référencent la
+        même troisième sont reliées, et la flèche de chaque étape dit dans quel sens va sa clé.
+      </Note>
       <Sub title="Cinq tables, une référence réflexive, une clé hors du schéma">
         <div
           data-testid="diagramme"

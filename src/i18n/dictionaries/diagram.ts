@@ -21,6 +21,24 @@ export const diagramFr: Dictionnaire = {
     // comme un filtre sur une nature de colonne, sans annoncer que des lignes étaient masquées.
     toutes: 'Toutes les colonnes',
   },
+  relation: {
+    ariaLabel: 'Ce qui relie les tables choisies',
+    // **L'invite dit le geste au moment où il sert.** `⇧`-clic est le geste d'extension universel,
+    // mais il ne s'annonce nulle part : la bande paraît dès la première table choisie, et c'est là
+    // — et seulement là — qu'il y a quelque chose à en faire.
+    invite: (p) => `${p.table} — ${p.maj}-clic sur une seconde table pour voir ce qui les relie`,
+    directe: 'Reliées par une clé',
+    indirecte: (p) => `Reliées en ${p.count} étapes`,
+    reference: ' référence ',
+    referenceePar: ' est référencée par ',
+    // **« Aucune » ne peut pas vouloir dire « aucune dans la base » tant que le dessin est
+    // incomplet** : une lecture en cours ou un plafond qui mord laissent hors du graphe des tables
+    // par lesquelles le chemin passerait peut-être. Deux phrases, parce que ce sont deux faits.
+    aucune: (p) => `Aucun chemin de clés entre ${p.a} et ${p.b}`,
+    aucunePartielle: (p) =>
+      `Aucun chemin de clés entre ${p.a} et ${p.b} parmi les tables dessinées`,
+    effacer: 'Ne plus rien choisir',
+  },
   chargement: 'Lecture…',
   recherche: {
     // **« table ou colonne », parce que le champ cherche les deux** : annoncer « une table » ferait
@@ -29,6 +47,7 @@ export const diagramFr: Dictionnaire = {
     label: 'Chercher une table ou une colonne dans le diagramme',
     compte: (p) => `${p.count} trouvée${Number(p.count) > 1 ? 's' : ''}`,
     aucune: 'aucune',
+    effacer: 'Effacer la recherche',
   },
   zoom: {
     moins: 'Réduire',
@@ -70,12 +89,24 @@ export const diagramEn: Dictionnaire = {
   colonnes: {
     toutes: 'All columns',
   },
+  relation: {
+    ariaLabel: 'What links the selected tables',
+    invite: (p) => `${p.table} — ${p.maj}-click a second table to see what links them`,
+    directe: 'Linked by a key',
+    indirecte: (p) => `Linked in ${p.count} steps`,
+    reference: ' references ',
+    referenceePar: ' is referenced by ',
+    aucune: (p) => `No key path between ${p.a} and ${p.b}`,
+    aucunePartielle: (p) => `No key path between ${p.a} and ${p.b} among the tables drawn`,
+    effacer: 'Clear the selection',
+  },
   chargement: 'Reading…',
   recherche: {
     placeholder: 'Find a table, a column…',
     label: 'Find a table or a column in the diagram',
     compte: (p) => `${p.count} found`,
     aucune: 'none',
+    effacer: 'Clear the search',
   },
   zoom: {
     moins: 'Zoom out',
