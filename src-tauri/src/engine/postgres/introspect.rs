@@ -8,6 +8,8 @@
 //! **Une requête par nature d'objet, jamais une par objet** : ouvrir un schéma de deux
 //! cents tables ne doit pas produire deux cents allers-retours.
 
+use std::collections::HashMap;
+
 use tokio_postgres::Client;
 
 use crate::engine::{
@@ -42,8 +44,28 @@ select n.nspname                                          as name,
 /// `pg_stat_all_tables` donne le dernier `ANALYZE`, manuel **ou** automatique : c'est lui
 /// qui dit à quel point se fier à l'estimation de `reltuples`, et c'est pourquoi `A4` en
 /// fait une colonne.
+///
+/// # Le filtre `$2`, et ce qu'il a coûté de ne pas l'avoir (3 septembre 2026)
+///
+/// `table_detail` lisait le résumé d'**une** table en appelant cette requête sur tout le schéma
+/// puis en cherchant sa ligne en Rust. Le travail par objet est en sous-requêtes, donc côté
+/// serveur — c'est ce que garde le test structurel de `mod.rs` — mais il se fait alors pour
+/// *toutes* les tables du schéma, à chaque table décrite. Mesuré sur un schéma synthétique de
+/// deux cents relations **vides** — donc le plancher, `pg_total_relation_size` n'ayant rien à
+/// parcourir : rejouer la séquence de soixante `table_detail` coûtait 183 ms de requêtes, contre
+/// 7,4 ms avec ce filtre. Vingt-cinq fois moins, et l'écart se creuse avec des tables qui portent
+/// des données.
+///
+/// **C'était un défaut, pas un arbitrage** : MySQL lit son résumé par un `exec_first` et SQLite
+/// par un `query_row`, une ligne chacun. PostgreSQL était le seul à balayer son schéma pour une
+/// table.
+///
+/// `NULL` rend tout le schéma — ce dont `list_objects` a besoin. Une liste de noms rend ces
+/// lignes-là, et le filtre étant dans le `where`, les sous-requêtes de la projection ne
+/// s'exécutent que pour elles.
 const REQUETE_OBJETS: &str = "
-select c.relname                                          as name,
+select c.oid                                              as relid,
+       c.relname                                          as name,
        c.relkind::text                                    as kind,
        c.reltuples                                        as row_estimate,
        pg_total_relation_size(c.oid)                      as size_bytes,
@@ -62,6 +84,7 @@ select c.relname                                          as name,
   left join (select relid, greatest(last_analyze, last_autoanalyze) as last_analyze
                from pg_stat_all_tables) s on s.relid = c.oid
  where n.nspname = $1
+   and ($2::text[] is null or c.relname = any($2::text[]))
    and c.relkind in ('r','p','v','m')
  order by c.relname";
 
@@ -70,6 +93,24 @@ select c.relname                                          as name,
 #[cfg(test)]
 pub(super) fn requete_objets_pour_test() -> &'static str {
     REQUETE_OBJETS
+}
+
+/// Expose les cinq requêtes de détail pour le test structurel de `mod.rs`.
+///
+/// **Ce qu'aucun test de comportement ne peut garder.** Ces requêtes filtrent sur un *ensemble* ;
+/// les réécrire pour une seule table rendrait **exactement les mêmes** structures, en soixante fois
+/// plus d'allers-retours. Le sabotage l'a montré : neutraliser le filtre de noms de `REQUETE_OBJETS`
+/// laissait les soixante-et-un tests de base verts. C'est donc le **réglage** qu'on garde, et non
+/// une durée — la leçon de la règle n° 3, et celle du `nodelay` de `russh`.
+#[cfg(test)]
+pub(super) fn requetes_de_detail_pour_test() -> [(&'static str, &'static str); 5] {
+    [
+        ("colonnes", REQUETE_COLONNES),
+        ("index", REQUETE_INDEX),
+        ("contraintes", REQUETE_CONTRAINTES),
+        ("triggers", REQUETE_TRIGGERS),
+        ("relations", REQUETE_RELATIONS),
+    ]
 }
 
 pub async fn schemas(client: &Client) -> Result<Vec<SchemaInfo>, EngineError> {
@@ -95,8 +136,30 @@ pub async fn schemas(client: &Client) -> Result<Vec<SchemaInfo>, EngineError> {
 }
 
 pub async fn objects(client: &Client, schema: &str) -> Result<Vec<TableSummary>, EngineError> {
+    Ok(resumes(client, schema, None)
+        .await?
+        .into_iter()
+        .map(|(_, resume)| resume)
+        .collect())
+}
+
+/// Les résumés d'un schéma, **avec l'identifiant interne de chaque relation**.
+///
+/// L'oid est ce qui permet aux cinq lectures de `table_details` d'être ensemblistes : elles
+/// filtrent sur `= any($1::oid[])` et rendent leur `relid`, qu'on regroupe ensuite. Le passer par
+/// le nom aurait demandé de le requalifier et de l'échapper dans chaque requête, et un nom n'est
+/// pas une identité — deux schémas peuvent porter la même table.
+///
+/// `noms` à `None` rend tout le schéma ; une liste rend ces relations-là, dans l'ordre du
+/// catalogue. Ce qui n'existe pas est simplement **absent** — voir `table_details`.
+async fn resumes(
+    client: &Client,
+    schema: &str,
+    noms: Option<&[String]>,
+) -> Result<Vec<(u32, TableSummary)>, EngineError> {
+    let filtre: Option<Vec<String>> = noms.map(<[String]>::to_vec);
     let lignes = client
-        .query(REQUETE_OBJETS, &[&schema])
+        .query(REQUETE_OBJETS, &[&schema, &filtre])
         .await
         .map_err(|erreur| traduire(&erreur))?;
 
@@ -107,20 +170,24 @@ pub async fn objects(client: &Client, schema: &str) -> Result<Vec<TableSummary>,
             let reltuples: f32 = ligne.try_get("row_estimate").map_err(|e| traduire(&e))?;
             let taille: i64 = ligne.try_get("size_bytes").map_err(|e| traduire(&e))?;
             let colonnes: i64 = ligne.try_get("column_count").map_err(|e| traduire(&e))?;
+            let relid: u32 = ligne.try_get("relid").map_err(|e| traduire(&e))?;
 
-            Ok(TableSummary {
-                name: ligne.try_get("name").map_err(|e| traduire(&e))?,
-                kind: nature_de(&relkind),
-                // **Une estimation, jamais un compte exact** : `A4` ouvre un arbre, et
-                // compter exactement coûterait un parcours complet par table. Et `Unknown`
-                // quand le planificateur n'a rien — `reltuples = -1`.
-                rows: estimation_de(reltuples),
-                size_bytes: u64::try_from(taille).ok(),
-                column_count: u32::try_from(colonnes).unwrap_or(0),
-                primary_key: ligne.try_get("primary_key").map_err(|e| traduire(&e))?,
-                last_analyze: ligne.try_get("last_analyze").map_err(|e| traduire(&e))?,
-                comment: ligne.try_get("comment").map_err(|e| traduire(&e))?,
-            })
+            Ok((
+                relid,
+                TableSummary {
+                    name: ligne.try_get("name").map_err(|e| traduire(&e))?,
+                    kind: nature_de(&relkind),
+                    // **Une estimation, jamais un compte exact** : `A4` ouvre un arbre, et
+                    // compter exactement coûterait un parcours complet par table. Et `Unknown`
+                    // quand le planificateur n'a rien — `reltuples = -1`.
+                    rows: estimation_de(reltuples),
+                    size_bytes: u64::try_from(taille).ok(),
+                    column_count: u32::try_from(colonnes).unwrap_or(0),
+                    primary_key: ligne.try_get("primary_key").map_err(|e| traduire(&e))?,
+                    last_analyze: ligne.try_get("last_analyze").map_err(|e| traduire(&e))?,
+                    comment: ligne.try_get("comment").map_err(|e| traduire(&e))?,
+                },
+            ))
         })
         .collect()
 }
@@ -145,13 +212,32 @@ fn compteur(ligne: &tokio_postgres::Row, colonne: &str) -> Result<u32, EngineErr
     Ok(u32::try_from(valeur).unwrap_or(u32::MAX))
 }
 
-/// Les colonnes d'une table, avec leur catégorie de type et leur rôle de clé.
-// `$1::text::regclass` et non `$1::regclass` : la seconde forme fait inférer le type
-// `regclass` au paramètre, que `tokio-postgres` ne sait pas produire depuis un `String`
-// (« cannot convert between the Rust type String and the Postgres type regclass »). Passer
-// par `text` garde l identifiant en **donnée**, ce qui est aussi ce qu on veut.
+/*
+ * # Cinq lectures **ensemblistes**, et pourquoi (3 septembre 2026)
+ *
+ * Ces requêtes portaient sur une table, désignée par son nom qualifié. Décrire soixante tables
+ * coûtait donc soixante fois cinq allers-retours, tous sérialisés — le registre tient son verrou
+ * pendant toute l'opération, délibérément (voir `ConnectionRegistry::avec`), donc rien ne se
+ * chevauche. Sur une base joignable à travers un tunnel, c'est ce compte qui décide du temps
+ * d'attente, pas le coût des requêtes : trois cent soixante allers-retours à cent millisecondes
+ * font une demi-minute, à quatre cents une poignée de minutes. C'est le défaut rapporté sur le
+ * diagramme d'un grand schéma.
+ *
+ * Elles filtrent donc sur un **ensemble d'oid** et rendent leur `relid`, que `table_details`
+ * regroupe. Cinq allers-retours pour tout un schéma, plus un pour les résumés.
+ *
+ * **Il n'y a pas deux versions de ces requêtes.** `table_detail` passe par `table_details` avec un
+ * seul nom : c'est la même SQL pour une table et pour soixante, donc les tests qui existaient
+ * l'exercent toujours, et il n'y a pas une forme « pour une table » qui vieillirait à part.
+ */
+
+/// Les colonnes des tables demandées, avec leur catégorie de type et leur rôle de clé.
+///
+/// Les deux `left join` de clés sont **groupés par `conrelid`** : sans lui, la clé primaire d'une
+/// table marquerait les colonnes de même rang de toutes les autres.
 const REQUETE_COLONNES: &str = "
-select a.attnum                                           as position,
+select a.attrelid                                          as relid,
+       a.attnum                                           as position,
        a.attname                                          as name,
        format_type(a.atttypid, a.atttypmod)               as type_name,
        t.typcategory::text                                as pg_category,
@@ -165,170 +251,241 @@ select a.attnum                                           as position,
   from pg_attribute a
   join pg_type t on t.oid = a.atttypid
   left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
-  left join (select unnest(conkey) as attnum from pg_constraint
-              where conrelid = $1::text::regclass and contype = 'p') pk on pk.attnum = a.attnum
-  left join (select unnest(conkey) as attnum from pg_constraint
-              where conrelid = $1::text::regclass and contype = 'f') fk on fk.attnum = a.attnum
- where a.attrelid = $1::text::regclass and a.attnum > 0 and not a.attisdropped
- order by a.attnum";
+  left join (select conrelid, unnest(conkey) as attnum from pg_constraint
+              where conrelid = any($1::oid[]) and contype = 'p') pk
+         on pk.conrelid = a.attrelid and pk.attnum = a.attnum
+  left join (select conrelid, unnest(conkey) as attnum from pg_constraint
+              where conrelid = any($1::oid[]) and contype = 'f') fk
+         on fk.conrelid = a.attrelid and fk.attnum = a.attnum
+ where a.attrelid = any($1::oid[]) and a.attnum > 0 and not a.attisdropped
+ order by a.attrelid, a.attnum";
 
+/// `pg_indexes` ne porte pas d'oid : c'est le seul des cinq à se grouper par **nom de table**.
 const REQUETE_INDEX: &str = "
-select indexname as name, indexdef as definition
-  from pg_indexes where schemaname = $1 and tablename = $2 order by indexname";
+select tablename as table_name, indexname as name, indexdef as definition
+  from pg_indexes where schemaname = $1 and tablename = any($2::text[])
+ order by tablename, indexname";
 
 const REQUETE_CONTRAINTES: &str = "
-select conname as name, pg_get_constraintdef(oid) as definition
-  from pg_constraint where conrelid = $1::text::regclass order by conname";
+select conrelid as relid, conname as name, pg_get_constraintdef(oid) as definition
+  from pg_constraint where conrelid = any($1::oid[]) order by conrelid, conname";
 
 /// `not tgisinternal` : `pg_trigger` contient ceux que les clés étrangères créent, et `A9`
 /// n'a pas à montrer des triggers que l'utilisateur n'a pas écrits.
 const REQUETE_TRIGGERS: &str = "
-select tgname as name, pg_get_triggerdef(oid) as definition
-  from pg_trigger where tgrelid = $1::text::regclass and not tgisinternal order by tgname";
+select tgrelid as relid, tgname as name, pg_get_triggerdef(oid) as definition
+  from pg_trigger where tgrelid = any($1::oid[]) and not tgisinternal
+ order by tgrelid, tgname";
 
-/// Les clés étrangères dans les **deux sens** : sortante pour suivre une référence, entrante
-/// pour savoir qui référence cette table. `A4` montre un bloc « Relations », `A5` un aperçu
-/// de « ligne liée ».
-/// Les clés étrangères d'une table, **dans les deux sens**.
+/// Les clés étrangères des tables demandées, **dans les deux sens** : sortante pour suivre une
+/// référence, entrante pour savoir qui référence cette table. `A4` montre un bloc « Relations »,
+/// `A5` un aperçu de « ligne liée », et le diagramme en fait ses flèches.
 ///
 /// # Le défaut du 10 août 2026, et pourquoi il était invisible
 ///
-/// La version précédente joignait les colonnes sur `con.conrelid` dans les deux sens. Pour une
+/// La version d'alors joignait les colonnes sur `con.conrelid` dans les deux sens. Pour une
 /// relation **entrante**, elle prenait donc `confkey` — des numéros d'attribut de *notre* table —
-/// et les cherchait dans la table *étrangère*. Deux conséquences :
+/// et les cherchait dans la table *étrangère*. Deux conséquences : des noms de colonnes **faux**
+/// quand les numéros existaient de part et d'autre — et le test passait, `users.id` et `orders.id`
+/// étant tous deux en position 1 — ou un `array_agg` à `NULL` qui **empêchait d'ouvrir la table**.
 ///
-/// 1. quand les numéros existaient de part et d'autre, elle rendait des noms de colonnes
-///    **faux** — et le test passait, parce que `users.id` et `orders.id` sont tous deux en
-///    position 1 ;
-/// 2. quand ils n'existaient pas, `array_agg` rendait `NULL`, et la lecture échouait sur
-///    « error deserializing column 5 » — ce qui **empêchait d'ouvrir la table**. Constaté sur une
-///    base réelle : une contrainte pointant la colonne 18 d'une table qui en compte 16.
+/// La version correcte tient en une phrase : les colonnes du **sujet** se cherchent dans le sujet,
+/// celles de la cible dans la cible.
 ///
-/// La version correcte tient en une phrase : les colonnes de **notre** table se cherchent dans
-/// notre table, celles de la cible dans la cible. `ct` étant déjà la table cible, la jointure
-/// s'écrit directement — pas besoin d'un second `case`.
+/// # Le sujet vient d'un `unnest`, et c'est ce qui rend la requête ensembliste
+///
+/// Une même contrainte peut concerner **deux** sujets demandés — l'un la déclare en sortie, l'autre
+/// en entrée. Le `join` sur la liste des sujets rend donc une ligne par couple, là où un filtre sur
+/// `conrelid in (…)` en aurait perdu une.
 const REQUETE_RELATIONS: &str = "
-select con.conname                                        as constraint_name,
-       (con.conrelid = $1::text::regclass)                as outgoing,
+select sujet.oid                                          as relid,
+       con.conname                                        as constraint_name,
+       (con.conrelid = sujet.oid)                         as outgoing,
        cn.nspname                                         as target_schema,
        ct.relname                                         as target_table,
        (select array_agg(a.attname order by k.ord)
-          from unnest(case when con.conrelid = $1::text::regclass
+          from unnest(case when con.conrelid = sujet.oid
                            then con.conkey else con.confkey end)
                with ordinality as k(attnum, ord)
-          join pg_attribute a on a.attrelid = $1::text::regclass
-                             and a.attnum = k.attnum) as columns,
+          join pg_attribute a on a.attrelid = sujet.oid
+                             and a.attnum = k.attnum)     as columns,
        (select array_agg(a.attname order by k.ord)
-          from unnest(case when con.conrelid = $1::text::regclass
+          from unnest(case when con.conrelid = sujet.oid
                            then con.confkey else con.conkey end)
                with ordinality as k(attnum, ord)
           join pg_attribute a on a.attrelid = ct.oid
-                             and a.attnum = k.attnum) as target_columns
-  from pg_constraint con
-  join pg_class ct on ct.oid = case when con.conrelid = $1::text::regclass
+                             and a.attnum = k.attnum)     as target_columns
+  from unnest($1::oid[]) as sujet(oid)
+  join pg_constraint con on con.contype = 'f'
+                        and (con.conrelid = sujet.oid or con.confrelid = sujet.oid)
+  join pg_class ct on ct.oid = case when con.conrelid = sujet.oid
                                     then con.confrelid else con.conrelid end
   join pg_namespace cn on cn.oid = ct.relnamespace
- where con.contype = 'f'
-   and (con.conrelid = $1::text::regclass or con.confrelid = $1::text::regclass)
- order by con.conname";
+ order by sujet.oid, con.conname";
 
-/// Le détail d'une table — tout ce que `A9` affiche.
+/// Le détail d'une table — tout ce que `A9` affiche, DDL compris.
 ///
-/// Cinq requêtes, une par nature d'information, et **aucune par colonne ou par index**.
+/// **Un cas particulier de `table_details`**, et non une seconde implémentation : la SQL est la
+/// même pour une table et pour soixante. Ce qui lui appartient en propre est le **refus** — une
+/// table absente est une erreur ici, alors que la lecture d'un schéma se contente de l'omettre.
 pub async fn table_detail(
     client: &Client,
     schema: &str,
     table: &str,
 ) -> Result<TableDetail, EngineError> {
-    // Qualifié et échappé par `format!` puis passé en **paramètre** : `$1::text::regclass` attend
-    // un texte, donc l'identifiant reste une donnée. Les guillemets doubles protègent un nom
-    // contenant une majuscule ou un caractère spécial.
-    let qualifie = format!(
-        "\"{}\".\"{}\"",
-        schema.replace('"', "\"\""),
-        table.replace('"', "\"\"")
-    );
-
-    let resume = objects(client, schema)
+    table_details(client, schema, std::slice::from_ref(&table.to_owned()))
         .await?
-        .into_iter()
-        .find(|objet| objet.name == table)
+        .pop()
         .ok_or_else(|| {
             EngineError::local(format!(
                 "la table « {table} » est absente du schéma « {schema} »"
             ))
-        })?;
-
-    let colonnes = client
-        .query(REQUETE_COLONNES, &[&qualifie])
-        .await
-        .map_err(|e| traduire(&e))?
-        .iter()
-        .map(colonne_depuis)
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let index = client
-        .query(REQUETE_INDEX, &[&schema, &table])
-        .await
-        .map_err(|e| traduire(&e))?
-        .iter()
-        .map(|l| {
-            Ok(IndexInfo {
-                name: l.try_get("name").map_err(|e| traduire(&e))?,
-                definition: l.try_get("definition").map_err(|e| traduire(&e))?,
-            })
         })
-        .collect::<Result<Vec<_>, EngineError>>()?;
+}
 
-    let contraintes = client
-        .query(REQUETE_CONTRAINTES, &[&qualifie])
+/// Le détail de **plusieurs** tables, en six allers-retours quel qu'en soit le nombre.
+///
+/// # Ce que ça remplace
+///
+/// Décrire soixante tables coûtait soixante fois six allers-retours, tous sérialisés par le verrou
+/// du registre, dont soixante balayages du schéma entier pour lire soixante lignes de résumé. Ici :
+/// un aller-retour pour les résumés, cinq pour les colonnes, index, contraintes, triggers et
+/// relations de **toutes** les tables demandées. Trois cent soixante allers-retours deviennent six.
+///
+/// # Ce qui n'existe pas se tait, il n'échoue pas
+///
+/// Une table demandée que le catalogue ne connaît pas est **absente du résultat**. C'est
+/// délibéré, et c'est la différence assumée avec `table_detail` : une lecture de schéma part d'une
+/// liste que quelqu'un a établie un instant plus tôt, et une table retirée entre-temps ne doit pas
+/// emporter les cinquante-neuf autres. C'est aussi ce qui garde le `::regclass` hors de la SQL :
+/// les oid viennent du catalogue, donc aucune requête ne peut échouer sur un nom inconnu.
+///
+/// # L'ordre rendu est celui demandé
+///
+/// Le catalogue trie par nom ; l'appelant, lui, a ses raisons — le diagramme lit dans l'ordre où il
+/// dessine. Rendre son ordre lui évite de reconstruire une table de correspondance.
+pub async fn table_details(
+    client: &Client,
+    schema: &str,
+    tables: &[String],
+) -> Result<Vec<TableDetail>, EngineError> {
+    if tables.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let resumes = resumes(client, schema, Some(tables)).await?;
+    if resumes.is_empty() {
+        return Ok(vec![]);
+    }
+    let oids: Vec<u32> = resumes.iter().map(|(oid, _)| *oid).collect();
+    let noms: Vec<String> = resumes
+        .iter()
+        .map(|(_, resume)| resume.name.clone())
+        .collect();
+
+    let mut colonnes: HashMap<u32, Vec<ColumnInfo>> = HashMap::new();
+    for ligne in client
+        .query(REQUETE_COLONNES, &[&oids])
         .await
         .map_err(|e| traduire(&e))?
         .iter()
-        .map(|l| {
-            Ok(ConstraintInfo {
-                name: l.try_get("name").map_err(|e| traduire(&e))?,
-                definition: l.try_get("definition").map_err(|e| traduire(&e))?,
-            })
-        })
-        .collect::<Result<Vec<_>, EngineError>>()?;
+    {
+        let relid: u32 = ligne.try_get("relid").map_err(|e| traduire(&e))?;
+        colonnes
+            .entry(relid)
+            .or_default()
+            .push(colonne_depuis(ligne)?);
+    }
 
-    let triggers = client
-        .query(REQUETE_TRIGGERS, &[&qualifie])
+    // L'index est le seul des cinq à se grouper par **nom** : `pg_indexes` ne porte pas d'oid.
+    let mut index: HashMap<String, Vec<IndexInfo>> = HashMap::new();
+    for ligne in client
+        .query(REQUETE_INDEX, &[&schema, &noms])
         .await
         .map_err(|e| traduire(&e))?
         .iter()
-        .map(|l| {
-            Ok(TriggerInfo {
-                name: l.try_get("name").map_err(|e| traduire(&e))?,
-                definition: l.try_get("definition").map_err(|e| traduire(&e))?,
-            })
-        })
-        .collect::<Result<Vec<_>, EngineError>>()?;
+    {
+        let table: String = ligne.try_get("table_name").map_err(|e| traduire(&e))?;
+        index.entry(table).or_default().push(IndexInfo {
+            name: ligne.try_get("name").map_err(|e| traduire(&e))?,
+            definition: ligne.try_get("definition").map_err(|e| traduire(&e))?,
+        });
+    }
 
-    let relations = client
-        .query(REQUETE_RELATIONS, &[&qualifie])
+    let mut contraintes: HashMap<u32, Vec<ConstraintInfo>> = HashMap::new();
+    for ligne in client
+        .query(REQUETE_CONTRAINTES, &[&oids])
         .await
         .map_err(|e| traduire(&e))?
         .iter()
-        .filter_map(relation_depuis)
-        .collect::<Vec<_>>();
+    {
+        let relid: u32 = ligne.try_get("relid").map_err(|e| traduire(&e))?;
+        contraintes.entry(relid).or_default().push(ConstraintInfo {
+            name: ligne.try_get("name").map_err(|e| traduire(&e))?,
+            definition: ligne.try_get("definition").map_err(|e| traduire(&e))?,
+        });
+    }
 
-    let ddl = assembler_ddl(schema, table, &colonnes, &contraintes, &index);
+    let mut triggers: HashMap<u32, Vec<TriggerInfo>> = HashMap::new();
+    for ligne in client
+        .query(REQUETE_TRIGGERS, &[&oids])
+        .await
+        .map_err(|e| traduire(&e))?
+        .iter()
+    {
+        let relid: u32 = ligne.try_get("relid").map_err(|e| traduire(&e))?;
+        triggers.entry(relid).or_default().push(TriggerInfo {
+            name: ligne.try_get("name").map_err(|e| traduire(&e))?,
+            definition: ligne.try_get("definition").map_err(|e| traduire(&e))?,
+        });
+    }
 
-    Ok(TableDetail {
-        schema: schema.to_owned(),
-        name: table.to_owned(),
-        rows: resume.rows,
-        size_bytes: resume.size_bytes,
-        comment: resume.comment,
-        columns: colonnes,
-        indexes: index,
-        constraints: contraintes,
-        triggers,
-        relations,
-        ddl,
-    })
+    let mut relations: HashMap<u32, Vec<Relation>> = HashMap::new();
+    for ligne in client
+        .query(REQUETE_RELATIONS, &[&oids])
+        .await
+        .map_err(|e| traduire(&e))?
+        .iter()
+    {
+        let relid: u32 = ligne.try_get("relid").map_err(|e| traduire(&e))?;
+        // `relation_depuis` omet **et journalise** une relation dont le catalogue n'a pas rendu les
+        // colonnes : une ligne manquante dans le bloc « Relations » plutôt qu'une table
+        // inouvrable. Voir sa documentation.
+        if let Some(relation) = relation_depuis(ligne) {
+            relations.entry(relid).or_default().push(relation);
+        }
+    }
+
+    let mut par_nom: HashMap<String, TableDetail> = HashMap::with_capacity(resumes.len());
+    for (oid, resume) in resumes {
+        let colonnes = colonnes.remove(&oid).unwrap_or_default();
+        let contraintes = contraintes.remove(&oid).unwrap_or_default();
+        let index = index.remove(&resume.name).unwrap_or_default();
+        let ddl = assembler_ddl(schema, &resume.name, &colonnes, &contraintes, &index);
+        par_nom.insert(
+            resume.name.clone(),
+            TableDetail {
+                schema: schema.to_owned(),
+                name: resume.name,
+                rows: resume.rows,
+                size_bytes: resume.size_bytes,
+                comment: resume.comment,
+                columns: colonnes,
+                indexes: index,
+                constraints: contraintes,
+                triggers: triggers.remove(&oid).unwrap_or_default(),
+                relations: relations.remove(&oid).unwrap_or_default(),
+                ddl,
+            },
+        );
+    }
+
+    // L'ordre demandé, et un nom demandé deux fois ne rend qu'une entrée : `remove` la sort de la
+    // table, donc la seconde demande ne trouve plus rien.
+    Ok(tables
+        .iter()
+        .filter_map(|nom| par_nom.remove(nom))
+        .collect())
 }
 
 fn colonne_depuis(ligne: &tokio_postgres::Row) -> Result<ColumnInfo, EngineError> {

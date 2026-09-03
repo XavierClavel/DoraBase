@@ -51,3 +51,15 @@ if (typeof Range !== 'undefined' && Range.prototype.getClientRects === undefined
     Object.assign([] as DOMRect[], { item: () => null }) as unknown as DOMRectList
   Range.prototype.getBoundingClientRect = () => new DOMRect()
 }
+
+// `scrollIntoView` n'existe pas sous jsdom : il n'y a pas de mise en page, donc rien à amener à
+// l'écran. Le diagramme de schéma l'appelle quand `Entrée` emmène à la correspondance suivante, et
+// sans ce complément la recherche lèverait une exception **après** avoir désigné la table — donc un
+// test rouge pour une raison qui n'est pas le sujet.
+//
+// **Une fonction vide est la bonne réponse ici**, comme le tableau vide de `getClientRects` : dire
+// « rien à faire » est exactement la vérité sous jsdom. Ce que le défilement produit vraiment est
+// hors de portée de Vitest (règle n° 9), et c'est `e2e/diagramme-de-schema.spec.ts` qui le mesure.
+if (typeof Element !== 'undefined' && Element.prototype.scrollIntoView === undefined) {
+  Element.prototype.scrollIntoView = () => {}
+}

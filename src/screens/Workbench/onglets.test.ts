@@ -39,9 +39,23 @@ const items = {
   kind: 'table' as const,
 }
 
-/** Le nom lisible d'un onglet, table ou console — l'union de `12a` interdit un `.table` direct. */
+/**
+ * Le nom lisible d'un onglet — l'union interdit un `.table` direct.
+ *
+ * **Un `switch` exhaustif depuis le 3 septembre 2026.** Cette fonction s'écrivait en un ternaire
+ * « console, ou table » ; le diagramme de schéma, troisième membre de l'union, y serait tombé du
+ * côté « table » et aurait rendu `undefined`. Le compilateur l'a refusé, et c'est exactement ce
+ * qu'on lui demande — le défaut n° 16 est ce qui arrive quand un bras attrape-tout l'en empêche.
+ */
 function libelle(onglet: Onglet): string {
-  return onglet.sorte === 'console' ? `console ${onglet.numero}` : onglet.table
+  switch (onglet.sorte) {
+    case 'console':
+      return `console ${onglet.numero}`
+    case 'diagramme':
+      return onglet.schema
+    case 'table':
+      return onglet.table
+  }
 }
 
 function avec(...ouverts: (typeof orders)[]): EtatOnglets {

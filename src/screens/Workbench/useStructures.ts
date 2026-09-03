@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { describeTable, listObjects } from '../../data/commandes'
+import { describeTable, describeTables, listObjects } from '../../data/commandes'
 import type { DatabaseKey, SchemaInfo, TableDetail, TableSummary } from '../../domain/engine'
 
 /**
@@ -9,9 +9,53 @@ import type { DatabaseKey, SchemaInfo, TableDetail, TableSummary } from '../../d
 export type PasserelleStructures = {
   listObjects: typeof listObjects
   describeTable: typeof describeTable
+  /**
+   * La lecture **groupée**, pour le diagramme de schéma (3 septembre 2026).
+   *
+   * Elle vit dans le même pont que les deux autres parce que c'est le même cache qu'elle remplit :
+   * une table lue par le diagramme sert ensuite au panneau de détail, à la vue Structure et à
+   * l'autocomplétion, sans un aller-retour de plus. Un second pont aurait séparé deux écritures
+   * dans un seul cache.
+   *
+   * **Le préchauffage ne l'emploie pas**, et c'est délibéré : sa file est de fond, une requête à la
+   * fois, et un appel groupé y tiendrait le verrou du registre le temps de soixante tables — donc
+   * devant la table que l'utilisateur vient de cliquer. Grouper est bon quand quelqu'un attend le
+   * tout ; c'est le cas du diagramme, pas celui de la cascade.
+   */
+  describeTables: typeof describeTables
 }
 
-export const PASSERELLE_STRUCTURES: PasserelleStructures = { listObjects, describeTable }
+export const PASSERELLE_STRUCTURES: PasserelleStructures = {
+  listObjects,
+  describeTable,
+  describeTables,
+}
+
+/**
+ * La lecture groupée **dérivée** d'une lecture par table, pour les décors.
+ *
+ * `?demo`, la galerie et les tests n'ont pas de serveur à qui grouper quoi que ce soit, et une
+ * boucle rend exactement les mêmes structures : ce qui compte pour un décor est ce que le pont
+ * *rend*, pas le nombre de trajets qu'il économise.
+ *
+ * **Ce n'est pas un repli de production**, et `describeTables` est **obligatoire** dans le type
+ * pour cette raison précise : un champ optionnel se serait oublié en silence, et le diagramme
+ * aurait repris le chemin lent sans que rien le dise. Un décor doit donc déclarer lequel des
+ * deux il fournit.
+ *
+ * Une nuance assumée : la vraie commande **omet** une table qu'elle ne sait pas décrire, là où
+ * cette boucle rejetterait. Aucun décor n'a de table manquante, et le jour où l'un en aurait, c'est
+ * `useDiagramme` qu'il faudrait interroger — pas ce raccourci.
+ */
+export function grouperParBoucle(
+  parTable: PasserelleStructures['describeTable'],
+): PasserelleStructures['describeTables'] {
+  return async (cle, schema, tables) => {
+    const details: TableDetail[] = []
+    for (const table of tables) details.push(await parTable(cle, schema, table))
+    return details
+  }
+}
 
 /**
  * Le nombre de tables préchauffées par connexion, au plus.

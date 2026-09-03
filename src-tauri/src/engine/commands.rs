@@ -449,6 +449,42 @@ pub async fn describe_table(
         .await
 }
 
+/// Le détail de **plusieurs** tables d'un schéma, en une seule traversée de l'IPC.
+///
+/// # Pourquoi cette commande existe
+///
+/// Le diagramme de schéma décrit toutes les tables d'un schéma. En passant par `describe_table`,
+/// soixante tables coûtaient soixante traversées de l'IPC, soixante prises du verrou du registre
+/// et — côté PostgreSQL — trois cent soixante allers-retours SQL, tous sérialisés. Rapporté à
+/// l'usage : quelques minutes sur une base joignable par un tunnel. Ici, six allers-retours SQL et
+/// un seul de tout le reste.
+///
+/// # Ce n'est pas « tout le catalogue »
+///
+/// La liste des tables est **donnée par l'appelant** et bornée par lui — le diagramme s'arrête à
+/// soixante. La prohibition qu'`AGENTS.md` porte vise une commande qui rendrait le catalogue
+/// entier sans que personne ait dit ce qu'il voulait ; celle-ci ne rend que ce qu'on nomme.
+///
+/// # Une table absente est omise, pas refusée
+///
+/// La différence assumée avec `describe_table`, à qui l'on demande **une** table nommée. Une
+/// lecture de schéma part d'une liste établie un instant plus tôt, et une table retirée entre-temps
+/// ne doit pas emporter les cinquante-neuf autres. L'appelant compare ce qu'il a demandé à ce qu'il
+/// reçoit — c'est ce que la barre d'état du diagramme affiche déjà.
+#[tauri::command]
+pub async fn describe_tables(
+    key: DatabaseKey,
+    schema: String,
+    tables: Vec<String>,
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<Vec<TableDetail>, EngineError> {
+    registry
+        .avec(&key.cle(), move |adaptateur| {
+            Box::pin(async move { adaptateur.table_details(&schema, &tables).await })
+        })
+        .await
+}
+
 /// Une **fenêtre** de lignes d'une table. Jamais un jeu complet.
 ///
 /// **La commande manquait, et son absence était invisible.** `06d` a livré `rows` sur

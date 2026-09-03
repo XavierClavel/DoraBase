@@ -90,6 +90,7 @@ function Piloté({
   consoles,
   onAddDatabase,
   onNewProject,
+  onOpenDiagram,
   projets = PROJETS,
 }: {
   charge?: Charge
@@ -105,6 +106,7 @@ function Piloté({
   consoles?: ExplorerSidebarProps['consoles']
   onAddDatabase?: ExplorerSidebarProps['onAddDatabase']
   onNewProject?: () => void
+  onOpenDiagram?: ExplorerSidebarProps['onOpenDiagram']
   projets?: Project[]
 }) {
   const [deplies, setDeplies] = useState(new Set(initial))
@@ -128,6 +130,7 @@ function Piloté({
           consoles={consoles}
           onAddDatabase={onAddDatabase}
           onNewProject={onNewProject}
+          onOpenDiagram={onOpenDiagram}
           onSelect={(n) => setChoisi(n.id)}
           onToggle={(n) => {
             onToggleSpy?.(n)
@@ -543,7 +546,18 @@ test('sans commande reliée, l’entrée est désactivée et dit pourquoi', asyn
   expect(screen.getByRole('button', { name: 'Ajouter une connexion…' })).toBeDisabled()
 })
 
-test('un schéma et une table n’en portent pas — il n’y a rien à y configurer', () => {
+/**
+ * **Une table n'a pas de menu ; un schéma en a un depuis le 3 septembre 2026.**
+ *
+ * Ce test disait « un schéma et une table n'en portent pas ». La raison qu'il gardait — il n'y a
+ * rien à *configurer* sur ces lignes — reste vraie, et c'est justement pourquoi le schéma fait
+ * exception plutôt que de l'invalider : son unique entrée n'est pas de la configuration, c'est
+ * l'ouverture d'un diagramme, et sa ligne est le seul endroit du produit qui nomme un schéma à tout
+ * moment (voir `entreesDe`). Ce qui n'a pas changé est le point que ce test protège : le menu ne
+ * s'ajoute pas *par défaut* à toute ligne de l'arbre — la table n'en a toujours pas, et ce qu'un
+ * menu y offrirait double le clic.
+ */
+test('une table n’en porte pas — un menu y doublerait le clic', () => {
   const charge: Charge = {
     schemas: { [ID_ANALYTICS]: [schema('public')] },
     objets: { [ID_PUBLIC]: [table('orders')] },
@@ -554,8 +568,42 @@ test('un schéma et une table n’en portent pas — il n’y a rien à y config
   // Le décor doit bien contenir ces deux lignes, sinon le test ne mesure que leur absence.
   expect(screen.getByRole('treeitem', { name: /public/ })).toBeInTheDocument()
   expect(screen.getByRole('treeitem', { name: /orders/ })).toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: 'Actions de public' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Actions de orders' })).not.toBeInTheDocument()
+  // Le contrôle positif du même décor : la ligne voisine, elle, en a un — sans quoi ce test
+  // passerait aussi sur un arbre où plus aucune ligne ne porterait d'actions.
+  expect(screen.getByRole('button', { name: 'Actions de public' })).toBeInTheDocument()
+})
+
+test('le menu d’un schéma ouvre son diagramme, avec les coordonnées de son nœud', async () => {
+  const vues: unknown[] = []
+  const charge: Charge = {
+    schemas: { [ID_ANALYTICS]: [schema('public')] },
+    objets: { [ID_PUBLIC]: [table('orders')] },
+    enCours: new Set(),
+    echecs: {},
+  }
+  render(
+    <Piloté initial={TOUT_DEPLIE} charge={charge} onOpenDiagram={(...args) => vues.push(args)} />,
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de public' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Diagramme du schéma' }))
+  // Les quatre coordonnées viennent du **nœud**, jamais d'une déduction sur le libellé : deux
+  // schémas homonymes vivent dans deux connexions, et deux connexions homonymes dans deux
+  // environnements (`23b`).
+  expect(vues).toEqual([['Atelier Nord', 'analytics', 'prod', 'public']])
+})
+
+test('sans commande, l’entrée du diagramme est désactivée et dit pourquoi', async () => {
+  const charge: Charge = {
+    schemas: { [ID_ANALYTICS]: [schema('public')] },
+    objets: {},
+    enCours: new Set(),
+    echecs: {},
+  }
+  render(<Piloté initial={TOUT_DEPLIE} charge={charge} />)
+  await userEvent.click(screen.getByRole('button', { name: 'Actions de public' }))
+  // La règle de `09f` : présente et désactivée, jamais cliquable et inerte (défaut n° 36).
+  expect(screen.getByRole('button', { name: 'Diagramme du schéma' })).toBeDisabled()
 })
 
 test('« Modifier… » porte les coordonnées du nœud, pas une déduction sur son libellé', async () => {
@@ -1023,10 +1071,26 @@ describe('le clic droit ouvre le même menu, au pointeur (`26`)', () => {
     }
     render(<Piloté initial={TOUT_DEPLIE} charge={charge} />)
 
-    // Un schéma et une table n'ont pas de configuration : leur menu n'aurait rien à proposer, et
-    // `preventDefault` sur un clic droit sans menu retirerait le geste natif pour rien.
-    const evenement = fireEvent.contextMenu(screen.getByRole('treeitem', { name: /public/ }))
+    // **La ligne visée est une table**, et non plus un schéma : celui-ci porte un menu depuis le
+    // 3 septembre 2026. Une table n'a rien à proposer, et `preventDefault` sur un clic droit sans
+    // menu retirerait le geste natif pour rien.
+    const evenement = fireEvent.contextMenu(screen.getByRole('treeitem', { name: /^orders/ }))
     expect(evenement).toBe(true)
     expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  test('le clic droit sur un schéma ouvre le menu du diagramme', () => {
+    const charge: Charge = {
+      schemas: { [ID_ANALYTICS]: [schema('public')] },
+      objets: { [ID_PUBLIC]: [table('orders')] },
+      enCours: new Set(),
+      echecs: {},
+    }
+    render(<Piloté initial={TOUT_DEPLIE} charge={charge} onOpenDiagram={() => {}} />)
+
+    // Le contrôle négatif du test voisin : c'est le même geste sur la ligne d'à côté, et il ouvre
+    // bien quelque chose — sinon « aucun menu » se vérifierait tout seul.
+    clicDroit(ligne('public', '4'))
+    expect(screen.getByRole('menuitem', { name: 'Diagramme du schéma' })).toBeEnabled()
   })
 })

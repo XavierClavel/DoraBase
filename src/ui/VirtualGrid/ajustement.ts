@@ -20,10 +20,17 @@
  * tronquée : c'est lui qui juge ces constantes, pas leur provenance.
  */
 
-/** L'avance d'un caractère de cellule — JetBrains Mono à `--text-dense`, mesurée. */
-const AVANCE_MONO = 6.9
+/**
+ * L'avance d'un caractère de cellule — JetBrains Mono à `--text-dense`, mesurée.
+ *
+ * **Exportée depuis le 3 septembre 2026** : le diagramme de schéma dimensionne ses boîtes par le
+ * même calcul et à la même taille de texte, et une seconde copie de la mesure aurait vieilli à
+ * part. C'est la leçon de `programme::repertoire_personnel` transposée — une mesure n'a qu'une
+ * valeur, elle doit n'avoir qu'un lieu.
+ */
+export const AVANCE_MONO = 6.9
 /** Celle d'un caractère d'en-tête — Nunito 700 à `--text-label`, arrondie vers le haut. */
-const AVANCE_ENTETE = 7
+export const AVANCE_ENTETE = 7
 /** Les deux fois 8 px de `padding` d'une cellule. */
 const MARGE_CELLULE = 16
 

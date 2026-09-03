@@ -356,6 +356,50 @@ impl AnyEngine {
         }
     }
 
+    /// Le détail de plusieurs tables d'un schéma, en une seule prise du verrou du registre.
+    ///
+    /// # Pourquoi ce n'est pas une entrée du contrat de moteur
+    ///
+    /// La lecture ensembliste de PostgreSQL — cinq requêtes filtrées sur un ensemble d'oid — n'a
+    /// d'équivalent chez aucun des quatre autres : MongoDB échantillonne collection par collection,
+    /// SQLite interroge un `pragma` par table, BigQuery un appel REST par table. L'inscrire au
+    /// contrat aurait obligé chacun à déclarer une optimisation qu'il n'a pas, pour la même boucle.
+    ///
+    /// # Le `match` reste exhaustif, et c'est délibéré
+    ///
+    /// **Pas de bras attrape-tout.** C'est la leçon du défaut n° 16 : un `autre =>` avait absorbé
+    /// SQLite et MySQL, dont les adaptateurs existaient, et l'application les refusait. Les quatre
+    /// moteurs qui bouclent sont donc **nommés** — un sixième moteur fera échouer la compilation
+    /// ici, et son auteur choisira lui-même sa stratégie.
+    ///
+    /// # Ce que la boucle gagne quand même
+    ///
+    /// Même sans lecture ensembliste, passer par ici fait prendre le verrou du registre **une
+    /// fois** au lieu d'une par table, et supprime autant d'allers-retours d'IPC. C'est ce que
+    /// l'écran faisait à la main, en moins de trajets.
+    pub async fn table_details(
+        &self,
+        schema: &str,
+        tables: &[String],
+    ) -> Result<Vec<TableDetail>, EngineError> {
+        match self {
+            Self::Postgres(adaptateur) => adaptateur.table_details(schema, tables).await,
+            Self::MongoDb(_) | Self::Sqlite(_) | Self::MySql(_) | Self::BigQuery(_) => {
+                let mut details = Vec::with_capacity(tables.len());
+                for table in tables {
+                    /* **Ce qui n'existe pas se tait, il n'échoue pas** — la même règle que la
+                    version ensembliste de PostgreSQL. Une lecture de schéma part d'une liste
+                    établie un instant plus tôt : une table retirée entre-temps ne doit pas
+                    emporter les cinquante-neuf autres. */
+                    if let Ok(detail) = self.table_detail(schema, table).await {
+                        details.push(detail);
+                    }
+                }
+                Ok(details)
+            }
+        }
+    }
+
     pub async fn rows(&self, query: &RowQuery) -> Result<RowWindow, EngineError> {
         match self {
             Self::Postgres(adaptateur) => adaptateur.rows(query).await,

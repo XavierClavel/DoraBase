@@ -1,0 +1,634 @@
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import type { ReactElement } from 'react'
+import { expect, test, vi } from 'vitest'
+import { Sprite } from '../../design/icons/Sprite'
+import type { ColumnInfo, Relation } from '../../domain/engine'
+import { LanguageProvider } from '../../i18n/LanguageContext'
+import { DiagramStatusBar, DiagramView } from './DiagramView'
+import type { EntreeDeTable } from './disposition'
+
+/**
+ * Ce que ce fichier peut mesurer, et ce qu'il ne peut pas.
+ *
+ * jsdom ne calcule aucune mise en page (règle n° 9) : les coordonnées, les tracés et le zoom n'y
+ * sont vérifiables nulle part — leur géométrie est déjà testée en pur dans `disposition.test.ts`,
+ * et le fait que le **rendu** tombe aux mêmes pixels que le calcul appartient à `e2e/`. Ce qui se
+ * mesure ici est le contenu et les gestes : quelles boîtes existent, sous quel nom accessible, ce
+ * qu'un clic et une touche déclenchent, et ce que la barre d'état dit.
+ */
+function monter(ui: ReactElement) {
+  return render(
+    <LanguageProvider preferences={{ language: 'fr' }}>
+      <Sprite />
+      {ui}
+    </LanguageProvider>,
+  )
+}
+
+function colonne(partiel: Partial<ColumnInfo> & Pick<ColumnInfo, 'position' | 'name'>): ColumnInfo {
+  return {
+    typeName: 'int8',
+    category: 'number',
+    nullable: false,
+    default: null,
+    identity: null,
+    key: null,
+    comment: null,
+    frequency: null,
+    ...partiel,
+  }
+}
+
+const VERS_USERS: Relation = {
+  constraintName: 'orders_user_id_fkey',
+  direction: 'outgoing',
+  columns: ['user_id'],
+  targetSchema: 'public',
+  targetTable: 'users',
+  targetColumns: ['id'],
+}
+
+const USERS: EntreeDeTable = {
+  schema: 'public',
+  name: 'users',
+  columns: [
+    colonne({ position: 1, name: 'id', key: 'primary' }),
+    colonne({ position: 2, name: 'email', typeName: 'text', nullable: true }),
+  ],
+  relations: [],
+}
+
+const ORDERS: EntreeDeTable = {
+  schema: 'public',
+  name: 'orders',
+  columns: [
+    colonne({ position: 1, name: 'id', key: 'primary' }),
+    colonne({ position: 2, name: 'user_id', key: 'foreign' }),
+    colonne({ position: 3, name: 'status', typeName: 'text' }),
+  ],
+  relations: [VERS_USERS],
+}
+
+const DEUX = [ORDERS, USERS]
+
+test('chaque table est une boîte nommée, avec ses comptes', async () => {
+  monter(<DiagramView schema="public" tables={DEUX} total={2} />)
+
+  // **Le nom accessible vient d'`aria-label`**, pas du contenu concaténé — sans quoi il rendrait
+  // « ordersidint8user_id… ». Le motif est **ancré** : `/orders/` compterait aussi `order_items`.
+  expect(screen.getByRole('button', { name: /^orders · 3 colonnes · 1 lien$/ })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /^users · 2 colonnes · 1 lien$/ })).toBeInTheDocument()
+  // Les colonnes se lisent à l'intérieur de la boîte, elles ne sont pas dans son nom.
+  expect(screen.getByText('user_id')).toBeInTheDocument()
+  expect(screen.getByText('status')).toBeInTheDocument()
+})
+
+test('le double-clic sur une boîte ouvre la table', async () => {
+  const utilisateur = userEvent.setup()
+  const ouvertes: string[] = []
+  monter(
+    <DiagramView
+      schema="public"
+      tables={DEUX}
+      total={2}
+      onOuvrirLaTable={(n) => ouvertes.push(n)}
+    />,
+  )
+
+  await utilisateur.dblClick(screen.getByRole('button', { name: /^orders ·/ }))
+  expect(ouvertes).toEqual(['orders'])
+})
+
+test('`Entrée` ouvre la table, parce qu’un geste au double-clic seul est inatteignable au clavier', async () => {
+  const utilisateur = userEvent.setup()
+  const ouvertes: string[] = []
+  monter(
+    <DiagramView
+      schema="public"
+      tables={DEUX}
+      total={2}
+      onOuvrirLaTable={(n) => ouvertes.push(n)}
+    />,
+  )
+
+  screen.getByRole('button', { name: /^users ·/ }).focus()
+  await utilisateur.keyboard('{Enter}')
+  expect(ouvertes).toEqual(['users'])
+})
+
+test('le clic choisit la boîte, et un second la relâche', async () => {
+  const utilisateur = userEvent.setup()
+  monter(<DiagramView schema="public" tables={DEUX} total={2} />)
+  const orders = screen.getByRole('button', { name: /^orders ·/ })
+
+  expect(orders).toHaveAttribute('aria-pressed', 'false')
+  await utilisateur.click(orders)
+  expect(orders).toHaveAttribute('aria-pressed', 'true')
+  // **La bascule est ce qui rend `aria-pressed` honnête des deux côtés** : un état qui ne peut pas
+  // revenir à `false` par le même geste n'est pas un état pressé.
+  await utilisateur.click(orders)
+  expect(orders).toHaveAttribute('aria-pressed', 'false')
+})
+
+test('un double-clic ouvre et choisit, il ne bascule pas deux fois', async () => {
+  const utilisateur = userEvent.setup()
+  const ouvertes: string[] = []
+  monter(
+    <DiagramView
+      schema="public"
+      tables={DEUX}
+      total={2}
+      onOuvrirLaTable={(n) => ouvertes.push(n)}
+    />,
+  )
+  const orders = screen.getByRole('button', { name: /^orders ·/ })
+
+  // **Un double-clic émet deux clics avant le sien.** Sans la garde `detail === 1`, la bascule
+  // jouait deux fois : la boîte repartait *non choisie* alors qu'on venait de l'ouvrir, et le
+  // surlignage de ses liens s'allumait puis s'éteignait le temps d'un rendu. Avec la garde, seul le
+  // premier clic compte — donc la table s'ouvre **et** la boîte reste choisie, ce qui est ce qu'on
+  // attend d'un élément qu'on vient de désigner.
+  await utilisateur.dblClick(orders)
+  expect(ouvertes).toEqual(['orders'])
+  expect(orders).toHaveAttribute('aria-pressed', 'true')
+
+  // Le contrôle positif : la bascule marche encore, la garde ne l'a pas neutralisée.
+  await utilisateur.click(orders)
+  expect(orders).toHaveAttribute('aria-pressed', 'false')
+})
+
+test('choisir une table éclaire les colonnes de ses clés, aux deux bouts', async () => {
+  const utilisateur = userEvent.setup()
+  const { container } = monter(<DiagramView schema="public" tables={DEUX} total={2} />)
+
+  const eclairees = () =>
+    [...container.querySelectorAll('[data-colonne]')]
+      .filter((ligne) => ligne.className.includes('EnEvidence'))
+      .map(
+        (ligne) =>
+          `${ligne.closest('[data-boite]')?.getAttribute('data-boite')}.${ligne.getAttribute('data-colonne')}`,
+      )
+      .sort()
+
+  // Rien n'est éclairé tant que rien n'est choisi : une marque permanente ne distinguerait plus ce
+  // qu'on vient de désigner.
+  expect(eclairees()).toEqual([])
+
+  await utilisateur.click(screen.getByRole('button', { name: /^orders ·/ }))
+  /*
+   * **Les deux bouts, et c'est le point.** Surligner les traits dit *qu'*une table en référence une
+   * autre, pas **par quelle colonne** — or c'est justement la question qu'on se pose en choisissant
+   * une boîte. La clé étrangère chez celle qui référence, la colonne référencée chez l'autre.
+   */
+  expect(eclairees()).toEqual(['orders.user_id', 'users.id'])
+
+  // Et relâcher éteint : la marque suit la sélection, elle ne s'accumule pas.
+  await utilisateur.click(screen.getByRole('button', { name: /^orders ·/ }))
+  expect(eclairees()).toEqual([])
+})
+
+test('choisir la table référencée éclaire les mêmes deux colonnes', async () => {
+  // Le lien est le même vu de l'autre bout : `users` est référencée par `orders`, et choisir l'une
+  // ou l'autre doit éclairer le même couple. Sans cela, la marque ne dirait la relation que dans un
+  // sens — celui de la table qui porte la clé.
+  const utilisateur = userEvent.setup()
+  const { container } = monter(<DiagramView schema="public" tables={DEUX} total={2} />)
+
+  await utilisateur.click(screen.getByRole('button', { name: /^users ·/ }))
+  expect(
+    [...container.querySelectorAll('[data-colonne]')]
+      .filter((ligne) => ligne.className.includes('EnEvidence'))
+      .map(
+        (ligne) =>
+          `${ligne.closest('[data-boite]')?.getAttribute('data-boite')}.${ligne.getAttribute('data-colonne')}`,
+      )
+      .sort(),
+  ).toEqual(['orders.user_id', 'users.id'])
+})
+
+test('l’interrupteur « Toutes les colonnes » ouvre ce que l’aperçu résume', async () => {
+  const utilisateur = userEvent.setup()
+  const large: EntreeDeTable = {
+    schema: 'public',
+    name: 'large',
+    columns: [
+      colonne({ position: 1, name: 'id', key: 'primary' }),
+      ...Array.from({ length: 12 }, (_, rang) =>
+        colonne({ position: rang + 2, name: `champ_${rang}`, typeName: 'text' }),
+      ),
+    ],
+    relations: [],
+  }
+  monter(<DiagramView schema="public" tables={[large]} total={1} />)
+
+  // **L'interrupteur dit ce que le réglage fait.** Un contrôle segmenté « Clés | Toutes » se lisait
+  // comme un filtre sur une nature de colonne, sans annoncer que des lignes étaient masquées : la
+  // forme d'un interrupteur éteint le dit, et « + n autres » dit combien. Rapporté à l'usage.
+  expect(screen.getByRole('switch', { name: 'Toutes les colonnes' })).toHaveAttribute(
+    'aria-checked',
+    'false',
+  )
+  // Huit colonnes, puis le résumé de ce qui reste — dit, jamais tu.
+  expect(screen.getByRole('button', { name: /^large · 8 colonnes/ })).toBeInTheDocument()
+  expect(screen.getByText('+ 5 autres')).toBeInTheDocument()
+  expect(screen.queryByText('champ_10')).not.toBeInTheDocument()
+
+  await utilisateur.click(screen.getByRole('switch', { name: 'Toutes les colonnes' }))
+  expect(screen.getByRole('button', { name: /^large · 13 colonnes/ })).toBeInTheDocument()
+  expect(screen.getByText('champ_10')).toBeInTheDocument()
+  expect(screen.queryByText(/autres/)).not.toBeInTheDocument()
+})
+
+// --- La recherche ---
+
+/**
+ * Le champ de recherche du diagramme.
+ *
+ * **Ce que jsdom ne peut pas voir** : `Entrée` amène la correspondance à l'écran par
+ * `scrollIntoView`, qui n'existe pas sans mise en page (règle n° 9). Ce qui se mesure ici est le
+ * **marquage** et le **compte** ; le déplacement de la vue appartient à `e2e/`.
+ */
+function chercher(container: HTMLElement) {
+  const marquees = (classe: string) =>
+    [...container.querySelectorAll('[data-boite]')]
+      .filter((boite) => boite.className.includes(classe))
+      .map((boite) => boite.getAttribute('data-boite'))
+      .sort()
+  return {
+    trouvees: () => marquees('boiteTrouvee'),
+    eteintes: () => marquees('boiteEteinte'),
+    colonnes: () =>
+      [...container.querySelectorAll('[data-colonne]')]
+        .filter((ligne) => ligne.className.includes('ligneTrouvee'))
+        .map(
+          (ligne) =>
+            `${ligne.closest('[data-boite]')?.getAttribute('data-boite')}.${ligne.getAttribute('data-colonne')}`,
+        )
+        .sort(),
+  }
+}
+
+test('la recherche marque les tables par leur nom, et éteint les autres', async () => {
+  const utilisateur = userEvent.setup()
+  const { container } = monter(<DiagramView schema="public" tables={DEUX} total={2} />)
+  const vu = chercher(container)
+
+  // Rien n'est marqué ni éteint tant qu'on ne cherche rien : un dessin au repos est un dessin
+  // entier.
+  expect(vu.trouvees()).toEqual([])
+  expect(vu.eteintes()).toEqual([])
+
+  await utilisateur.type(
+    screen.getByRole('textbox', { name: /Chercher une table ou une colonne/ }),
+    'user',
+  )
+  // `users` par son nom, et `orders` par sa colonne `user_id` — le champ cherche les deux.
+  expect(vu.trouvees()).toEqual(['orders', 'users'])
+  expect(vu.eteintes()).toEqual([])
+  expect(screen.getByText('2 trouvées')).toBeInTheDocument()
+})
+
+test('elle cherche aussi dans les colonnes, et dit laquelle a répondu', async () => {
+  const utilisateur = userEvent.setup()
+  const { container } = monter(<DiagramView schema="public" tables={DEUX} total={2} />)
+
+  await utilisateur.type(screen.getByRole('textbox', { name: /Chercher/ }), 'status')
+  const vu = chercher(container)
+  // **La colonne qui a fait correspondre est marquée**, pas seulement sa table : sans cela on
+  // trouverait une table sans savoir pourquoi.
+  expect(vu.trouvees()).toEqual(['orders'])
+  expect(vu.colonnes()).toEqual(['orders.status'])
+  // Et la table qui ne correspond pas s'efface.
+  expect(vu.eteintes()).toEqual(['users'])
+})
+
+test('elle dit « aucune » plutôt que de laisser croire qu’elle cherche encore', async () => {
+  const utilisateur = userEvent.setup()
+  const { container } = monter(<DiagramView schema="public" tables={DEUX} total={2} />)
+
+  await utilisateur.type(screen.getByRole('textbox', { name: /Chercher/ }), 'zzzz')
+  expect(screen.getByText('aucune')).toBeInTheDocument()
+  // Tout est éteint, et rien n'est marqué : l'état est lisible, pas ambigu.
+  expect(chercher(container).trouvees()).toEqual([])
+  expect(chercher(container).eteintes()).toEqual(['orders', 'users'])
+})
+
+test('elle trouve une colonne que l’aperçu masque', async () => {
+  /*
+   * **La conséquence assumée du plafond de colonnes.** La recherche porte sur les structures, non
+   * sur le dessin : chercher dans les seules lignes visibles aurait rendu « aucune » pour une
+   * colonne qui existe. La table est donc marquée, et l'interrupteur « Toutes les colonnes » est
+   * juste à côté pour voir pourquoi.
+   */
+  const utilisateur = userEvent.setup()
+  const large: EntreeDeTable = {
+    schema: 'public',
+    name: 'large',
+    columns: [
+      colonne({ position: 1, name: 'id', key: 'primary' }),
+      ...Array.from({ length: 12 }, (_, rang) =>
+        colonne({ position: rang + 2, name: `champ_${rang}`, typeName: 'text' }),
+      ),
+    ],
+    relations: [],
+  }
+  const { container } = monter(<DiagramView schema="public" tables={[large]} total={1} />)
+  // Le décor doit bien masquer la colonne visée, sinon ce test ne mesure rien de particulier.
+  expect(screen.queryByText('champ_11')).not.toBeInTheDocument()
+
+  await utilisateur.type(screen.getByRole('textbox', { name: /Chercher/ }), 'champ_11')
+  expect(chercher(container).trouvees()).toEqual(['large'])
+  // Aucune ligne marquée : celle qui correspond n'est pas à l'écran, et rien ne prétend le
+  // contraire.
+  expect(chercher(container).colonnes()).toEqual([])
+
+  // Et l'interrupteur la fait paraître, marquée.
+  await utilisateur.click(screen.getByRole('switch', { name: 'Toutes les colonnes' }))
+  expect(chercher(container).colonnes()).toEqual(['large.champ_11'])
+})
+
+test('les liens dont aucun bout n’est cherché s’effacent', async () => {
+  const utilisateur = userEvent.setup()
+  const { container } = monter(<DiagramView schema="public" tables={DEUX} total={2} />)
+  const eteints = () =>
+    [...container.querySelectorAll('[data-liens] path[d]')].filter((trace) =>
+      trace.getAttribute('class')?.includes('lienEteint'),
+    ).length
+
+  expect(eteints()).toBe(0)
+  // `status` ne désigne qu'`orders` ; le lien `orders → users` a donc un bout cherché et reste.
+  await utilisateur.type(screen.getByRole('textbox', { name: /Chercher/ }), 'status')
+  expect(eteints()).toBe(0)
+
+  // Un terme qui ne désigne rien éteint tout : sinon les traits gardent leur force au-dessus d'un
+  // dessin éteint et le dominent.
+  await utilisateur.clear(screen.getByRole('textbox', { name: /Chercher/ }))
+  await utilisateur.type(screen.getByRole('textbox', { name: /Chercher/ }), 'zzzz')
+  expect(eteints()).toBe(1)
+})
+
+test('`Entrée` désigne la correspondance, et passe à la suivante', async () => {
+  // `scrollIntoView` n'existe pas sous jsdom : ce qui se mesure est la **désignation**, qui suit le
+  // déplacement et se lit dans `aria-pressed`. Le défilement appartient à `e2e/`.
+  const utilisateur = userEvent.setup()
+  monter(<DiagramView schema="public" tables={DEUX} total={2} />)
+  const champ = screen.getByRole('textbox', { name: /Chercher/ })
+
+  await utilisateur.type(champ, 'user')
+  const enAvant = () =>
+    ['orders', 'users'].filter(
+      (nom) =>
+        screen
+          .getByRole('button', { name: new RegExp(`^${nom} ·`) })
+          .getAttribute('aria-pressed') === 'true',
+    )
+  expect(enAvant()).toEqual([])
+
+  await utilisateur.type(champ, '{Enter}')
+  const premiere = enAvant()
+  expect(premiere).toHaveLength(1)
+  await utilisateur.type(champ, '{Enter}')
+  const seconde = enAvant()
+  expect(seconde).toHaveLength(1)
+  // **La seconde n'est pas la première** : `Entrée` avance, il ne rejoue pas.
+  expect(seconde).not.toEqual(premiere)
+  // Et il boucle plutôt que de s'arrêter au bout.
+  await utilisateur.type(champ, '{Enter}')
+  expect(enAvant()).toEqual(premiere)
+})
+
+test('un témoin tourne pendant la lecture, et disparaît après', () => {
+  /*
+   * **Le témoin dit *que* ça travaille ; la barre d'état dit *où en est* la lecture.**
+   *
+   * Les deux ne se répètent pas : la barre court sous les trois colonnes de l'écran, à vingt-six
+   * pixels du bas, et personne ne la regarde en attendant un dessin. Le témoin vit donc dans la
+   * bande d'outils, à côté du réglage — là où le regard est.
+   */
+  const { unmount } = monter(<DiagramView schema="public" tables={DEUX} total={7} loading />)
+  expect(screen.getByText('Lecture…')).toBeInTheDocument()
+  unmount()
+
+  // Et il s'efface quand il n'y a plus rien à attendre : un témoin qui tournerait toujours ne
+  // dirait plus rien.
+  monter(<DiagramView schema="public" tables={DEUX} total={2} />)
+  expect(screen.queryByText('Lecture…')).not.toBeInTheDocument()
+})
+
+test('le zoom se règle par paliers, et le pourcentage y ramène', async () => {
+  const utilisateur = userEvent.setup()
+  monter(<DiagramView schema="public" tables={DEUX} total={2} />)
+
+  expect(screen.getByRole('button', { name: /^Échelle 100 %/ })).toBeInTheDocument()
+  await utilisateur.click(screen.getByRole('button', { name: 'Réduire' }))
+  const reduit = screen.getByRole('button', { name: /^Échelle 85 %/ })
+  await utilisateur.click(reduit)
+  // Le pourcentage **est** le retour à l'échelle 1 : son nom accessible le dit, plutôt qu'un
+  // troisième bouton pour une valeur déjà affichée.
+  expect(screen.getByRole('button', { name: /^Échelle 100 %/ })).toBeInTheDocument()
+})
+
+test('les extrémités du zoom se désactivent, elles ne bouclent pas', async () => {
+  const utilisateur = userEvent.setup()
+  monter(<DiagramView schema="public" tables={DEUX} total={2} />)
+
+  for (let i = 0; i < 6; i++)
+    await utilisateur.click(screen.getByRole('button', { name: 'Réduire' }))
+  // Boucler du plancher au plafond ferait sauter le dessin d'un extrême à l'autre sur un clic de
+  // trop, sans que rien l'annonce.
+  expect(screen.getByRole('button', { name: 'Réduire' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Agrandir' })).toBeEnabled()
+})
+
+test('un schéma sans table le dit ; une lecture en cours dit où elle en est', () => {
+  const { unmount } = monter(<DiagramView schema="public" tables={[]} total={0} />)
+  expect(screen.getByText('Le schéma public ne contient aucune table.')).toBeInTheDocument()
+  unmount()
+
+  // **« Aucune table » n'est pas « pas encore lu »**, comme « jamais tentée » n'est pas « hors
+  // ligne » : quatre états, pas deux.
+  monter(<DiagramView schema="public" tables={[]} total={9} loading />)
+  expect(screen.getByText('Lecture des structures… 0 / 9')).toBeInTheDocument()
+})
+
+test('un échec se dit, plutôt que de laisser une toile vide', () => {
+  monter(
+    <DiagramView
+      schema="public"
+      tables={[]}
+      total={3}
+      error="aucune connexion ouverte pour public"
+    />,
+  )
+  expect(screen.getByText('aucune connexion ouverte pour public')).toBeInTheDocument()
+})
+
+test('la toile ne rend rien pendant qu’elle attend, mais garde ses gestes après', async () => {
+  // Le contrôle positif de l'état vide : les mêmes props avec des tables rendent bien un dessin,
+  // sinon les deux tests ci-dessus passeraient aussi sur un composant qui ne rend jamais rien.
+  monter(<DiagramView schema="public" tables={DEUX} total={2} loading />)
+  expect(screen.getByRole('button', { name: /^orders ·/ })).toBeInTheDocument()
+})
+
+// --- La barre d'état ---
+
+test('la barre d’état compte les tables et les liens', () => {
+  monter(<DiagramStatusBar tables={DEUX} demandees={2} total={2} />)
+  const pied = screen.getByRole('status', { name: 'Résumé du diagramme' })
+  expect(pied).toHaveTextContent('2 tables')
+  expect(pied).toHaveTextContent('1 lien')
+  // Rien de « hors du schéma » quand il n'y a rien à dire : un zéro affiché ferait chercher ce qui
+  // manque.
+  expect(pied).not.toHaveTextContent('hors du schéma')
+})
+
+test('elle compte les clés dont l’autre bout est ailleurs', () => {
+  const versAilleurs: EntreeDeTable = {
+    ...ORDERS,
+    relations: [
+      VERS_USERS,
+      {
+        ...VERS_USERS,
+        constraintName: 'orders_snapshot_fkey',
+        targetSchema: 'archive',
+        targetTable: 'snapshots',
+      },
+    ],
+  }
+  monter(<DiagramStatusBar tables={[versAilleurs, USERS]} demandees={2} total={2} />)
+  // Un lien qu'on ne peut pas tracer, faute de boîte où arriver. Le taire ferait lire le diagramme
+  // comme complet, ce qui est le pire défaut que cette vue puisse avoir.
+  expect(screen.getByRole('status')).toHaveTextContent('1 hors du schéma')
+})
+
+test('elle distingue « en cours », « plafonné » et « complet »', () => {
+  const { unmount } = monter(<DiagramStatusBar tables={[ORDERS]} demandees={2} total={2} />)
+  expect(screen.getByRole('status')).toHaveTextContent('1 / 2 tables lues')
+  unmount()
+
+  // **Le cas qui manquerait** : la lecture est finie, et le schéma déborde du plafond. Sans ce
+  // troisième message, « 60 / 128 » resterait à l'écran pour toujours et se lirait comme une
+  // lecture qui n'aboutit pas.
+  const { unmount: fermer } = monter(<DiagramStatusBar tables={DEUX} demandees={2} total={128} />)
+  expect(screen.getByRole('status')).toHaveTextContent('2 des 128 tables')
+  fermer()
+
+  monter(<DiagramStatusBar tables={DEUX} demandees={2} total={2} />)
+  expect(screen.getByRole('status')).toHaveTextContent('2 tables')
+})
+
+test('une infobulle nomme les tables que le plafond écarte', () => {
+  /*
+   * **Le compte ne suffisait pas.** « 60 des 124 tables » a suscité exactement la bonne question —
+   * « lesquelles ne sont pas affichées ? » — et l'écran ne savait pas y répondre. L'infobulle dit
+   * donc le **critère** (l'ordre alphabétique, qui n'est pas un choix de pertinence et doit être
+   * avoué) puis **les noms**.
+   */
+  monter(
+    <DiagramStatusBar
+      tables={DEUX}
+      demandees={2}
+      total={4}
+      omises={['shipment_batches', 'zz_archives']}
+    />,
+  )
+  const infobulle = screen.getByTitle(/s’arrête à 2 tables/)
+  expect(infobulle).toHaveAttribute('title', expect.stringContaining('ordre alphabétique'))
+  expect(infobulle).toHaveAttribute(
+    'title',
+    expect.stringContaining('shipment_batches, zz_archives'),
+  )
+})
+
+test('elle borne la liste des écartées, pour rester une infobulle', () => {
+  // Au-delà de trente noms, une infobulle cesse d'être une infobulle : les premières et le compte
+  // du reste suffisent à répondre « lesquelles ? », le tri par nom rendant la suite devinable.
+  const beaucoup = Array.from({ length: 42 }, (_, rang) => `t${String(rang).padStart(2, '0')}`)
+  monter(<DiagramStatusBar tables={DEUX} demandees={2} total={44} omises={beaucoup} />)
+
+  const titre = screen.getByTitle(/s’arrête à 2 tables/).getAttribute('title') ?? ''
+  expect(titre).toContain('t00, t01')
+  expect(titre).toContain('(+ 12)')
+  // La trente-et-unième n'y est pas : c'est là que la borne coupe.
+  expect(titre).not.toContain('t30')
+})
+
+test('les liens se comptent une fois quand les deux tables déclarent la même clé', () => {
+  // Le catalogue rend la clé des deux côtés ; la compter deux fois annoncerait deux flèches là où
+  // le dessin n'en trace qu'une.
+  const usersAvecEntrante: EntreeDeTable = {
+    ...USERS,
+    relations: [
+      {
+        constraintName: 'orders_user_id_fkey',
+        direction: 'incoming',
+        columns: ['id'],
+        targetSchema: 'public',
+        targetTable: 'orders',
+        targetColumns: ['user_id'],
+      },
+    ],
+  }
+  monter(<DiagramStatusBar tables={[ORDERS, usersAvecEntrante]} demandees={2} total={2} />)
+  expect(screen.getByRole('status')).toHaveTextContent('1 lien')
+})
+
+test('l’infobulle d’une ligne dit son type, sa nullité et ce qu’elle référence', () => {
+  monter(<DiagramView schema="public" tables={DEUX} total={2} />)
+  // Trois faits qu'une boîte de 200 px n'a pas la place d'écrire, et que le tracé ne dit pas
+  // précisément. Une infobulle **décrit** : c'est un `title`, jamais un `aria-label` (piège n° 4).
+  expect(screen.getByTitle('int8 · jamais nul · référence public.users.id')).toBeInTheDocument()
+  expect(screen.getByTitle('text · peut être nul')).toBeInTheDocument()
+})
+
+test('deux diagrammes montés ensemble ne partagent pas leurs flèches', () => {
+  // Un `id` de `marker` est global au document : deux vues qui les nommeraient pareil feraient
+  // pointer les liens de la seconde sur les marques de la première, et changer la sélection dans
+  // l'une retinterait les flèches de l'autre.
+  const { container } = monter(
+    <>
+      <DiagramView schema="public" tables={DEUX} total={2} />
+      <DiagramView schema="archive" tables={DEUX} total={2} />
+    </>,
+  )
+  const marques = [...container.querySelectorAll('marker')].map((m) => m.id)
+  expect(new Set(marques).size).toBe(marques.length)
+})
+
+test('aucune couleur littérale n’est posée en style inline', () => {
+  // Le garde-fou `pnpm tokens:check` porte sur `tokens.json` ; un `style` en JSX lui échappe. Cette
+  // vue en pose beaucoup — les coordonnées de chaque boîte —, et c'est justement l'endroit où une
+  // couleur se glisserait sans être vue.
+  const { container } = monter(<DiagramView schema="public" tables={DEUX} total={2} />)
+  const styles = [...container.querySelectorAll('[style]')].map((e) => e.getAttribute('style'))
+  expect(styles.length).toBeGreaterThan(0)
+  for (const style of styles) {
+    expect(style).not.toMatch(/#[0-9a-f]{3}|rgb|oklch|color-mix/i)
+  }
+})
+
+test('le SVG des liens est retiré de l’arbre d’accessibilité', () => {
+  // Un tracé n'a pas de nom à annoncer, et ce qu'il dit est déjà dans les lignes des boîtes :
+  // l'icône d'une clé étrangère et l'infobulle qui nomme sa cible.
+  //
+  // **Ce test a d'abord été vert sous sabotage** (règle n° 1). Il cherchait
+  // `svg[aria-hidden="true"]` : `Icon` en pose un sur chacun des siens, donc la requête trouvait
+  // l'icône d'une clé primaire et non la couche des liens — retirer l'attribut du bon élément ne
+  // changeait rien. Le repère est donc `data-liens`, qui ne désigne qu'elle.
+  const { container } = monter(<DiagramView schema="public" tables={DEUX} total={2} />)
+  const svg = container.querySelector('[data-liens]')
+  expect(svg).not.toBeNull()
+  expect(svg).toHaveAttribute('aria-hidden', 'true')
+  // Le contrôle positif : la couche porte bien des tracés, sinon « masquée » se vérifierait sur un
+  // conteneur vide.
+  expect(svg?.querySelectorAll('path[d^="M"]').length).toBeGreaterThan(0)
+})
+
+test('une lecture qui n’a pas encore commencé n’appelle rien d’elle-même', () => {
+  // La vue ne lit pas : elle reçoit. C'est ce qui la rend montable dans la galerie, dans `?demo` et
+  // sous Vitest sans qu'aucun pont réponde — et ce qui garde une capture de fidélité stable.
+  const espion = vi.fn()
+  monter(<DiagramView schema="public" tables={DEUX} total={2} onOuvrirLaTable={espion} />)
+  expect(espion).not.toHaveBeenCalled()
+})

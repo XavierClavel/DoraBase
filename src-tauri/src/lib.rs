@@ -73,6 +73,7 @@ pub fn run() {
             engine::commands::list_schemas,
             engine::commands::list_objects,
             engine::commands::describe_table,
+            engine::commands::describe_tables,
             engine::commands::read_rows,
             engine::commands::row_as_insert,
             engine::commands::preview_updates,

@@ -62,6 +62,19 @@ export type ExplorerSidebarProps = {
     onRetirer: (project: string, database: string, environment: EnvironmentId, nom: string) => void
   }
   /**
+   * Ouvre le diagramme de structure d'un schéma, depuis le menu de sa ligne (3 septembre 2026).
+   *
+   * **La ligne de schéma est le seul endroit du produit qui nomme un schéma à tout moment** — voir la
+   * note de tête d'`entreesDe`. Absent, l'entrée est désactivée avec sa raison : c'est le cas de la
+   * galerie, où aucun onglet ne s'ouvre.
+   */
+  onOpenDiagram?: (
+    project: string,
+    database: string,
+    environment: EnvironmentId,
+    schema: string,
+  ) => void
+  /**
    * Modifier la configuration d'une base depuis son « … » (`08h`) — ouvre la modale de `08g`.
    *
    * Absent, l'entrée « Modifier… » est désactivée avec sa raison plutôt que cliquable et inerte.
@@ -158,6 +171,7 @@ export function ExplorerSidebar({
   onNewProject,
   onRefresh,
   consoles,
+  onOpenDiagram,
   onEditDatabase,
   onRenameDatabase,
   onEditProject,
@@ -226,6 +240,7 @@ export function ExplorerSidebar({
       demanderLeRetrait,
       onRefresh,
       consoles,
+      onOpenDiagram,
       setEnRenommage,
       t,
     )
@@ -595,9 +610,18 @@ export function filtrer(noeuds: readonly Noeud[], filtre: string): Noeud[] {
 /**
  * Le menu « … » d'une ligne, ou rien (`08h`).
  *
- * **Seuls le projet et la base en ont un** : ce sont les deux lignes qui portent une configuration.
- * Un schéma et une table viennent de la base, il n'y a rien à y modifier — et ce qu'un menu y
- * offrirait (copier le nom, ouvrir dans un onglet) n'est pas de la configuration.
+ * **Les lignes qui portent une configuration en ont un** — projet, environnement, connexion,
+ * console. Une table n'en a pas : ce qu'un menu y offrirait — copier le nom, ouvrir dans un onglet —
+ * double un geste que le clic fait déjà.
+ *
+ * **Le schéma a fait exception le 3 septembre 2026, et c'est un cas à part motivé.** Ce commentaire
+ * disait « seuls le projet et la base en ont un », et sa raison — il n'y a rien à configurer sur un
+ * schéma — reste vraie : le diagramme n'est pas de la configuration. Ce qui décide, c'est qu'un
+ * diagramme parle d'un **schéma** et que la ligne de schéma est le seul endroit du produit qui en
+ * nomme un à tout moment. Le fil d'Ariane du centre en nomme un aussi, mais il disparaît dès qu'un
+ * onglet s'ouvre — c'est-à-dire précisément quand on voudrait revenir au diagramme. C'est le même
+ * raisonnement que « le geste part du palier qui connaît son contexte », appliqué à un geste de
+ * lecture plutôt qu'à un geste de configuration.
  */
 function entreesDe(
   noeud: Noeud,
@@ -613,6 +637,7 @@ function entreesDe(
   demanderLeRetrait: ((cible: CibleDeSuppression) => void) | undefined,
   onRefresh: ExplorerSidebarProps['onRefresh'],
   consoles: ExplorerSidebarProps['consoles'],
+  onOpenDiagram: ExplorerSidebarProps['onOpenDiagram'],
   demanderLeRenommage: (id: string) => void,
   t: ReturnType<typeof useT>,
 ): readonly EntreeDeMenu[] | undefined {
@@ -718,6 +743,34 @@ function entreesDe(
     ]
   }
 
+  /*
+   * **Le menu d'un schéma** : son diagramme, et rien d'autre.
+   *
+   * Voir la note de tête pour la raison d'être de ce menu. Une seule entrée, comme celui d'un
+   * environnement — la bande accueillera les suivantes si le schéma en gagne.
+   */
+  if (noeud.kind === 'schema') {
+    const { project, database, environment, schema } = noeud
+    if (
+      project === undefined ||
+      database === undefined ||
+      environment === undefined ||
+      schema === undefined
+    ) {
+      return undefined
+    }
+    return [
+      {
+        libelle: t('explorer.sidebar.menu.openDiagram'),
+        icone: 'plan',
+        onClick: onOpenDiagram
+          ? () => onOpenDiagram(project, database, environment, schema)
+          : undefined,
+        raison: onOpenDiagram ? undefined : RAISONS.diagrammeIndisponible,
+      },
+    ]
+  }
+
   if (noeud.kind !== 'database') return undefined
 
   // Les coordonnées viennent du **nœud**, jamais d'une déduction sur son libellé : deux bases
@@ -811,6 +864,7 @@ function raisons(t: ReturnType<typeof useT>) {
     rafraichirIndisponible: t('explorer.sidebar.raisons.refreshUnavailable'),
     consoleIndisponible: t('explorer.sidebar.raisons.consoleUnavailable'),
     ajoutIndisponible: t('explorer.sidebar.raisons.addUnavailable'),
+    diagrammeIndisponible: t('explorer.sidebar.raisons.diagramUnavailable'),
   }
 }
 

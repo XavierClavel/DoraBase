@@ -1,4 +1,5 @@
 import { consoleEn, consoleFr } from './console'
+import { diagramEn, diagramFr } from './diagram'
 import { dumpEn, dumpFr } from './dump'
 import { explorerEn, explorerFr } from './explorer'
 import { newConnectionEn, newConnectionFr } from './newConnection'
@@ -25,6 +26,7 @@ export const DICTIONNAIRES = {
     tableView: tableViewFr,
     console: consoleFr,
     structure: structureFr,
+    diagram: diagramFr,
     shell: shellFr,
     dump: dumpFr,
     ui: uiFr,
@@ -38,6 +40,7 @@ export const DICTIONNAIRES = {
     tableView: tableViewEn,
     console: consoleEn,
     structure: structureEn,
+    diagram: diagramEn,
     shell: shellEn,
     dump: dumpEn,
     ui: uiEn,
