@@ -1,11 +1,13 @@
 //! L'introspection SQLite (`17b`).
 
+use std::collections::BTreeSet;
+
 use rusqlite::Connection;
 
 use crate::engine::{
     ColumnInfo, ConstraintInfo, EngineError, IndexInfo, KeyKind, ObjectCounts, ObjectKind,
-    Relation, RelationDirection, RowCount, SchemaInfo, TableDetail, TableSummary, TriggerInfo,
-    TypeCategory,
+    Relation, RelationCardinality, RelationDirection, RowCount, SchemaInfo, TableDetail,
+    TableSummary, TriggerInfo, TypeCategory,
 };
 
 use super::error::traduire;
@@ -367,6 +369,82 @@ fn declencheurs_de(connexion: &Connection, table: &str) -> Result<Vec<TriggerInf
     Ok(declencheurs)
 }
 
+/// Les ensembles de colonnes qu'une garantie d'unicité couvre, pour une table.
+///
+/// # Ce que SQLite met, et ne met pas, dans `index_list`
+///
+/// Trois sources, et il faut les trois :
+///
+/// - **les index et contraintes uniques** — `pragma index_list` les rend avec `unique = 1`, et
+///   `pragma index_info` donne leurs colonnes. `partial = 1` les écarte : un index unique partiel ne
+///   garantit l'unicité que des lignes qu'il couvre ;
+/// - **un index sur expression** rend un `name` nul dans `index_info`. Ses lignes sont donc écartées,
+///   et l'ensemble incomplet qui en resterait ne doit pas être retenu — sans quoi `unique(lower(a))`
+///   se lirait comme `unique(a)` ;
+/// - **`integer primary key`**, qui n'apparaît **dans aucun index** : c'est un alias de `rowid`, et
+///   SQLite ne crée pas d'index pour lui. C'est pourtant le `1:1` le plus courant du moteur, et
+///   l'oublier ferait annoncer `1:n` un `profil(utilisateur_id integer primary key references …)`.
+///   `pragma table_info` le rend par sa colonne `pk`, qui numérote les colonnes de la clé primaire.
+fn ensembles_uniques(
+    connexion: &Connection,
+    table: &str,
+) -> Result<Vec<BTreeSet<String>>, EngineError> {
+    let mut ensembles = Vec::new();
+
+    let mut primaire = connexion
+        .prepare("select name from pragma_table_info(?1) where pk > 0 order by pk")
+        .map_err(|e| traduire(&e))?;
+    let cle_primaire: BTreeSet<String> = primaire
+        .query_map([table], |ligne| ligne.get::<_, String>(0))
+        .map_err(|e| traduire(&e))?
+        .collect::<Result<_, _>>()
+        .map_err(|e| traduire(&e))?;
+    if !cle_primaire.is_empty() {
+        ensembles.push(cle_primaire);
+    }
+
+    let mut liste = connexion
+        .prepare("select name from pragma_index_list(?1) where \"unique\" = 1 and partial = 0")
+        .map_err(|e| traduire(&e))?;
+    let index: Vec<String> = liste
+        .query_map([table], |ligne| ligne.get::<_, String>(0))
+        .map_err(|e| traduire(&e))?
+        .collect::<Result<_, _>>()
+        .map_err(|e| traduire(&e))?;
+
+    for nom in index {
+        let mut colonnes = connexion
+            .prepare("select name from pragma_index_info(?1)")
+            .map_err(|e| traduire(&e))?;
+        let noms: Vec<Option<String>> = colonnes
+            .query_map([&nom], |ligne| ligne.get::<_, Option<String>>(0))
+            .map_err(|e| traduire(&e))?
+            .collect::<Result<_, _>>()
+            .map_err(|e| traduire(&e))?;
+        // Une seule colonne d'expression suffit à rendre l'ensemble inexploitable : ce qui reste
+        // n'est pas ce que l'index garantit, c'est moins.
+        if noms.iter().any(Option::is_none) {
+            continue;
+        }
+        ensembles.push(noms.into_iter().flatten().collect());
+    }
+
+    Ok(ensembles)
+}
+
+/// La cardinalité du côté qui référence : `One` si ses colonnes portent une garantie d'unicité.
+///
+/// **Une comparaison d'ensembles**, comme chez les deux autres moteurs : un index sur `(b, a)`
+/// garantit exactement ce que garantit une clé sur `(a, b)`.
+fn cardinalite(uniques: &[BTreeSet<String>], colonnes: &[String]) -> RelationCardinality {
+    let cle: BTreeSet<String> = colonnes.iter().cloned().collect();
+    if uniques.contains(&cle) {
+        RelationCardinality::One
+    } else {
+        RelationCardinality::Many
+    }
+}
+
 /// Les clés étrangères **dans les deux sens**, comme `06c` les rend.
 ///
 /// Le sens entrant demande de parcourir toutes les tables : SQLite n'a pas d'index inverse des clés
@@ -374,28 +452,19 @@ fn declencheurs_de(connexion: &Connection, table: &str) -> Result<Vec<TriggerInf
 fn relations_de(connexion: &Connection, table: &str) -> Result<Vec<Relation>, EngineError> {
     let mut relations = Vec::new();
 
-    let mut sortantes = connexion
-        .prepare("select id, \"table\", \"from\", \"to\" from pragma_foreign_key_list(?1)")
-        .map_err(|e| traduire(&e))?;
-    for entree in sortantes
-        .query_map([table], |ligne| {
-            Ok((
-                ligne.get::<_, i64>(0)?,
-                ligne.get::<_, String>(1)?,
-                ligne.get::<_, String>(2)?,
-                ligne.get::<_, Option<String>>(3)?,
-            ))
-        })
-        .map_err(|e| traduire(&e))?
-    {
-        let (id, cible, depuis, vers) = entree.map_err(|e| traduire(&e))?;
+    let uniques = ensembles_uniques(connexion, table)?;
+    for (id, cible, depuis, vers, toutes) in cles_etrangeres(connexion, table)? {
         relations.push(Relation {
             constraint_name: format!("{table}_fk_{id}"),
             direction: RelationDirection::Outgoing,
             columns: vec![depuis],
             target_schema: SCHEMA.to_owned(),
-            target_columns: vec![vers.unwrap_or_else(|| "rowid".to_owned())],
+            target_columns: vec![vers],
             target_table: cible,
+            // **La cardinalité se juge sur les colonnes de la clé *entière*, jamais sur celle de la
+            // ligne** : `pragma_foreign_key_list` rend une ligne par colonne, et une clé composite
+            // dont une seule colonne serait unique n'en dirait rien de l'autre.
+            cardinality: cardinalite(&uniques, &toutes),
         });
     }
 
@@ -409,38 +478,79 @@ fn relations_de(connexion: &Connection, table: &str) -> Result<Vec<Relation>, En
         .map_err(|e| traduire(&e))?;
 
     for autre in toutes.iter().filter(|nom| nom.as_str() != table) {
-        let mut entrantes = connexion
-            .prepare("select id, \"table\", \"from\", \"to\" from pragma_foreign_key_list(?1)")
-            .map_err(|e| traduire(&e))?;
-        for entree in entrantes
-            .query_map([autre], |ligne| {
-                Ok((
-                    ligne.get::<_, i64>(0)?,
-                    ligne.get::<_, String>(1)?,
-                    ligne.get::<_, String>(2)?,
-                    ligne.get::<_, Option<String>>(3)?,
-                ))
-            })
-            .map_err(|e| traduire(&e))?
-        {
-            let (id, cible, depuis, vers) = entree.map_err(|e| traduire(&e))?;
+        let mut uniques_de_lautre = None;
+        for (id, cible, depuis, vers, colonnes) in cles_etrangeres(connexion, autre)? {
             if cible != table {
                 continue;
             }
+            // **L'unicité se lit chez celui qui référence**, donc chez `autre` et non chez `table` :
+            // la cardinalité est une propriété de la contrainte, pas du sens sous lequel on la
+            // rencontre, et les deux moitiés d'une même clé doivent s'accorder. Lue paresseusement,
+            // parce que la plupart des tables parcourues ne référencent pas celle-ci.
+            let uniques = match uniques_de_lautre {
+                Some(ref deja) => deja,
+                None => uniques_de_lautre.insert(ensembles_uniques(connexion, autre)?),
+            };
+            let cardinality = cardinalite(uniques, &colonnes);
             // **Le sens s'inverse, pas les tables** — la leçon du défaut du 10 août 2026 en `06c` :
             // vue depuis la table pointée, la relation part de *sa* colonne et vise celle de l'autre.
             relations.push(Relation {
                 constraint_name: format!("{autre}_fk_{id}"),
                 direction: RelationDirection::Incoming,
-                columns: vec![vers.unwrap_or_else(|| "rowid".to_owned())],
+                columns: vec![vers],
                 target_schema: SCHEMA.to_owned(),
                 target_table: autre.clone(),
                 target_columns: vec![depuis],
+                cardinality,
             });
         }
     }
 
     Ok(relations)
+}
+
+/// Les clés étrangères d'une table : `(id, cible, colonne, colonne cible, colonnes de la clé)`.
+///
+/// **La dernière est la clé entière**, la même pour toutes les lignes d'un même `id` :
+/// `pragma_foreign_key_list` rend une ligne **par colonne**, et la cardinalité se juge sur
+/// l'ensemble. Le reste des appelants continue de lire une relation par ligne, comme avant.
+///
+/// `to` nul veut dire « la clé primaire de la cible » — SQLite laisse `references t` sans colonne.
+/// C'est `rowid` qui la nomme alors, comme avant ce regroupement.
+#[allow(clippy::type_complexity)]
+fn cles_etrangeres(
+    connexion: &Connection,
+    table: &str,
+) -> Result<Vec<(i64, String, String, String, Vec<String>)>, EngineError> {
+    let mut requete = connexion
+        .prepare("select id, \"table\", \"from\", \"to\" from pragma_foreign_key_list(?1)")
+        .map_err(|e| traduire(&e))?;
+    let lignes: Vec<(i64, String, String, String)> = requete
+        .query_map([table], |ligne| {
+            Ok((
+                ligne.get::<_, i64>(0)?,
+                ligne.get::<_, String>(1)?,
+                ligne.get::<_, String>(2)?,
+                ligne
+                    .get::<_, Option<String>>(3)?
+                    .unwrap_or_else(|| "rowid".to_owned()),
+            ))
+        })
+        .map_err(|e| traduire(&e))?
+        .collect::<Result<_, _>>()
+        .map_err(|e| traduire(&e))?;
+
+    Ok(lignes
+        .iter()
+        .map(|(id, cible, depuis, vers)| {
+            let toutes = lignes
+                .iter()
+                .filter(|(autre, _, _, _)| autre == id)
+                .map(|(_, _, colonne, _)| colonne.clone())
+                .collect();
+            (*id, cible.clone(), depuis.clone(), vers.clone(), toutes)
+        })
+        .collect())
 }
 
 /// Un identifiant cité aux règles de SQLite : guillemets doubles, doublés à l'intérieur.

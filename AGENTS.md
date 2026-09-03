@@ -472,6 +472,51 @@ qu'il portait et que le rendu ne dit pas.
     part du **départ**, donc il est vu au premier tour quel que soit l'ordre de visite : un parcours
     en profondeur y répondait juste. Il oppose désormais deux sauts à trois, avec le détour placé là
     où le tri des liens le fait visiter en second, donc là où une pile le prendrait en premier.
+  - **et un `1:1` ne se dessine pas comme un `1:n`** (3 septembre 2026, à la demande). Le dessin
+    disait *qu'*une table en référence une autre, jamais **combien de fois** — or c'est la première
+    chose qu'on lit sur un schéma, et celle qui décide de ce qu'une jointure va rendre. Une patte
+    d'oie marque désormais le départ des liens `1:n`, une barre celui des `1:1`. Cinq décisions :
+    - **la réponse vient du catalogue, et il a fallu l'y aller chercher.** Ce qui sépare les deux est
+      l'unicité des colonnes qui **référencent** : clé primaire, contrainte `unique`, ou index unique
+      total. L'écran ne pouvait pas la déduire de ce qu'il recevait — `KeyKind` ne connaît que
+      `primary` et `foreign`, et `IndexInfo` ne porte qu'une `definition`, le texte que le moteur
+      rend. La relire en TypeScript aurait voulu dire analyser la sortie de quatre catalogues qui ne
+      l'écrivent pas pareil. `Relation` porte donc un `cardinality`, calculé dans les trois moteurs
+      relationnels ; c'est le pendant exact de la règle du DDL — ce que le moteur sait, on le lui
+      demande. **Le raccourci qu'on aurait pu prendre** — « `1:1` si la clé étrangère est la clé
+      primaire », déductible côté écran sans rien changer au Rust — aurait rendu `1:n` toute clé
+      unique sans être primaire, **en silence**, ce qui est le défaut que cette vue tolère le moins ;
+    - **le côté référencé est toujours *un*** — une clé étrangère ne peut viser que des colonnes
+      uniques —, donc il n'y a qu'un bout où il y ait quelque chose à dire. La marque est au
+      **départ**, et la flèche reste à l'arrivée : elle donne le sens, ce qui n'est pas la même
+      information, et une flèche qui disparaîtrait serait un lien qui ne dit plus où il va ;
+    - **la cardinalité ne dépend pas du sens sous lequel on rencontre la clé.** C'est une propriété
+      de la contrainte, pas du regard : les trois moteurs la lisent toujours sur la table qui
+      référence, donc les deux moitiés s'accordent — ce dont la déduplication de `liensDe` dépend,
+      elle qui garde la première vue sans les comparer. Un test par moteur le vérifie **des deux
+      bouts** ;
+    - **elle s'écrit aussi en toutes lettres.** Une patte d'oie ne dit rien à qui ne connaît pas la
+      notation, et un `marker` SVG n'a aucun texte qu'une voix puisse rendre : l'infobulle d'une
+      ligne porte « un à un » / « un à plusieurs », et la bande de relation la notation `1:1` / `1:n`
+      doublée du mot en texte masqué ;
+    - **trois pièges par moteur, et chacun un faux `1:1`.** Ils ne se ressemblent pas d'un catalogue
+      à l'autre, et aucun ne se serait vu sans un décor fait pour lui (règle n° 5) : un index unique
+      **partiel** ne garantit rien des lignes qu'il ne couvre pas ; les colonnes d'un `include`
+      (Postgres) ou une part **fonctionnelle** (`lower(a)`, MySQL et SQLite) ne participent pas à
+      l'unicité ; et un `integer primary key` de SQLite n'apparaît **dans aucun index**, étant un
+      alias de `rowid` — c'est pourtant le `1:1` le plus courant du moteur. Deux d'entre eux
+      demandent d'écarter l'index **entier** plutôt que ligne à ligne : `unique (code(10), compte_id)`
+      dont on ne retirerait que la ligne préfixée laisse l'ensemble `{compte_id}`, qui répond « oui »
+      à une clé étrangère sur `compte_id` seule alors que rien n'y garantit son unicité.
+
+    **Et le premier `⇧`-clic a dénoncé un nom accessible en double** : les boutons de zoom
+    s'appelaient « Réduire » et « Agrandir », exactement comme les commandes de fenêtre de la barre
+    de titre Windows. Deux boutons de la même fenêtre portaient donc le même nom — le piège n° 1 par
+    un bout qu'aucune espace n'arrange —, et trois tests e2e ne savaient plus lequel viser dès que la
+    suite tournait sur une machine Windows. Ils nomment maintenant ce qu'ils agrandissent. **Aucun
+    test unitaire ne pouvait le voir** : `DiagramView` monté seul n'a pas de barre de titre autour de
+    lui, et c'est la règle n° 8 sous une forme de plus — un composant juste dans sa vitrine ne prouve
+    rien de l'assemblage.
 
   **Trois choses apprises en le vérifiant, et les trois par sabotage.** Elles valent au-delà de cet
   écran :

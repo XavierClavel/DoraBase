@@ -8,8 +8,8 @@ use mysql_async::{Conn, Row};
 
 use crate::engine::{
     ColumnInfo, ConstraintInfo, EngineError, Identity, IndexInfo, KeyKind, ObjectCounts,
-    ObjectKind, Relation, RelationDirection, RowCount, SchemaInfo, TableDetail, TableSummary,
-    TriggerInfo, TypeCategory,
+    ObjectKind, Relation, RelationCardinality, RelationDirection, RowCount, SchemaInfo,
+    TableDetail, TableSummary, TriggerInfo, TypeCategory,
 };
 
 use super::error::traduire;
@@ -416,6 +416,36 @@ async fn declencheurs(
 }
 
 /// Les clés étrangères **dans les deux sens**, comme `06c` les rend.
+///
+/// # `unique_source` : ce qui sépare un `1:1` d'un `1:n`
+///
+/// La cardinalité est une propriété de la **contrainte**, pas du sens sous lequel on la rencontre :
+/// elle se lit donc toujours sur la table qui référence — `k.table_name` —, et les deux moitiés
+/// d'une même clé s'accordent forcément.
+///
+/// La jointure compare deux **ensembles** de colonnes : celles de la clé étrangère, et celles d'un
+/// index dont `non_unique = 0`. Trois points qui décident de la justesse :
+///
+/// - **`order by column_name` des deux côtés**, et non `seq_in_index` : un index sur `(b, a)`
+///   garantit exactement ce que garantit une clé sur `(a, b)`, donc c'est une comparaison
+///   d'ensembles. C'est aussi pourquoi la clé se regroupe ici une seconde fois, par nom trié, plutôt
+///   que de réemployer le `group_concat` ordonné par position que la ligne rend déjà ;
+/// - **les deux `sum(…) = 0` écartent l'index entier**, et c'est ce qui compte : un `where` les aurait
+///   écartées **ligne à ligne**, ce qui est un faux `1:1` et non une précaution. `unique (a(10), b)`
+///   y aurait perdu la ligne de `a`, laissant le groupe `{b}` — qui répond « oui » pour une clé
+///   étrangère sur `b` seule, alors que rien n'y garantit l'unicité de `b`. Ce qu'elles écartent :
+///   un index sur un **préfixe** (`sub_part`), qui n'assure l'unicité que des n premiers caractères,
+///   et une **part fonctionnelle** (`unique ((lower(a)))`), dont `column_name` est nul — testée par
+///   la nullité plutôt que par la colonne `expression`, que MariaDB n'a pas ;
+/// - **`s.nullable`** est ignoré à dessein : une colonne nullable dans un index unique laisse
+///   plusieurs `NULL` coexister, mais un `NULL` ne référence **rien** — la ligne n'a pas de flèche,
+///   donc elle ne fait pas de cette flèche un `1:n` ;
+/// - **`k.table_schema` est dans le `group by`**, sans quoi `only_full_group_by` refuse la requête :
+///   la sous-requête corrélée le lit, donc il doit être groupé même s'il vaut le paramètre. Mesuré —
+///   erreur 1055, et cinq tests MySQL rouges qui ne parlaient pas de relations.
+///
+/// Une clé primaire est un index `non_unique = 0` nommé `PRIMARY` : elle répond ici sans être
+/// nommée, et c'est le cas le plus courant du `1:1`.
 async fn relations(
     connexion: &mut Conn,
     base: &str,
@@ -423,14 +453,31 @@ async fn relations(
 ) -> Result<Vec<Relation>, EngineError> {
     let lignes: Vec<Row> = connexion
         .exec(
-            "select constraint_name, table_name, referenced_table_name,
-                    group_concat(column_name order by ordinal_position),
-                    group_concat(referenced_column_name order by ordinal_position)
-               from information_schema.key_column_usage
-              where table_schema = ?
-                and referenced_table_name is not null
-                and (table_name = ? or referenced_table_name = ?)
-              group by constraint_name, table_name, referenced_table_name",
+            "select k.constraint_name, k.table_name, k.referenced_table_name,
+                    group_concat(k.column_name order by k.ordinal_position),
+                    group_concat(k.referenced_column_name order by k.ordinal_position),
+                    exists (
+                      select 1
+                        from information_schema.statistics s
+                       where s.table_schema = k.table_schema
+                         and s.table_name = k.table_name
+                         and s.non_unique = 0
+                       group by s.index_name
+                      having sum(s.sub_part is not null) = 0
+                         and sum(s.column_name is null) = 0
+                         and group_concat(s.column_name order by s.column_name)
+                           = (select group_concat(k2.column_name order by k2.column_name)
+                                from information_schema.key_column_usage k2
+                               where k2.table_schema = k.table_schema
+                                 and k2.table_name = k.table_name
+                                 and k2.constraint_name = k.constraint_name)
+                    )
+               from information_schema.key_column_usage k
+              where k.table_schema = ?
+                and k.referenced_table_name is not null
+                and (k.table_name = ? or k.referenced_table_name = ?)
+              group by k.table_schema, k.constraint_name, k.table_name,
+                       k.referenced_table_name",
             (base, table, table),
         )
         .await
@@ -466,6 +513,14 @@ async fn relations(
                 } else {
                     &colonnes
                 }),
+                // **Le repli est `Many`, et c'est le bon sens du doute** : c'est ce qu'une clé
+                // étrangère est presque toujours, et un `1:1` annoncé à tort ferait écrire une
+                // jointure qui rend plus de lignes qu'annoncé.
+                cardinality: if ligne.get::<Option<i64>, _>(5).flatten().unwrap_or(0) == 1 {
+                    RelationCardinality::One
+                } else {
+                    RelationCardinality::Many
+                },
             })
         })
         .collect())

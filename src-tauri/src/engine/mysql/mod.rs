@@ -383,7 +383,9 @@ fn categorie_du_protocole(type_colonne: mysql_async::consts::ColumnType) -> Type
 mod tests_db {
     use super::*;
     use crate::config::SslMode;
-    use crate::engine::{Filter, FilterOperator, Identity, KeyKind, ObjectKind, PendingUpdate};
+    use crate::engine::{
+        Filter, FilterOperator, Identity, KeyKind, ObjectKind, PendingUpdate, RelationCardinality,
+    };
 
     /// La base du décor (`scripts/schema-test-mysql.sql`). **Noms inventés** — voir `AGENTS.md`.
     const BASE: &str = "dorabase_test";
@@ -1218,4 +1220,124 @@ mod tests_db {
             .await
             .unwrap()
     }
+
+    /// Ce qui sépare un `1:1` d'un `1:n`, et que rien d'autre que le catalogue ne sait dire.
+    ///
+    /// # Les trois confusions que le décor rend impossibles (règle n° 5)
+    ///
+    /// - **`card_badges`** est unique **sans être primaire** : le cas qu'un écran ne peut pas
+    ///   deviner, `KeyKind` ne connaissant que `primary` et `foreign` ;
+    /// - **`card_prefixes`** porte un index unique dont la **première** part est un préfixe
+    ///   (`code(10)`), et sa seconde est exactement la colonne de la clé étrangère. C'est le piège
+    ///   que MySQL rend nécessaire : un filtre `where s.sub_part is null` aurait retiré la ligne de
+    ///   `code` et laissé le groupe `{compte_id}`, qui répond « oui » — alors que rien ne garantit
+    ///   l'unicité de `compte_id` seul. La garde doit écarter l'**index entier** ;
+    /// - **`card_liens`** a une clé composite `(a, b)` et un index unique déclaré `(b, a)` : les deux
+    ///   garantissent la même chose, donc c'est une comparaison d'ensembles.
+    ///
+    /// Les tables sont préfixées et détruites à la fin : le décor partagé porte des comptes que
+    /// d'autres tests vérifient.
+    #[tokio::test]
+    async fn la_cardinalite_separe_un_a_un_de_un_a_plusieurs() {
+        let adaptateur = adaptateur().await;
+        let mut connexion = adaptateur.connexion().await.unwrap();
+
+        // L'ordre compte : les filles d'abord, sans quoi les clés étrangères refusent la destruction.
+        let menage = "drop table if exists card_liens, card_paires, card_prefixes, card_badges,
+                                           card_profils, card_commandes, card_comptes";
+        connexion.query_drop(menage).await.unwrap();
+
+        for ddl in [
+            "create table card_comptes (id bigint primary key auto_increment)",
+            "create table card_commandes (
+               id bigint primary key auto_increment,
+               compte_id bigint not null,
+               foreign key (compte_id) references card_comptes(id))",
+            "create table card_profils (
+               compte_id bigint primary key,
+               foreign key (compte_id) references card_comptes(id))",
+            "create table card_badges (
+               id bigint primary key auto_increment,
+               compte_id bigint not null unique,
+               foreign key (compte_id) references card_comptes(id))",
+            "create table card_prefixes (
+               id bigint primary key auto_increment,
+               code varchar(64) not null,
+               compte_id bigint not null,
+               unique key prefixe (code(10), compte_id),
+               foreign key (compte_id) references card_comptes(id))",
+            "create table card_paires (a bigint, b bigint, primary key (a, b))",
+            "create table card_liens (
+               a bigint not null, b bigint not null,
+               unique key inverse (b, a),
+               foreign key (a, b) references card_paires(a, b))",
+        ] {
+            connexion
+                .query_drop(ddl)
+                .await
+                .unwrap_or_else(|e| panic!("le décor doit s'appliquer : {e}\n---\n{ddl}"));
+        }
+
+        let cardinalite_de = |table: &'static str| {
+            let adaptateur = &adaptateur;
+            async move {
+                let detail = adaptateur.table_detail(BASE, table).await.unwrap();
+                detail
+                    .relations
+                    .iter()
+                    .find(|r| r.direction == crate::engine::RelationDirection::Outgoing)
+                    .unwrap_or_else(|| panic!("{table} référence quelque chose"))
+                    .cardinality
+            }
+        };
+
+        assert_eq!(
+            cardinalite_de("card_commandes").await,
+            RelationCardinality::Many,
+            "l'index que MySQL crée pour une clé étrangère n'est pas unique"
+        );
+        assert_eq!(
+            cardinalite_de("card_profils").await,
+            RelationCardinality::One,
+            "la clé étrangère est la clé primaire"
+        );
+        assert_eq!(
+            cardinalite_de("card_badges").await,
+            RelationCardinality::One,
+            "unique sans être primaire — le cas qu'un écran ne peut pas deviner"
+        );
+        assert_eq!(
+            cardinalite_de("card_prefixes").await,
+            RelationCardinality::Many,
+            "un index unique dont une part est un préfixe ne garantit rien, en entier"
+        );
+        assert_eq!(
+            cardinalite_de("card_liens").await,
+            RelationCardinality::One,
+            "un index sur (b, a) garantit ce que garantit une clé sur (a, b)"
+        );
+
+        // **Les deux moitiés d'une même clé s'accordent** : l'écran déduplique par
+        // `(source, contrainte)` et garde la première vue.
+        let comptes = adaptateur.table_detail(BASE, "card_comptes").await.unwrap();
+        for (table, attendue) in [
+            ("card_commandes", RelationCardinality::Many),
+            ("card_profils", RelationCardinality::One),
+            ("card_badges", RelationCardinality::One),
+            ("card_prefixes", RelationCardinality::Many),
+        ] {
+            let vue_de_loin = comptes
+                .relations
+                .iter()
+                .find(|r| r.target_table == table)
+                .unwrap_or_else(|| panic!("card_comptes est référencée par {table}"));
+            assert_eq!(
+                vue_de_loin.cardinality, attendue,
+                "vue depuis card_comptes, la clé de {table} doit dire la même chose"
+            );
+        }
+
+        connexion.query_drop(menage).await.unwrap();
+    }
+
 }

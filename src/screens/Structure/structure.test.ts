@@ -35,6 +35,7 @@ describe('annotationDe', () => {
     {
       constraintName: 'orders_user_fk',
       direction: 'outgoing',
+      cardinality: 'many',
       columns: ['user_id'],
       targetSchema: 'public',
       targetTable: 'users',
@@ -43,6 +44,7 @@ describe('annotationDe', () => {
     {
       constraintName: 'items_order_fk',
       direction: 'incoming',
+      cardinality: 'many',
       columns: ['id'],
       targetSchema: 'public',
       targetTable: 'order_items',

@@ -170,6 +170,7 @@ test('les relations sortantes et entrantes se lisent dans le bon sens', () => {
         {
           constraintName: 'fk_user',
           direction: 'outgoing',
+          cardinality: 'many',
           columns: ['user_id'],
           targetSchema: 'public',
           targetTable: 'users',
@@ -178,6 +179,7 @@ test('les relations sortantes et entrantes se lisent dans le bon sens', () => {
         {
           constraintName: 'fk_invoice',
           direction: 'incoming',
+          cardinality: 'many',
           columns: ['id'],
           targetSchema: 'public',
           targetTable: 'invoices',

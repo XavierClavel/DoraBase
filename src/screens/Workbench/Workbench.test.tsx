@@ -2270,6 +2270,7 @@ describe('le diagramme de schéma', () => {
       {
         constraintName: 'order_items_order_id_fkey',
         direction: 'outgoing',
+        cardinality: 'many',
         columns: ['order_id'],
         targetSchema: 'public',
         targetTable: 'orders',

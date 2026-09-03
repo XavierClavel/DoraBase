@@ -45,6 +45,9 @@ test('le diagramme dessine les tables du schéma et leurs clés', async ({ page 
     'shipment_batches',
     'pricing_rules',
     'audit_events',
+    // Ajoutée le 3 septembre 2026 : la seule table `1:1` du décor, sans quoi les deux marques de
+    // cardinalité seraient indiscernables (règle n° 5).
+    'user_profiles',
   ]) {
     await expect(page.getByRole('button', { name: new RegExp(`^${table} ·`) })).toHaveCount(1)
   }
@@ -53,8 +56,8 @@ test('le diagramme dessine les tables du schéma et leurs clés', async ({ page 
   // La barre d'état, et le nombre qui manquerait : `audit_events.snapshot_id` vise
   // `archive.snapshots`, dont la boîte n'existe pas — le taire ferait lire le dessin comme complet.
   const pied = page.getByRole('status', { name: 'Résumé du diagramme' })
-  await expect(pied).toContainText('7 tables')
-  await expect(pied).toContainText('6 liens')
+  await expect(pied).toContainText('8 tables')
+  await expect(pied).toContainText('7 liens')
   await expect(pied).toContainText('1 hors du schéma')
 })
 
@@ -162,8 +165,8 @@ test('la toile défile, elle ne déborde pas de son cadre', async ({ page }) => 
   // dans le centre : un test qui compterait sur son débordement mesurerait la largeur de la fenêtre
   // du jour. Deux crans de zoom le rendent forcément plus large que son cadre, et c'est là que la
   // question se pose — le dessin doit se **parcourir**, pas être rogné en silence.
-  await page.getByRole('button', { name: 'Agrandir' }).click()
-  await page.getByRole('button', { name: 'Agrandir' }).click()
+  await page.getByRole('button', { name: 'Agrandir le diagramme' }).click()
+  await page.getByRole('button', { name: 'Agrandir le diagramme' }).click()
   await expect(page.getByRole('button', { name: /^Échelle 150 %/ })).toBeVisible()
 
   const mesures = await page.evaluate(() => {
@@ -206,7 +209,7 @@ test('le zoom agrandit le dessin, sans le déformer', async ({ page }) => {
     })
 
   const cent = await mesure()
-  await page.getByRole('button', { name: 'Agrandir' }).click()
+  await page.getByRole('button', { name: 'Agrandir le diagramme' }).click()
   await expect(page.getByRole('button', { name: /^Échelle 125 %/ })).toBeVisible()
   const cent25 = await mesure()
 
@@ -300,8 +303,8 @@ test('la recherche amène la table trouvée à l’écran', async ({ page }) => 
 
   // Deux crans de zoom, pour que le dessin dépasse largement son cadre : sans débordement il n'y a
   // rien à faire défiler, et le test se vérifierait lui-même.
-  await page.getByRole('button', { name: 'Agrandir' }).click()
-  await page.getByRole('button', { name: 'Agrandir' }).click()
+  await page.getByRole('button', { name: 'Agrandir le diagramme' }).click()
+  await page.getByRole('button', { name: 'Agrandir le diagramme' }).click()
   const depart = await page
     .locator('[data-toile]')
     .evaluate((zone) => ({ x: zone.scrollLeft, y: zone.scrollTop }))
@@ -349,7 +352,9 @@ test('la recherche éteint ce qu’elle ne désigne pas, et le dit quand elle ne
 
   // Une colonne, pas seulement une table : `account_id` n'existe dans aucun nom de table du décor.
   await champ.fill('user_id')
-  await expect(page.getByText('1 trouvée')).toBeVisible()
+  // Deux tables la portent depuis que `user_profiles` existe : `orders.user_id` et
+  // `user_profiles.user_id`, qui est justement la clé `1:1` du décor.
+  await expect(page.getByText('2 trouvées')).toBeVisible()
   const eteintes = () =>
     page.evaluate(() =>
       [...document.querySelectorAll('[data-boite]')]
@@ -357,12 +362,12 @@ test('la recherche éteint ce qu’elle ne désigne pas, et le dit quand elle ne
         .map((boite) => boite.getAttribute('data-boite'))
         .sort(),
     )
-  // Six des sept tables s'effacent ; `orders` porte `user_id` et reste.
+  // Six des huit tables s'effacent ; `orders` et `user_profiles` portent `user_id` et restent.
   expect((await eteintes()).length).toBe(6)
 
   await champ.fill('zzzz')
   await expect(page.getByText('aucune')).toBeVisible()
-  expect((await eteintes()).length).toBe(7)
+  expect((await eteintes()).length).toBe(8)
 
   // Vider le champ rend le dessin entier : une recherche abandonnée ne laisse pas de trace.
   await champ.fill('')
@@ -440,4 +445,99 @@ test('deux tables que rien ne relie le disent, plutôt que de ne rien afficher',
   // Et le dessin revient au repos par le bouton de la bande, sans avoir à retrouver les boîtes.
   await page.getByRole('button', { name: 'Ne plus rien choisir' }).click()
   await expect(bande).toHaveCount(0)
+})
+
+test('un lien 1:1 et un lien 1:n ne se dessinent pas de la même façon', async ({ page }) => {
+  /*
+   * **Ce que ce niveau garde, et qu'aucun autre ne peut garder.**
+   *
+   * `DiagramView.test.tsx` vérifie *quelle* marque chaque lien désigne — c'est du DOM. Qu'elle se
+   * **dessine** ne se mesure qu'ici : un `marker` mal ancré (`refX`) ou mal orienté (`orient`) rend
+   * un attribut parfaitement juste et une patte d'oie invisible, ou posée à l'envers au milieu du
+   * trait. jsdom ne peint rien, donc il ne verrait ni l'un ni l'autre (règle n° 9).
+   */
+  const marques = await page.evaluate(() => {
+    const traits = [...document.querySelectorAll('[data-liens] path[marker-start]')]
+    return traits.map((trait) => {
+      const url = trait.getAttribute('marker-start') ?? ''
+      const marque = document.querySelector(url.slice(4, -1))
+      const dessin = marque?.querySelector('path')
+      return {
+        lien: trait.getAttribute('data-lien'),
+        sorte: /-(one|many)(-choisie)?\)$/.exec(url)?.[1] ?? null,
+        // La marque doit exister **et** porter un tracé : un `<marker>` vide se référence sans
+        // rien peindre, et l'attribut serait tout aussi juste.
+        peinte: (dessin?.getAttribute('d')?.length ?? 0) > 0,
+        // **Les deux attributs qui décident d'où la marque tombe.** `refX` la pose au bord de la
+        // boîte plutôt qu'au milieu du trait, et `orient="auto"` la retourne sur les liens qui
+        // sortent par la gauche — ceux que les cycles produisent. Une marque juste dans ses formes
+        // et fausse dans ces deux-là se référence sans se voir.
+        //
+        // Ce qui n'est **pas** mesurable ici : qu'elle ait effectivement peint des pixels. Un
+        // `<marker>` vit dans `<defs>`, donc sa boîte englobante est nulle par construction — une
+        // première version l'assertait, et elle mesurait le fait qu'un `defs` n'a pas de boîte.
+        // Cette question-là appartient à une capture de fidélité.
+        refX: marque?.getAttribute('refX') ?? null,
+        orient: marque?.getAttribute('orient') ?? null,
+      }
+    })
+  })
+
+  const par = (fin: string) => marques.find((m) => m.lien?.endsWith(fin))
+  // `user_profiles.user_id` est à la fois clé primaire et clé étrangère : un profil par compte.
+  expect(par('user_profiles_user_id_fkey')?.sorte).toBe('one')
+  // Plusieurs commandes par compte : rien ne les borne.
+  expect(par('orders_user_id_fkey')?.sorte).toBe('many')
+
+  // Toutes les marques référencées existent et peignent quelque chose.
+  expect(marques.length).toBeGreaterThan(0)
+  expect(marques.every((m) => m.peinte)).toBe(true)
+  expect(marques.every((m) => m.refX === '0' && m.orient === 'auto')).toBe(true)
+})
+
+test('la cardinalité s’écrit dans l’infobulle, que la notation soit connue ou non', async ({
+  page,
+}) => {
+  // Une patte d'oie ne dit rien à qui ne l'a jamais vue, et un `marker` SVG n'a aucun texte qu'une
+  // voix puisse rendre : le mot doit exister quelque part.
+  const ligne = page.locator('[data-boite="user_profiles"] [data-colonne="user_id"]')
+  await expect(ligne).toHaveAttribute('title', /un à un/)
+
+  const autre = page.locator('[data-boite="orders"] [data-colonne="user_id"]')
+  await expect(autre).toHaveAttribute('title', /un à plusieurs/)
+})
+
+test('la notation garde de l’air des deux côtés, et non du seul gauche', async ({ page }) => {
+  /*
+   * **Rapporté à l'usage : « 1:n est collé au nom de la table de droite ».**
+   *
+   * L'air à gauche venait du `padding` de la flèche, celui de droite de rien du tout — et
+   * « 1:nusers.id » se lit comme un seul mot. La notation porte donc son propre `padding-right`.
+   *
+   * # Pourquoi la valeur **calculée**, et non le rectangle
+   *
+   * C'est la règle n° 9 dans sa seconde moitié : un `padding` vit **à l'intérieur** de la boîte que
+   * `getBoundingClientRect` rend. Mesurer l'écart entre le bord droit de la notation et le nom qui
+   * suit donnerait donc zéro — que le `padding` soit là ou non —, et le test serait vert dans les
+   * deux cas. Ce qui se mesure ici est la déclaration elle-même, et la **symétrie** qu'elle promet :
+   * l'air de droite est celui de gauche, qui est le `padding` de la flèche.
+   */
+  await page.getByRole('button', { name: /^order_items ·/ }).click()
+  await page.getByRole('button', { name: /^users ·/ }).click({ modifiers: ['Shift'] })
+
+  const air = await page.evaluate(() => {
+    const notation = document.querySelector('[data-notation]')
+    const fleche = document.querySelector('[data-fleche]')
+    if (!notation || !fleche) return null
+    return {
+      droite: getComputedStyle(notation).paddingRight,
+      gauche: getComputedStyle(fleche).paddingRight,
+    }
+  })
+
+  expect(air).not.toBeNull()
+  // Un écart réel, et non « 0px » : c'est le défaut lui-même.
+  expect(air?.droite).not.toBe('0px')
+  // Et le même des deux côtés : le trio « nom · flèche · notation » doit se lire comme un groupe.
+  expect(air?.droite).toBe(air?.gauche)
 })

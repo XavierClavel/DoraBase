@@ -39,6 +39,16 @@ export const diagramFr: Dictionnaire = {
       `Aucun chemin de clés entre ${p.a} et ${p.b} parmi les tables dessinées`,
     effacer: 'Ne plus rien choisir',
   },
+  // **La cardinalité, en toutes lettres.** La patte d'oie se lit d'un coup d'œil pour qui connaît
+  // la notation, et ne dit rien à qui ne la connaît pas — un `marker` SVG n'a d'ailleurs aucun texte
+  // qu'une voix puisse rendre. Les deux formes disent la même chose : la brève pour une infobulle,
+  // celle qui porte ses espaces pour la lecture d'un chemin.
+  cardinalite: {
+    un: 'un à un',
+    plusieurs: 'un à plusieurs',
+    unVoix: ' un à un ',
+    plusieursVoix: ' un à plusieurs ',
+  },
   chargement: 'Lecture…',
   recherche: {
     // **« table ou colonne », parce que le champ cherche les deux** : annoncer « une table » ferait
@@ -50,8 +60,13 @@ export const diagramFr: Dictionnaire = {
     effacer: 'Effacer la recherche',
   },
   zoom: {
-    moins: 'Réduire',
-    plus: 'Agrandir',
+    // **Les deux boutons nomment ce qu'ils agrandissent**, et ce n'est pas une précision de style.
+    // La barre de titre de Windows porte « Réduire » et « Agrandir » pour la *fenêtre* : sans le
+    // complément, deux boutons de la même fenêtre auraient le même nom accessible, ce qui est le
+    // piège n° 1 par un bout que l'espace n'arrange pas. Découvert le 3 septembre 2026 en exécutant
+    // la suite e2e sur une machine Windows, où trois tests ne savaient plus lequel viser.
+    moins: 'Réduire le diagramme',
+    plus: 'Agrandir le diagramme',
     reinitialiser: (p) => `Échelle ${p.pourcentage} % — revenir à 100 %`,
   },
   vide: {
@@ -100,6 +115,12 @@ export const diagramEn: Dictionnaire = {
     aucunePartielle: (p) => `No key path between ${p.a} and ${p.b} among the tables drawn`,
     effacer: 'Clear the selection',
   },
+  cardinalite: {
+    un: 'one to one',
+    plusieurs: 'one to many',
+    unVoix: ' one to one ',
+    plusieursVoix: ' one to many ',
+  },
   chargement: 'Reading…',
   recherche: {
     placeholder: 'Find a table, a column…',
@@ -109,8 +130,8 @@ export const diagramEn: Dictionnaire = {
     effacer: 'Clear the search',
   },
   zoom: {
-    moins: 'Zoom out',
-    plus: 'Zoom in',
+    moins: 'Zoom the diagram out',
+    plus: 'Zoom the diagram in',
     reinitialiser: (p) => `Scale ${p.pourcentage} % — back to 100 %`,
   },
   vide: {

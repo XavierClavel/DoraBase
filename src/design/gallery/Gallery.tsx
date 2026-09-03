@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import type { EnvironmentDeclaration } from '../../domain/config'
-import type { ColumnInfo, RowLimit } from '../../domain/engine'
+import type { ColumnInfo, Relation, RowLimit } from '../../domain/engine'
 import { DiagramStatusBar, DiagramView } from '../../screens/Diagram/DiagramView'
 import type { EntreeDeTable } from '../../screens/Diagram/disposition'
 import {
@@ -1897,6 +1897,7 @@ const DETAIL_DEMO = {
     {
       constraintName: 'fk_user',
       direction: 'outgoing' as const,
+      cardinality: 'many' as const,
       columns: ['user_id'],
       targetSchema: 'public',
       targetTable: 'users',
@@ -1905,6 +1906,7 @@ const DETAIL_DEMO = {
     {
       constraintName: 'fk_coupon',
       direction: 'outgoing' as const,
+      cardinality: 'many' as const,
       columns: ['coupon_code'],
       targetSchema: 'public',
       targetTable: 'coupons',
@@ -1913,6 +1915,7 @@ const DETAIL_DEMO = {
     {
       constraintName: 'fk_invoice',
       direction: 'incoming' as const,
+      cardinality: 'many' as const,
       columns: ['id'],
       targetSchema: 'public',
       targetTable: 'invoices',
@@ -2043,7 +2046,16 @@ const TABLES_DE_GALERIE: readonly EntreeDeTable[] = (() => {
     comment: null,
     frequency: null,
   })
-  const vers = (contrainte: string, colonne: string, cible: string, schema = 'public') => ({
+  const vers = (
+    contrainte: string,
+    colonne: string,
+    cible: string,
+    schema = 'public',
+    // **`many` par défaut, parce que c'est ce qu'une clé étrangère est presque toujours** — et la
+    // galerie doit montrer les deux marques, donc l'exception s'écrit.
+    cardinality: Relation['cardinality'] = 'many',
+  ) => ({
+    cardinality,
     constraintName: contrainte,
     direction: 'outgoing' as const,
     columns: [colonne],

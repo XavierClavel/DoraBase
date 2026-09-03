@@ -48,6 +48,9 @@ function sortante(
   cible: string,
   schemaCible = 'public',
   colonneCible = 'id',
+  // **`many` par défaut** : c'est ce qu'une clé étrangère est presque toujours, et un décor qui ne
+  // porterait qu'une seule cardinalité ne mesurerait que lui-même (règle n° 5).
+  cardinality: Relation['cardinality'] = 'many',
 ): Relation {
   return {
     constraintName: contrainte,
@@ -56,6 +59,7 @@ function sortante(
     targetSchema: schemaCible,
     targetTable: cible,
     targetColumns: [colonneCible],
+    cardinality,
   }
 }
 
@@ -64,6 +68,7 @@ function entrante(
   colonne: string,
   source: string,
   colonneSource: string,
+  cardinality: Relation['cardinality'] = 'many',
 ): Relation {
   return {
     constraintName: contrainte,
@@ -72,6 +77,7 @@ function entrante(
     targetSchema: 'public',
     targetTable: source,
     targetColumns: [colonneSource],
+    cardinality,
   }
 }
 

@@ -43,6 +43,7 @@ function colonne(partiel: Partial<ColumnInfo> & Pick<ColumnInfo, 'position' | 'n
 const VERS_USERS: Relation = {
   constraintName: 'orders_user_id_fkey',
   direction: 'outgoing',
+  cardinality: 'many',
   columns: ['user_id'],
   targetSchema: 'public',
   targetTable: 'users',
@@ -252,6 +253,7 @@ test('l’interrupteur « Toutes les colonnes » ouvre ce que l’aperçu résum
 const VERS_ORDERS: Relation = {
   constraintName: 'order_items_order_id_fkey',
   direction: 'outgoing',
+  cardinality: 'many',
   columns: ['order_id'],
   targetSchema: 'public',
   targetTable: 'orders',
@@ -274,6 +276,33 @@ const AUDIT: EntreeDeTable = {
   name: 'audit_events',
   columns: [colonne({ position: 1, name: 'id', key: 'primary' })],
   relations: [],
+}
+
+/**
+ * Le `1:1` du décor : `profils.user_id` est **à la fois** clé primaire et clé étrangère.
+ *
+ * Sans lui, toutes les clés du décor seraient `many` et une implémentation qui dessinerait toujours
+ * la même marque passerait (règle n° 5). C'est aussi la forme la plus courante du `1:1` — et celle
+ * qu'un écran ne peut pas déduire seul, `ColumnInfo.key` ne disant rien de l'unicité.
+ */
+const PROFILS: EntreeDeTable = {
+  schema: 'public',
+  name: 'profils',
+  columns: [
+    colonne({ position: 1, name: 'user_id', key: 'primary' }),
+    colonne({ position: 2, name: 'bio', typeName: 'text', nullable: true }),
+  ],
+  relations: [
+    {
+      constraintName: 'profils_user_id_fkey',
+      direction: 'outgoing',
+      cardinality: 'one',
+      columns: ['user_id'],
+      targetSchema: 'public',
+      targetTable: 'users',
+      targetColumns: ['id'],
+    },
+  ],
 }
 
 const CHAINE = [ORDER_ITEMS, ORDERS, USERS]
@@ -503,6 +532,64 @@ test('adjoindre une seconde table efface la recherche, qui masquait la réponse'
   expect(bande()).toHaveTextContent('Reliées en 2 étapes')
 })
 
+// --- Un à un, un à plusieurs ---
+
+test('chaque lien porte au départ la marque de sa cardinalité', async () => {
+  /*
+   * **Le côté qui référence, et lui seul.** Le côté référencé est toujours *un* — une clé étrangère
+   * ne peut viser que des colonnes uniques —, donc il n'y a qu'un bout où il y ait quelque chose à
+   * dire. La flèche reste à l'arrivée : elle donne le sens, et ce n'est pas la même information.
+   *
+   * Ce que jsdom peut mesurer ici est le **choix de la marque** ; qu'elle se dessine en patte d'oie
+   * appartient à `e2e/` comme tout ce qui est mise en page (règle n° 9).
+   */
+  const { container } = monter(
+    <DiagramView schema="public" tables={[...CHAINE, PROFILS]} total={4} />,
+  )
+
+  const marques = () =>
+    Object.fromEntries(
+      [...container.querySelectorAll('[data-liens] path[marker-start]')].map((trait) => [
+        trait.getAttribute('data-lien'),
+        /-(one|many)(-choisie)?\)$/.exec(trait.getAttribute('marker-start') ?? '')?.[1],
+      ]),
+    )
+
+  expect(marques()).toEqual({
+    // Plusieurs commandes par compte, plusieurs lignes par commande : rien ne les borne.
+    'public.orders::orders_user_id_fkey': 'many',
+    'public.order_items::order_items_order_id_fkey': 'many',
+    // Un seul profil par utilisateur, parce que sa clé étrangère **est** sa clé primaire.
+    'public.profils::profils_user_id_fkey': 'one',
+  })
+})
+
+test('la cardinalité s’écrit aussi en toutes lettres, là où une marque ne se lit pas', async () => {
+  /*
+   * **Une patte d'oie ne dit rien à qui ne connaît pas la notation**, et un `marker` SVG n'a aucun
+   * texte qu'une voix puisse rendre. Les deux endroits où la relation se lit en mots doivent donc la
+   * porter : l'infobulle d'une ligne, et la bande qui écrit le chemin entre deux tables.
+   */
+  const utilisateur = userEvent.setup()
+  const { container } = monter(
+    <DiagramView schema="public" tables={[...CHAINE, PROFILS]} total={4} />,
+  )
+
+  const infobulle = (table: string, colonne: string) =>
+    container
+      .querySelector(`[data-boite="${table}"] [data-colonne="${colonne}"]`)
+      ?.getAttribute('title')
+
+  expect(infobulle('profils', 'user_id')).toContain('un à un')
+  expect(infobulle('orders', 'user_id')).toContain('un à plusieurs')
+
+  await utilisateur.click(screen.getByRole('button', { name: /^profils ·/ }))
+  await clicMaj(utilisateur, screen.getByRole('button', { name: /^users ·/ }))
+  // La notation visible pour l'œil, le mot pour la voix — et les deux disent la même chose.
+  expect(bande()).toHaveTextContent('1:1')
+  expect(bande()).toHaveTextContent('un à un')
+})
+
 // --- La recherche ---
 
 /**
@@ -719,7 +806,7 @@ test('le zoom se règle par paliers, et le pourcentage y ramène', async () => {
   monter(<DiagramView schema="public" tables={DEUX} total={2} />)
 
   expect(screen.getByRole('button', { name: /^Échelle 100 %/ })).toBeInTheDocument()
-  await utilisateur.click(screen.getByRole('button', { name: 'Réduire' }))
+  await utilisateur.click(screen.getByRole('button', { name: 'Réduire le diagramme' }))
   const reduit = screen.getByRole('button', { name: /^Échelle 85 %/ })
   await utilisateur.click(reduit)
   // Le pourcentage **est** le retour à l'échelle 1 : son nom accessible le dit, plutôt qu'un
@@ -732,11 +819,11 @@ test('les extrémités du zoom se désactivent, elles ne bouclent pas', async ()
   monter(<DiagramView schema="public" tables={DEUX} total={2} />)
 
   for (let i = 0; i < 6; i++)
-    await utilisateur.click(screen.getByRole('button', { name: 'Réduire' }))
+    await utilisateur.click(screen.getByRole('button', { name: 'Réduire le diagramme' }))
   // Boucler du plancher au plafond ferait sauter le dessin d'un extrême à l'autre sur un clic de
   // trop, sans que rien l'annonce.
-  expect(screen.getByRole('button', { name: 'Réduire' })).toBeDisabled()
-  expect(screen.getByRole('button', { name: 'Agrandir' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Réduire le diagramme' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Agrandir le diagramme' })).toBeEnabled()
 })
 
 test('un schéma sans table le dit ; une lecture en cours dit où elle en est', () => {
@@ -861,6 +948,7 @@ test('les liens se comptent une fois quand les deux tables déclarent la même c
       {
         constraintName: 'orders_user_id_fkey',
         direction: 'incoming',
+        cardinality: 'many',
         columns: ['id'],
         targetSchema: 'public',
         targetTable: 'orders',
@@ -874,9 +962,13 @@ test('les liens se comptent une fois quand les deux tables déclarent la même c
 
 test('l’infobulle d’une ligne dit son type, sa nullité et ce qu’elle référence', () => {
   monter(<DiagramView schema="public" tables={DEUX} total={2} />)
-  // Trois faits qu'une boîte de 200 px n'a pas la place d'écrire, et que le tracé ne dit pas
+  // Quatre faits qu'une boîte de 200 px n'a pas la place d'écrire, et que le tracé ne dit pas
   // précisément. Une infobulle **décrit** : c'est un `title`, jamais un `aria-label` (piège n° 4).
-  expect(screen.getByTitle('int8 · jamais nul · référence public.users.id')).toBeInTheDocument()
+  // La cardinalité s'y est ajoutée le 3 septembre 2026 : la patte d'oie ne dit rien à qui ne
+  // connaît pas la notation, et un `marker` SVG n'a aucun texte qu'une voix puisse rendre.
+  expect(
+    screen.getByTitle('int8 · jamais nul · référence public.users.id · un à plusieurs'),
+  ).toBeInTheDocument()
   expect(screen.getByTitle('text · peut être nul')).toBeInTheDocument()
 })
 

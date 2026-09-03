@@ -297,6 +297,23 @@
   color: var(--ink);
 }
 
+/*
+ * La notation `1:1` / `1:n`, à côté de la flèche qu'elle qualifie.
+ *
+ * En mono et en `--text-meta` : c'est une **cote**, pas une phrase, et elle doit se distinguer des
+ * noms de colonnes qui l'entourent sans les dominer. Même encre que la flèche, parce que les deux
+ * disent la même chose de la même clé.
+ */
+.notation {
+  font: var(--weight-semibold) var(--text-meta) / 1 var(--font-mono);
+  color: var(--accent-deep);
+  /* **La notation flotte entre la flèche et le nom qui suit**, et il lui faut de l'air des deux
+     côtés. À gauche, c'est le `padding` de la flèche qui le donne ; à droite, rien ne le donnait, et
+     `1:n` se collait au nom de la table suivante — « 1:nusers.id » se lit comme un seul mot. Même
+     valeur qu'à gauche, pour que l'écart soit symétrique et que le trio se lise comme un groupe. */
+  padding-right: var(--space-2);
+}
+
 .fleche {
   padding: 0 var(--space-2);
   color: var(--accent-deep);
