@@ -163,18 +163,24 @@ impl EngineAdapter for BigQueryAdapter {
 
     async fn rows(&self, query: &RowQuery) -> Result<RowWindow, EngineError> {
         let debut = Instant::now();
-        let (sql, parametres) = rows::requete_de(&self.projet, &query.schema, query);
-        let (_, lignes) = self.executer(&sql, parametres).await?;
 
-        // Le total ignore les filtres de `query`, comme les autres moteurs (`06a`) : c'est le
-        // compte de la table entière qui donne le contexte de la pagination, pas celui de la
-        // fenêtre filtrée.
+        // **La table d'abord, la requête ensuite.** Elle était déjà demandée — le total ignore les
+        // filtres de `query`, comme les autres moteurs (`06a`) : c'est le compte de la table entière
+        // qui donne le contexte de la pagination, pas celui de la fenêtre filtrée. Sa réponse porte
+        // le **schéma**, dont `requete_de` a besoin pour trois opérateurs dont le SQL dépend du type
+        // déclaré (`is true`, `is false`, les comparaisons). L'ordre inversé n'ajoute donc aucun
+        // aller-retour ; demander `table_detail` en plus en aurait ajouté un par lecture.
         let table = self
             .client
             .table()
             .get(&self.projet, &query.schema, &query.table, None)
             .await
             .map_err(erreur::traduire)?;
+        let colonnes = introspect::colonnes_de(&table);
+
+        let (sql, parametres) = rows::requete_de(&self.projet, &query.schema, query, &colonnes);
+        let (_, lignes) = self.executer(&sql, parametres).await?;
+
         let total = table
             .num_rows
             .as_deref()

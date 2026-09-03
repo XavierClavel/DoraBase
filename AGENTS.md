@@ -87,7 +87,11 @@ qu'il portait et que le rendu ne dit pas.
   commenté vaut mieux qu'un jeton approximatif choisi « parce que ça se ressemble ».
 - **Les raccourcis affichés sont à opacité `.6`**, une valeur représentative — la source
   variait `.5`/`.6`/`.7` selon l'instance, et trois props ne valaient pas ce gain.
-- **Pas de composant natif** pour les listes déroulantes : la liste maison partout.
+- **Pas de composant natif** pour les listes déroulantes : la liste maison partout. **Le sélecteur
+  de date des filtres de `A5` est la seule exception**, et elle ne contredit pas la règle : ce que le
+  maison remplace pour une liste — l'apparence de la liste elle-même — n'existe pas ici, un
+  calendrier étant une vue à concevoir plutôt qu'un panneau à styler. Voir « Les filtres suivent la
+  colonne ».
 - **Un `var()` vers un jeton inexistant ne casse rien de visible** — ni TypeScript, ni
   Vitest, ni l'œil. Vérifiez qu'un jeton existe avant de l'employer.
 - **Le formulaire d'`A2` est à deux colonnes qui s'apparient, et un champ de demi-largeur inséré
@@ -242,6 +246,168 @@ qu'il portait et que le rendu ne dit pas.
     existe des deux côtés — `A5` par la barre d'outils et le menu d'en-tête, la console par le
     seul menu d'en-tête, qui porte alors son propre retour (voir ci-dessus).
 
+### Les filtres suivent la colonne (3 septembre 2026)
+
+Le popover d'en-tête proposait **les mêmes cinq opérateurs à toutes les colonnes**, et les quatre
+comparaisons en plus aux numériques. Trois de ces offres ne voulaient rien dire, chacune à sa façon,
+et le remède est le même : c'est la **catégorie** de la colonne et sa **nullité** qui décident de la
+liste (`operateursPour`), plus deux opérateurs de plus dans le contrat.
+
+- **`is null` demande une colonne `nullable`.** Sur une colonne `NOT NULL`, il promettait un filtre
+  qui rend toujours zéro ligne — ce qui se lit comme une **table vide**, pas comme un filtre vide.
+  C'est le seul des trois qui ne dépend pas du type.
+- **Une colonne booléenne n'a que `is true`, `is false` et `is null`.** Un champ de saisie n'a rien à
+  recevoir d'une colonne à deux valeurs, et surtout **il n'y avait aucune valeur juste à y taper** :
+  le vrai s'écrit `true` en PostgreSQL, `1` pour le `tinyint(1)` de MySQL et l'affinité de SQLite, et
+  `Bson::Boolean` en MongoDB. Un `= true` aurait donc marché sur un moteur et serait resté **muet sur
+  les autres**, sans que rien le dise — c'est la raison pour laquelle `IsTrue` / `IsFalse` sont deux
+  opérateurs du contrat et non un `Eq` sur une chaîne : chaque adaptateur écrit le prédicat de son
+  moteur. `is true` plutôt que `= 1` là où les deux existent : il vaut « différent de zéro », donc il
+  couvre toute valeur non nulle, quand `= 1` en manquerait la moitié.
+- **Une colonne temporelle reçoit « avant le » et « après le »**, qui sont le `lt` et le `gt` des
+  nombres **dits autrement** : le même opérateur, une autre phrase, et c'est la catégorie qui choisit
+  laquelle. « Supérieur à » sur une date se comprend, mais ce n'est pas le mot qu'on cherche en
+  filtrant un journal. **Deux, et non quatre** : la nuance d'un `≥` sur une date que personne ne
+  saisit à la seconde ne valait pas deux entrées de plus dans la liste.
+
+**Le transtypage d'une borne de date appartient au moteur, et il suit le type déclaré de la colonne.**
+C'est le point qui se défera le premier si on l'écrit ailleurs :
+
+- **PostgreSQL** transtype la **borne**, jamais la colonne : `cast(cast($1 as text) as {type_name})`,
+  le type venant de `format_type()`. Un `::timestamptz` posé d'office aurait paru plus simple et
+  aurait été faux deux fois — il écarte l'index de la colonne, et il fait échouer un `time` ou un
+  `interval` (que `TypeCategory::Timestamp` recouvre aussi) sur « operator does not exist », un
+  message qui accuse la comparaison. Le cast dans l'autre sens rend « invalid input syntax for type
+  time », qui nomme ce qui ne va pas. C'est le seul endroit du projet où un nom de type traverse le
+  SQL, et il est sûr parce qu'il vient du catalogue, déjà cité par le serveur.
+- **BigQuery** fait de même — `cast(@p1 as TIMESTAMP)` — pour une raison plus dure encore : il
+  n'accepte **aucune** coercition entre `DATE`, `DATETIME` et `TIMESTAMP`. Conséquence : `rows()`
+  demande la table **avant** de composer la requête. Il la demandait déjà, pour le compte de lignes,
+  et sa réponse porte le schéma ; l'ordre inversé n'ajoute donc aucun aller-retour, là où un
+  `table_detail` de plus en aurait ajouté un par lecture.
+- **MySQL et SQLite ne transtypent rien**, et ce n'est pas un oubli : le premier lit lui-même une
+  chaîne comme une date quand l'autre membre est temporel, et une date est du texte ISO 8601 en
+  SQLite, dont l'ordre lexicographique **est** l'ordre chronologique. Un test le garde **en négatif**
+  de chaque côté (« pas de `cast(` »), sans quoi quelqu'un en ajouterait par symétrie.
+- **MongoDB convertit en `Bson::DateTime`.** L'ordre BSON compare d'abord les *types* : un `$gt` en
+  chaîne contre un champ date ne trouve rien, les dates venant avant les chaînes quelle que soit leur
+  valeur. Une date seule vaut **minuit UTC** — le seul instant qu'elle puisse désigner sans inventer
+  un fuseau.
+
+**Le sélecteur de date est natif, et c'est la seconde exception au « pas de composant natif ».** La
+prohibition porte sur les listes déroulantes, dont le maison remplace l'apparence ; un calendrier
+n'est pas un panneau à styler, c'est une vue à concevoir, et le handoff retiré n'en décrit aucune.
+Trois conséquences :
+
+- **`type="date"`, pas `datetime-local`** : le second demande une soixantaine de pixels qu'une
+  colonne de 130 px n'a pas. Une heure reste saisissable à la main, l'adaptateur l'acceptant ;
+- **il ne paraît que sur « avant » et « après »**, jamais sur `=`, `~` ou `in` : un `~` cherche un
+  motif (« 2026-03 ») et `in` une liste, deux choses qu'un champ de date ne peut pas exprimer ;
+- **il est le seul champ du produit qui s'applique de lui-même.** La règle de `A5` est « sur `Entrée`
+  et à la perte de focus, jamais à la frappe » ; un calendrier natif se referme sans que rien perde
+  le focus et sans qu'on tape `Entrée`, donc attendre l'un des deux laisserait la date **dans le
+  champ sans qu'elle parte** — le bouton inerte du défaut n° 36. La garde qui rend cela compatible
+  avec la règle est `!== value`, comparé à la valeur **appliquée** : un `type="date"` rend `''` tant
+  que la date est incomplète et émet un événement à *chaque* segment saisi au clavier, donc sans elle
+  taper une date enverrait trois lectures non filtrées avant la bonne.
+
+**Et choisir « avant le » *est* la demande d'une date** : le calendrier s'ouvre du même clic
+(`showPicker()`). Le premier jet se contentait de changer le type du champ, et c'était un demi-geste
+— rapporté à l'usage le 3 septembre 2026 : WebKit affiche la date **du jour** dans un champ de date
+vide et met un seul segment en surbrillance au clic, donc l'écran montrait une date que la requête ne
+portait pas, et il fallait trois gestes pour en sortir. Deux points à ne pas défaire :
+
+- **`flushSync` autour de `onApply` + `fermer`, et ce n'est pas une optimisation.** `showPicker()`
+  exige un champ qui soit **déjà** `type="date"` ; le type suit l'opérateur, qui vit chez l'appelant,
+  et React ne pose pas un état d'un gestionnaire d'événement avant la fin de celui-ci. Sans le vidage
+  synchrone, l'appel tombe sur le champ texte d'avant — **sans lever et sans rien ouvrir**, donc en
+  silence. C'est le second `flushSync` du dépôt, après celui du défilement de `VirtualGrid`, et pour
+  la même sorte de raison : un appel impératif a besoin du DOM d'après, pas de celui d'avant ;
+- **l'appel doit rester dans l'activation utilisateur du clic**, ce qui exclut de l'attendre dans un
+  effet : WebKit refuse `showPicker()` en dehors, avec un `NotAllowedError`. C'est la seule chose que
+  Vitest ne peut pas juger — jsdom n'a pas la notion —, donc un test Playwright espionne
+  `showPicker` et vérifie que le navigateur **ne refuse pas**. Le `catch` reste : là où l'appel
+  manque ou est refusé, le champ garde le focus et reste saisissable au clavier, ce qui était le
+  comportement du premier jet.
+
+**Et `poserFiltre` rend le tableau reçu quand rien ne change.** `RowQuery` est mémoïsée sur
+`filters` : un tableau neuf est une **requête neuve**, donc cinq cents lignes relues. C'était déjà le
+cas en choisissant un opérateur sur un champ vide — un défaut antérieur, que le sélecteur de date
+rendait seulement plus visible. L'identité est ici une information, pas un détail de représentation.
+
+### Lire une colonne d'entiers comme un horodatage (3 septembre 2026)
+
+Une époque rangée dans un `bigint` est courante, et l'écran n'en montrait que le nombre. **La
+question n'était pas de la convertir mais de savoir laquelle convertir** : un `bigint` qui porte une
+époque et un `bigint` qui compte des centimes sont le **même type déclaré**. Aucune règle ne les
+sépare — un nom en `_at` peut porter une durée, une plage de valeurs plausible l'est aussi pour un
+identifiant — et le moteur, lui, déclare franchement un nombre.
+
+**Donc rien n'est deviné : l'utilisateur le dit, colonne par colonne**, depuis le menu de l'en-tête,
+comme il dit déjà quelle colonne masquer et quelle largeur lui donner. Réinterpréter d'office
+reviendrait à contredire le catalogue au jugé, et un montant affiché en date de 1970 est un mensonge
+silencieux dans l'outil dont le métier est de montrer ce qui est stocké. Sept points à ne pas
+défaire :
+
+- **l'échantillon *suggère* l'échelle, il ne la choisit pas.** Le compte de chiffres est fiable — une
+  même seconde s'écrit en 10 chiffres, 13 en millisecondes, 16 en microsecondes, et 13 chiffres de
+  *secondes* seraient l'an 318857 —, mais il ne l'est **que parce qu'on sait déjà qu'il s'agit d'une
+  date**. Appliqué à un nombre quelconque, le même compte ne dit rien. Il ne porte donc que la
+  mention « (déduit) » dans un libellé, et les trois échelles restent proposées : se tromper n'y
+  coûte rien ;
+- **la lecture en vigueur est *désactivée avec sa raison*, pas cochée.** C'est la convention
+  d'`EntreeDeMenu` (`onClick` absent + `raison`), déjà celle de la dernière colonne visible et de
+  « Copier la valeur » sur une cellule au défaut : l'entrée grisée est celle qui est en vigueur. Une
+  coche aurait demandé un glyphe sur **toutes** les entrées du menu, que `MenuContextuel` veut
+  homogènes — « un menu sans icône aligne ses libellés au bord, un menu qui en a les aligne après le
+  glyphe ». **Réserve, et elle est antérieure** : `MenuContextuel` rend ses entrées désactivées en
+  `disabled` et non en `aria-disabled`, donc leur `title` n'est atteignable ni au survol ni au
+  clavier — c'est le piège n° 3 d'accessibilité, et il vaut déjà pour « Copier la valeur » et
+  « Masquer la colonne ». Le grisé se voit, la raison non ; la corriger touche les quatre appelants du
+  composant et n'a pas été mêlée à ce chantier ;
+- **les entrées n'existent que pour une colonne numérique.** Une colonne que le moteur déclare déjà
+  temporelle n'a rien à choisir, une colonne de texte n'a pas d'époque à lire : les proposer partout
+  ferait chercher à quoi elles servent, exactement comme un `is null` sur une colonne `NOT NULL` ;
+- **`valeurRelue` rend une `Value`, pas une chaîne**, et c'est ce qui fait suivre tout le reste sans
+  une ligne de plus : `texteDeValeur` la met en texte, `rendreValeur` en nœud, `estNumerique` la
+  range **à gauche** comme les autres horodatages, et `largeurAjustee` mesure la date (19 caractères)
+  et non l'entier (13), sans quoi la colonne serait coupée à l'ellipse ;
+- **l'affichage seul.** La valeur reste un nombre partout où elle est **écrite** : la cellule qu'on
+  édite montre l'entier, `row_as_insert` compose l'entier, et l'onglet JSON du panneau de ligne porte
+  l'entier — c'est le document qui se réécrit (`18g`). Une date convertie sur un de ces chemins
+  partirait vers une colonne numérique. Une **saisie en attente** n'est pas relue non plus, pour la
+  même raison ;
+- **le panneau de ligne applique la même lecture que la grille**, par le canal `onLectureChange` qui
+  existait déjà. Deux lectures divergentes de la même cellule — l'une en date, l'autre en nombre — se
+  liraient comme un défaut de lecture ; c'est le motif de la sélection, pilotée depuis l'écran pour
+  cette raison précise. Les **valeurs**, elles, montent brutes : `row_as_insert` compose son SQL à
+  partir de cette même ligne ;
+- **`UTC`, et non l'heure locale.** Une époque est un instant absolu : choisir un fuseau ferait
+  dépendre l'affichage du poste, donc aussi ce que chaque test et chaque capture de fidélité mesurent
+  (la leçon de `DORABASE_VERSION_DECOR`). C'est surtout la cohérence avec le filtre qui décide — la
+  borne d'un « avant le » est minuit **UTC**, et une date affichée dans un autre fuseau que celle qui
+  filtre se lirait comme un décalage d'un jour.
+
+**Aucun moteur n'a changé d'une ligne, et c'est la propriété qui tient l'ensemble.** La colonne reste
+numérique pour le Rust ; `categorieLue` est le seul détour de l'écran — elle rend `'timestamp'` pour
+une colonne lue en horodatage, ce qui lui donne « avant le », « après le » et leur calendrier par le
+chemin déjà écrit —, et `appliquerFiltre` rend la date choisie à son entier avant de l'envoyer. Le
+filtre part donc en comparaison de nombres, et le champ de date se remplit par la conversion inverse
+(`dateDepuisLaBorne`) : sans ce retour, un `type="date"` recevrait `1772668800000`, l'écarterait, et
+se viderait sous les yeux de qui vient de choisir une date.
+
+**Deux limites assumées.** Le chip de la barre d'outils montre la valeur **envoyée** — l'entier, non
+la date : c'est la phrase littérale de la requête, et l'en-tête montre déjà la date choisie. Et
+l'échelle **nanoseconde** n'est pas offerte : elle existe (Go, `Instant.toEpochNano`), mais les trois
+échelles couvrent ce qu'on rencontre en base, et une quatrième entrée dans le menu se paie sur
+chaque clic droit.
+
+**Ce qui n'a pas changé, et qu'il ne faut pas « harmoniser »** : l'opérateur affiché n'est **pas** un
+filtre appliqué. Un booléen montre `is true` d'emblée, faute d'`=` pour commencer sa liste ; c'est la
+prop `applique` — donc la présence d'un filtre dans `filters` — qui allume la bordure d'accent, et
+elle seule. La déduire de la valeur du champ était impossible dès qu'un prédicat s'applique sans
+valeur.
+
 ### La règle « ligne liée »
 
 Pour une clé étrangère, n'afficher l'aperçu de la ligne cible que si elle contient au
@@ -252,9 +418,11 @@ techniques. Mentionner les champs détectés en légende.
 
 ### Accessibilité — cinq pièges qui se sont répétés
 
-1. **Le nom accessible se concatène sans espace.** « Tables8 », « orders1.9 M » : quatre
-   occurrences. Dès qu'un composant place deux contenus côte à côte, l'espace doit être
-   **explicite**, et dans le composant — pas chez l'appelant.
+1. **Le nom accessible se concatène sans espace.** « Tables8 », « orders1.9 M », « ∅is null » :
+   cinq occurrences. Dès qu'un composant place deux contenus côte à côte, l'espace doit être
+   **explicite**, et dans le composant — pas chez l'appelant. La cinquième s'est vue en *ajoutant*
+   des entrées au popover d'opérateur : « ∅is null » passait inaperçu, « Tis true » ne pouvait plus.
+   Un `gap` de CSS sépare à l'œil, jamais dans l'arbre d'accessibilité.
 2. **`aria-label` sur un élément sans rôle est ignoré** — trois occurrences, Biome le
    signale à chaque fois et a raison à chaque fois. Quand un élément est la décoration
    d'un contrôle, l'information va dans le **nom du contrôle**, par du texte masqué en
@@ -973,8 +1141,10 @@ c'est cette absence que la requête média rattrape, et le `:not` est ce qui emp
 
 **`color-scheme` est déclaré à la main dans `reset.css`, et ce n'est pas un doublon.** Aucun jeton
 n'atteint ce que le moteur dessine lui-même — barres de défilement, curseur de saisie, les
-`input[type="range"]` des préférences. Sans lui, « Nuit » laisserait des barres claires sur des
-panneaux sombres.
+`input[type="range"]` des préférences, et depuis le 3 septembre 2026 le calendrier du sélecteur de
+date des filtres. Sans lui, « Nuit » laisserait des barres claires sur des panneaux sombres, et un
+calendrier blanc sur un en-tête sombre. C'est aussi ce qui rend ce contrôle natif acceptable sans
+une ligne de CSS de plus : il suit le thème tout seul.
 
 **Les quatre `--preview-*` sont les seuls jetons de couleur que « Nuit » ne redéfinit pas**, et
 c'est délibéré : les vignettes du sélecteur de thème montrent *l'autre* thème autant que le leur.
@@ -1692,6 +1862,18 @@ présenter comme vérifiées tant qu'un humain ne les a pas faites :
 - **Régler « Afficher les barres de défilement : toujours »**, puis regarder la sidebar et
   la bande d'onglets. Chromium sans tête rend des barres en survol, qui n'occupent aucune
   place : la mesure vaut 0 avec comme sans la correction.
+- **Ouvrir le calendrier du sélecteur de date d'un filtre**, en « Cahier » puis en « Nuit ». C'est le
+  seul contrôle natif de l'écran, et WebKit ne le dessine pas comme Chromium : sa géométrie est
+  mesurée sous Playwright — la boîte reste à 20 px, le champ ne sort par aucun bord, même sur la
+  colonne la plus étroite —, mais **le panneau qui s'ouvre au clic vit hors du DOM**, dans une racine
+  fantôme fermée. Ce qu'il reste à voir : que l'indicateur de calendrier ne soit pas
+  disproportionné dans une boîte de 20 px, et que le panneau suive le thème (il le devrait, par le
+  `color-scheme` de `reset.css`). Aucune CSS n'a été écrite pour ce contrôle, faute de pouvoir en
+  mesurer l'effet : c'est cette observation qui dira s'il en faut. **Et ne pas lire le format affiché
+  sur une capture de Playwright** : le `locale: 'fr-FR'` de la configuration ne l'atteint pas —
+  Chromium prend celui de sa propre interface pour ce champ, et rend donc `03/01/2026` pour le
+  1er mars. La valeur qui part au serveur est toujours l'ISO ; c'est l'affichage qui suit le système,
+  ce qui est le comportement voulu et l'une des raisons d'avoir pris le contrôle natif.
 - **Défocaliser l'application.** Les trois feux doivent rester visibles (grisés) ; ils
   disparaissent. Dessinés par le système, donc ni reproductible ni corrigeable depuis le
   web. L'expérience à tenter est de passer `hiddenTitle` à `false` le temps d'un lancement.

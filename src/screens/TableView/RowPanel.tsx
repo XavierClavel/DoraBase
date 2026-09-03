@@ -7,6 +7,7 @@ import { MenuContextuel } from '../../ui/MenuContextuel/MenuContextuel'
 import type { PasserelleDetail } from '../Workbench/useDetailTable'
 import { rendreValeur, texteDeValeur } from './cellule'
 import { documentJson } from './documentJson'
+import { type Echelle, valeurRelue } from './horodatage'
 import { JsonColore } from './JsonColore'
 import { relationDe, valeurDeCle } from './ligneLiee'
 import styles from './RowPanel.module.css'
@@ -32,6 +33,17 @@ type RowPanelProps = {
   relations: readonly Relation[]
   /** La ligne sélectionnée, `null` quand il n'y en a pas. */
   ligne: readonly Value[] | null
+  /**
+   * La lecture de chaque colonne d'entiers, telle que la grille l'applique (`horodatage.ts`).
+   *
+   * **Le panneau et la grille montrent la même cellule** : deux lectures divergentes du même entier,
+   * l'une en date et l'autre en nombre, se liraient comme un défaut de lecture. C'est le motif de la
+   * sélection, pilotée depuis l'écran pour la même raison.
+   *
+   * **L'onglet JSON n'en tient pas compte, délibérément** : il porte le document qui se *réécrit*
+   * (`documentJson`), et une date y remplacerait la valeur stockée.
+   */
+  lectures?: Readonly<Record<string, Echelle>>
   /**
    * Son rang dans la fenêtre, à partir de 1. **Il ne s'affiche plus** — il sert à nommer le panneau
    * pour un lecteur d'écran, et à savoir qu'une ligne est bien sélectionnée.
@@ -62,6 +74,7 @@ export function RowPanel({
   columns,
   relations,
   ligne,
+  lectures = {},
   rang,
   onCopyInsert,
   passerelleDetail,
@@ -164,7 +177,10 @@ export function RowPanel({
         {onglet === 'champs' && (
           <dl className={styles.champs}>
             {columns.map((colonne, index) => {
-              const valeur = ligne[index] ?? { kind: 'null' as const }
+              const valeur = valeurRelue(
+                ligne[index] ?? { kind: 'null' as const },
+                lectures[colonne.name],
+              )
               // Deux formes de la même valeur : l'une pour l'œil — `NULL` y est teinté — l'autre pour
               // l'aperçu et le presse-papiers. `texteDeValeur` est la source des deux (voir `cellule`).
               const texte = texteDeValeur(valeur)

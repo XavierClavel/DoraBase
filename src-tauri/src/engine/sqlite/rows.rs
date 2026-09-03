@@ -104,9 +104,16 @@ fn condition_de(filtre: &Filter, parametres: &mut Vec<String>) -> String {
             format!("{colonne} like ?{} escape '\\'", parametres.len())
         }
         FilterOperator::IsNull => format!("{colonne} is null"),
-        // Réservées aux colonnes numériques — l'écran ne les propose que là. Aucun transtypage :
-        // l'affinité de type de SQLite convertit d'elle-même un paramètre texte en numérique
-        // dès que la colonne comparée a une affinité INTEGER, REAL ou NUMERIC.
+        // **`is true` / `is false`, pas `= 1` / `= 0`.** SQLite n'a pas de type booléen : un
+        // `BOOLEAN` déclaré prend l'affinité NUMERIC et les projets y écrivent `0`/`1`. `is true`
+        // y vaut « différent de zéro » (SQLite 3.23), donc il couvre le `1` usuel comme toute autre
+        // valeur non nulle, là où `= 1` en manquerait la moitié.
+        FilterOperator::IsTrue => format!("{colonne} is true"),
+        FilterOperator::IsFalse => format!("{colonne} is false"),
+        // Réservées aux colonnes numériques et temporelles — l'écran ne les propose que là. Aucun
+        // transtypage : l'affinité de type de SQLite convertit d'elle-même un paramètre texte en
+        // numérique dès que la colonne comparée a une affinité INTEGER, REAL ou NUMERIC, et une
+        // date y est du texte ISO 8601, dont l'ordre lexicographique **est** l'ordre chronologique.
         FilterOperator::Gt => {
             parametres.push(valeur);
             format!("{colonne} > ?{}", parametres.len())
@@ -466,6 +473,44 @@ mod tests {
         let (sql, _) = requete_de(&r);
         // `in ()` est une erreur de syntaxe en SQLite. Une condition fausse est ce qui a été demandé.
         assert!(sql.contains("0 = 1"), "{sql}");
+    }
+
+    #[test]
+    fn is_true_et_is_false_sont_des_predicats_sans_parametre() {
+        // **`is true`, pas `= 1`.** SQLite n'a pas de type booléen : un `BOOLEAN` déclaré prend
+        // l'affinité NUMERIC, et toute valeur non nulle y est vraie. `= 1` en manquerait la moitié.
+        for (operateur, attendu) in [
+            (FilterOperator::IsTrue, "\"actif\" is true"),
+            (FilterOperator::IsFalse, "\"actif\" is false"),
+        ] {
+            let mut r = requete();
+            r.filters = vec![Filter {
+                column: "actif".into(),
+                operator: operateur,
+                value: None,
+            }];
+            let (sql, parametres) = requete_de(&r);
+            assert!(sql.contains(attendu), "{sql}");
+            assert!(!sql.contains("= 1"), "{sql}");
+            assert!(parametres.is_empty());
+        }
+    }
+
+    #[test]
+    fn une_borne_de_date_part_en_parametre_sans_transtypage() {
+        // Une date est du texte ISO 8601 en SQLite, dont l'ordre lexicographique **est** l'ordre
+        // chronologique : « avant » et « après » marchent sans connaître le type de la colonne, à
+        // l'inverse de PostgreSQL et de BigQuery.
+        let mut r = requete();
+        r.filters = vec![Filter {
+            column: "ouvert_le".into(),
+            operator: FilterOperator::Lt,
+            value: Some("2026-03-01".into()),
+        }];
+        let (sql, parametres) = requete_de(&r);
+        assert!(sql.contains("\"ouvert_le\" < ?1"), "{sql}");
+        assert!(!sql.contains("cast("), "{sql}");
+        assert_eq!(parametres, vec!["2026-03-01".to_owned()]);
     }
 
     #[test]

@@ -18,11 +18,13 @@ import type {
   RowQuery,
   RowWindow,
   SortKey,
+  TypeCategory,
   Value,
 } from '../../domain/engine'
 import { useT } from '../../i18n/LanguageContext'
 import { modificateurActif } from '../../shell/plateforme'
 import { cx } from '../../ui/cx'
+import type { EntreeDeMenu } from '../../ui/MenuContextuel/MenuContextuel'
 import { MenuContextuel } from '../../ui/MenuContextuel/MenuContextuel'
 import { largeurAjustee } from '../../ui/VirtualGrid/ajustement'
 import { type GridColumn, type PositionDuMenu, VirtualGrid } from '../../ui/VirtualGrid/VirtualGrid'
@@ -37,6 +39,14 @@ import { DocumentJsonModal } from './DocumentJsonModal'
 import { diffCreation, diffDocument, documentDepuisTexte, documentJson } from './documentJson'
 import { EditableCell } from './EditableCell'
 import { FilterCell } from './FilterCell'
+import {
+  borneDepuisLaDate,
+  dateDepuisLaBorne,
+  ECHELLES,
+  type Echelle,
+  echelleDeduite,
+  valeurRelue,
+} from './horodatage'
 import {
   ajouterUneLigne,
   annulerLaDerniere,
@@ -57,7 +67,14 @@ import {
 } from './modifications'
 import styles from './TableView.module.css'
 import { Toolbar } from './Toolbar'
-import { basculerTri, filtreDe, poserFiltre, rangDeTri } from './tri'
+import {
+  basculerTri,
+  estUneBorneDeDate,
+  filtreDe,
+  operateurParDefaut,
+  poserFiltre,
+  rangDeTri,
+} from './tri'
 import { LIMITE_PAR_DEFAUT, type PasserelleLignes, useLignes } from './useLignes'
 
 /** L'édition en cours : une cellule ouverte à la saisie. */
@@ -98,6 +115,15 @@ type TableViewProps = {
     ligne: readonly Value[] | null
     rang: number | null
     total: number
+    /**
+     * La lecture de chaque colonne d'entiers, pour que le panneau de ligne affiche la même chose
+     * que la grille.
+     *
+     * **Les valeurs, elles, montent brutes.** `row_as_insert` compose du SQL à partir de cette même
+     * ligne : une date convertie y partirait vers une colonne numérique. Le panneau relit pour
+     * *afficher*, comme la grille — la conversion n'appartient à aucun chemin d'écriture.
+     */
+    lectures: Readonly<Record<string, Echelle>>
   }) => void
   /** Le rang sélectionné, piloté depuis l'écran pour que les flèches du panneau y répondent. */
   rang?: number | null
@@ -226,6 +252,10 @@ export function TableView({
   // `LARGEUR_COLONNE`. Comme `masquees`, seul l'écart au défaut est tenu : changer de table ne
   // demande aucune remise à zéro, le composant tout entier étant remonté par sa `key` d'onglet.
   const [largeurs, setLargeurs] = useState<Record<string, number>>({})
+  // La **lecture** d'une colonne d'entiers : l'échelle d'une époque, ou absente pour le nombre
+  // qu'elle est. Comme `masquees` et `largeurs`, seul l'écart au défaut est tenu — et pour la même
+  // raison, aucun moteur ne pouvant dire si un `bigint` porte une date (voir `horodatage.ts`).
+  const [lectures, setLectures] = useState<Readonly<Record<string, Echelle>>>({})
   // L'ordre d'affichage des colonnes, par nom — `null` tant qu'on n'a rien réordonné, auquel cas
   // l'ordre est celui de `colonnesEffectives` (le catalogue). Même écart-au-défaut que `masquees`
   // et `largeurs` : changer de table ne demande aucune remise à zéro.
@@ -274,14 +304,107 @@ export function TableView({
     onEtatChange?.({ filters, sort })
   }, [filters, sort, onEtatChange])
 
+  /**
+   * Les entrées « lire comme » du menu d'en-tête — **vides pour toute colonne qui n'est pas
+   * numérique**.
+   *
+   * Une colonne que le moteur déclare déjà temporelle n'a rien à choisir, et une colonne de texte
+   * n'a pas d'époque à lire : proposer les quatre lectures partout ferait chercher à quoi elles
+   * servent, exactement comme un `is null` sur une colonne `NOT NULL`.
+   *
+   * **La lecture en place est *désactivée avec sa raison*, pas cochée.** C'est la convention d'
+   * `EntreeDeMenu` (`onClick` absent + `raison`), déjà celle de la dernière colonne visible et de
+   * « Copier la valeur » sur une cellule au défaut : l'entrée grisée est celle qui est en vigueur, et
+   * son infobulle le dit. Une coche aurait demandé un glyphe sur *toutes* les entrées du menu, que
+   * `MenuContextuel` veut homogènes.
+   *
+   * **Le libellé de l'échelle que l'échantillon suggère porte « déduit »** — une aide, pas une
+   * décision : les trois restent proposées, donc se tromper n'y coûte rien (voir `horodatage.ts`).
+   */
+  function entreesDeLecture(nom: string): EntreeDeMenu[] {
+    const colonne = colonnesEffectives.find((candidate) => candidate.name === nom)
+    if (colonne === undefined || colonne.category !== 'number') return []
+
+    const rang = colonnesEffectives.findIndex((candidate) => candidate.name === nom)
+    const suggeree = echelleDeduite(
+      lignes.slice(0, LIGNES_AJUSTEES).map((ligne) => ligne.valeurs[rang] ?? { kind: 'null' }),
+    )
+    const enPlace = lectures[nom]
+
+    const poser = (echelle: Echelle | undefined) => () =>
+      setLectures((precedent) => {
+        const suivant = { ...precedent }
+        if (echelle === undefined) delete suivant[nom]
+        else suivant[nom] = echelle
+        return suivant
+      })
+
+    return [
+      {
+        libelle: t('tableView.grid.readAsNumber'),
+        onClick: enPlace === undefined ? undefined : poser(undefined),
+        raison: enPlace === undefined ? t('tableView.grid.readingInUse') : undefined,
+      },
+      ...ECHELLES.map((echelle) => ({
+        libelle: t(`tableView.grid.readAs.${echelle}`, {
+          suffixe: echelle === suggeree ? t('tableView.grid.deduced') : '',
+        }),
+        onClick: echelle === enPlace ? undefined : poser(echelle),
+        raison: echelle === enPlace ? t('tableView.grid.readingInUse') : undefined,
+      })),
+    ]
+  }
+
+  /**
+   * La catégorie sous laquelle une colonne se **lit** : celle du catalogue, sauf pour une colonne
+   * d'entiers qu'on lit en horodatage.
+   *
+   * C'est ce seul détour qui donne à cette colonne « avant le », « après le » et leur calendrier :
+   * `operateursPour` et `FilterCell` ne connaissent que des catégories.
+   */
+  const categorieLue = useCallback(
+    (colonne: ColumnInfo): TypeCategory =>
+      lectures[colonne.name] === undefined ? colonne.category : 'timestamp',
+    [lectures],
+  )
+
+  /**
+   * Ce que le champ de filtre doit **montrer** : la borne rendue à sa date pour une colonne lue en
+   * horodatage, la valeur envoyée sinon.
+   *
+   * Sans ce retour, un champ `type="date"` recevrait `1772668800000` et l'écarterait — il se
+   * viderait sous les yeux de qui vient de choisir une date.
+   */
+  const valeurAffichableDuFiltre = useCallback(
+    (colonne: ColumnInfo, filtre: Filter | undefined): string => {
+      const valeur = filtre?.value ?? ''
+      const echelle = lectures[colonne.name]
+      if (echelle === undefined || filtre === undefined) return valeur
+      return estUneBorneDeDate('timestamp', filtre.operator)
+        ? dateDepuisLaBorne(valeur, echelle)
+        : valeur
+    },
+    [lectures],
+  )
+
   // `useCallback` : la fonction entre dans le `useMemo` des colonnes, qu'une nouvelle identité à
   // chaque rendu recalculerait pour rien.
   const appliquerFiltre = useCallback(
     (column: string, operator: FilterOperator, saisie: string) => {
       setOperateurs((precedent) => ({ ...precedent, [column]: operator }))
-      setFilters((precedent) => poserFiltre(precedent, column, filtreDe(column, operator, saisie)))
+      // **La date choisie redevient un entier avant de partir.** La colonne est numérique pour le
+      // moteur — c'est l'écran seul qui la lit en horodatage —, donc le filtre reste une comparaison
+      // de nombres et aucun adaptateur n'a besoin de le savoir.
+      const echelle = lectures[column]
+      const aEnvoyer =
+        echelle !== undefined && estUneBorneDeDate('timestamp', operator)
+          ? borneDepuisLaDate(saisie, echelle)
+          : saisie
+      setFilters((precedent) =>
+        poserFiltre(precedent, column, filtreDe(column, operator, aEnvoyer)),
+      )
     },
-    [],
+    [lectures],
   )
 
   const lignes: LigneLue[] = useMemo(
@@ -355,8 +478,9 @@ export function TableView({
       ligne: ligneChoisie?.valeurs ?? null,
       rang: ligneChoisie?.rang ?? null,
       total: lignes.length,
+      lectures,
     })
-  }, [fenetre, loading, error, ligneChoisie, lignes.length, onLectureChange])
+  }, [fenetre, loading, error, ligneChoisie, lignes.length, lectures, onLectureChange])
 
   /**
    * La valeur de la clé primaire d'une ligne, en texte — l'identité d'une modification (`11a`).
@@ -472,12 +596,18 @@ export function TableView({
     for (const [rang, colonne] of colonnesEffectives.entries()) {
       parNom[colonne.name] = largeurAjustee(
         colonne.name,
-        echantillon.map((ligne) => texteDeValeur(ligne.valeurs[rang] ?? { kind: 'null' })),
+        // **La valeur relue, pas la brute** : une colonne lue en horodatage affiche 19 caractères
+        // là où l'entier en fait 13, et l'ajustement la couperait à l'ellipse.
+        echantillon.map((ligne) =>
+          texteDeValeur(
+            valeurRelue(ligne.valeurs[rang] ?? { kind: 'null' }, lectures[colonne.name]),
+          ),
+        ),
         { margeDEntete: MARGE_DE_TRI },
       )
     }
     return parNom
-  }, [colonnesEffectives, lignes])
+  }, [colonnesEffectives, lignes, lectures])
 
   /**
    * Le texte d'une cellule, pour « Copier la valeur » du menu contextuel — `null` quand il n'y a
@@ -503,7 +633,9 @@ export function TableView({
     // déplacement des colonnes ne change pas.
     const rang = colonnesEffectives.findIndex((colonne) => colonne.name === nom)
     const valeur = rang === -1 ? undefined : ligne.valeurs[rang]
-    return valeur === undefined ? null : texteDeValeur(valeur)
+    // Relue, comme la cellule : la règle est de copier **ce qu'on lit**, et une colonne lue en
+    // horodatage n'affiche plus son entier.
+    return valeur === undefined ? null : texteDeValeur(valeurRelue(valeur, lectures[nom]))
   }
 
   const colonnes: GridColumn<Ligne>[] = useMemo(
@@ -642,15 +774,24 @@ export function TableView({
             },
             // L'alignement suit la **valeur**, pas le nom de la colonne : une colonne numérique
             // dont une cellule est `NULL` garde son `NULL` à gauche, comme le mockup le montre.
-            numeric: colonne.category === 'number',
+            // Lue en horodatage, elle s'aligne comme les autres horodatages — à gauche.
+            numeric: colonne.category === 'number' && lectures[colonne.name] === undefined,
             tint: filtre ? ('filtered' as const) : critere ? ('sorted' as const) : undefined,
             filter: (
               <FilterCell
                 column={colonne.name}
-                operator={operateurs[colonne.name] ?? 'eq'}
-                value={filtre?.value ?? ''}
+                // **La catégorie *lue*, et tout suit** : une colonne d'entiers lue en horodatage
+                // reçoit « avant le » / « après le » et leur calendrier sans une ligne de plus, et
+                // c'est `appliquerFiltre` qui rend la borne à son échelle avant de l'envoyer.
+                category={categorieLue(colonne)}
+                operator={operateurs[colonne.name] ?? operateurParDefaut(categorieLue(colonne))}
+                value={valeurAffichableDuFiltre(colonne, filtre)}
+                // **Le filtre appliqué, pas la valeur saisie** : les trois prédicats agissent sans
+                // valeur, et l'opérateur affiché sur un booléen est `is true` avant qu'on ait rien
+                // demandé.
+                applique={filtre !== undefined}
                 onApply={(operator, saisie) => appliquerFiltre(colonne.name, operator, saisie)}
-                numeric={colonne.category === 'number'}
+                nullable={colonne.nullable}
               />
             ),
             cell: (ligne: Ligne) => {
@@ -703,8 +844,12 @@ export function TableView({
               // **La valeur retenue prime sur celle de la base** : c'est ce que l'utilisateur a
               // tapé, et c'est ce que `11d` écrira. Afficher l'ancienne ferait croire que la
               // saisie a été perdue.
-              const affichee = modifiee ? apercuDeLaSaisie(modifiee.apres) : rendreValeur(valeur)
-              const classe = estNumerique(valeur) ? styles.nombre : undefined
+              // **La saisie en attente n'est pas relue.** Une modification retenue est du texte qui
+              // partira tel quel vers une colonne numérique : l'afficher en date ferait croire
+              // qu'une date sera écrite.
+              const relue = valeurRelue(valeur, lectures[colonne.name])
+              const affichee = modifiee ? apercuDeLaSaisie(modifiee.apres) : rendreValeur(relue)
+              const classe = estNumerique(relue) ? styles.nombre : undefined
 
               if (!edition) return <span className={classe}>{affichee}</span>
 
@@ -746,6 +891,9 @@ export function TableView({
       sort,
       operateurs,
       appliquerFiltre,
+      categorieLue,
+      valeurAffichableDuFiltre,
+      lectures,
       masquees,
       largeurs,
       largeursAjustees,
@@ -945,6 +1093,7 @@ export function TableView({
                 // distingue un masquage d'une impasse.
                 onClick: () => setMasquees((precedent) => new Set(precedent).add(menu.colonne)),
               },
+              ...entreesDeLecture(menu.colonne),
             ]}
             onFermer={() => setMenu(null)}
           />

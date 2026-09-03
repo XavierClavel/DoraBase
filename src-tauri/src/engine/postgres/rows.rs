@@ -149,6 +149,28 @@ fn condition_de(
         return Ok(format!("{nom} is null"));
     }
 
+    if filtre.operator.est_un_predicat_booleen() {
+        // **Refusé hors d'une colonne booléenne**, comme les comparaisons hors d'une colonne
+        // numérique : `text is true` est une erreur de type que PostgreSQL rendrait telle quelle,
+        // et l'écran ne propose ces deux opérateurs que là (`operateursPour`).
+        if colonne.category != TypeCategory::Boolean {
+            return Err(EngineError::local(format!(
+                "l'opérateur {:?} n'est proposé que pour une colonne booléenne, et « {} » ne l'est pas",
+                filtre.operator, colonne.name
+            )));
+        }
+        // `is true` plutôt que `= true` : sur une colonne nullable, `= true` rend `NULL` pour une
+        // ligne dont la valeur manque, donc la ligne est écartée — ce qui est ce qu'on veut ici —,
+        // mais `is false` et `<> true` divergeraient, le second gardant les nuls hors du compte
+        // sans le dire. Les trois prédicats de PostgreSQL rendent toujours vrai ou faux.
+        let predicat = if filtre.operator == FilterOperator::IsTrue {
+            "is true"
+        } else {
+            "is false"
+        };
+        return Ok(format!("{nom} {predicat}"));
+    }
+
     let valeur = filtre.value.as_ref().ok_or_else(|| {
         EngineError::local(format!(
             "l'opérateur {:?} exige une valeur pour la colonne « {} »",
@@ -201,34 +223,58 @@ fn condition_de(
             Ok(format!("{nom}::text in ({})", places.join(", ")))
         }
         FilterOperator::Gt | FilterOperator::Gte | FilterOperator::Lte | FilterOperator::Lt => {
-            // Réservé aux colonnes numériques : `>` sur du texte trierait lexicographiquement
-            // (`"9" > "10"`), ce que le signe affiché contredirait. L'écran ne propose ces
-            // opérateurs que pour `TypeCategory::Number` ; ce refus tient si une configuration
-            // écrite à la main les envoie quand même.
-            if colonne.category != TypeCategory::Number {
-                return Err(EngineError::local(format!(
-                    "l'opérateur {:?} n'est proposé que pour une colonne numérique, et « {} » ne l'est pas",
-                    filtre.operator, colonne.name
-                )));
-            }
-            valeurs.push(valeur.clone());
+            // Réservé aux colonnes numériques et temporelles : `>` sur du texte trierait
+            // lexicographiquement (`"9" > "10"`), ce que le signe affiché contredirait. L'écran ne
+            // propose ces opérateurs que pour `Number` et `Timestamp` — sous les libellés
+            // « avant » et « après » pour la seconde ; ce refus tient si une configuration écrite à
+            // la main les envoie quand même.
             let comparaison = match filtre.operator {
                 FilterOperator::Gt => ">",
                 FilterOperator::Gte => ">=",
                 FilterOperator::Lte => "<=",
                 _ => "<",
             };
-            // `${}::text::numeric` : le paramètre est décrit comme texte — ce que `String` sait
-            // lier —, et c'est le cast *externe*, appliqué après coup, qui le convertit en
-            // numeric à l'exécution. Le premier cast qui touche `$N` décide de son type déclaré ;
-            // sans ce détour, Postgres décrirait le paramètre en `numeric`, type que `ToSql` pour
-            // `String` ne sait pas lier.
-            Ok(format!(
-                "{nom}::numeric {comparaison} ${}::text::numeric",
-                valeurs.len()
-            ))
+            match colonne.category {
+                // `${}::text::numeric` : le paramètre est décrit comme texte — ce que `String` sait
+                // lier —, et c'est le cast *externe*, appliqué après coup, qui le convertit en
+                // numeric à l'exécution. Le premier cast qui touche `$N` décide de son type
+                // déclaré ; sans ce détour, Postgres décrirait le paramètre en `numeric`, type que
+                // `ToSql` pour `String` ne sait pas lier.
+                TypeCategory::Number => {
+                    valeurs.push(valeur.clone());
+                    Ok(format!(
+                        "{nom}::numeric {comparaison} ${}::text::numeric",
+                        valeurs.len()
+                    ))
+                }
+                // **La borne est transtypée vers le type de la colonne, pas la colonne vers un type
+                // choisi ici.** Un `::timestamptz` posé d'office déplacerait une colonne `date`
+                // dans le fuseau de la session pour la comparer, et surtout il ferait échouer un
+                // `time` ou un `interval` — que `TypeCategory::Timestamp` recouvre aussi — sur
+                // « operator does not exist », un message qui accuse la comparaison plutôt que la
+                // borne. Le cast dans l'autre sens rend « invalid input syntax for type time », qui
+                // nomme ce qui ne va pas.
+                //
+                // `type_name` vient de `format_type()`, donc du catalogue et déjà cité par le
+                // serveur : ce n'est pas une valeur saisie, et c'est le seul endroit du projet où
+                // un nom de type traverse le SQL.
+                TypeCategory::Timestamp => {
+                    valeurs.push(valeur.clone());
+                    Ok(format!(
+                        "{nom} {comparaison} cast(cast(${} as text) as {})",
+                        valeurs.len(),
+                        colonne.type_name
+                    ))
+                }
+                _ => Err(EngineError::local(format!(
+                    "l'opérateur {:?} n'est proposé que pour une colonne numérique ou temporelle, et « {} » ne l'est pas",
+                    filtre.operator, colonne.name
+                ))),
+            }
         }
-        FilterOperator::IsNull => unreachable!("traité plus haut"),
+        FilterOperator::IsNull | FilterOperator::IsTrue | FilterOperator::IsFalse => {
+            unreachable!("traités plus haut")
+        }
     }
 }
 
@@ -847,6 +893,33 @@ mod tests {
                 key: None,
                 comment: None,
             },
+            // **`timestamp with time zone` en toutes lettres** : c'est ce que `format_type` rend, et
+            // c'est ce mot-là qui part dans le transtypage d'une borne de date. Un décor qui aurait
+            // écrit « timestamptz » n'aurait pas dit lequel des deux voyage.
+            ColumnInfo {
+                position: 3,
+                name: "livre_le".into(),
+                type_name: "timestamp with time zone".into(),
+                category: TypeCategory::Timestamp,
+                nullable: true,
+                default: None,
+                identity: None,
+                frequency: None,
+                key: None,
+                comment: None,
+            },
+            ColumnInfo {
+                position: 4,
+                name: "actif".into(),
+                type_name: "boolean".into(),
+                category: TypeCategory::Boolean,
+                nullable: false,
+                default: None,
+                identity: None,
+                frequency: None,
+                key: None,
+                comment: None,
+            },
         ]
     }
 
@@ -950,9 +1023,11 @@ mod tests {
     }
 
     #[test]
-    fn les_operateurs_non_numeriques_produisent_du_sql_sur_une_colonne_texte() {
+    fn les_operateurs_universels_produisent_du_sql_sur_une_colonne_texte() {
         for operateur in FilterOperator::tous() {
-            if operateur.est_une_comparaison_numerique() {
+            // Les comparaisons demandent une colonne numérique ou temporelle, les deux prédicats
+            // booléens une colonne booléenne : les uns et les autres ont leur test de refus.
+            if operateur.est_une_comparaison() || operateur.est_un_predicat_booleen() {
                 continue;
             }
             let mut r = requete();
@@ -971,7 +1046,7 @@ mod tests {
     #[test]
     fn les_quatre_comparaisons_produisent_du_sql_sur_une_colonne_numerique() {
         for operateur in FilterOperator::tous() {
-            if !operateur.est_une_comparaison_numerique() {
+            if !operateur.est_une_comparaison() {
                 continue;
             }
             let mut r = requete();
@@ -989,12 +1064,80 @@ mod tests {
     }
 
     #[test]
-    fn une_comparaison_numerique_sur_une_colonne_texte_est_refusee() {
+    fn une_borne_de_date_est_transtypee_vers_le_type_de_la_colonne() {
+        // **Pas un `::timestamptz` posé d'office.** Le type vient du catalogue, donc une colonne
+        // `date` compare des dates, et un `time` — que `TypeCategory::Timestamp` recouvre aussi —
+        // échoue en nommant la borne (« invalid input syntax for type time ») plutôt que la
+        // comparaison (« operator does not exist »).
+        for (operateur, signe) in [
+            (FilterOperator::Gt, ">"),
+            (FilterOperator::Gte, ">="),
+            (FilterOperator::Lte, "<="),
+            (FilterOperator::Lt, "<"),
+        ] {
+            let mut r = requete();
+            r.filters = vec![Filter {
+                column: "livre_le".into(),
+                operator: operateur,
+                value: Some("2026-03-01".into()),
+            }];
+            let (sql, valeurs) = construire_sql(&r, &colonnes()).unwrap_or_else(|erreur| {
+                panic!("{operateur:?} devrait produire du SQL : {erreur}")
+            });
+            // La condition entière, signe compris : c'est la **colonne nue** à gauche qui garde son
+            // index utilisable, là où un `::timestamptz` posé sur elle l'aurait écarté.
+            assert!(
+                sql.contains(&format!(
+                    r#""livre_le" {signe} cast(cast($1 as text) as timestamp with time zone)"#
+                )),
+                "{sql}"
+            );
+            assert_eq!(valeurs, vec!["2026-03-01".to_owned()]);
+        }
+    }
+
+    #[test]
+    fn une_comparaison_sur_une_colonne_texte_est_refusee() {
         let mut r = requete();
         r.filters = vec![Filter {
             column: "statut".into(),
             operator: FilterOperator::Gt,
             value: Some("10".into()),
+        }];
+        let erreur = construire_sql(&r, &colonnes()).expect_err("doit être refusé");
+        assert!(erreur.message.contains("statut"), "{erreur}");
+    }
+
+    #[test]
+    fn is_true_et_is_false_sont_des_predicats_sans_parametre() {
+        for (operateur, attendu) in [
+            (FilterOperator::IsTrue, "is true"),
+            (FilterOperator::IsFalse, "is false"),
+        ] {
+            let mut r = requete();
+            r.filters = vec![Filter {
+                column: "actif".into(),
+                operator: operateur,
+                value: None,
+            }];
+            let (sql, valeurs) = construire_sql(&r, &colonnes()).unwrap();
+            assert!(sql.contains(attendu), "{sql}");
+            // `is true` plutôt que `= true` : un prédicat rend toujours vrai ou faux, là où
+            // `<> true` garderait les nuls hors du compte sans le dire.
+            assert!(!sql.contains("= true"), "{sql}");
+            assert!(valeurs.is_empty());
+        }
+    }
+
+    #[test]
+    fn un_predicat_booleen_sur_une_colonne_texte_est_refuse() {
+        // L'écran ne le propose que pour une colonne booléenne ; ce refus tient si une
+        // configuration écrite à la main l'envoie quand même.
+        let mut r = requete();
+        r.filters = vec![Filter {
+            column: "statut".into(),
+            operator: FilterOperator::IsTrue,
+            value: None,
         }];
         let erreur = construire_sql(&r, &colonnes()).expect_err("doit être refusé");
         assert!(erreur.message.contains("statut"), "{erreur}");

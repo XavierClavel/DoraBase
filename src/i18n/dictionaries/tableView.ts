@@ -30,10 +30,16 @@ export const tableViewFr: Dictionnaire = {
       in: 'dans la liste…',
       matches: 'contient',
       isNull: 'is null',
+      isTrue: 'is true',
+      isFalse: 'is false',
       gt: 'supérieur à',
       gte: 'supérieur ou égal à',
       lte: 'inférieur ou égal à',
       lt: 'inférieur à',
+      // Le même `<` et le même `>` que ci-dessus, dits en temps : « supérieur à » sur une date se
+      // comprend, mais ce n'est pas le mot qu'on cherche en filtrant un journal.
+      before: 'avant le',
+      after: 'après le',
     },
   },
   editableCell: {
@@ -128,6 +134,16 @@ export const tableViewFr: Dictionnaire = {
     // gestes différents.
     columnMenuLabel: (p) => `Actions sur la colonne ${p.column}`,
     hideColumn: 'Masquer la colonne',
+    // La lecture d'une colonne d'entiers. Aucun moteur ne peut dire si un `bigint` porte une époque
+    // ou un compte (voir `horodatage.ts`) : c'est donc une entrée de menu, pas une détection.
+    readAsNumber: 'Lire comme un nombre',
+    readAs: {
+      secondes: (p) => `Horodatage · secondes${p.suffixe}`,
+      millisecondes: (p) => `Horodatage · millisecondes${p.suffixe}`,
+      microsecondes: (p) => `Horodatage · microsecondes${p.suffixe}`,
+    },
+    deduced: ' (déduit)',
+    readingInUse: 'C’est déjà la lecture de cette colonne.',
     nothingToCopy: 'Cette cellule prend le défaut de la base : elle n’a pas encore de valeur.',
     noPrimaryKeyReason:
       'Cette table n’a pas de clé primaire : DoraBase ne saurait pas quelle ligne mettre à jour.',
@@ -182,10 +198,14 @@ export const tableViewEn: Dictionnaire = {
       in: 'in list…',
       matches: 'contains',
       isNull: 'is null',
+      isTrue: 'is true',
+      isFalse: 'is false',
       gt: 'greater than',
       gte: 'greater than or equal to',
       lte: 'less than or equal to',
       lt: 'less than',
+      before: 'before',
+      after: 'after',
     },
   },
   editableCell: {
@@ -276,6 +296,14 @@ export const tableViewEn: Dictionnaire = {
     reorderColumn: (p) => `Move ${p.column} (left and right arrows)`,
     columnMenuLabel: (p) => `Actions on column ${p.column}`,
     hideColumn: 'Hide column',
+    readAsNumber: 'Read as a number',
+    readAs: {
+      secondes: (p) => `Timestamp · seconds${p.suffixe}`,
+      millisecondes: (p) => `Timestamp · milliseconds${p.suffixe}`,
+      microsecondes: (p) => `Timestamp · microseconds${p.suffixe}`,
+    },
+    deduced: ' (deduced)',
+    readingInUse: 'That is already how this column is read.',
     nothingToCopy: 'This cell takes the database default: it has no value yet.',
     noPrimaryKeyReason:
       'This table has no primary key: DoraBase would not know which row to update.',

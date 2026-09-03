@@ -30,6 +30,7 @@ import { type GestesEnvironnement, ProjectEditor } from '../Explorer/ProjectEdit
 import { DdlPanel } from '../Structure/DdlPanel'
 import { StructureStatusBar, StructureView } from '../Structure/StructureView'
 import { ApplyConfirm } from '../TableView/ApplyConfirm'
+import type { Echelle } from '../TableView/horodatage'
 import { type EnAttente, retirer } from '../TableView/modifications'
 import { PendingPanel } from '../TableView/PendingPanel'
 import { RowPanel } from '../TableView/RowPanel'
@@ -269,7 +270,18 @@ export function Workbench({
     ligne: readonly Value[] | null
     rang: number | null
     total: number
-  }>({ fenetre: null, loading: false, error: null, ligne: null, rang: null, total: 0 })
+    // La lecture des colonnes d'entiers, pour que le panneau de ligne montre la même cellule que la
+    // grille — voir `RowPanel.lectures`.
+    lectures: Readonly<Record<string, Echelle>>
+  }>({
+    fenetre: null,
+    loading: false,
+    error: null,
+    ligne: null,
+    rang: null,
+    total: 0,
+    lectures: {},
+  })
   const [rangChoisi, setRangChoisi] = useState<number | null>(null)
   /**
    * Le mode édition, **par onglet** (`11b`).
@@ -1541,6 +1553,7 @@ export function Workbench({
                         columns={detail?.columns ?? []}
                         relations={detail?.relations ?? []}
                         ligne={lecture.ligne}
+                        lectures={lecture.lectures}
                         rang={lecture.rang}
                         onCopyInsert={
                           lecture.ligne
