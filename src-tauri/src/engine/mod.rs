@@ -51,7 +51,8 @@ use std::future::Future;
 pub use error::{ConnectionProbe, EngineError};
 pub use introspection::{
     ColumnInfo, ConstraintInfo, Identity, IndexInfo, KeyKind, ObjectCounts, ObjectKind, Relation,
-    RelationDirection, RowCount, SchemaInfo, TableDetail, TableSummary, TriggerInfo, TypeCategory,
+    RelationCardinality, RelationDirection, RowCount, SchemaInfo, TableDetail, TableSummary,
+    TriggerInfo, TypeCategory,
 };
 pub use rows::{
     ApplyOutcome, Filter, FilterOperator, PendingDelete, PendingInsert, PendingInsertValue,

@@ -1,4 +1,4 @@
-import type { KeyKind, Relation, TableDetail } from '../../domain/engine'
+import type { KeyKind, Relation, RelationCardinality, TableDetail } from '../../domain/engine'
 import { AVANCE_ENTETE, AVANCE_MONO } from '../../ui/VirtualGrid/ajustement'
 
 /**
@@ -93,6 +93,14 @@ export type Lien = {
   contrainte: string
   colonnes: readonly string[]
   colonnesCibles: readonly string[]
+  /**
+   * Combien de lignes de la source visent une même ligne de la cible — `'one'` ou `'many'`.
+   *
+   * **Elle vient du catalogue, jamais d'ici** : ce qui la décide est l'unicité des colonnes qui
+   * référencent, et `ColumnInfo.key` ne connaît que `primary` et `foreign`. Voir
+   * `RelationCardinality`, côté Rust, qui porte la raison.
+   */
+  cardinalite: RelationCardinality
   /** Le tracé, en attribut `d` d'un `<path>`. */
   chemin: string
   depart: { x: number; y: number }
@@ -252,6 +260,7 @@ type Candidat = {
   contrainte: string
   colonnes: readonly string[]
   colonnesCibles: readonly string[]
+  cardinalite: RelationCardinality
 }
 
 /**
@@ -276,6 +285,11 @@ function candidatDe(hote: EntreeDeTable, relation: Relation): Candidat {
     contrainte: relation.constraintName,
     colonnes,
     colonnesCibles,
+    // **Elle ne dépend pas du sens sous lequel on rencontre la relation** : c'est une propriété de
+    // la contrainte, et le catalogue la calcule toujours sur la table qui référence. Les deux
+    // moitiés d'une même clé s'accordent donc, ce dont la déduplication ci-dessous dépend — elle
+    // garde la première vue sans les comparer.
+    cardinalite: relation.cardinality,
   }
 }
 
@@ -1149,6 +1163,7 @@ function tracerTout(
           contrainte: resolu.candidat.contrainte,
           colonnes: resolu.candidat.colonnes,
           colonnesCibles: resolu.candidat.colonnesCibles,
+          cardinalite: resolu.candidat.cardinalite,
           depart: resolu.depart,
           arrivee: resolu.arrivee,
         }

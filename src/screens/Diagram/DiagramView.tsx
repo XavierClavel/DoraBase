@@ -574,6 +574,10 @@ export function DiagramView({
                     disparaît est un lien qui ne dit plus dans quel sens il va. */}
                 <Fleche id={`${marques}-fleche`} className={styles.pointe} />
                 <Fleche id={`${marques}-fleche-choisie`} className={styles.pointeChoisie} />
+                <Patte id={`${marques}-many`} className={styles.pointe} />
+                <Patte id={`${marques}-many-choisie`} className={styles.pointeChoisie} />
+                <Barre id={`${marques}-one`} className={styles.pointe} />
+                <Barre id={`${marques}-one-choisie`} className={styles.pointeChoisie} />
               </defs>
               {vue.liens.map((lien) => {
                 /* **Quand un chemin existe, c'est lui qu'on accentue, et lui seul.** Sinon, tous
@@ -591,6 +595,10 @@ export function DiagramView({
                 return (
                   <path
                     key={lien.id}
+                    /* Le repère par lequel un test désigne un trait : une classe de module CSS est
+                       un nom engendré, et s'y accrocher mesurerait l'outil de construction. Même
+                       raison que `data-boite` et `data-colonne`. */
+                    data-lien={lien.id}
                     d={lien.chemin}
                     className={cx(
                       styles.lien,
@@ -598,6 +606,14 @@ export function DiagramView({
                       eteint && styles.lienEteint,
                     )}
                     markerEnd={`url(#${marques}-fleche${touche ? '-choisie' : ''})`}
+                    /* **La cardinalité se marque au *départ*, la flèche reste à l'arrivée.** Le
+                       côté référencé est toujours *un* — une clé étrangère ne peut viser que des
+                       colonnes uniques —, donc il n'y a qu'un bout où il y ait quelque chose à
+                       dire. Et la pointe qui donne le sens du lien n'est pas déplaçable : une
+                       flèche qui disparaît est un lien qui ne dit plus où il va. */
+                    markerStart={`url(#${marques}-${lien.cardinalite === 'one' ? 'one' : 'many'}${
+                      touche ? '-choisie' : ''
+                    })`}
                   />
                 )
               })}
@@ -722,7 +738,7 @@ function BandeDeRelation({
                       « users.idorders.user_id » (piège n° 1). C'est le séparateur du pied. */}
                   <span className={styles.relationPoint}>{' · '}</span>
                   <code className={styles.bout}>{qualifier(nomDe(etape.de), gauche)}</code>
-                  <span className={styles.fleche} aria-hidden="true">
+                  <span className={styles.fleche} data-fleche="" aria-hidden="true">
                     {etape.remonte ? '←' : '→'}
                   </span>
                   <span className={styles.pourLaVoix}>
@@ -730,6 +746,21 @@ function BandeDeRelation({
                       etape.remonte
                         ? 'diagram.relation.referenceePar'
                         : 'diagram.relation.reference',
+                    )}
+                  </span>
+                  {/* **La notation, à côté de la flèche qu'elle qualifie.** C'est ce qui manque le
+                      plus quand on lit un chemin pour écrire une jointure : deux sauts `1:1` rendent
+                      une ligne, un seul `1:n` en rend autant que la table du milieu en compte. La
+                      voix la reçoit en toutes lettres, avec ses espaces (piège n° 1). */}
+                  {/* Les deux repères par lesquels un test mesure l'air autour de la notation :
+                      une classe de module CSS est un nom engendré, et s'y accrocher mesurerait
+                      l'outil de construction. Même raison que `data-boite` et `data-lien`. */}
+                  <span className={styles.notation} data-notation="" aria-hidden="true">
+                    {etape.lien.cardinalite === 'one' ? '1:1' : '1:n'}
+                  </span>
+                  <span className={styles.pourLaVoix}>
+                    {t(
+                      `diagram.cardinalite.${etape.lien.cardinalite === 'one' ? 'unVoix' : 'plusieursVoix'}`,
                     )}
                   </span>
                   <code className={styles.bout}>{qualifier(nomDe(etape.vers), droite)}</code>
@@ -782,6 +813,56 @@ function basculer(selection: readonly string[], id: string, etendre: boolean): r
 function qualifier(table: string, colonnes: readonly string[]): string {
   if (colonnes.length > 1) return `${table}.(${colonnes.join(', ')})`
   return `${table}.${colonnes[0] ?? ''}`
+}
+
+/**
+ * La patte d'oie du côté « plusieurs », posée au départ du lien.
+ *
+ * **La notation des diagrammes entité-association, et non une invention** : trois branches qui
+ * s'ouvrent *vers* la table qui référence, parce que c'est chez elle que les lignes se multiplient.
+ * Elle se lit sans légende par quiconque a déjà vu un schéma, et « en trait, jamais de fill »
+ * comme toutes les icônes du projet.
+ *
+ * `refX` vaut 0 : la marque commence exactement au bord de la boîte, et `orient="auto"` la retourne
+ * d'elle-même sur les liens qui sortent par la gauche — ceux que les cycles et les couches produisent.
+ */
+function Patte({ id, className }: { id: string; className: string | undefined }) {
+  return (
+    <marker
+      id={id}
+      viewBox="0 0 10 10"
+      refX="0"
+      refY="5"
+      markerWidth="9"
+      markerHeight="9"
+      orient="auto"
+    >
+      <path d="M0 1 L7 5 M0 5 L7 5 M0 9 L7 5" className={className} />
+    </marker>
+  )
+}
+
+/**
+ * Le trait du côté « un », posé au départ du lien.
+ *
+ * L'autre moitié de la même notation : une barre perpendiculaire dit « une seule ligne ici ».
+ * **Elle n'est pas l'absence de patte d'oie** — un lien sans marque se lirait comme un lien qu'on
+ * n'a pas su qualifier, et les deux valeurs de `RelationCardinality` sont toutes deux des réponses.
+ */
+function Barre({ id, className }: { id: string; className: string | undefined }) {
+  return (
+    <marker
+      id={id}
+      viewBox="0 0 10 10"
+      refX="0"
+      refY="5"
+      markerWidth="9"
+      markerHeight="9"
+      orient="auto"
+    >
+      <path d="M3 1 L3 9" className={className} />
+    </marker>
+  )
 }
 
 /**
@@ -960,7 +1041,13 @@ function listeCourte(noms: readonly string[]): string {
   return `${noms.slice(0, PREMIERES).join(', ')}… (+ ${noms.length - PREMIERES})`
 }
 
-/** Le texte de l'infobulle d'une ligne : son type, sa nullité, et ce qu'elle référence. */
+/**
+ * Le texte de l'infobulle d'une ligne : son type, sa nullité, et ce qu'elle référence.
+ *
+ * **La cardinalité y est écrite en toutes lettres**, et pas seulement dessinée : une patte d'oie se
+ * lit d'un coup d'œil pour qui connaît la notation, et ne dit rien du tout à qui ne la connaît pas.
+ * C'est aussi la seule forme qu'une voix puisse rendre — un `marker` SVG n'a pas de texte.
+ */
 function descriptionDeLigne(
   t: ReturnType<typeof useT>,
   typeName: string,
@@ -972,7 +1059,7 @@ function descriptionDeLigne(
   if (!vers) return base
   return `${base} · ${t('diagram.ligne.reference', {
     cible: `${vers.cible}.${vers.colonnesCibles[0] ?? ''}`,
-  })}`
+  })} · ${t(`diagram.cardinalite.${vers.cardinalite === 'one' ? 'un' : 'plusieurs'}`)}`
 }
 
 /**

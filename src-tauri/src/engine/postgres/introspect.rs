@@ -14,7 +14,8 @@ use tokio_postgres::Client;
 
 use crate::engine::{
     ColumnInfo, ConstraintInfo, EngineError, Identity, IndexInfo, KeyKind, ObjectCounts,
-    ObjectKind, Relation, RelationDirection, SchemaInfo, TableDetail, TableSummary, TriggerInfo,
+    ObjectKind, Relation, RelationCardinality, RelationDirection, SchemaInfo, TableDetail,
+    TableSummary, TriggerInfo,
 };
 
 use super::error::traduire;
@@ -292,6 +293,29 @@ select tgrelid as relid, tgname as name, pg_get_triggerdef(oid) as definition
 /// La version correcte tient en une phrase : les colonnes du **sujet** se cherchent dans le sujet,
 /// celles de la cible dans la cible.
 ///
+/// # `unique_source` : ce qui sépare un `1:1` d'un `1:n`
+///
+/// La cardinalité ne dépend **pas du sens sous lequel on rencontre la relation** — c'est une
+/// propriété de la contrainte, pas du regard : elle se lit donc toujours sur `con.conrelid`, la
+/// table qui référence, et les deux moitiés d'une même clé s'accordent forcément. C'est ce que
+/// l'écran attend : il les déduplique par `(source, contrainte)` et garde la première vue.
+///
+/// Trois précautions, chacune un faux `1:1` qu'elle écarte :
+///
+/// - **`indpred is null`** — un index unique **partiel** ne garantit l'unicité que sur les lignes
+///   qu'il couvre. `unique (a) where actif` laisse dix lignes inactives viser la même cible ;
+/// - **`indkey` tronqué à `indnkeyatts`** — les colonnes d'un `include` suivent les colonnes de
+///   clé dans `indkey` et **ne participent pas** à l'unicité. Les compter ferait rater l'index
+///   unique qui répondait, donc rendrait `1:n` un vrai `1:1` ;
+/// - **`array_agg(distinct …)`, des deux côtés** — c'est une comparaison d'**ensembles**, non de
+///   listes : un index sur `(b, a)` garantit exactement ce que garantit une clé sur `(a, b)`, et
+///   comparer dans l'ordre déclaré aurait fait dépendre la réponse de la façon dont l'index a été
+///   écrit. Un `array_agg` sans `distinct` aurait de plus fait diverger `(a, a)` de `(a)`, que
+///   Postgres n'autorise pas mais qui ne coûte rien à écarter.
+///
+/// Une clé primaire est portée par un index unique, donc elle répond ici sans être nommée : c'est
+/// le cas le plus courant du `1:1`, `profil.utilisateur_id` à la fois primaire et étrangère.
+///
 /// # Le sujet vient d'un `unnest`, et c'est ce qui rend la requête ensembliste
 ///
 /// Une même contrainte peut concerner **deux** sujets demandés — l'un la déclare en sortie, l'autre
@@ -314,7 +338,15 @@ select sujet.oid                                          as relid,
                            then con.confkey else con.conkey end)
                with ordinality as k(attnum, ord)
           join pg_attribute a on a.attrelid = ct.oid
-                             and a.attnum = k.attnum)     as target_columns
+                             and a.attnum = k.attnum)     as target_columns,
+       exists (select 1 from pg_index i
+                where i.indrelid = con.conrelid
+                  and i.indisunique
+                  and i.indpred is null
+                  and (select array_agg(distinct k)
+                         from unnest((i.indkey::int2[])[0:i.indnkeyatts - 1]) k)
+                    = (select array_agg(distinct k)
+                         from unnest(con.conkey) k))      as unique_source
   from unnest($1::oid[]) as sujet(oid)
   join pg_constraint con on con.contype = 'f'
                         and (con.conrelid = sujet.oid or con.confrelid = sujet.oid)
@@ -560,6 +592,15 @@ fn relation_depuis(ligne: &tokio_postgres::Row) -> Option<Relation> {
         target_schema: ligne.try_get("target_schema").ok()?,
         target_table: ligne.try_get("target_table").ok()?,
         target_columns,
+        // **Le repli est `Many`, et c'est le bon sens du doute** : c'est ce qu'une clé étrangère est
+        // dans l'immense majorité des cas, et une flèche `1:n` là où le schéma dit `1:1` se corrige
+        // d'un coup d'œil à la table, tandis qu'un `1:1` annoncé à tort ferait écrire une jointure
+        // qui rend plus de lignes qu'annoncé.
+        cardinality: if ligne.try_get("unique_source").unwrap_or(false) {
+            RelationCardinality::One
+        } else {
+            RelationCardinality::Many
+        },
     })
 }
 

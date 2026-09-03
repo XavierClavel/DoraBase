@@ -45,6 +45,7 @@ const COLONNES = [
 const RELATION: Relation = {
   constraintName: 'orders_user_id_fkey',
   direction: 'outgoing',
+  cardinality: 'many',
   columns: ['user_id'],
   targetSchema: 'public',
   targetTable: 'users',

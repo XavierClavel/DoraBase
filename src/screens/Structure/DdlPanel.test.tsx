@@ -65,6 +65,7 @@ const DETAIL: TableDetail = {
     {
       constraintName: 'orders_user_fk',
       direction: 'outgoing',
+      cardinality: 'many',
       columns: ['user_id'],
       targetSchema: 'public',
       targetTable: 'users',

@@ -711,6 +711,7 @@ mod tests {
 mod tests_db {
     use super::*;
     use crate::config::SslMode;
+    use crate::engine::RelationCardinality;
 
     /// L'adresse de la base de test, **jamais codée en dur** : le port diffère entre le
     /// conteneur local (55432, choisi pour ne croiser aucun autre projet de la machine) et
@@ -2180,6 +2181,149 @@ mod tests_db {
         // parce qu'elle cherchait l'attribut n°2 dans `users` au lieu d'`orders`.
         assert_eq!(entrante.columns, vec!["id".to_owned()]);
         assert_eq!(entrante.target_columns, vec!["user_id".to_owned()]);
+    }
+
+    // --- La cardinalité des relations (3 septembre 2026) -----------------------------------------
+
+    /// Ce qui sépare un `1:1` d'un `1:n`, et que rien d'autre que le catalogue ne sait dire.
+    ///
+    /// # Le décor, et les quatre confusions qu'il rend impossibles (règle n° 5)
+    ///
+    /// Un décor qui n'aurait qu'une clé primaire et une clé ordinaire laisserait passer trois
+    /// implémentations fausses sur quatre. Chaque table ci-dessous existe pour un cas :
+    ///
+    /// - **`badges`** est unique **sans être primaire**. C'est le cas qu'un écran ne peut pas
+    ///   deviner : `KeyKind` ne connaît que `primary` et `foreign`, donc une lecture côté
+    ///   TypeScript aurait annoncé `1:n`. Il justifie à lui seul que la réponse vienne d'ici ;
+    /// - **`brouillons`** est unique **partiel**. Dix brouillons inactifs peuvent viser le même
+    ///   compte : c'est un `1:n`, et seul `indpred is null` le dit. Sans lui, un index partiel se
+    ///   lirait comme une garantie qu'il ne donne pas ;
+    /// - **`liens`** porte une clé composite `(a, b)` et un index unique déclaré `(b, a)`. Les deux
+    ///   garantissent exactement la même chose : comparer des **listes** au lieu d'ensembles ferait
+    ///   dépendre la réponse de l'ordre dans lequel l'index a été écrit ;
+    /// - **`jetons`** est unique avec un `include`. Les colonnes incluses suivent les colonnes de
+    ///   clé dans `indkey` et ne participent pas à l'unicité : les compter ferait rater l'index qui
+    ///   répondait, donc annoncer `1:n` un vrai `1:1`.
+    ///
+    /// Un schéma jetable, comme `le_ddl_produit_se_rejoue` : le décor partagé porte des comptes que
+    /// d'autres tests vérifient, et six tables de plus les auraient tous fait mentir.
+    #[tokio::test]
+    async fn la_cardinalite_separe_un_a_un_de_un_a_plusieurs() {
+        let adaptateur = adaptateur().await;
+        let schema = "cardinalite";
+        adaptateur
+            .client
+            .batch_execute(&format!(
+                "drop schema if exists {schema} cascade;
+                 create schema {schema};
+
+                 create table {schema}.comptes (id bigserial primary key);
+
+                 create table {schema}.commandes (
+                   id bigserial primary key,
+                   compte_id bigint not null references {schema}.comptes(id));
+
+                 create table {schema}.profils (
+                   compte_id bigint primary key references {schema}.comptes(id));
+
+                 create table {schema}.badges (
+                   id bigserial primary key,
+                   compte_id bigint not null unique references {schema}.comptes(id));
+
+                 create table {schema}.brouillons (
+                   id bigserial primary key,
+                   compte_id bigint not null references {schema}.comptes(id),
+                   actif boolean not null default true);
+                 create unique index brouillons_actif
+                     on {schema}.brouillons (compte_id) where actif;
+
+                 create table {schema}.jetons (
+                   id bigserial primary key,
+                   compte_id bigint not null references {schema}.comptes(id),
+                   valeur text not null);
+                 create unique index jetons_compte
+                     on {schema}.jetons (compte_id) include (valeur);
+
+                 create table {schema}.paires (a bigint, b bigint, primary key (a, b));
+                 create table {schema}.liens (
+                   a bigint not null, b bigint not null,
+                   foreign key (a, b) references {schema}.paires(a, b));
+                 create unique index liens_inverse on {schema}.liens (b, a);"
+            ))
+            .await
+            .unwrap();
+
+        let cardinalite_de = |table: &'static str| {
+            let adaptateur = &adaptateur;
+            async move {
+                let detail = adaptateur.table_detail(schema, table).await.unwrap();
+                detail
+                    .relations
+                    .iter()
+                    .find(|r| r.direction == crate::engine::RelationDirection::Outgoing)
+                    .unwrap_or_else(|| panic!("{table} référence quelque chose"))
+                    .cardinality
+            }
+        };
+
+        assert_eq!(
+            cardinalite_de("commandes").await,
+            RelationCardinality::Many,
+            "rien ne borne le nombre de commandes d'un compte"
+        );
+        assert_eq!(
+            cardinalite_de("profils").await,
+            RelationCardinality::One,
+            "la clé étrangère est la clé primaire : un profil par compte"
+        );
+        assert_eq!(
+            cardinalite_de("badges").await,
+            RelationCardinality::One,
+            "unique sans être primaire — le cas qu'un écran ne peut pas deviner"
+        );
+        assert_eq!(
+            cardinalite_de("brouillons").await,
+            RelationCardinality::Many,
+            "l'index unique est partiel : il ne garantit rien des lignes inactives"
+        );
+        assert_eq!(
+            cardinalite_de("jetons").await,
+            RelationCardinality::One,
+            "les colonnes d'un `include` ne participent pas à l'unicité"
+        );
+        assert_eq!(
+            cardinalite_de("liens").await,
+            RelationCardinality::One,
+            "un index sur (b, a) garantit ce que garantit une clé sur (a, b)"
+        );
+
+        // **Les deux moitiés d'une même clé s'accordent**, et l'écran en dépend : il déduplique par
+        // `(source, contrainte)` et garde la première vue. Une cardinalité qui dépendrait du sens
+        // ferait dire deux choses à la même flèche selon la table lue en premier.
+        let comptes = adaptateur.table_detail(schema, "comptes").await.unwrap();
+        for (table, attendue) in [
+            ("commandes", RelationCardinality::Many),
+            ("profils", RelationCardinality::One),
+            ("badges", RelationCardinality::One),
+            ("brouillons", RelationCardinality::Many),
+            ("jetons", RelationCardinality::One),
+        ] {
+            let vue_de_loin = comptes
+                .relations
+                .iter()
+                .find(|r| r.target_table == table)
+                .unwrap_or_else(|| panic!("comptes est référencée par {table}"));
+            assert_eq!(
+                vue_de_loin.cardinality, attendue,
+                "vue depuis comptes, la clé de {table} doit dire la même chose"
+            );
+        }
+
+        adaptateur
+            .client
+            .batch_execute(&format!("drop schema {schema} cascade"))
+            .await
+            .unwrap();
     }
 
     // --- La lecture groupée (3 septembre 2026) ---------------------------------------------------

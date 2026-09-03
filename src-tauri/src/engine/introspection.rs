@@ -272,6 +272,37 @@ pub struct Relation {
     pub target_schema: String,
     pub target_table: String,
     pub target_columns: Vec<String>,
+    pub cardinality: RelationCardinality,
+}
+
+/// Combien de lignes de la table qui **référence** peuvent viser une même ligne référencée.
+///
+/// # Pourquoi le catalogue, et pas l'écran
+///
+/// Le côté référencé est toujours *un* — une clé étrangère ne peut viser que des colonnes uniques.
+/// Le côté qui référence est *plusieurs*, **sauf** si ses propres colonnes portent une garantie
+/// d'unicité : une clé primaire, une contrainte `unique`, ou un index unique total. C'est ce seul
+/// fait qui sépare un `1:1` d'un `1:n`, et il ne se lit nulle part ailleurs que dans le catalogue.
+///
+/// L'écran ne pouvait donc pas le déduire de ce qu'il recevait : `KeyKind` ne connaît que `primary`
+/// et `foreign`, et `IndexInfo` ne porte qu'une `definition` — le texte que le moteur rend. La
+/// relire en TypeScript aurait voulu dire analyser la sortie de quatre catalogues, qui ne
+/// l'écrivent pas de la même façon et n'ont aucune raison de continuer à l'écrire ainsi. C'est le
+/// pendant exact de la règle du DDL : ce que le moteur sait, on le lui demande.
+///
+/// # Deux valeurs et pas trois
+///
+/// Pas d'`Unknown` : les trois moteurs relationnels savent tous répondre, et un diagramme n'a rien à
+/// gagner à une troisième marque que le produit ne saurait jamais produire. MongoDB ne rend aucune
+/// relation, donc la question ne s'y pose pas.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "engine.ts")]
+pub enum RelationCardinality {
+    /// Les colonnes qui référencent sont uniques : **une** ligne au plus de part et d'autre.
+    One,
+    /// Le cas ordinaire : plusieurs lignes peuvent viser la même.
+    Many,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]

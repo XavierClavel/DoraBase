@@ -155,6 +155,10 @@ const OBJETS: TableSummary[] = [
   objet('inventory_movements'),
   objet('pricing_rules'),
   objet('audit_events'),
+  // **La seule table `1:1` du décor** (3 septembre 2026) : sa clé étrangère *est* sa clé primaire,
+  // donc un compte a au plus un profil. Sans elle, les six clés du décor seraient toutes `1:n` et
+  // une implémentation qui dessinerait toujours la même marque passerait (règle n° 5).
+  objet('user_profiles'),
   objet('order_items', { rows: { kind: 'estimated', value: 6_400_000 } }),
   objet('users', { rows: { kind: 'estimated', value: 92_800 } }),
   objet('orders_daily', { kind: 'view', rows: { kind: 'estimated', value: 0 }, primaryKey: null }),
@@ -319,6 +323,7 @@ const DETAIL: TableDetail = {
     {
       constraintName: 'orders_user_id_fkey',
       direction: 'outgoing',
+      cardinality: 'many',
       columns: ['user_id'],
       targetSchema: 'public',
       targetTable: 'users',
@@ -563,13 +568,22 @@ const pk = (position: number, name = 'id') => col(position, name, 'int8', { key:
 const fk = (position: number, name: string) => col(position, name, 'int8', { key: 'foreign' })
 
 /** Une clé étrangère sortante du schéma `public` de la démo. */
-const vers = (contrainte: string, colonne: string, cible: string, schema = 'public'): Relation => ({
+const vers = (
+  contrainte: string,
+  colonne: string,
+  cible: string,
+  schema = 'public',
+  // **`many` par défaut** : c'est ce qu'une clé étrangère est presque toujours, et le décor doit
+  // porter l'exception explicitement pour que les deux marques soient distinguables (règle n° 5).
+  cardinality: Relation['cardinality'] = 'many',
+): Relation => ({
   constraintName: contrainte,
   direction: 'outgoing',
   columns: [colonne],
   targetSchema: schema,
   targetTable: cible,
   targetColumns: ['id'],
+  cardinality,
 })
 
 /**
@@ -625,6 +639,7 @@ const DETAILS: Readonly<Record<string, TableDetail>> = {
       {
         constraintName: 'inventory_movements_batch_id_fkey',
         direction: 'incoming',
+        cardinality: 'many',
         columns: ['id'],
         targetSchema: 'public',
         targetTable: 'inventory_movements',
@@ -672,6 +687,18 @@ const DETAILS: Readonly<Record<string, TableDetail>> = {
       vers('audit_events_actor_id_fkey', 'actor_id', 'users'),
       vers('audit_events_snapshot_id_fkey', 'snapshot_id', 'snapshots', 'archive'),
     ],
+  },
+  user_profiles: {
+    ...DETAIL,
+    name: 'user_profiles',
+    columns: [
+      // `user_id` porte les **deux** clés : c'est ce qui rend la relation `1:1`, et c'est la forme
+      // la plus courante du cas.
+      col(1, 'user_id', 'int8', { key: 'primary' }),
+      col(2, 'locale', 'text'),
+      col(3, 'theme', 'text'),
+    ],
+    relations: [vers('user_profiles_user_id_fkey', 'user_id', 'users', 'public', 'one')],
   },
   users: DETAIL_USERS,
 }

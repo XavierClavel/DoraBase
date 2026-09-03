@@ -288,7 +288,10 @@ impl EngineAdapter for SqliteAdapter {
 mod tests_fichier {
     use super::*;
     use crate::config::SslMode;
-    use crate::engine::{Filter, FilterOperator, KeyKind, ObjectKind, PendingUpdate, TypeCategory};
+    use crate::engine::{
+        Filter, FilterOperator, KeyKind, ObjectKind, PendingUpdate, RelationCardinality,
+        TypeCategory,
+    };
 
     /// Le décor de `scripts/schema-test-sqlite.sql`, appliqué à un fichier neuf.
     ///
@@ -756,4 +759,131 @@ mod tests_fichier {
             erreur.message
         );
     }
+
+    /// Ce qui sépare un `1:1` d'un `1:n`, et que rien d'autre que le catalogue ne sait dire.
+    ///
+    /// # Les trois confusions que le décor rend impossibles (règle n° 5)
+    ///
+    /// - **`profils`** est un `integer primary key`, donc un alias de `rowid` : SQLite ne crée
+    ///   **aucun index** pour lui, et `pragma index_list` ne le mentionne pas. C'est pourtant le
+    ///   `1:1` le plus courant du moteur. Seul `pragma table_info(…).pk` le rend, et une lecture qui
+    ///   se fierait aux seuls index l'annoncerait `1:n` ;
+    /// - **`jetons`** porte un index unique `(compte_id, lower(valeur))`. La part fonctionnelle rend
+    ///   un `name` **nul** dans `pragma index_info` : la retirer laisserait l'ensemble
+    ///   `{compte_id}`, qui répond « oui » à la clé étrangère alors que rien n'y garantit l'unicité
+    ///   de `compte_id` seul. L'index doit être écarté **en entier** ;
+    /// - **`brouillons`** a un index unique **partiel** : dix brouillons inactifs peuvent viser le
+    ///   même compte.
+    ///
+    /// Un fichier à part, décrit ici : le décor partagé de `schema-test-sqlite.sql` porte des
+    /// comptes que d'autres tests vérifient.
+    #[tokio::test]
+    async fn la_cardinalite_separe_un_a_un_de_un_a_plusieurs() {
+        let dossier = tempfile::tempdir().unwrap();
+        let chemin = dossier.path().join("cardinalite.db");
+        Connection::open(&chemin)
+            .unwrap()
+            .execute_batch(
+                "create table comptes (id integer primary key);
+
+                 create table commandes (
+                   id integer primary key,
+                   compte_id integer not null references comptes(id));
+
+                 create table profils (
+                   compte_id integer primary key references comptes(id));
+
+                 create table badges (
+                   id integer primary key,
+                   compte_id integer not null unique references comptes(id));
+
+                 create table brouillons (
+                   id integer primary key,
+                   compte_id integer not null references comptes(id),
+                   actif integer not null default 1);
+                 create unique index brouillons_actif
+                     on brouillons (compte_id) where actif = 1;
+
+                 create table jetons (
+                   id integer primary key,
+                   compte_id integer not null references comptes(id),
+                   valeur text not null);
+                 create unique index jetons_expr on jetons (compte_id, lower(valeur));
+
+                 create table paires (a integer, b integer, primary key (a, b));
+                 create table liens (
+                   a integer not null, b integer not null,
+                   foreign key (a, b) references paires(a, b));
+                 create unique index liens_inverse on liens (b, a);",
+            )
+            .expect("le décor doit s'appliquer");
+
+        let adaptateur = adaptateur(&chemin).await;
+        let cardinalite_de = |table: &'static str| {
+            let adaptateur = &adaptateur;
+            async move {
+                let detail = adaptateur.table_detail("main", table).await.unwrap();
+                detail
+                    .relations
+                    .iter()
+                    .find(|r| r.direction == crate::engine::RelationDirection::Outgoing)
+                    .unwrap_or_else(|| panic!("{table} référence quelque chose"))
+                    .cardinality
+            }
+        };
+
+        assert_eq!(
+            cardinalite_de("commandes").await,
+            RelationCardinality::Many,
+            "rien ne borne le nombre de commandes d'un compte"
+        );
+        assert_eq!(
+            cardinalite_de("profils").await,
+            RelationCardinality::One,
+            "un `integer primary key` n'a pas d'index, et c'est quand même une clé primaire"
+        );
+        assert_eq!(
+            cardinalite_de("badges").await,
+            RelationCardinality::One,
+            "unique sans être primaire — le cas qu'un écran ne peut pas deviner"
+        );
+        assert_eq!(
+            cardinalite_de("brouillons").await,
+            RelationCardinality::Many,
+            "l'index unique est partiel : il ne garantit rien des lignes inactives"
+        );
+        assert_eq!(
+            cardinalite_de("jetons").await,
+            RelationCardinality::Many,
+            "un index à part fonctionnelle est écarté en entier, pas ligne à ligne"
+        );
+        assert_eq!(
+            cardinalite_de("liens").await,
+            RelationCardinality::One,
+            "un index sur (b, a) garantit ce que garantit une clé sur (a, b)"
+        );
+
+        // **Les deux moitiés d'une même clé s'accordent** — et ici le sens entrant lit l'unicité
+        // chez une **autre** table que celle qu'on décrit, ce qui est le piège propre à SQLite : le
+        // parcours inverse passe par toutes les tables du fichier.
+        let comptes = adaptateur.table_detail("main", "comptes").await.unwrap();
+        for (table, attendue) in [
+            ("commandes", RelationCardinality::Many),
+            ("profils", RelationCardinality::One),
+            ("badges", RelationCardinality::One),
+            ("brouillons", RelationCardinality::Many),
+            ("jetons", RelationCardinality::Many),
+        ] {
+            let vue_de_loin = comptes
+                .relations
+                .iter()
+                .find(|r| r.target_table == table)
+                .unwrap_or_else(|| panic!("comptes est référencée par {table}"));
+            assert_eq!(
+                vue_de_loin.cardinality, attendue,
+                "vue depuis comptes, la clé de {table} doit dire la même chose"
+            );
+        }
+    }
+
 }
