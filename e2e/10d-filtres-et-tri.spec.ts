@@ -21,6 +21,93 @@ test('le champ de filtre fait 20 px, comme le mockup', async ({ page }) => {
   expect(hauteur).toBe(20)
 })
 
+test('le sélecteur de date d’une borne tient dans la boîte de 20 px', async ({ page }) => {
+  // **Le seul contrôle natif de l'écran**, et une mise en page que Vitest ne peut pas voir : un
+  // champ `type="date"` a une largeur et une hauteur intrinsèques, là où les autres champs de
+  // filtre n'en ont aucune.
+  //
+  // **Sur la colonne la plus étroite que l'écran permette**, et c'est tout le test : à la largeur
+  // ajustée d'une colonne d'horodatages, le champ tient de toute façon. C'est resserré qu'un
+  // contrôle à largeur intrinsèque sort de sa boîte — mesuré.
+  const poignee = page.getByRole('slider', { name: 'Redimensionner shipped_at' })
+  await poignee.focus()
+  for (let cran = 0; cran < 20; cran++) await poignee.press('ArrowLeft')
+  await expect(poignee).toHaveAttribute('aria-valuenow', '60')
+
+  await page.getByRole('button', { name: 'Opérateur de shipped_at' }).click()
+  await page.getByRole('button', { name: /^< avant le$/ }).click()
+
+  const champ = page.getByLabel('Filtrer shipped_at')
+  // Règle n° 15 : la mesure ne vaut qu'après que le champ a changé de type, et une lecture sèche
+  // daterait du clic.
+  await expect(champ).toHaveAttribute('type', 'date')
+
+  const cotes = await champ.evaluate((element) => {
+    const boite = (element.parentElement as HTMLElement).getBoundingClientRect()
+    const dedans = element.getBoundingClientRect()
+    return {
+      hauteurDeLaBoite: Math.round(boite.height),
+      largeurDuChamp: Math.round(dedans.width),
+      aDroite: Math.round(dedans.right - boite.right),
+      enBas: Math.round(dedans.bottom - boite.bottom),
+      enHaut: Math.round(boite.top - dedans.top),
+    }
+  })
+
+  // La boîte n'a pas grandi : la ligne de filtre reste alignée sur les colonnes voisines.
+  expect(cotes.hauteurDeLaBoite).toBe(20)
+  // Et le champ ne sort par aucun bord. C'est le `min-width: 0` de `.saisie` qui le tient : mesuré,
+  // sans lui le champ dépasse de 60 px à droite, en passant sous les colonnes voisines.
+  expect(cotes.aDroite).toBeLessThanOrEqual(0)
+  expect(cotes.enBas).toBeLessThanOrEqual(0)
+  expect(cotes.enHaut).toBeLessThanOrEqual(0)
+  // Contrôle positif : un champ écrasé à zéro satisferait les trois bornes ci-dessus.
+  expect(cotes.largeurDuChamp).toBeGreaterThan(20)
+})
+
+test('choisir « avant le » ouvre le calendrier, et le navigateur l’accepte', async ({ page }) => {
+  // **Ce que Vitest ne peut pas dire : que le navigateur ne *refuse* pas l'ouverture.**
+  // `showPicker()` lève `NotAllowedError` hors activation utilisateur, et c'est tout le risque du
+  // `flushSync` — un état posé au milieu d'un gestionnaire de clic pourrait faire sortir l'appel de
+  // la fenêtre d'activation. jsdom n'a pas la notion, donc seul un vrai moteur juge.
+  await page.evaluate(() => {
+    const prototype = HTMLInputElement.prototype as HTMLInputElement & {
+      showPicker: () => void
+    }
+    const original = prototype.showPicker
+    const journal: { type: string; accepte: boolean }[] = []
+    ;(window as unknown as { journalDuCalendrier: typeof journal }).journalDuCalendrier = journal
+    prototype.showPicker = function espion(this: HTMLInputElement) {
+      try {
+        original.call(this)
+        journal.push({ type: this.type, accepte: true })
+      } catch {
+        journal.push({ type: this.type, accepte: false })
+      }
+    }
+  })
+
+  await page.getByRole('button', { name: 'Opérateur de shipped_at' }).click()
+  await page.getByRole('button', { name: /^< avant le$/ }).click()
+
+  const journal = await page.evaluate(
+    () =>
+      (window as unknown as { journalDuCalendrier: { type: string; accepte: boolean }[] })
+        .journalDuCalendrier,
+  )
+  expect(journal).toEqual([{ type: 'date', accepte: true }])
+})
+
+test('une borne de date choisie part au serveur sans qu’on valide', async ({ page }) => {
+  // Le calendrier natif se referme sans perte de focus et sans `Entrée` : attendre l'un des deux
+  // laisserait la date choisie dans le champ sans qu'elle parte.
+  await page.getByRole('button', { name: 'Opérateur de shipped_at' }).click()
+  await page.getByRole('button', { name: /^> après le$/ }).click()
+  await page.getByLabel('Filtrer shipped_at').fill('2026-03-01')
+
+  await expect(page.getByText('shipped_at > 2026-03-01')).toBeVisible()
+})
+
 test('une colonne filtrée est teintée, une colonne triée l’est moins', async ({ page }) => {
   const neutre = await fondDeColonne(page, 'currency')
 

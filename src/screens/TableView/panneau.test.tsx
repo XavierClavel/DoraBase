@@ -12,6 +12,7 @@ import type {
 } from '../../domain/engine'
 import { LanguageProvider } from '../../i18n/LanguageContext'
 import type { PasserelleDetail } from '../Workbench/useDetailTable'
+import type { Echelle } from './horodatage'
 import { RowPanel } from './RowPanel'
 import type { PasserelleLignes } from './useLignes'
 
@@ -87,6 +88,7 @@ type Options = {
   total?: number
   onCopyInsert?: () => void
   onNavigate?: (rang: number) => void
+  lectures?: Readonly<Record<string, Echelle>>
 }
 
 function monter({
@@ -96,6 +98,7 @@ function monter({
   ligne = LIGNE,
   rang = 1,
   onCopyInsert,
+  lectures,
 }: Options = {}) {
   const readRows = vi.fn(async (_cle: DatabaseKey, _requete: RowQuery) => ({
     offset: 0,
@@ -120,6 +123,7 @@ function monter({
           columns={columns}
           relations={relations}
           ligne={ligne}
+          lectures={lectures}
           rang={rang}
           onCopyInsert={onCopyInsert}
           passerelleDetail={{ describeTable } as unknown as PasserelleDetail}
@@ -145,6 +149,28 @@ describe('panneau de ligne', () => {
   // nomme le rang et la clé primaire, et qu'une table sans clé primaire n'invente pas d'identifiant.
   // Ce titre n'existe plus (`22`) : le rang est dans la gouttière `#` de la grille, l'identifiant est
   // la première valeur du corps. Les flèches, elles, sont mesurées dans `ColonneDroite.test.tsx`.
+
+  it('la lecture d’une colonne d’entiers suit celle de la grille', () => {
+    // **Le panneau et la grille montrent la même cellule.** Deux lectures divergentes du même
+    // entier — l'une en date, l'autre en nombre — se liraient comme un défaut de lecture, et c'est
+    // le motif de la sélection, pilotée depuis l'écran pour la même raison.
+    monter({ lectures: { id: 'secondes' } })
+
+    // `id` vaut 184 220 : lu en secondes, c'est le 5 janvier 1970.
+    expect(screen.getByText('1970-01-03 03:10:20')).toBeInTheDocument()
+    expect(screen.queryByText('184 220')).toBeNull()
+    // `user_id` est numérique aussi, et rien ne l'a touché : la lecture suit la colonne.
+    expect(screen.getByText('90 233')).toBeInTheDocument()
+  })
+
+  it('l’onglet JSON ignore la lecture : c’est le document qui se réécrit', async () => {
+    // Une date y remplacerait la valeur stockée, et `documentJson` sert aussi l'éditeur de document
+    // (`18g`), qui écrit.
+    const utilisateur = userEvent.setup()
+    monter({ lectures: { id: 'secondes' } })
+    await utilisateur.click(screen.getByRole('tab', { name: 'JSON' }))
+    expect(screen.getByText(/184220/)).toBeInTheDocument()
+  })
 
   it('l’onglet JSON rend la ligne en objet typé', async () => {
     const utilisateur = userEvent.setup()

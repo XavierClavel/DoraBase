@@ -10,16 +10,16 @@ use crate::engine::{
 
 /// Le critère `find` correspondant aux filtres de `06a`.
 ///
-/// **Neuf opérateurs, et l'échappement de `matches`.** Une valeur tapée devient une expression
+/// **Onze opérateurs, et l'échappement de `matches`.** Une valeur tapée devient une expression
 /// rationnelle : les caractères de la syntaxe y prendraient un sens que l'utilisateur n'a pas voulu,
 /// et un motif pathologique coûterait un temps déraisonnable au serveur. Le filtre cherche donc une
 /// **sous-chaîne**, comme `ILIKE '%…%'` en `06d`.
 ///
-/// **Les quatre comparaisons exigent une valeur numérique, contrairement aux cinq autres qui restent
-/// du texte.** MongoDB est typé nativement : un `$gt` avec une chaîne contre un champ entier ne
+/// **Les quatre comparaisons exigent une valeur typée, contrairement aux autres qui restent du
+/// texte.** MongoDB est typé nativement : un `$gt` avec une chaîne contre un champ entier ne
 /// trouverait jamais rien, l'ordre BSON plaçant tous les nombres avant toutes les chaînes. La colonne
-/// doit donc être `TypeCategory::Number` — même refus que Postgres, pour la même raison — et la
-/// valeur saisie est convertie en nombre plutôt que laissée en texte.
+/// doit donc être `TypeCategory::Number` ou `Timestamp` — même refus que Postgres, pour la même
+/// raison — et la valeur saisie est convertie vers le type du champ plutôt que laissée en texte.
 pub fn critere(filtres: &[Filter], colonnes: &[ColumnInfo]) -> Result<Document, EngineError> {
     let mut critere = Document::new();
     for filtre in filtres {
@@ -43,20 +43,105 @@ pub fn critere(filtres: &[Filter], colonnes: &[ColumnInfo]) -> Result<Document, 
             // la grille affiche la même cellule vide pour les deux (`18e`). Un filtre qui n'en
             // trouverait que la moitié se lirait comme un défaut de lecture.
             FilterOperator::IsNull => Bson::Document(doc! { "$in": [Bson::Null] }),
+            // **Un booléen BSON, pas la chaîne « true ».** MongoDB est typé nativement : un champ
+            // `Bson::Boolean` comparé à `"true"` ne correspondrait jamais, et le filtre se lirait
+            // comme une collection vide. Le champ doit donc être `TypeCategory::Boolean` — même
+            // refus que Postgres, pour la même raison.
+            FilterOperator::IsTrue | FilterOperator::IsFalse => {
+                verifier_la_categorie(
+                    &filtre.column,
+                    colonnes,
+                    TypeCategory::Boolean,
+                    "les prédicats « is true » et « is false » ne sont proposés que pour un champ booléen",
+                )?;
+                Bson::Boolean(filtre.operator == FilterOperator::IsTrue)
+            }
             FilterOperator::Gt | FilterOperator::Gte | FilterOperator::Lte | FilterOperator::Lt => {
-                let numerique = valeur_numerique(&filtre.column, &valeur, colonnes)?;
+                // **Le type de la borne suit celui du champ.** L'ordre BSON compare d'abord les
+                // types entre eux : un `$gt` numérique contre un champ date ne trouverait rien, et
+                // un `$gt` en chaîne contre un champ numérique pas davantage. Les deux catégories
+                // que l'écran propose ont donc chacune leur conversion, et tout le reste est
+                // refusé.
+                let borne = match categorie_de(&filtre.column, colonnes) {
+                    Some(TypeCategory::Timestamp) => valeur_temporelle(&filtre.column, &valeur)?,
+                    _ => valeur_numerique(&filtre.column, &valeur, colonnes)?,
+                };
                 let operateur = match filtre.operator {
                     FilterOperator::Gt => "$gt",
                     FilterOperator::Gte => "$gte",
                     FilterOperator::Lte => "$lte",
                     _ => "$lt",
                 };
-                Bson::Document(doc! { operateur: numerique })
+                Bson::Document(doc! { operateur: borne })
             }
         };
         critere.insert(champ, condition);
     }
     Ok(critere)
+}
+
+/// La catégorie du champ, telle que l'échantillonnage de `18d` l'a déduite. `None` pour un champ
+/// que l'échantillon n'a pas vu — un document peut porter ce que le schéma déduit ignore.
+fn categorie_de(champ: &str, colonnes: &[ColumnInfo]) -> Option<TypeCategory> {
+    colonnes
+        .iter()
+        .find(|c| c.name == champ)
+        .map(|c| c.category)
+}
+
+/// Refuse un opérateur que la catégorie du champ ne porte pas, avec sa raison.
+fn verifier_la_categorie(
+    champ: &str,
+    colonnes: &[ColumnInfo],
+    attendue: TypeCategory,
+    raison: &str,
+) -> Result<(), EngineError> {
+    if categorie_de(champ, colonnes) == Some(attendue) {
+        return Ok(());
+    }
+    Err(EngineError::local(format!(
+        "{raison}, et « {champ} » ne l'est pas"
+    )))
+}
+
+/// Convertit la valeur saisie en instant, pour une comparaison sur un champ date.
+///
+/// **Trois formes acceptées, de la plus précise à la moins.** Le sélecteur de date de `A5` rend
+/// toujours `AAAA-MM-JJ` ; les deux autres formes sont là pour une requête écrite à la main, où une
+/// heure change le résultat. Une date seule vaut **minuit UTC** : c'est le seul instant qu'elle
+/// puisse désigner sans inventer un fuseau, et c'est aussi celui qu'un `Bson::DateTime` porte —
+/// MongoDB ne stocke pas de fuseau.
+fn valeur_temporelle(champ: &str, valeur: &str) -> Result<Bson, EngineError> {
+    let brut = valeur.trim();
+
+    if let Ok(instant) = chrono::DateTime::parse_from_rfc3339(brut) {
+        return Ok(millisecondes(instant.timestamp_millis()));
+    }
+    for forme in [
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%d %H:%M",
+    ] {
+        if let Ok(sans_fuseau) = chrono::NaiveDateTime::parse_from_str(brut, forme) {
+            return Ok(millisecondes(sans_fuseau.and_utc().timestamp_millis()));
+        }
+    }
+    if let Ok(jour) = chrono::NaiveDate::parse_from_str(brut, "%Y-%m-%d") {
+        return Ok(millisecondes(
+            jour.and_hms_opt(0, 0, 0)
+                .expect("minuit existe pour toute date")
+                .and_utc()
+                .timestamp_millis(),
+        ));
+    }
+    Err(EngineError::local(format!(
+        "« {brut} » ne se lit pas comme une date pour « {champ} » — la forme attendue est AAAA-MM-JJ"
+    )))
+}
+
+fn millisecondes(millis: i64) -> Bson {
+    Bson::DateTime(mongodb::bson::DateTime::from_millis(millis))
 }
 
 /// Convertit la valeur saisie en nombre, pour une comparaison — refuse si la colonne n'est pas
@@ -73,7 +158,7 @@ fn valeur_numerique(
     let colonne = colonnes.iter().find(|c| c.name == champ);
     if !matches!(colonne.map(|c| c.category), Some(TypeCategory::Number)) {
         return Err(EngineError::local(format!(
-            "les comparaisons ne sont proposées que pour un champ numérique, et « {champ} » ne l'est pas"
+            "les comparaisons ne sont proposées que pour un champ numérique ou date, et « {champ} » ne l'est pas"
         )));
     }
     if let Ok(entier) = valeur.parse::<i64>() {
@@ -268,14 +353,16 @@ mod tests {
         }
     }
 
-    /// Un jeu de colonnes couvrant les champs des tests : `montant` numérique, le reste en
-    /// texte — suffisant pour les filtres qui ne portent pas de comparaison.
+    /// Un jeu de colonnes couvrant les champs des tests : `montant` numérique, `horodatage` date,
+    /// `actif` booléen, le reste en texte.
     fn colonnes() -> Vec<ColumnInfo> {
         vec![
             colonne_avec_categorie("ville", TypeCategory::Text),
             colonne_avec_categorie("remise", TypeCategory::Text),
             colonne_avec_categorie("statut", TypeCategory::Text),
             colonne_avec_categorie("montant", TypeCategory::Number),
+            colonne_avec_categorie("horodatage", TypeCategory::Timestamp),
+            colonne_avec_categorie("actif", TypeCategory::Boolean),
         ]
     }
 
@@ -294,6 +381,87 @@ mod tests {
         // Sans échappement, `.*` chercherait n'importe quoi entre `a` et `b` — donc trouverait des
         // lignes que l'utilisateur n'a pas demandées, et un motif pathologique coûterait cher.
         assert_eq!(regex, r"a\.\*b");
+    }
+
+    #[test]
+    fn is_true_et_is_false_posent_un_booleen_bson_pas_la_chaine_true() {
+        // **Le cœur du prédicat côté MongoDB** : un champ `Bson::Boolean` comparé à `"true"` ne
+        // correspondrait jamais, et le filtre se lirait comme une collection vide plutôt que comme
+        // un filtre faux.
+        for (operateur, attendu) in [
+            (FilterOperator::IsTrue, true),
+            (FilterOperator::IsFalse, false),
+        ] {
+            let critere = critere(&[filtre("actif", operateur, None)], &colonnes()).unwrap();
+            assert_eq!(critere.get_bool("actif").unwrap(), attendu);
+        }
+    }
+
+    #[test]
+    fn un_predicat_booleen_sur_un_champ_texte_est_refuse() {
+        let erreur = critere(
+            &[filtre("statut", FilterOperator::IsTrue, None)],
+            &colonnes(),
+        )
+        .expect_err("doit être refusé");
+        assert!(erreur.message.contains("statut"), "{erreur}");
+    }
+
+    #[test]
+    fn une_borne_de_date_devient_un_instant_bson_pas_une_chaine() {
+        // L'ordre BSON compare d'abord les types : un `$gt` en chaîne contre un champ date ne
+        // trouverait rien, les dates venant avant les chaînes quelle que soit leur valeur.
+        let critere = critere(
+            &[filtre("horodatage", FilterOperator::Gt, Some("2026-03-01"))],
+            &colonnes(),
+        )
+        .unwrap();
+        let borne = critere
+            .get_document("horodatage")
+            .unwrap()
+            .get_datetime("$gt")
+            .unwrap();
+        // Minuit UTC : le seul instant qu'une date seule puisse désigner sans inventer un fuseau.
+        assert_eq!(
+            borne.try_to_rfc3339_string().unwrap(),
+            "2026-03-01T00:00:00Z"
+        );
+    }
+
+    #[test]
+    fn une_borne_de_date_accepte_aussi_une_heure_et_un_fuseau() {
+        // Le sélecteur de `A5` ne rend que `AAAA-MM-JJ` ; ces deux formes-là viennent d'une requête
+        // écrite à la main, où l'heure change le résultat.
+        for (saisie, attendu) in [
+            ("2026-03-01 14:30:00", "2026-03-01T14:30:00Z"),
+            ("2026-03-01T14:30:00+02:00", "2026-03-01T12:30:00Z"),
+        ] {
+            let critere = critere(
+                &[filtre("horodatage", FilterOperator::Lt, Some(saisie))],
+                &colonnes(),
+            )
+            .unwrap();
+            let borne = critere
+                .get_document("horodatage")
+                .unwrap()
+                .get_datetime("$lt")
+                .unwrap();
+            assert_eq!(borne.try_to_rfc3339_string().unwrap(), attendu, "{saisie}");
+        }
+    }
+
+    #[test]
+    fn une_borne_de_date_illisible_est_refusee_en_nommant_la_forme_attendue() {
+        let erreur = critere(
+            &[filtre(
+                "horodatage",
+                FilterOperator::Gt,
+                Some("le mois dernier"),
+            )],
+            &colonnes(),
+        )
+        .expect_err("doit être refusé");
+        assert!(erreur.message.contains("AAAA-MM-JJ"), "{erreur}");
     }
 
     #[test]

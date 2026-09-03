@@ -45,9 +45,15 @@ impl RowLimit {
     }
 }
 
-/// Les neuf opérateurs du popover de `A5` : `=`, `≠`, `in`, `~`, `is null`, et les quatre
-/// comparaisons `>`, `>=`, `<=`, `<` — réservées aux colonnes numériques (`TypeCategory::Number`),
-/// l'écran ne les proposant que là.
+/// Les onze opérateurs du popover de `A5` : `=`, `≠`, `in`, `~`, `is null`, `is true`, `is false`,
+/// et les quatre comparaisons `>`, `>=`, `<=`, `<`.
+///
+/// **Tous ne valent pas pour toutes les colonnes, et l'écran ne propose que ceux qui valent**
+/// (`operateursPour`) : `is null` demande une colonne `nullable`, `is true` / `is false` une colonne
+/// booléenne, et les comparaisons une colonne numérique ou temporelle. Chaque adaptateur **refuse**
+/// ce qui lui arriverait quand même, pour la raison de `AGENTS.md` sur les modes SSL : l'écran qui
+/// cache et le moteur qui refuse gardent deux chemins différents — une requête peut venir d'une
+/// configuration écrite à la main.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "engine.ts")]
@@ -58,6 +64,14 @@ pub enum FilterOperator {
     /// Correspondance de motif — le `~` du mockup.
     Matches,
     IsNull,
+    /// Le prédicat d'une colonne booléenne — `col is true`.
+    ///
+    /// **Pas un `Eq` sur « true »** : les cinq moteurs n'écrivent pas le vrai de la même façon —
+    /// `true` en PostgreSQL, `1` pour le `tinyint(1)` de MySQL et l'affinité de SQLite, un
+    /// `Bson::Boolean` en MongoDB. Un `=` contre la chaîne « true » serait donc juste sur un moteur
+    /// et muet sur les autres, sans que rien le dise.
+    IsTrue,
+    IsFalse,
     Gt,
     Gte,
     Lte,
@@ -65,25 +79,34 @@ pub enum FilterOperator {
 }
 
 impl FilterOperator {
-    /// `is null` est le seul à ne pas prendre de valeur. Le savoir ici évite à chaque
-    /// écran et à chaque adaptateur de le redécouvrir.
+    /// Les trois prédicats — `is null`, `is true`, `is false` — sont les seuls à ne pas prendre de
+    /// valeur. Le savoir ici évite à chaque écran et à chaque adaptateur de le redécouvrir.
     pub fn prend_une_valeur(self) -> bool {
-        !matches!(self, Self::IsNull)
+        !matches!(self, Self::IsNull | Self::IsTrue | Self::IsFalse)
     }
 
-    /// Les quatre comparaisons n'ont de sens que pour une colonne numérique — `>` sur du texte
-    /// trierait lexicographiquement (`"9" > "10"`), ce qui contredirait le signe affiché.
-    pub fn est_une_comparaison_numerique(self) -> bool {
+    /// Les quatre comparaisons n'ont de sens que pour une colonne **numérique ou temporelle** — `>`
+    /// sur du texte trierait lexicographiquement (`"9" > "10"`), ce qui contredirait le signe
+    /// affiché. C'est l'adaptateur qui décide du transtypage, la borne d'une date n'étant pas celle
+    /// d'un nombre.
+    pub fn est_une_comparaison(self) -> bool {
         matches!(self, Self::Gt | Self::Gte | Self::Lte | Self::Lt)
     }
 
-    pub fn tous() -> [Self; 9] {
+    /// `is true` et `is false`, réservés à une colonne booléenne.
+    pub fn est_un_predicat_booleen(self) -> bool {
+        matches!(self, Self::IsTrue | Self::IsFalse)
+    }
+
+    pub fn tous() -> [Self; 11] {
         [
             Self::Eq,
             Self::Ne,
             Self::In,
             Self::Matches,
             Self::IsNull,
+            Self::IsTrue,
+            Self::IsFalse,
             Self::Gt,
             Self::Gte,
             Self::Lte,
@@ -447,32 +470,38 @@ mod tests {
     }
 
     #[test]
-    fn les_neuf_operateurs_de_a5_existent() {
-        assert_eq!(FilterOperator::tous().len(), 9);
+    fn les_onze_operateurs_de_a5_existent() {
+        assert_eq!(FilterOperator::tous().len(), 11);
     }
 
     #[test]
-    fn seul_is_null_ne_prend_pas_de_valeur() {
-        assert!(!FilterOperator::IsNull.prend_une_valeur());
+    fn seuls_les_trois_predicats_ne_prennent_pas_de_valeur() {
         for operateur in FilterOperator::tous() {
-            if operateur != FilterOperator::IsNull {
-                assert!(
-                    operateur.prend_une_valeur(),
-                    "{operateur:?} devrait prendre une valeur"
-                );
-            }
+            let sans_valeur = matches!(
+                operateur,
+                FilterOperator::IsNull | FilterOperator::IsTrue | FilterOperator::IsFalse
+            );
+            assert_eq!(operateur.prend_une_valeur(), !sans_valeur, "{operateur:?}");
         }
     }
 
     #[test]
-    fn seules_les_quatre_comparaisons_sont_numeriques() {
+    fn seules_les_quatre_comparaisons_en_sont() {
         for operateur in FilterOperator::tous() {
             let attendu = matches!(
                 operateur,
                 FilterOperator::Gt | FilterOperator::Gte | FilterOperator::Lte | FilterOperator::Lt
             );
+            assert_eq!(operateur.est_une_comparaison(), attendu, "{operateur:?}");
+        }
+    }
+
+    #[test]
+    fn seuls_is_true_et_is_false_sont_des_predicats_booleens() {
+        for operateur in FilterOperator::tous() {
+            let attendu = matches!(operateur, FilterOperator::IsTrue | FilterOperator::IsFalse);
             assert_eq!(
-                operateur.est_une_comparaison_numerique(),
+                operateur.est_un_predicat_booleen(),
                 attendu,
                 "{operateur:?}"
             );

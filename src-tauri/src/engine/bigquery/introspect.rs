@@ -139,11 +139,7 @@ pub async fn detail(
         .map_err(traduire)?;
 
     let champs = table_bq.schema.fields.clone().unwrap_or_default();
-    let colonnes: Vec<ColumnInfo> = champs
-        .iter()
-        .enumerate()
-        .map(|(rang, champ)| colonne_de(rang as u32, champ))
-        .collect();
+    let colonnes = colonnes_de(&table_bq);
 
     Ok(TableDetail {
         schema: jeu.to_owned(),
@@ -166,6 +162,23 @@ pub async fn detail(
         triggers: Vec::new(),
         relations: Vec::new(),
     })
+}
+
+/// Les colonnes d'une table, depuis la réponse de `table.get`.
+///
+/// **Partagée avec la lecture de lignes** : `rows()` demande déjà cette réponse pour le compte de
+/// lignes, et trois opérateurs de filtre ont un SQL qui dépend du type déclaré. Une seconde source
+/// de colonnes aurait pu en dire autre chose que le panneau de structure.
+pub fn colonnes_de(table: &Table) -> Vec<ColumnInfo> {
+    table
+        .schema
+        .fields
+        .as_deref()
+        .unwrap_or_default()
+        .iter()
+        .enumerate()
+        .map(|(rang, champ)| colonne_de(rang as u32, champ))
+        .collect()
 }
 
 fn colonne_de(rang: u32, champ: &TableFieldSchema) -> ColumnInfo {

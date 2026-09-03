@@ -18,7 +18,9 @@ use gcp_bigquery_client::model::query_parameter::QueryParameter;
 use gcp_bigquery_client::model::query_parameter_type::QueryParameterType;
 use gcp_bigquery_client::model::query_parameter_value::QueryParameterValue;
 
-use crate::engine::{Filter, FilterOperator, RowLimit, RowQuery, SortDirection, Value};
+use crate::engine::{
+    ColumnInfo, Filter, FilterOperator, RowLimit, RowQuery, SortDirection, TypeCategory, Value,
+};
 
 /// Cite un identifiant simple — une colonne. Le guillemet du dialecte BigQuery est le backtick,
 /// doublé s'il apparaît dans le nom.
@@ -48,14 +50,23 @@ fn parametre_texte(rang: usize, valeur: &str) -> QueryParameter {
 }
 
 /// Le `select` d'une fenêtre de lignes, paramétré.
-pub fn requete_de(projet: &str, jeu: &str, query: &RowQuery) -> (String, Vec<QueryParameter>) {
+/// **Les colonnes sont exigées**, et non lues au besoin : trois opérateurs — `is true`, `is false`
+/// et les comparaisons — ont un SQL qui dépend du type déclaré, BigQuery étant aussi strict que
+/// PostgreSQL. `rows()` les tient déjà : la réponse de `table.get`, qu'il demande de toute façon
+/// pour le compte de lignes, porte le schéma. Aucun aller-retour de plus.
+pub fn requete_de(
+    projet: &str,
+    jeu: &str,
+    query: &RowQuery,
+    colonnes: &[ColumnInfo],
+) -> (String, Vec<QueryParameter>) {
     let mut parametres = Vec::new();
     let mut sql = format!("select * from {}", citer_table(projet, jeu, &query.table));
 
     let conditions: Vec<String> = query
         .filters
         .iter()
-        .map(|filtre| condition_de(filtre, &mut parametres))
+        .map(|filtre| condition_de(filtre, colonnes, &mut parametres))
         .collect();
     if !conditions.is_empty() {
         sql.push_str(" where ");
@@ -126,7 +137,11 @@ fn parametre_numerique(rang: usize, valeur: &str) -> QueryParameter {
     }
 }
 
-fn condition_de(filtre: &Filter, parametres: &mut Vec<QueryParameter>) -> String {
+fn condition_de(
+    filtre: &Filter,
+    colonnes: &[ColumnInfo],
+    parametres: &mut Vec<QueryParameter>,
+) -> String {
     let colonne = colonne_en_texte(&filtre.column);
     match filtre.operator {
         FilterOperator::Eq => {
@@ -180,23 +195,57 @@ fn condition_de(filtre: &Filter, parametres: &mut Vec<QueryParameter>) -> String
             format!("lower({colonne}) like lower(@{nom}) escape '\\\\'")
         }
         FilterOperator::IsNull => format!("{} is null", citer(&filtre.column)),
+        // `is true` / `is false` : BigQuery a un vrai type `BOOL`, donc le prédicat est direct et
+        // ne transtype rien. Le refus d'une colonne non booléenne est celui de `condition_de` chez
+        // PostgreSQL ; ici il n'y a rien à refuser, `cast(x as string) is true` étant une erreur de
+        // type que BigQuery rend lui-même.
+        FilterOperator::IsTrue => format!("{} is true", citer(&filtre.column)),
+        FilterOperator::IsFalse => format!("{} is false", citer(&filtre.column)),
         FilterOperator::Gt | FilterOperator::Gte | FilterOperator::Lte | FilterOperator::Lt => {
-            let colonne = colonne_en_numerique(&filtre.column);
-            let param = parametre_numerique(
-                parametres.len() + 1,
-                &filtre.value.clone().unwrap_or_default(),
-            );
-            let nom = param.name.clone().unwrap();
-            parametres.push(param);
             let comparaison = match filtre.operator {
                 FilterOperator::Gt => ">",
                 FilterOperator::Gte => ">=",
                 FilterOperator::Lte => "<=",
                 _ => "<",
             };
-            format!("{colonne} {comparaison} @{nom}")
+            let saisie = filtre.value.clone().unwrap_or_default();
+            // **C'est la borne qu'on transtype pour une date, et la colonne pour un nombre.**
+            // BigQuery n'accepte aucune coercition entre `DATE`, `DATETIME` et `TIMESTAMP` : un
+            // `cast(@p as timestamp)` contre une colonne `DATE` échouerait sur la comparaison. Le
+            // type **déclaré** de la colonne est donc le seul transtypage juste, et
+            // `ColumnInfo::type_name` le porte déjà en vocabulaire BigQuery (`nom_du_type`).
+            match colonne_temporelle(&filtre.column, colonnes) {
+                Some(type_bq) => {
+                    let param = parametre_texte(parametres.len() + 1, &saisie);
+                    let nom = param.name.clone().unwrap();
+                    parametres.push(param);
+                    format!(
+                        "{} {comparaison} cast(@{nom} as {type_bq})",
+                        citer(&filtre.column)
+                    )
+                }
+                None => {
+                    let param = parametre_numerique(parametres.len() + 1, &saisie);
+                    let nom = param.name.clone().unwrap();
+                    parametres.push(param);
+                    format!(
+                        "{} {comparaison} @{nom}",
+                        colonne_en_numerique(&filtre.column)
+                    )
+                }
+            }
         }
     }
+}
+
+/// Le type BigQuery de la colonne quand elle est temporelle, `None` sinon — le discriminant des
+/// deux transtypages de comparaison.
+fn colonne_temporelle(nom: &str, colonnes: &[ColumnInfo]) -> Option<String> {
+    colonnes
+        .iter()
+        .find(|c| c.name == nom)
+        .filter(|c| c.category == TypeCategory::Timestamp)
+        .map(|c| c.type_name.clone())
 }
 
 fn echapper_pour_like(valeur: &str) -> String {
@@ -274,9 +323,38 @@ mod tests {
         RowQuery::new("jeu", "commandes", RowLimit::FiveHundred)
     }
 
+    /// Le décor de colonnes des tests, **avec `DATE` et `TIMESTAMP` distincts** : un décor où les
+    /// deux porteraient le même type ne dirait pas si le transtypage suit la colonne ou une valeur
+    /// choisie une fois pour toutes (règle n° 5).
+    fn colonnes() -> Vec<ColumnInfo> {
+        [
+            ("montant", "NUMERIC", TypeCategory::Number),
+            ("statut", "STRING", TypeCategory::Text),
+            ("reference", "STRING", TypeCategory::Text),
+            ("cree_le", "TIMESTAMP", TypeCategory::Timestamp),
+            ("jour", "DATE", TypeCategory::Timestamp),
+            ("actif", "BOOL", TypeCategory::Boolean),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(rang, (nom, type_bq, categorie))| ColumnInfo {
+            position: rang as u32 + 1,
+            name: nom.to_owned(),
+            type_name: type_bq.to_owned(),
+            category: categorie,
+            nullable: true,
+            default: None,
+            identity: None,
+            key: None,
+            comment: None,
+            frequency: None,
+        })
+        .collect()
+    }
+
     #[test]
     fn une_lecture_simple_cite_la_table_en_un_seul_jeton() {
-        let (sql, parametres) = requete_de("mon-projet", "jeu", &requete());
+        let (sql, parametres) = requete_de("mon-projet", "jeu", &requete(), &colonnes());
         assert_eq!(
             sql,
             "select * from `mon-projet.jeu.commandes` limit 500 offset 0"
@@ -292,7 +370,7 @@ mod tests {
             operator: FilterOperator::Eq,
             value: Some("'; drop table commandes; --".into()),
         }];
-        let (sql, parametres) = requete_de("p", "jeu", &r);
+        let (sql, parametres) = requete_de("p", "jeu", &r, &colonnes());
         assert!(!sql.contains("drop table"), "{sql}");
         assert!(sql.contains("= @p1"), "{sql}");
         assert_eq!(
@@ -314,7 +392,7 @@ mod tests {
             operator: FilterOperator::Matches,
             value: Some("100_%".into()),
         }];
-        let (sql, parametres) = requete_de("p", "jeu", &r);
+        let (sql, parametres) = requete_de("p", "jeu", &r, &colonnes());
         assert!(sql.contains("lower("), "{sql}");
         assert_eq!(
             parametres[0]
@@ -335,7 +413,7 @@ mod tests {
             operator: FilterOperator::In,
             value: Some("  ,  ".into()),
         }];
-        let (sql, _) = requete_de("p", "jeu", &r);
+        let (sql, _) = requete_de("p", "jeu", &r, &colonnes());
         assert!(sql.contains("0 = 1"), "{sql}");
     }
 
@@ -355,7 +433,7 @@ mod tests {
                 operator: operateur,
                 value: Some("10".into()),
             }];
-            let (sql, parametres) = requete_de("p", "jeu", &r);
+            let (sql, parametres) = requete_de("p", "jeu", &r, &colonnes());
             assert!(
                 sql.contains(&format!("cast(`montant` as bignumeric) {signe} @p1")),
                 "{sql}"
@@ -368,13 +446,59 @@ mod tests {
     }
 
     #[test]
+    fn is_true_et_is_false_sont_des_predicats_sans_parametre() {
+        for (operateur, attendu) in [
+            (FilterOperator::IsTrue, "`actif` is true"),
+            (FilterOperator::IsFalse, "`actif` is false"),
+        ] {
+            let mut r = requete();
+            r.filters = vec![Filter {
+                column: "actif".into(),
+                operator: operateur,
+                value: None,
+            }];
+            let (sql, parametres) = requete_de("p", "jeu", &r, &colonnes());
+            assert!(sql.contains(attendu), "{sql}");
+            // Pas de `cast(… as string)` : BigQuery a un vrai type `BOOL`.
+            assert!(!sql.contains("cast(`actif`"), "{sql}");
+            assert!(parametres.is_empty());
+        }
+    }
+
+    #[test]
+    fn une_borne_de_date_est_transtypee_vers_le_type_declare_de_la_colonne() {
+        // **Le type suit la colonne, pas un choix fait ici.** BigQuery n'accepte aucune coercition
+        // entre `DATE`, `DATETIME` et `TIMESTAMP` : un `cast(@p as timestamp)` contre une colonne
+        // `DATE` échouerait sur la comparaison. Le décor porte les deux types exprès.
+        for (colonne, type_bq) in [("cree_le", "TIMESTAMP"), ("jour", "DATE")] {
+            let mut r = requete();
+            r.filters = vec![Filter {
+                column: colonne.into(),
+                operator: FilterOperator::Lt,
+                value: Some("2026-03-01".into()),
+            }];
+            let (sql, parametres) = requete_de("p", "jeu", &r, &colonnes());
+            assert!(
+                sql.contains(&format!("`{colonne}` < cast(@p1 as {type_bq})")),
+                "{sql}"
+            );
+            // La borne part en `STRING`, transtypée par le SQL : c'est ce que l'API REST sait
+            // transmettre, `bignumeric` étant faux pour une date.
+            assert_eq!(
+                parametres[0].parameter_type.as_ref().unwrap().r#type,
+                "STRING"
+            );
+        }
+    }
+
+    #[test]
     fn le_tri_cite_ses_colonnes() {
         let mut r = requete();
         r.sort = vec![SortKey {
             column: "cree le".into(),
             direction: SortDirection::Descending,
         }];
-        let (sql, _) = requete_de("p", "jeu", &r);
+        let (sql, _) = requete_de("p", "jeu", &r, &colonnes());
         assert!(sql.contains("order by `cree le` desc"), "{sql}");
     }
 

@@ -105,10 +105,17 @@ fn condition_de(filtre: &Filter, parametres: &mut Vec<String>) -> String {
             format!("{colonne} like ? escape '\\\\'")
         }
         FilterOperator::IsNull => format!("{colonne} is null"),
-        // Réservées aux colonnes numériques — l'écran ne les propose que là. Aucun transtypage :
-        // MySQL compare une colonne numérique à une chaîne en la convertissant lui-même en nombre
-        // (« dans tous les autres cas, les arguments sont comparés comme des flottants »), à
-        // l'inverse de PostgreSQL, strict sur les types.
+        // **`is true` / `is false`, pas `= 1` / `= 0`.** MySQL n'a pas de type booléen : `bool` est
+        // un alias de `tinyint(1)`, et c'est `TypeCategory::Boolean` par la déclaration seule
+        // (`introspect::categorie`). `is true` y vaut « différent de zéro », donc il couvre le `1`
+        // usuel comme toute autre valeur non nulle, là où `= 1` en manquerait la moitié.
+        FilterOperator::IsTrue => format!("{colonne} is true"),
+        FilterOperator::IsFalse => format!("{colonne} is false"),
+        // Réservées aux colonnes numériques et temporelles — l'écran ne les propose que là. Aucun
+        // transtypage : MySQL compare une colonne numérique à une chaîne en la convertissant
+        // lui-même en nombre (« dans tous les autres cas, les arguments sont comparés comme des
+        // flottants »), et une colonne temporelle à une chaîne en lisant celle-ci comme une date —
+        // à l'inverse de PostgreSQL, strict sur les types.
         FilterOperator::Gt => {
             parametres.push(valeur);
             format!("{colonne} > ?")
@@ -536,6 +543,45 @@ mod tests {
         let (sql, parametres) = requete_de(&r);
         assert!(sql.contains("0 = 1"), "{sql}");
         assert!(parametres.is_empty());
+    }
+
+    #[test]
+    fn is_true_et_is_false_sont_des_predicats_sans_parametre() {
+        // **`is true`, pas `= 1`.** MySQL n'a pas de type booléen : `bool` est un alias de
+        // `tinyint(1)`, et une valeur autre que `0` ou `1` y est vraie. `= 1` en manquerait la
+        // moitié, sans que rien le dise.
+        for (operateur, attendu) in [
+            (FilterOperator::IsTrue, "`actif` is true"),
+            (FilterOperator::IsFalse, "`actif` is false"),
+        ] {
+            let mut r = requete();
+            r.filters = vec![Filter {
+                column: "actif".into(),
+                operator: operateur,
+                value: None,
+            }];
+            let (sql, parametres) = requete_de(&r);
+            assert!(sql.contains(attendu), "{sql}");
+            assert!(!sql.contains("= 1"), "{sql}");
+            assert!(parametres.is_empty());
+        }
+    }
+
+    #[test]
+    fn une_borne_de_date_part_en_parametre_sans_transtypage() {
+        // MySQL lit lui-même une chaîne comme une date quand l'autre membre est temporel : c'est
+        // ce qui laisse « avant » et « après » marcher sans connaître le type de la colonne, à
+        // l'inverse de PostgreSQL et de BigQuery.
+        let mut r = requete();
+        r.filters = vec![Filter {
+            column: "ouvert_le".into(),
+            operator: FilterOperator::Lt,
+            value: Some("2026-03-01".into()),
+        }];
+        let (sql, parametres) = requete_de(&r);
+        assert!(sql.contains("`ouvert_le` < ?"), "{sql}");
+        assert!(!sql.contains("cast("), "{sql}");
+        assert_eq!(parametres, vec!["2026-03-01".to_owned()]);
     }
 
     #[test]
