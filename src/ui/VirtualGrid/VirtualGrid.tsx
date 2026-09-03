@@ -172,8 +172,8 @@ type VirtualGridProps<Row> = {
   /**
    * Redimensionnement des colonnes à la poignée, posée sur le bord droit de chaque en-tête.
    *
-   * Absente, aucune poignée ne se rend — c'est le cas de la console de `A7`, dont les colonnes
-   * n'ont pas encore ce geste. Appelée au relâchement du geste ou à une flèche du clavier
+   * Absente, aucune poignée ne se rend — c'est le cas des vitrines de la galerie, qui montrent la
+   * grille sans ses gestes de colonne. Appelée au relâchement du geste ou à une flèche du clavier
    * seulement, jamais à chaque `pointermove` : la largeur affichée pendant le glissement reste un
    * état interne de la grille, comme la taille de `SplitPane` pendant sa propre poignée — la
    * relever à chaque trame referait retraverser toute la fenêtre visible chez l'appelant pour
