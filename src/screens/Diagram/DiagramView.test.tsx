@@ -542,6 +542,10 @@ test('chaque lien porte au départ la marque de sa cardinalité', async () => {
    *
    * Ce que jsdom peut mesurer ici est le **choix de la marque** ; qu'elle se dessine en demi-cercle
    * appartient à `e2e/` comme tout ce qui est mise en page (règle n° 9).
+   *
+   * Le repère est `data-marque` : les marques sont des `<path>` ordinaires depuis le 4 septembre
+   * 2026 — voir la raison dans `DiagramView` —, donc il n'y a plus d'attribut `marker-start` à
+   * lire, et le tracé lui-même n'a pas à entrer dans une assertion (il a changé quatre fois).
    */
   const { container } = monter(
     <DiagramView schema="public" tables={[...CHAINE, PROFILS]} total={4} />,
@@ -549,9 +553,13 @@ test('chaque lien porte au départ la marque de sa cardinalité', async () => {
 
   const marques = () =>
     Object.fromEntries(
-      [...container.querySelectorAll('[data-liens] path[marker-start]')].map((trait) => [
-        trait.getAttribute('data-lien'),
-        /-(one|many)(-choisie)?\)$/.exec(trait.getAttribute('marker-start') ?? '')?.[1],
+      [
+        ...container.querySelectorAll(
+          '[data-liens] path[data-marque="one"], [data-liens] path[data-marque="many"]',
+        ),
+      ].map((marque) => [
+        marque.getAttribute('data-marque-lien'),
+        marque.getAttribute('data-marque'),
       ]),
     )
 
@@ -566,7 +574,7 @@ test('chaque lien porte au départ la marque de sa cardinalité', async () => {
 
 test('la cardinalité s’écrit aussi en toutes lettres, là où une marque ne se lit pas', async () => {
   /*
-   * **Un demi-cercle ne dit rien à qui ne connaît pas la notation**, et un `marker` SVG n'a aucun
+   * **Un demi-cercle ne dit rien à qui ne connaît pas la notation**, et un tracé SVG n'a aucun
    * texte qu'une voix puisse rendre. Les deux endroits où la relation se lit en mots doivent donc la
    * porter : l'infobulle d'une ligne, et la bande qui écrit le chemin entre deux tables.
    */
@@ -736,10 +744,11 @@ test('elle trouve une colonne que l’aperçu masque', async () => {
 test('les liens dont aucun bout n’est cherché s’effacent', async () => {
   const utilisateur = userEvent.setup()
   const { container } = monter(<DiagramView schema="public" tables={DEUX} total={2} />)
+  const estEteint = (n: Element | null) => n?.getAttribute('class')?.includes('lienEteint') ?? false
+  // **Le trait seul**, par `data-lien` : un lien est dessiné par trois `<path>` — sa trace et ses
+  // deux marques —, et compter tout ce qui porte un `d` compterait trois fois chaque lien.
   const eteints = () =>
-    [...container.querySelectorAll('[data-liens] path[d]')].filter((trace) =>
-      trace.getAttribute('class')?.includes('lienEteint'),
-    ).length
+    [...container.querySelectorAll('[data-liens] path[data-lien]')].filter(estEteint).length
 
   expect(eteints()).toBe(0)
   // `status` ne désigne qu'`orders` ; le lien `orders → users` a donc un bout cherché et reste.
@@ -751,6 +760,20 @@ test('les liens dont aucun bout n’est cherché s’effacent', async () => {
   await utilisateur.clear(screen.getByRole('textbox', { name: /Chercher/ }))
   await utilisateur.type(screen.getByRole('textbox', { name: /Chercher/ }), 'zzzz')
   expect(eteints()).toBe(1)
+
+  /*
+   * **Et ses deux marques s'effacent avec lui.** C'est la propriété qui a fait des marques des
+   * `<path>` plutôt que des `<marker>` : un état du trait doit les atteindre *par construction*,
+   * puisqu'elles portent ses classes. Un `marker` vivait dans `<defs>`, était partagé par tous les
+   * liens, et son état se choisissait en basculant une **référence** — ce que la webview de
+   * l'application ne repeignait pas toujours. Ici il n'y a plus de référence, donc plus rien à
+   * repeindre : jsdom suffit à le constater.
+   */
+  const trait = container.querySelector('[data-liens] path[data-lien]')
+  const id = trait?.getAttribute('data-lien')
+  const sesMarques = [...container.querySelectorAll(`[data-marque-lien="${id}"]`)]
+  expect(sesMarques).toHaveLength(2)
+  expect(sesMarques.every(estEteint)).toBe(true)
 })
 
 test('`Entrée` désigne la correspondance, et passe à la suivante', async () => {

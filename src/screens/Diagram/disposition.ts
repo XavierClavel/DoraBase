@@ -105,6 +105,20 @@ export type Lien = {
   chemin: string
   depart: { x: number; y: number }
   arrivee: { x: number; y: number }
+  /**
+   * Le **sens de parcours** du trait à chacun de ses deux bouts, en `+1` (vers la droite) ou `-1`.
+   *
+   * C'est ce que `orient="auto"` calculait pour un `marker` SVG, et il faut le dire nous-mêmes
+   * depuis que les marques sont des `<path>` ordinaires — voir la raison dans `DiagramView`. Le
+   * tracé étant orthogonal, un bout est toujours horizontal : deux valeurs suffisent, et aucune
+   * rotation n'est à composer.
+   *
+   * Les trois cas de `tracerTout` les fixent : en avant `(+1, +1)`, en arrière `(-1, -1)`, et
+   * réflexif `(+1, -1)` — on ressort à droite et l'on y revient, donc le second bout remonte le
+   * courant.
+   */
+  sensDepart: -1 | 1
+  sensArrivee: -1 | 1
 }
 
 export type Disposition = {
@@ -1056,6 +1070,9 @@ function tracerTout(
     bord: number
     /** `-1` quand les couloirs s'éloignent vers la gauche, `+1` vers la droite. */
     sens: -1 | 1
+    /** Le sens de parcours à chaque bout — voir `Lien.sensDepart`. */
+    sensDepart: -1 | 1
+    sensArrivee: -1 | 1
     reflexif: boolean
   }
 
@@ -1082,6 +1099,9 @@ function tracerTout(
         gouttiere: `boucle:${source.id}`,
         bord: x,
         sens: 1,
+        // On ressort à droite et l'on y revient : le second bout remonte le courant.
+        sensDepart: 1,
+        sensArrivee: -1,
         reflexif: true,
       })
       continue
@@ -1106,6 +1126,8 @@ function tracerTout(
         gouttiere: `avant:${cible.couche}`,
         bord: cible.x,
         sens: -1,
+        sensDepart: 1,
+        sensArrivee: 1,
         reflexif: false,
       })
       continue
@@ -1123,6 +1145,8 @@ function tracerTout(
       gouttiere: `arriere:${source.couche}`,
       bord: source.x,
       sens: -1,
+      sensDepart: -1,
+      sensArrivee: -1,
       reflexif: false,
     })
   }
@@ -1166,6 +1190,8 @@ function tracerTout(
           cardinalite: resolu.candidat.cardinalite,
           depart: resolu.depart,
           arrivee: resolu.arrivee,
+          sensDepart: resolu.sensDepart,
+          sensArrivee: resolu.sensArrivee,
         }
         const rang = couloirs.get(resolu.candidat.id) ?? 0
         if (resolu.reflexif) {

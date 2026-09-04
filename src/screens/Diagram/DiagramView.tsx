@@ -1,4 +1,4 @@
-import { type PointerEvent as PointerEventReact, useId, useMemo, useRef, useState } from 'react'
+import { type PointerEvent as PointerEventReact, useMemo, useRef, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import { useT } from '../../i18n/LanguageContext'
 import { toucheMajuscule } from '../../shell/plateforme'
@@ -139,8 +139,6 @@ export function DiagramView({
   /** Le champ lui-même : le vider par le bouton doit lui **rendre** le focus, non le lui prendre. */
   const champ = useRef<HTMLInputElement>(null)
   const toile = useRef<HTMLDivElement>(null)
-  /** Le préfixe des flèches : deux diagrammes ouverts partageraient sinon leurs `marker`. */
-  const marques = useId().replace(/:/g, '')
 
   const vue = useMemo(
     () =>
@@ -612,44 +610,42 @@ export function DiagramView({
               height={vue.hauteur}
               aria-hidden="true"
             >
-              <defs>
-                {/* Deux marques plutôt qu'un `context-stroke`, qui hériterait du trait du chemin :
-                    son support sous le plancher Safari 16.4 n'a pas été mesuré, et une flèche qui
-                    disparaît est un lien qui ne dit plus dans quel sens il va. */}
-                <Fleche id={`${marques}-fleche`} className={styles.pointe} />
-                <Fleche id={`${marques}-fleche-choisie`} className={styles.pointeChoisie} />
-                <MarqueDePlusieurs id={`${marques}-many`} className={styles.pointe} />
-                <MarqueDePlusieurs
-                  id={`${marques}-many-choisie`}
-                  className={styles.pointeChoisie}
-                />
-                <Barre id={`${marques}-one`} className={styles.pointe} />
-                <Barre id={`${marques}-one-choisie`} className={styles.pointeChoisie} />
-              </defs>
-              {liensAPeindre.map(({ lien, touche, eteint }) => (
-                <path
-                  key={lien.id}
-                  /* Le repère par lequel un test désigne un trait : une classe de module CSS est
-                     un nom engendré, et s'y accrocher mesurerait l'outil de construction. Même
-                     raison que `data-boite` et `data-colonne`. */
-                  data-lien={lien.id}
-                  d={lien.chemin}
-                  className={cx(
-                    styles.lien,
-                    touche && styles.lienChoisi,
-                    eteint && styles.lienEteint,
-                  )}
-                  markerEnd={`url(#${marques}-fleche${touche ? '-choisie' : ''})`}
-                  /* **La cardinalité se marque au *départ*, la flèche reste à l'arrivée.** Le
-                     côté référencé est toujours *un* — une clé étrangère ne peut viser que des
-                     colonnes uniques —, donc il n'y a qu'un bout où il y ait quelque chose à
-                     dire. Et la pointe qui donne le sens du lien n'est pas déplaçable : une
-                     flèche qui disparaît est un lien qui ne dit plus où il va. */
-                  markerStart={`url(#${marques}-${lien.cardinalite === 'one' ? 'one' : 'many'}${
-                    touche ? '-choisie' : ''
-                  })`}
-                />
-              ))}
+              {liensAPeindre.map(({ lien, touche, eteint }) => {
+                const etat = cx(touche && styles.lienChoisi, eteint && styles.lienEteint)
+                return (
+                  <g key={lien.id}>
+                    <path
+                      /* Le repère par lequel un test désigne un trait : une classe de module CSS
+                         est un nom engendré, et s'y accrocher mesurerait l'outil de construction.
+                         Même raison que `data-boite` et `data-colonne`. */
+                      data-lien={lien.id}
+                      d={lien.chemin}
+                      className={cx(styles.lien, etat)}
+                    />
+                    {/* **La cardinalité se marque au *départ*, la flèche reste à l'arrivée.** Le
+                        côté référencé est toujours *un* — une clé étrangère ne peut viser que des
+                        colonnes uniques —, donc il n'y a qu'un bout où il y ait quelque chose à
+                        dire. Et la pointe qui donne le sens du lien n'est pas déplaçable : une
+                        flèche qui disparaît est un lien qui ne dit plus où il va. */}
+                    <path
+                      data-marque={lien.cardinalite === 'one' ? 'one' : 'many'}
+                      data-marque-lien={lien.id}
+                      d={
+                        lien.cardinalite === 'one'
+                          ? barreDeUn(lien.depart, lien.sensDepart)
+                          : demiCercleDePlusieurs(lien.depart, lien.sensDepart)
+                      }
+                      className={cx(styles.lien, styles.pointe, etat)}
+                    />
+                    <path
+                      data-marque="fleche"
+                      data-marque-lien={lien.id}
+                      d={pointeDeFleche(lien.arrivee, lien.sensArrivee)}
+                      className={cx(styles.lien, styles.pointe, etat)}
+                    />
+                  </g>
+                )
+              })}
             </svg>
             {vue.boites.map((boite) => (
               <Cadre
@@ -676,49 +672,6 @@ export function DiagramView({
   )
 }
 
-/** La pointe d'un lien : un chevron **en trait**, comme toutes les icônes du projet. */
-function Fleche({ id, className }: { id: string; className: string | undefined }) {
-  return (
-    <marker
-      id={id}
-      viewBox="0 0 13 13"
-      refX="10.5"
-      refY="6.5"
-      markerUnits="userSpaceOnUse"
-      markerWidth="13"
-      markerHeight="13"
-      orient="auto"
-    >
-      <path d="M5 3.4 L10.5 6.5 L5 9.6" className={className} />
-    </marker>
-  )
-}
-
-/**
- * La bande qui dit ce qui relie les tables choisies.
- *
- * # Ce qu'elle répond, et que le dessin seul ne répondait pas
- *
- * Choisir une table éclaire ses voisines immédiates : « qu'est-ce qui touche `orders` ? ». Deux
- * tables posent l'autre question — « qu'est-ce qui relie `orders` à `shipment_batches` ? » — et
- * c'est celle qu'on se pose avant d'écrire une jointure, précisément parce qu'aucune clé ne les
- * relie directement. Le dessin trace le chemin ; la bande l'**écrit**, colonne par colonne, dans
- * l'ordre où on le parcourt.
- *
- * # Les trois états, qui ne se confondent pas
- *
- * Une seule table choisie : la bande dit laquelle, et **le geste** qui en désigne une seconde —
- * `⇧`-clic ne s'annonce nulle part ailleurs, et un geste qu'on ne peut pas deviner n'existe pas.
- * Deux tables et un chemin : le chemin. Deux tables et aucun chemin : la phrase qui le dit, et elle
- * ne prétend rien de plus que ce que le dessin contient — voir `partiel`.
- *
- * # Une flèche pour l'œil, un verbe pour la voix
- *
- * `→` se lit d'un coup d'œil et ne s'annonce pas : une voix qui rendrait « orders.user_id users.id »
- * ne dirait plus dans quel sens va la clé, ce qui est exactement l'information. Le verbe est donc
- * posé en texte masqué (`clip-path`, jamais `display: none`), **avec ses espaces**, et la flèche
- * retirée de l'arbre d'accessibilité — le piège n° 1 et le piège n° 2 dans la même ligne.
- */
 function BandeDeRelation({
   boites,
   selection,
@@ -849,84 +802,113 @@ function qualifier(table: string, colonnes: readonly string[]): string {
   return `${table}.${colonnes[0] ?? ''}`
 }
 
-/**
- * La marque du côté « plusieurs », posée au départ du lien : un demi-cercle.
+/*
+ * ============================================================================================
+ * Les marques : des `<path>` ordinaires, et non des `<marker>` SVG
+ * ============================================================================================
  *
- * **Elle dit la notation entité-association sans en reprendre le dessin.** Ce que la notation
- * exige est qu'un bout de lien se distingue de l'autre et qu'on sache lequel se multiplie ; la
- * patte d'oie est *une* façon de le dire, pas la seule. Le demi-cercle en est une autre, et c'est
- * celle qui s'accorde à ce dessin-ci : son diamètre s'appuie à plat contre le bord de la boîte, son
- * arc s'ouvre le long du lien, et il n'a **aucun angle** — là où tout le reste du tracé est fait de
+ * **Pourquoi elles ont cessé d'être des `marker`** (4 septembre 2026, rapporté à l'usage : « le
+ * demi-cercle reste surligné pour toujours, alors qu'il ne devrait pas ; pareil pour la flèche »,
+ * puis « ça n'arrive pas toujours »).
+ *
+ * Un `marker` vit dans `<defs>` et se référence par `marker-start` / `marker-end`. Le dessin en
+ * avait deux exemplaires par forme — l'ordinaire et l'accentué — et chaque trait basculait sa
+ * *référence* d'un exemplaire à l'autre selon qu'il était choisi. Le DOM était juste dans tous les
+ * états, mesuré sur toutes les sélections du décor ; **la webview de l'application, elle, gardait le
+ * dessin précédent** — donc l'accent restait, par intermittence.
+ *
+ * Rien de tout cela ne se reproduit sous Chromium, sans tête comme avec : le seul endroit où le
+ * défaut existe est WKWebView, que rien de cet outillage ne pilote (voir « Ce que l'outillage ne
+ * peut pas voir »). **Le fait qui a tranché** est que les *traits*, eux, se repeignaient
+ * correctement — seules les marques ne suivaient pas. Alors les marques deviennent des traits :
+ * trois `<path>` par lien, avec les classes du trait, dans le même `<g>` que lui. Il n'y a plus de
+ * ressource `marker` à invalider, donc plus de famille de défaut à laquelle échapper — et non un
+ * contournement d'un bogue qu'on ne sait pas mesurer.
+ *
+ * Quatre choses gagnées au passage, et c'est ce qui rend l'échange favorable même sans le défaut :
+ *
+ * - **l'égalité d'encre et d'épaisseur devient structurelle.** Une marque porte `styles.lien` et
+ *   l'état du trait, donc *les mêmes déclarations* — non deux valeurs qu'il fallait tenir en phase à
+ *   la main, ce qui avait déjà coûté deux signalements ;
+ * - **le piège de `markerUnits` disparaît avec la cause.** La boîte d'un `marker` se compte en
+ *   multiples de l'épaisseur du trait marqué, ce qui rendait fausses toutes les cotes qu'on croyait
+ *   poser en pixels. Un `<path>` est en pixels de toile, sans réglage ;
+ * - **l'ordre de peinture est celui du `<g>`.** Une marque ne peut plus se retrouver au-dessus d'un
+ *   trait accentué : elle voyage avec le sien ;
+ * - **une marque devient mesurable.** Un `marker` dans `<defs>` n'a pas de boîte englobante — un
+ *   test ne pouvait donc constater que sa *déclaration*, jamais qu'elle avait peint quelque part.
+ *
+ * Ce qui se perd est `orient="auto"`, qui donnait l'angle. Le tracé étant orthogonal, un bout est
+ * toujours horizontal : `Lien.sensDepart` et `Lien.sensArrivee` valent `+1` ou `-1`, et les trois
+ * fonctions ci-dessous s'en servent pour se retourner. Aucune rotation à composer.
+ *
+ * **Les cotes sont celles des `marker` qu'elles remplacent**, à l'unité près : elles y étaient
+ * exprimées dans une `viewBox` de 13 à l'échelle 1, donc déjà en pixels, l'ancre tombant à
+ * `(0, 6.5)` pour les deux marques de départ et à `(10.5, 6.5)` pour la flèche. Ici l'ancre est
+ * l'origine, et les cotes sont comptées depuis elle.
+ */
+
+/**
+ * Le demi-cercle du côté « plusieurs », posé au départ du lien.
+ *
+ * **Il dit la notation entité-association sans en reprendre le dessin.** Ce que la notation exige
+ * est qu'un bout de lien se distingue de l'autre et qu'on sache lequel se multiplie ; la patte
+ * d'oie est *une* façon de le dire, pas la seule. Le demi-cercle en est une autre, et c'est celle
+ * qui s'accorde à ce dessin-ci : son diamètre s'appuie à plat contre le bord de la boîte, son arc
+ * s'ouvre le long du lien, et il n'a **aucun angle** — là où tout le reste du tracé est fait de
  * coudes arrondis, la courbe ayant été bannie des liens eux-mêmes pour qu'ils se distinguent les
  * uns des autres.
  *
- * # Quatre dessins, et ce qu'ils ont appris (rapporté à l'usage, à chaque tour)
+ * # Quatre dessins avant celui-ci (rapporté à l'usage, à chaque tour)
  *
- * 1. `M0 1 L7 5 M0 5 L7 5 M0 9 L7 5` — trois segments droits convergents, la patte d'oie
- *    canonique. Trois angles vifs au bord de chaque boîte : le seul endroit anguleux du dessin ;
- * 2. dents parallèles ramenées par une **traverse** d'angle droit arrondi. Elle se lisait comme un
- *    crochet : des dents d'à peine une épaisseur de trait, et une traverse qui prenait le reste ;
- * 3. dents **cintrées** convergeant vers l'axe, sans partie droite : un double chevron, le raccord
- *    occupant plus de place que les dents ;
- * 4. le demi-cercle. Une seule commande d'arc, aucun raccord à proportionner, et rien qui puisse
- *    se confondre avec son propre trait.
+ * 1. trois segments droits convergents, la patte d'oie canonique : trois angles vifs au bord de
+ *    chaque boîte, le seul endroit anguleux du dessin ;
+ * 2. des dents parallèles ramenées par une **traverse** d'angle droit : un crochet, les dents
+ *    faisant à peine une épaisseur de trait ;
+ * 3. des dents **cintrées** convergeant sans partie droite : un double chevron, le raccord prenant
+ *    plus de place que les dents ;
+ * 4. le demi-cercle. Une seule commande d'arc, aucun raccord à proportionner, et rien qui puisse se
+ *    confondre avec son propre trait.
  *
- * **Les deux premiers échecs avaient la même cause, et elle n'était pas dans le tracé** : la boîte
- * de la marque était plus petite qu'on ne le croyait, parce que `markerUnits` vaut `strokeWidth`
- * par défaut — voir la feuille de style, où le fait est écrit. Une forme à treize pixels se règle
- * en proportions, et on ne règle pas des proportions dans une unité qu'on ignore.
+ * Les deux échecs du milieu avaient la même cause, et elle n'était pas dans le tracé : la boîte de
+ * la marque était plus petite qu'on ne le croyait, à cause de `markerUnits` — **on ne règle pas des
+ * proportions dans une unité qu'on ignore**. Et rien de tout cela ne se voit autrement qu'à la
+ * loupe : la seule mesure qui juge est une capture à `deviceScaleFactor: 6`, **regardée**.
  *
- * Rien de tout cela ne se voit autrement qu'à la loupe : le test e2e garde que la marque peint, son
- * `refX`, son `orient` et son épaisseur, jamais son tracé — un `d` recopié dans une assertion se
- * périme au premier ajustement de forme, et celui-ci en a connu quatre. La seule mesure qui juge
- * est une capture à `deviceScaleFactor: 6`, **regardée**.
- *
- * `refX` vaut 0 : la marque commence exactement au bord de la boîte, et `orient="auto"` la retourne
- * d'elle-même sur les liens qui sortent par la gauche — ceux que les cycles et les couches produisent.
+ * La corde va de `-5` à `+5`, donc dix pixels : le rayon est de cinq et l'arc culmine à cinq pixels
+ * du bord. Écrire un rayon plus grand que la moitié de la corde ne lèverait rien — SVG l'agrandit
+ * en silence jusqu'à ce qu'un arc soit possible, et le demi-cercle deviendrait un arc quelconque
+ * sans qu'on sache pourquoi.
  */
-function MarqueDePlusieurs({ id, className }: { id: string; className: string | undefined }) {
-  return (
-    <marker
-      id={id}
-      viewBox="0 0 13 13"
-      refX="0"
-      refY="6.5"
-      markerUnits="userSpaceOnUse"
-      markerWidth="13"
-      markerHeight="13"
-      orient="auto"
-    >
-      {/* Un demi-cercle exact : la corde va de 1,5 à 11,5 — dix pixels —, donc le rayon est de
-          cinq et l'arc culmine à cinq pixels du bord. Écrire un rayon plus grand que la moitié de
-          la corde ne lèverait rien : SVG l'agrandit en silence jusqu'à ce qu'un arc soit possible,
-          et le demi-cercle deviendrait un arc quelconque sans qu'on sache pourquoi. */}
-      <path d="M0 1.5 A5 5 0 0 1 0 11.5" className={className} />
-    </marker>
-  )
+function demiCercleDePlusieurs(ancre: { x: number; y: number }, sens: -1 | 1): string {
+  // Le drapeau de balayage porte le retournement : à sens inverse, l'arc doit bomber de l'autre
+  // côté de sa corde, et une corde verticale ne se retourne pas autrement.
+  const balayage = sens === 1 ? 1 : 0
+  return `M${ancre.x} ${ancre.y - 5} A5 5 0 0 ${balayage} ${ancre.x} ${ancre.y + 5}`
 }
 
 /**
- * Le trait du côté « un », posé au départ du lien.
+ * La barre du côté « un », posée au départ du lien.
  *
  * L'autre moitié de la même notation : une barre perpendiculaire dit « une seule ligne ici ».
  * **Elle n'est pas l'absence de demi-cercle** — un lien sans marque se lirait comme un lien qu'on
  * n'a pas su qualifier, et les deux valeurs de `RelationCardinality` sont toutes deux des réponses.
  */
-function Barre({ id, className }: { id: string; className: string | undefined }) {
-  return (
-    <marker
-      id={id}
-      viewBox="0 0 13 13"
-      refX="0"
-      refY="6.5"
-      markerUnits="userSpaceOnUse"
-      markerWidth="13"
-      markerHeight="13"
-      orient="auto"
-    >
-      <path d="M4 2 L4 11" className={className} />
-    </marker>
-  )
+function barreDeUn(ancre: { x: number; y: number }, sens: -1 | 1): string {
+  const x = ancre.x + sens * 4
+  return `M${x} ${ancre.y - 4.5} L${x} ${ancre.y + 4.5}`
+}
+
+/**
+ * La pointe d'un lien : un chevron **en trait**, comme toutes les icônes du projet.
+ *
+ * La pointe tombe *sur* l'ancre — le bord de la boîte visée — et les deux branches partent en
+ * arrière, à contre-courant : c'est l'ancre qui désigne l'endroit où la flèche arrive, pas celui
+ * où elle commence.
+ */
+function pointeDeFleche(ancre: { x: number; y: number }, sens: -1 | 1): string {
+  const arriere = ancre.x - sens * 5.5
+  return `M${arriere} ${ancre.y - 3.1} L${ancre.x} ${ancre.y} L${arriere} ${ancre.y + 3.1}`
 }
 
 /**
