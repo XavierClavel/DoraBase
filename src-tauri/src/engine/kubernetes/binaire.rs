@@ -195,23 +195,37 @@ mod tests {
             assert!(rd.is_some(), "Rancher Desktop attendu : {en_texte:?}");
         }
 
-        // Homebrew et Docker Desktop sont des chemins de macOS : sous Windows la liste ne les
-        // porte pas, et `programme::EMPLACEMENTS_USUELS` y est vide — voir leurs déclarations.
-        #[cfg(not(windows))]
+        // Les emplacements usuels de la plateforme sont là, **demandés et non recopiés**
+        // (4 septembre 2026).
+        //
+        // Ce test épinglait `/opt/homebrew/bin` sous `cfg(not(windows))`, ce qui voulait dire
+        // « macOS » sans le dire : l'arrivée de Linux, dont les emplacements usuels ne sont pas
+        // ceux de Homebrew, l'a fait tomber. C'est le défaut d'`estWindows` reparu dans un `cfg`.
+        // Le `cfg` nomme donc les deux plateformes dont la liste n'est pas vide — ailleurs la
+        // boucle ne mesurerait rien.
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         {
-            assert!(
-                en_texte.iter().any(|c| c == "/opt/homebrew/bin"),
-                "{en_texte:?}"
-            );
-            // Docker Desktop garde son `kubectl` dans le bundle de l'app et ne le lie nulle part
-            // de façon fiable.
-            assert!(
-                en_texte
-                    .iter()
-                    .any(|c| c == "/Applications/Docker.app/Contents/Resources/bin"),
-                "{en_texte:?}"
-            );
+            for usuel in programme::EMPLACEMENTS_USUELS {
+                let attendu = programme::chemin_utilisateur(usuel);
+                assert!(
+                    emplacements.contains(&attendu),
+                    "« {} » manque dans {en_texte:?}",
+                    attendu.display()
+                );
+            }
         }
+
+        // Docker Desktop, lui, **est** un chemin de macOS et le reste : il garde son `kubectl`
+        // dans le bundle de l'app et ne le lie nulle part de façon fiable. Ni Windows ni Linux ne
+        // le portent, faute d'avoir été mesurés — voir la déclaration d'`EMPLACEMENTS_CONNUS`.
+        // Le `cfg` dit donc ici ce qu'il veut dire, et c'est pourquoi il ne bouge pas.
+        #[cfg(target_os = "macos")]
+        assert!(
+            en_texte
+                .iter()
+                .any(|c| c == "/Applications/Docker.app/Contents/Resources/bin"),
+            "{en_texte:?}"
+        );
     }
 
     #[test]
