@@ -504,44 +504,63 @@ qu'il portait et que le rendu ne dit pas.
       demandent d'écarter l'index **entier** plutôt que ligne à ligne : `unique (code(10), compte_id)`
       dont on ne retirerait que la ligne préfixée laisse l'ensemble `{compte_id}`, qui répond « oui »
       à une clé étrangère sur `compte_id` seule alors que rien n'y garantit son unicité.
-    - **et la marque du côté « plusieurs » est un demi-cercle** (4 septembre 2026, à la demande, en
-      trois tours : « plus rond, comme un trident », puis « comme une fourchette », puis « comme un
-      demi-cercle »). La patte d'oie d'origine était trois segments droits convergents — la notation
-      canonique, et le seul endroit du dessin à porter un angle vif, alors que tout le reste est fait
-      de coudes arrondis et que la courbe avait justement été bannie des liens pour cette raison. Ce
-      que la notation exige est qu'un bout de lien se distingue de l'autre et qu'on sache lequel se
-      multiplie ; la patte d'oie est *une* façon de le dire, pas la seule. Trois choses apprises en
-      la redessinant, et les deux dernières valent au-delà de cet écran :
-      - **`markerUnits` vaut `strokeWidth` par défaut, et c'est un piège muet.** La boîte d'un
-        `marker` s'exprime alors en **multiples de l'épaisseur du trait marqué** : une marque de 9
-        posée sur un lien de 1,4 occupe 12,6 px, sa `viewBox` de 10 s'y étire d'un facteur 1,26, et
-        son trait de 1,6 est peint à **2 px** — 44 % de plus que le lien qu'elle termine. Les cotes
-        qu'on croit poser en pixels n'en sont donc pas, et rien ne le dit : le rendu est *plausible*,
-        simplement gras. Les trois `marker` du diagramme sont à l'échelle 1 depuis
-        (`userSpaceOnUse`, `markerWidth` égal à la `viewBox`), et leur `stroke-width` s'écrit dans
-        la même unité que `.lien` — donc à la même valeur, ce qui est le seul réglage correct : une
-        marque au bout d'un trait doit être ce trait qui se termine, pas un second trait plus gras ;
+    - **et la marque du côté « plusieurs » est un demi-cercle, dessiné en `<path>` et non en
+      `<marker>`** (4 septembre 2026, à la demande, en quatre tours : « plus rond, comme un
+      trident », « comme une fourchette », « comme un demi-cercle », puis « le demi-cercle reste
+      surligné pour toujours »). La patte d'oie d'origine était trois segments droits convergents —
+      la notation canonique, et le seul endroit du dessin à porter un angle vif, alors que tout le
+      reste est fait de coudes arrondis et que la courbe avait justement été bannie des liens pour
+      cette raison. Ce que la notation exige est qu'un bout de lien se distingue de l'autre et qu'on
+      sache lequel se multiplie ; la patte d'oie est *une* façon de le dire, pas la seule. Quatre
+      choses apprises, et les trois dernières valent au-delà de cet écran :
       - **une forme à treize pixels se règle en proportions, et la forme la plus simple gagne.**
         Quatre dessins : trois segments convergents (des angles vifs) ; des dents parallèles
         ramenées par une traverse d'angle droit (un crochet — des dents d'à peine une épaisseur de
         trait) ; des dents cintrées convergeant sans partie droite (un double chevron, le raccord
         prenant plus de place que les dents) ; puis le demi-cercle, **une seule commande d'arc**,
-        aucun raccord à proportionner, et rien qui puisse se confondre avec son propre trait. Les
-        deux échecs du milieu avaient la même cause, et elle n'était pas dans le tracé : la boîte de
-        la marque était plus petite qu'on ne le croyait, à cause du `markerUnits` ci-dessus. **On ne
-        règle pas des proportions dans une unité qu'on ignore** ;
-      - **rien de tout cela ne se voit autrement qu'à la loupe.** Le test e2e qui garde la notation
-        vérifie que le `marker` peint, son `refX` et son `orient` — jamais son tracé, et il aurait
-        raison de ne pas le faire : un `d` recopié dans une assertion se périme au premier
-        ajustement de forme. La seule mesure qui juge est une capture à `deviceScaleFactor: 6`,
-        **regardée**. C'est la méthode qui a le plus payé, appliquée à treize pixels.
+        aucun raccord à proportionner, et rien qui puisse se confondre avec son propre trait ;
+      - **`markerUnits` vaut `strokeWidth` par défaut, et c'est un piège muet** — la cause des deux
+        échecs du milieu, et elle n'était pas dans le tracé. La boîte d'un `marker` s'exprime alors
+        en **multiples de l'épaisseur du trait marqué** : une marque de 9 posée sur un lien de 1,4
+        occupe 12,6 px, sa `viewBox` de 10 s'y étire d'un facteur 1,26, et son trait de 1,6 est
+        peint à **2 px** — 44 % de plus que le lien qu'elle termine. Les cotes qu'on croit poser en
+        pixels n'en sont donc pas, et rien ne le dit : le rendu est *plausible*, simplement gras.
+        **On ne règle pas des proportions dans une unité qu'on ignore** ;
+      - **et c'est ce qui a fait renoncer aux `marker` tout court.** Le dessin en avait deux
+        exemplaires par forme — l'ordinaire et l'accentué — et chaque trait basculait sa *référence*
+        de l'un à l'autre selon qu'il était choisi. Le DOM était juste dans tous les états, mesuré
+        sur toutes les sélections du décor ; **la webview de l'application gardait le dessin
+        précédent**, donc l'accent restait, par intermittence. Rien ne se reproduit sous Chromium,
+        sans tête comme avec : le seul endroit où le défaut existe est WKWebView, que rien de cet
+        outillage ne pilote. **Le fait qui a tranché est que les traits, eux, se repeignaient
+        correctement** — alors les marques sont devenues des traits : trois `<path>` par lien, avec
+        les classes du trait, dans le même `<g>` que lui. Il n'y a plus de ressource `marker` à
+        invalider, donc plus de famille de défaut à laquelle échapper — et non un contournement d'un
+        bogue qu'on ne sait pas mesurer. Quatre choses gagnées, qui rendent l'échange favorable même
+        sans le défaut : l'égalité d'encre et d'épaisseur devient **structurelle** (les mêmes
+        déclarations, non deux valeurs à tenir en phase, ce qui avait déjà coûté deux signalements) ;
+        le piège de `markerUnits` disparaît avec sa cause ; une marque ne peut plus se retrouver
+        au-dessus d'un trait accentué, puisqu'elle voyage avec le sien ; et **une marque devient
+        mesurable** — un `marker` vit dans `<defs>`, donc sa boîte englobante est nulle par
+        construction, et aucun test ne pouvait constater qu'il avait peint quelque part. Ce qui se
+        perd est `orient="auto"` : `Lien.sensDepart` et `Lien.sensArrivee` portent désormais le sens
+        de parcours, ce qui suffit puisque le tracé est orthogonal ;
+      - **rien de tout cela ne se voit autrement qu'à la loupe.** Aucun test ne garde le tracé
+        lui-même, et il aurait raison de ne pas le faire : un `d` recopié dans une assertion se
+        périme au premier ajustement de forme, et celui-ci en a connu quatre. Ce que les tests
+        gardent est l'**ancrage** — chaque marque s'appuie contre un bord de boîte à l'épaisseur d'un
+        trait près, ce qui remplace `refX` et `orient` d'un coup — et le fait d'avoir peint. La seule
+        mesure qui juge la forme est une capture à `deviceScaleFactor: 6`, **regardée**. C'est la
+        méthode qui a le plus payé, appliquée à treize pixels. Piège rencontré en l'écrivant : la
+        boîte englobante d'un `<path>` est sa **géométrie**, sans l'épaisseur du trait, donc la barre
+        du `1:1` est large de **zéro** — le trait qu'on voit n'est pas dans la boîte qu'on mesure.
   - **et un trait de lien est opaque** (4 septembre 2026, rapporté à l'usage : « la couleur
     n'est pas cohérente là où deux traits se superposent »). Ils portaient `--ink-5`, une encre
     à 30 % : deux couches sur la même toile donnent 1 − 0,70² = 51 %, donc le croisement se
     peint plus sombre que tout le reste du dessin — à l'endroit précis où l'œil cherche à suivre
-    un trait, et avec l'aspect d'une désignation alors que rien n'y est désigné. `--link` et
-    `--link-mark` sont le **composite exact** de ces deux encres sur `--canvas`, donc un trait
-    seul ne bouge pas d'une valeur et seuls les croisements changent. Trois points :
+    un trait, et avec l'aspect d'une désignation alors que rien n'y est désigné. `--link` est le
+    **composite exact** de cette encre sur `--canvas`, donc un trait seul ne bouge pas d'une valeur
+    et seuls les croisements changent. Trois points :
     - **ce ne pouvait pas être un `--ink-*` de plus.** Le composite dépend du fond, donc chaque
       thème a le sien — c'est exactement ce que l'échelle d'encres ne peut pas exprimer, ses
       valeurs étant *une* couleur à des opacités croissantes ;
@@ -571,13 +590,17 @@ qu'il portait et que le rendu ne dit pas.
       et les couloirs de la disposition en dépendent : il survit à l'intérieur de chaque rang, et
       rien ici ne déplace un trait. Le test garde l'**ordre du document**, qui est la cause et vaut
       pour tous les recouvrements à la fois — y compris ceux que ce décor-ci ne produit pas.
-  - **une marque prend l'encre du lien, pas une teinte à elle** (4 septembre 2026, même
-    signalement). Elle portait un gris d'un cran plus sombre « pour mieux se lire », donc aucun état
+  - **une marque ne déclare ni encre ni épaisseur** (4 septembre 2026, deux signalements : « le
+    surlignage d'un trait ne s'applique pas à la marque », puis « le demi-cercle reste surligné pour
+    toujours »). Elle portait un gris d'un cran plus sombre « pour mieux se lire », donc aucun état
     du lien n'avait l'air de l'atteindre : à l'arrêt elle ne partageait pas son gris, et l'accent
     d'une sélection semblait s'arrêter au bord de la boîte. **Une marque n'a pas besoin d'un gris à
     elle pour se distinguer — c'est une forme**, et à épaisseur et teinte égales elle se lit très
-    bien. Il n'y a donc plus qu'un jeton, `--link`. C'est la seconde moitié de la même règle que
-    l'épaisseur : *une marque est le trait qui se termine, pas un second trait posé à son bout*.
+    bien. Elle porte donc `styles.lien` et l'état du trait, c'est-à-dire *les mêmes déclarations*, et
+    `.pointe` ne garde que ce qui lui est propre : ses bouts arrondis. Tant que les deux jeux de
+    valeurs étaient écrits séparément, la question pouvait revenir — et elle est revenue deux fois.
+    C'est la même règle que l'épaisseur : *une marque est le trait qui se termine, pas un second
+    trait posé à son bout*.
 
     **Et le premier `⇧`-clic a dénoncé un nom accessible en double** : les boutons de zoom
     s'appelaient « Réduire » et « Agrandir », exactement comme les commandes de fenêtre de la barre

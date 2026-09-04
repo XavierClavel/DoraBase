@@ -451,125 +451,156 @@ test('un lien 1:1 et un lien 1:n ne se dessinent pas de la même façon', async 
   /*
    * **Ce que ce niveau garde, et qu'aucun autre ne peut garder.**
    *
-   * `DiagramView.test.tsx` vérifie *quelle* marque chaque lien désigne — c'est du DOM. Qu'elle se
-   * **dessine** ne se mesure qu'ici : un `marker` mal ancré (`refX`) ou mal orienté (`orient`) rend
-   * un attribut parfaitement juste et une marque invisible, ou posée à l'envers au milieu du
-   * trait. jsdom ne peint rien, donc il ne verrait ni l'un ni l'autre (règle n° 9).
+   * `DiagramView.test.tsx` vérifie *quelle* marque chaque lien porte — c'est du DOM. Qu'elle
+   * **atterrisse au bon endroit** ne se mesure qu'ici : une marque juste dans sa forme et fausse
+   * dans son ancrage se rend sans se voir, ou se pose à l'envers au milieu du trait. jsdom ne
+   * calcule aucune mise en page, donc il ne verrait ni l'un ni l'autre (règle n° 9).
+   *
+   * # Ce qui est devenu mesurable, et ne l'était pas
+   *
+   * Les marques étaient des `<marker>` SVG. Un `marker` vit dans `<defs>` : **sa boîte englobante
+   * est nulle par construction**, donc aucun test ne pouvait constater qu'il avait peint quelque
+   * part — une première version l'assertait et mesurait le fait qu'un `defs` n'a pas de boîte. On
+   * se rabattait sur ses deux attributs d'ancrage, `refX` et `orient`, c'est-à-dire sur une
+   * *déclaration* tenant lieu de résultat. Depuis que ce sont des `<path>` ordinaires (voir la
+   * raison dans `DiagramView`), la question se pose directement : où est-ce peint ?
    */
   const marques = await page.evaluate(() => {
-    const traits = [...document.querySelectorAll('[data-liens] path[marker-start]')]
-    return traits.map((trait) => {
-      const url = trait.getAttribute('marker-start') ?? ''
-      const marque = document.querySelector(url.slice(4, -1))
-      const dessin = marque?.querySelector('path')
+    const boites = [...document.querySelectorAll('[data-boite]')].map((b) => ({
+      table: b.getAttribute('data-boite'),
+      rect: b.getBoundingClientRect(),
+    }))
+    return [...document.querySelectorAll('[data-liens] path[data-marque]')].map((m) => {
+      const rect = m.getBoundingClientRect()
+      /*
+       * **La distance au bord vertical de boîte le plus proche.** C'est l'assertion qui remplace
+       * `refX` et `orient` d'un coup : une marque doit s'appuyer contre un bord de boîte, et une
+       * marque posée au milieu du trait — ou retournée du mauvais côté sur un lien qui sort par la
+       * gauche, ce que les cycles produisent — s'en éloigne de toute la longueur du lien.
+       *
+       * On cherche le bord le plus proche plutôt que celui de *sa* boîte : le test n'a alors pas à
+       * connaître la forme des identités, ni à distinguer le départ de l'arrivée.
+       */
+      const distances = boites.flatMap(({ rect: b }) =>
+        // Seules les boîtes à la hauteur de la marque comptent : un bord à trois cents pixels
+        // au-dessus n'est pas un bord contre lequel elle pourrait s'appuyer.
+        rect.top >= b.top - 1 && rect.bottom <= b.bottom + 1
+          ? [
+              Math.abs(rect.left - b.right),
+              Math.abs(rect.right - b.left),
+              Math.abs(rect.right - b.right),
+              Math.abs(rect.left - b.left),
+            ]
+          : [],
+      )
       return {
-        lien: trait.getAttribute('data-lien'),
-        sorte: /-(one|many)(-choisie)?\)$/.exec(url)?.[1] ?? null,
-        // La marque doit exister **et** porter un tracé : un `<marker>` vide se référence sans
-        // rien peindre, et l'attribut serait tout aussi juste.
-        peinte: (dessin?.getAttribute('d')?.length ?? 0) > 0,
-        // **Les deux attributs qui décident d'où la marque tombe.** `refX` la pose au bord de la
-        // boîte plutôt qu'au milieu du trait, et `orient="auto"` la retourne sur les liens qui
-        // sortent par la gauche — ceux que les cycles produisent. Une marque juste dans ses formes
-        // et fausse dans ces deux-là se référence sans se voir.
-        //
-        // Ce qui n'est **pas** mesurable ici : qu'elle ait effectivement peint des pixels. Un
-        // `<marker>` vit dans `<defs>`, donc sa boîte englobante est nulle par construction — une
-        // première version l'assertait, et elle mesurait le fait qu'un `defs` n'a pas de boîte.
-        // Cette question-là appartient à une capture de fidélité.
-        refX: marque?.getAttribute('refX') ?? null,
-        orient: marque?.getAttribute('orient') ?? null,
+        lien: m.getAttribute('data-marque-lien'),
+        sorte: m.getAttribute('data-marque'),
+        // **Peinte quelque part** : une largeur et une hauteur non nulles. C'est précisément ce
+        // qu'un `<marker>` ne pouvait pas dire de lui-même.
+        largeur: rect.width,
+        hauteur: rect.height,
+        auBord: distances.length > 0 ? Math.min(...distances) : null,
       }
     })
   })
 
-  const par = (fin: string) => marques.find((m) => m.lien?.endsWith(fin))
+  const departs = marques.filter((m) => m.sorte !== 'fleche')
+  const par = (fin: string) => departs.find((m) => m.lien?.endsWith(fin))
   // `user_profiles.user_id` est à la fois clé primaire et clé étrangère : un profil par compte.
   expect(par('user_profiles_user_id_fkey')?.sorte).toBe('one')
   // Plusieurs commandes par compte : rien ne les borne.
   expect(par('orders_user_id_fkey')?.sorte).toBe('many')
 
-  // Toutes les marques référencées existent et peignent quelque chose.
-  expect(marques.length).toBeGreaterThan(0)
-  expect(marques.every((m) => m.peinte)).toBe(true)
-  expect(marques.every((m) => m.refX === '0' && m.orient === 'auto')).toBe(true)
+  // Trois marques de départ au moins, et une flèche par lien.
+  expect(departs.length).toBeGreaterThan(2)
+  expect(marques.filter((m) => m.sorte === 'fleche')).toHaveLength(departs.length)
+
+  for (const m of marques) {
+    /*
+     * **Chacune a peint.** Mesuré sur la plus grande des deux dimensions, et non sur les deux : la
+     * boîte englobante d'un `<path>` est sa **géométrie**, sans l'épaisseur du trait, donc la barre
+     * du `1:1` — un segment vertical — est large de zéro. Une première version l'exigeait non nulle
+     * et échouait sur elle : le trait qu'on voit à l'écran n'est pas dans la boîte qu'on mesure.
+     */
+    expect(Math.max(m.largeur, m.hauteur), `${m.sorte} de ${m.lien}`).toBeGreaterThan(4)
+    // Et chacune s'appuie contre un bord de boîte, à l'épaisseur d'un trait près.
+    expect(m.auBord, `${m.sorte} de ${m.lien}`).not.toBeNull()
+    expect(m.auBord ?? Number.NaN, `${m.sorte} de ${m.lien}`).toBeLessThan(6)
+  }
 })
 
 test('une marque est le trait qui se termine, à l’arrêt comme choisie', async ({ page }) => {
   /*
-   * **Deux signalements, la même règle.** « La largeur devrait être la même que le reste du trait »,
-   * puis « le surlignage d'un trait ne s'applique pas à la marque ». Une marque au bout d'un trait
-   * doit être *ce trait qui se termine* : même épaisseur, même encre, dans chacun de ses états.
+   * **Trois signalements, la même règle.** « La largeur devrait être la même que le reste du
+   * trait », « le surlignage d'un trait ne s'applique pas à la marque », puis « le demi-cercle
+   * reste surligné pour toujours ». Une marque au bout d'un trait doit être *ce trait qui se
+   * termine* : même épaisseur, même encre, dans chacun de ses états.
    *
-   * Les deux moitiés avaient chacune leur cause :
+   * Les trois avaient des causes différentes, toutes retirées :
    *
-   * - l'épaisseur, parce que `markerUnits` vaut `strokeWidth` par défaut — la boîte d'une marque se
-   *   compte alors en multiples de l'épaisseur du trait marqué, donc une marque de 9 sur un lien de
-   *   1,4 occupait 12,6 px, sa `viewBox` de 10 s'y étirait d'un facteur 1,26, et son trait de 1,6
-   *   était peint à 2 px ;
-   * - l'encre, parce que la marque portait un gris plus sombre que le lien « pour mieux se lire ».
-   *   Le DOM était pourtant juste dans les deux états — la marque *choisie* est bien référencée
-   *   quand le lien est choisi —, mais la teinte n'était jamais celle du trait, donc aucun état du
-   *   lien n'avait l'air de l'atteindre.
+   * - l'épaisseur, parce que `markerUnits` valait `strokeWidth` — la boîte d'un `<marker>` se
+   *   comptait alors en multiples de l'épaisseur du trait marqué, donc les cotes qu'on croyait
+   *   poser en pixels n'en étaient pas et le trait de la marque était peint plus gras ;
+   * - l'encre, parce que la marque portait un gris plus sombre que le lien « pour mieux se lire » ;
+   * - la persistance, parce que l'état se choisissait en basculant la **référence** d'un `marker` à
+   *   un autre, et que la webview de l'application ne la repeignait pas toujours.
    *
-   * # Pourquoi ce test-ci, et pas une capture
-   *
-   * Ce sont des **réglages** (règle n° 3). Les remettre à leur valeur d'avant ne casse rien, ne
-   * prévient rien, et ne déplace que quelques dixièmes de pixel et dix valeurs de gris sur trois
-   * marques : une capture de fidélité compterait cela comme du bruit, là où les égalités ci-dessous
-   * sont exactes. Et l'œil ne l'avait pas vu non plus — il a fallu qu'on le rapporte, deux fois.
+   * Les marques sont donc des `<path>` qui portent **les classes du trait** (voir la raison dans
+   * `DiagramView`), ce qui rend les deux égalités structurelles plutôt que tenues à la main. Ce
+   * test cesse d'être le garde-fou d'un réglage et devient le contrôle de cette structure : il
+   * mordrait si une marque reprenait des déclarations à elle.
    */
   const mesurer = () =>
-    page.evaluate(() => {
-      const traits = [...document.querySelectorAll('[data-liens] path[marker-start]')]
-      return traits.map((trait) => {
-        const url = trait.getAttribute('marker-start') ?? ''
-        const marque = document.querySelector(url.slice(4, -1))
-        const dessin = marque?.querySelector('path')
-        const boite = marque?.getAttribute('markerWidth')
-        const vue = marque?.getAttribute('viewBox')?.split(/\s+/)[2]
-        const styleDuTrait = getComputedStyle(trait)
-        const styleDeLaMarque = dessin ? getComputedStyle(dessin) : null
+    page.evaluate(() =>
+      [...document.querySelectorAll('[data-liens] path[data-marque]')].map((marque) => {
+        const id = marque.getAttribute('data-marque-lien') ?? ''
+        const trait = document.querySelector(
+          `[data-liens] path[data-lien="${CSS.escape(id)}"]`,
+        ) as SVGPathElement | null
+        const deLaMarque = getComputedStyle(marque)
+        const duTrait = trait ? getComputedStyle(trait) : null
         return {
-          lien: trait.getAttribute('data-lien'),
+          quoi: `${marque.getAttribute('data-marque')} de ${id}`,
           // Les deux styles, pris **calculés** : ils viennent de classes de module CSS, donc les
           // attributs n'existent pas et seul le style résolu les porte.
-          traitDuLien: Number.parseFloat(styleDuTrait.strokeWidth),
-          traitDeLaMarque: Number.parseFloat(styleDeLaMarque?.strokeWidth ?? 'NaN'),
-          encreDuLien: styleDuTrait.stroke,
-          encreDeLaMarque: styleDeLaMarque?.stroke ?? null,
-          unites: marque?.getAttribute('markerUnits') ?? null,
-          // Le facteur que la marque applique à son propre tracé.
-          echelle: boite && vue ? Number.parseFloat(boite) / Number.parseFloat(vue) : null,
+          traitDuLien: duTrait?.strokeWidth ?? null,
+          traitDeLaMarque: deLaMarque.strokeWidth,
+          encreDuLien: duTrait?.stroke ?? null,
+          encreDeLaMarque: deLaMarque.stroke,
+          opaciteDuLien: duTrait?.opacity ?? null,
+          opaciteDeLaMarque: deLaMarque.opacity,
         }
-      })
-    })
+      }),
+    )
 
   const verifier = async (etat: string) => {
     const mesures = await mesurer()
     expect(mesures.length, etat).toBeGreaterThan(0)
     for (const m of mesures) {
-      // **La déclaration d'abord** : sans `userSpaceOnUse`, l'échelle calculée ci-dessous serait
-      // fausse d'un facteur égal à l'épaisseur du lien, et l'égalité qui suit ne voudrait rien dire.
-      expect(m.unites, `${etat} — ${m.lien}`).toBe('userSpaceOnUse')
-      // Puis les deux égalités. La tolérance d'un dixième de pixel est la seule, là où le défaut
-      // de `markerUnits` en coûtait six ; l'encre, elle, est comparée à la valeur exacte.
-      expect(m.traitDeLaMarque * (m.echelle ?? 0), `${etat} — ${m.lien}`).toBeCloseTo(
-        m.traitDuLien,
-        1,
-      )
-      expect(m.encreDeLaMarque, `${etat} — ${m.lien}`).toBe(m.encreDuLien)
+      expect(m.traitDeLaMarque, `${etat} — ${m.quoi}`).toBe(m.traitDuLien)
+      expect(m.encreDeLaMarque, `${etat} — ${m.quoi}`).toBe(m.encreDuLien)
+      // L'effacement d'une recherche aussi : il porte sur l'élément, donc il n'atteindrait pas une
+      // marque qui ne voyagerait pas avec son trait.
+      expect(m.opaciteDeLaMarque, `${etat} — ${m.quoi}`).toBe(m.opaciteDuLien)
     }
   }
 
   await verifier('à l’arrêt')
 
-  // **Et choisie**, ce qui est l'autre moitié du signalement : `orders` porte une clé sortante et
-  // une entrante, donc ce tour-ci mesure des marques des deux sortes, accent et gris, sur le même
-  // dessin — un test qui ne regarderait que l'état de repos laisserait passer un `.pointeChoisie`
-  // désaccordé de `.lienChoisi`.
+  /*
+   * **Et choisie**, ce qui est la moitié qui a été signalée deux fois. `orders` porte une clé
+   * sortante et une entrante, donc ce tour-ci mesure des marques des deux états — accentué et
+   * ordinaire — sur le même dessin.
+   */
   await page.getByRole('button', { name: /^orders ·/ }).click()
   await verifier('table choisie')
+
+  // **Puis rendue à son état de repos**, qui est le signalement littéral : « le demi-cercle reste
+  // surligné pour toujours ». Une marque qui garderait l'accent après le clic de désélection
+  // n'aurait plus l'encre de son trait, et l'égalité ci-dessus le dirait.
+  await page.getByRole('button', { name: 'Ne plus rien choisir' }).click()
+  await verifier('sélection retirée')
 })
 
 test('un trait accentué n’a jamais un trait ordinaire par-dessus', async ({ page }) => {
@@ -646,7 +677,7 @@ test('deux liens qui se croisent ne s’assombrissent pas', async ({ page }) => 
   const encres = await page.evaluate(() => {
     const peints = [
       ...document.querySelectorAll('[data-liens] path[data-lien]'),
-      ...document.querySelectorAll('[data-liens] marker path'),
+      ...document.querySelectorAll('[data-liens] path[data-marque]'),
     ]
     return peints.map((p) => {
       const style = getComputedStyle(p)
@@ -667,7 +698,7 @@ test('deux liens qui se croisent ne s’assombrissent pas', async ({ page }) => 
 test('la cardinalité s’écrit dans l’infobulle, que la notation soit connue ou non', async ({
   page,
 }) => {
-  // Un demi-cercle ne dit rien à qui n'a jamais vu la notation, et un `marker` SVG n'a aucun texte qu'une
+  // Un demi-cercle ne dit rien à qui n'a jamais vu la notation, et un tracé SVG n'a aucun texte qu'une
   // voix puisse rendre : le mot doit exister quelque part.
   const ligne = page.locator('[data-boite="user_profiles"] [data-colonne="user_id"]')
   await expect(ligne).toHaveAttribute('title', /un à un/)
