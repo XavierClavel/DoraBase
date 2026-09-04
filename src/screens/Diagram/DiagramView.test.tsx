@@ -540,7 +540,7 @@ test('chaque lien porte au départ la marque de sa cardinalité', async () => {
    * ne peut viser que des colonnes uniques —, donc il n'y a qu'un bout où il y ait quelque chose à
    * dire. La flèche reste à l'arrivée : elle donne le sens, et ce n'est pas la même information.
    *
-   * Ce que jsdom peut mesurer ici est le **choix de la marque** ; qu'elle se dessine en trident
+   * Ce que jsdom peut mesurer ici est le **choix de la marque** ; qu'elle se dessine en fourchette
    * appartient à `e2e/` comme tout ce qui est mise en page (règle n° 9).
    */
   const { container } = monter(

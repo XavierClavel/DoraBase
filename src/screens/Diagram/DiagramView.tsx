@@ -648,14 +648,15 @@ function Fleche({ id, className }: { id: string; className: string | undefined }
   return (
     <marker
       id={id}
-      viewBox="0 0 10 10"
-      refX="8"
-      refY="5"
-      markerWidth="7"
-      markerHeight="7"
+      viewBox="0 0 13 13"
+      refX="10.5"
+      refY="6.5"
+      markerUnits="userSpaceOnUse"
+      markerWidth="13"
+      markerHeight="13"
       orient="auto"
     >
-      <path d="M2 2 L8 5 L2 8" className={className} />
+      <path d="M5 3.4 L10.5 6.5 L5 9.6" className={className} />
     </marker>
   )
 }
@@ -823,22 +824,36 @@ function qualifier(table: string, colonnes: readonly string[]): string {
  * Elle se lit sans légende par quiconque a déjà vu un schéma, et « en trait, jamais de fill » comme
  * toutes les icônes du projet.
  *
- * # Un trident, et non trois traits qui convergent (rapporté à l'usage)
+ * # Une fourchette, et non trois traits qui convergent (rapporté à l'usage)
  *
  * Le premier dessin était `M0 1 L7 5 M0 5 L7 5 M0 9 L7 5` — trois segments droits filant vers un
- * même point. C'est la patte d'oie canonique, et à neuf pixels de haut, dans un dessin fait par
- * ailleurs de **coudes arrondis**, elle sortait du lot : trois angles vifs au bord de chaque boîte,
- * là où tout le reste du tracé est courbe.
+ * même point. C'est la patte d'oie canonique, et dans un dessin fait par ailleurs de **coudes
+ * arrondis** — la courbe ayant justement été bannie des liens eux-mêmes pour qu'ils se distinguent
+ * les uns des autres —, elle sortait du lot : trois angles vifs au bord de chaque boîte.
  *
- * D'où la forme d'un vrai trident : trois dents qui rejoignent le manche, les deux extérieures
- * **cintrées** plutôt que droites. Elle occupe la même empreinte, dit la même chose, et s'accorde au
- * reste du dessin.
+ * D'où la forme d'une fourchette : trois dents **parallèles** qui se fondent dans un manche. Elle
+ * dit la même chose, occupe la même place, et n'a plus un seul angle.
  *
- * **Une première tentative les avait faites parallèles**, ramenées sur le manche par une traverse
- * arrondie — le trident au sens strict. À l'écran, elle ne se lisait pas : neuf pixels de haut pour
- * un trait de 1,4 px, donc des dents d'à peine plus d'une épaisseur de trait, et l'ensemble donnait
- * un crochet arrondi plutôt qu'un trident. Vu à la loupe (× 6), invisible à toute la suite de tests.
- * Le cintrage garde la longueur des dents *et* la rondeur.
+ * **Trois essais ont été nécessaires, et les deux premiers ont échoué sur la même cause** — la
+ * marque était trop petite pour la forme qu'on y mettait, et elle l'était sans que rien le dise :
+ *
+ * 1. dents parallèles ramenées par une **traverse** d'angle droit arrondi. Elle se lisait comme un
+ *    crochet : des dents d'à peine une épaisseur de trait, et une traverse qui prenait le reste ;
+ * 2. dents **cintrées** convergeant vers l'axe, sans partie droite. Plus ronde, mais elle se lisait
+ *    comme un double chevron : le raccord occupait plus de place que les dents, donc c'est lui qu'on
+ *    voyait ;
+ * 3. la forme en place — six pixels et demi de dent droite, puis un raccord **tangent** de quatre
+ *    pixels et demi. La moitié de la marque est de la dent, et c'est ce qui la fait lire.
+ *
+ * **La cause commune était le `markerUnits`**, et elle est écrite dans la feuille de style : par
+ * défaut la boîte d'une marque se compte en multiples de l'épaisseur du trait marqué, donc les
+ * cotes qu'on croit poser en pixels n'en sont pas, et le trait de la marque est peint plus gras que
+ * le lien qu'il termine. Les trois `marker` sont à l'échelle 1 depuis : **une unité de `viewBox`
+ * vaut un pixel**, ce qui rend les cotes ci-dessous lisibles telles quelles.
+ *
+ * Rien de tout cela ne se voit autrement qu'à la loupe : le test e2e garde que la marque peint, son
+ * `refX` et son `orient`, jamais son tracé — un `d` recopié dans une assertion se périme au premier
+ * ajustement de forme. La seule mesure qui juge est une capture à `deviceScaleFactor: 6`, regardée.
  *
  * `refX` vaut 0 : la marque commence exactement au bord de la boîte, et `orient="auto"` la retourne
  * d'elle-même sur les liens qui sortent par la gauche — ceux que les cycles et les couches produisent.
@@ -847,19 +862,27 @@ function Trident({ id, className }: { id: string; className: string | undefined 
   return (
     <marker
       id={id}
-      viewBox="0 0 10 10"
+      viewBox="0 0 13 13"
       refX="0"
-      refY="5"
-      markerWidth="9"
-      markerHeight="9"
+      refY="6.5"
+      markerUnits="userSpaceOnUse"
+      markerWidth="13"
+      markerHeight="13"
       orient="auto"
     >
-      {/* Trois dents qui rejoignent le manche, les deux extérieures **cintrées** — c'est la forme
-          d'un trident, et c'est ce qui la rend ronde. Les cotes sont contraintes par l'empreinte :
-          neuf pixels de haut pour un trait de 1,4, donc une dent doit faire au moins trois unités
-          pour se distinguer de son propre trait. */}
+      {/* Trois dents **parallèles** qui se fondent dans le manche — la forme d'une fourchette, et
+          c'est de là que vient la rondeur : les deux extérieures arrivent sur l'axe *tangentes*
+          (les deux points de contrôle sont à l'horizontale, un de chaque côté du raccord), donc
+          elles s'y confondent au lieu de l'y croiser. Quatre pixels de dent droite avant le
+          raccord : c'est la moitié de la marque, et c'est ce qui la fait lire comme une fourchette
+          plutôt que comme un double chevron — mesuré à la loupe, un raccord qui prend plus de place
+          que les dents domine la forme. */}
       <path
-        d="M0 1.2 C3.2 1.2 5.2 2.6 7.2 5 M0 5 L7.2 5 M0 8.8 C3.2 8.8 5.2 7.4 7.2 5"
+        d={
+          'M0 3.3 L6.5 3.3 C8.7 3.3 8.8 6.5 11 6.5 ' +
+          'M0 6.5 L11 6.5 ' +
+          'M0 9.7 L6.5 9.7 C8.7 9.7 8.8 6.5 11 6.5'
+        }
         className={className}
       />
     </marker>
@@ -877,14 +900,15 @@ function Barre({ id, className }: { id: string; className: string | undefined })
   return (
     <marker
       id={id}
-      viewBox="0 0 10 10"
+      viewBox="0 0 13 13"
       refX="0"
-      refY="5"
-      markerWidth="9"
-      markerHeight="9"
+      refY="6.5"
+      markerUnits="userSpaceOnUse"
+      markerWidth="13"
+      markerHeight="13"
       orient="auto"
     >
-      <path d="M3 1 L3 9" className={className} />
+      <path d="M4 2 L4 11" className={className} />
     </marker>
   )
 }
