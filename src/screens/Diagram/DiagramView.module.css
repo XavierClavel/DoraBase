@@ -403,18 +403,25 @@
 /*
  * Les marques de cardinalité et la flèche.
  *
- * **Les deux épaisseurs sont celles des liens, à la valeur près**, et c'est le seul réglage correct :
- * une marque posée au bout d'un trait doit être ce trait qui se termine, non un second trait plus
- * gras. Ce qui le rend vrai est le `markerUnits="userSpaceOnUse"` des trois `marker` — sans lui, la
- * boîte d'une marque est exprimée **en multiples de l'épaisseur du trait marqué**, donc une marque
- * de 9 sur un lien de 1,4 occupe 12,6 px, sa `viewBox` de 10 s'y étire d'un facteur 1,26, et son
- * trait de 1,6 est peint à 2 px — 44 % de trop, mesuré, et personne ne l'avait vu parce que c'est
- * le défaut par défaut. Les trois `marker` sont donc à l'échelle 1 : une unité de `viewBox` vaut un
- * pixel, et `stroke-width` s'écrit dans la même unité que `.lien`.
+ * **Une marque est le trait qui se termine, pas un second trait posé à son bout.** Elle prend donc
+ * l'épaisseur *et* l'encre du lien, aux valeurs près — `.pointe` contre `.lien`, `.pointeChoisie`
+ * contre `.lienChoisi`. Les deux moitiés de cette règle ont été rapportées à l'usage, séparément :
+ *
+ * - **l'épaisseur.** `markerUnits` vaut `strokeWidth` si on ne le pose pas, donc la boîte d'une
+ *   marque s'exprime **en multiples de l'épaisseur du trait marqué** : une marque de 9 sur un lien
+ *   de 1,4 occupe 12,6 px, sa `viewBox` de 10 s'y étire d'un facteur 1,26, et son trait de 1,6 est
+ *   peint à 2 px — 44 % de trop, et personne ne l'avait vu parce que c'est le défaut par défaut.
+ *   Les trois `marker` sont donc à l'échelle 1 : une unité de `viewBox` vaut un pixel, et
+ *   `stroke-width` s'écrit dans la même unité que `.lien` ;
+ * - **l'encre.** La marque portait sa propre teinte, un cran plus sombre que le lien pour « mieux
+ *   se lire ». Le résultat était qu'aucun état du lien n'avait l'air de l'atteindre : à l'arrêt elle
+ *   ne partageait pas son gris, et l'accent de la sélection semblait s'arrêter au bord de la boîte.
+ *   Une marque n'a pas besoin d'un gris à elle pour se distinguer — **c'est une forme**, et à
+ *   épaisseur et teinte égales elle se lit très bien. Il n'y a donc plus qu'un jeton, `--link`.
  */
 .pointe {
   fill: none;
-  stroke: var(--link-mark);
+  stroke: var(--link);
   stroke-width: 1.4;
   stroke-linecap: round;
   stroke-linejoin: round;

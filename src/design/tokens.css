@@ -81,7 +81,6 @@
   --leading-grid: 1;
   --leading-ui: 1.45;
   --link: #B2ADA5;
-  --link-mark: #A8A39B;
   --logo-plate: #FBF7EF;
   --muted: #F1ECE2;
   --on-dark: #FBF7EF;
@@ -217,7 +216,6 @@
   --json-punct: #9B80E8;
   --json-string: #E8916A;
   --link: #55524D;
-  --link-mark: #605D57;
   --logo-plate: #2E2A25;
   --muted: #232019;
   --on-dark: #EDE7DA;
@@ -304,7 +302,6 @@
     --json-punct: #9B80E8;
     --json-string: #E8916A;
     --link: #55524D;
-    --link-mark: #605D57;
     --logo-plate: #2E2A25;
     --muted: #232019;
     --on-dark: #EDE7DA;

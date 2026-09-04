@@ -248,6 +248,50 @@ export function DiagramView({
   )
 
   /**
+   * Les liens, chacun avec son état, **dans l'ordre où il faut les peindre**.
+   *
+   * # Pourquoi un ordre, et pourquoi ici
+   *
+   * SVG n'a pas de `z-index` : il peint dans l'**ordre du document**. Un lien gris déclaré après un
+   * lien accentué passe donc *par-dessus*, et sur un dessin où les traits se croisent cela arrive
+   * tout le temps — rapporté à l'usage, « parfois un trait gris est rendu au-dessus d'un trait
+   * surligné, pareil pour les flèches ».
+   *
+   * **Et c'est ce qui explique le signalement d'avant**, « le surlignage ne s'applique pas à la
+   * marque » : deux liens qui partent de la même ligne de colonne posent leurs deux marques au même
+   * pixel. La marque accentuée était bien là, et bien accentuée — le DOM le disait —, mais la grise
+   * du lien voisin se peignait après, donc dessus. Chercher le défaut dans la couleur ou dans le
+   * câblage ne pouvait rien donner : il n'était ni dans l'une ni dans l'autre.
+   *
+   * Trois rangs, du fond vers la surface : **éteint**, ordinaire, **accentué**. Les deux extrêmes
+   * ont la même justification par les deux bouts — ce qu'une recherche efface ne doit pas recouvrir
+   * ce qu'elle désigne, et ce qu'une sélection désigne ne doit rien avoir au-dessus.
+   *
+   * **Le tri est stable**, donc l'ordre de `vue.liens` — qui est déterministe, et sur lequel
+   * reposent les couloirs de la disposition — survit à l'intérieur de chaque rang. Peindre n'est pas
+   * disposer : rien ici ne déplace un trait, seul l'ordre de rendu change.
+   */
+  const liensAPeindre = useMemo(() => {
+    const avecEtat = vue.liens.map((lien) => ({
+      lien,
+      /* **Quand un chemin existe, c'est lui qu'on accentue, et lui seul.** Sinon, tous les liens
+         incidents à ce qui est choisi — ce que fait une sélection simple. */
+      touche: chemin
+        ? liensDuChemin.has(lien.id)
+        : selection.includes(lien.source) || selection.includes(lien.cible),
+      /* **Un lien s'éteint quand la recherche ne concerne aucun de ses bouts.** Sans cela, les
+         traits gardent toute leur force au-dessus de boîtes éteintes et dominent le dessin —
+         l'inverse de ce qu'une recherche doit produire. */
+      eteint:
+        chercheQuelqueChose &&
+        !correspondances.tables.has(lien.source) &&
+        !correspondances.tables.has(lien.cible),
+    }))
+    const rang = (e: (typeof avecEtat)[number]) => (e.eteint ? 0 : e.touche ? 2 : 1)
+    return avecEtat.sort((a, b) => rang(a) - rang(b))
+  }, [vue.liens, chemin, liensDuChemin, selection, chercheQuelqueChose, correspondances])
+
+  /**
    * Les colonnes que la sélection met en évidence, **aux deux bouts de chaque lien**.
    *
    * Surligner les traits ne suffisait pas : ils disent *qu'*une table en référence une autre, pas
@@ -582,44 +626,30 @@ export function DiagramView({
                 <Barre id={`${marques}-one`} className={styles.pointe} />
                 <Barre id={`${marques}-one-choisie`} className={styles.pointeChoisie} />
               </defs>
-              {vue.liens.map((lien) => {
-                /* **Quand un chemin existe, c'est lui qu'on accentue, et lui seul.** Sinon, tous
-                   les liens incidents à ce qui est choisi — ce que fait une sélection simple. */
-                const touche = chemin
-                  ? liensDuChemin.has(lien.id)
-                  : selection.includes(lien.source) || selection.includes(lien.cible)
-                /* **Un lien s'éteint quand la recherche ne concerne aucun de ses bouts.** Sans
-                   cela, les traits gardent toute leur force au-dessus de boîtes éteintes et
-                   dominent le dessin — l'inverse de ce qu'une recherche doit produire. */
-                const eteint =
-                  chercheQuelqueChose &&
-                  !correspondances.tables.has(lien.source) &&
-                  !correspondances.tables.has(lien.cible)
-                return (
-                  <path
-                    key={lien.id}
-                    /* Le repère par lequel un test désigne un trait : une classe de module CSS est
-                       un nom engendré, et s'y accrocher mesurerait l'outil de construction. Même
-                       raison que `data-boite` et `data-colonne`. */
-                    data-lien={lien.id}
-                    d={lien.chemin}
-                    className={cx(
-                      styles.lien,
-                      touche && styles.lienChoisi,
-                      eteint && styles.lienEteint,
-                    )}
-                    markerEnd={`url(#${marques}-fleche${touche ? '-choisie' : ''})`}
-                    /* **La cardinalité se marque au *départ*, la flèche reste à l'arrivée.** Le
-                       côté référencé est toujours *un* — une clé étrangère ne peut viser que des
-                       colonnes uniques —, donc il n'y a qu'un bout où il y ait quelque chose à
-                       dire. Et la pointe qui donne le sens du lien n'est pas déplaçable : une
-                       flèche qui disparaît est un lien qui ne dit plus où il va. */
-                    markerStart={`url(#${marques}-${lien.cardinalite === 'one' ? 'one' : 'many'}${
-                      touche ? '-choisie' : ''
-                    })`}
-                  />
-                )
-              })}
+              {liensAPeindre.map(({ lien, touche, eteint }) => (
+                <path
+                  key={lien.id}
+                  /* Le repère par lequel un test désigne un trait : une classe de module CSS est
+                     un nom engendré, et s'y accrocher mesurerait l'outil de construction. Même
+                     raison que `data-boite` et `data-colonne`. */
+                  data-lien={lien.id}
+                  d={lien.chemin}
+                  className={cx(
+                    styles.lien,
+                    touche && styles.lienChoisi,
+                    eteint && styles.lienEteint,
+                  )}
+                  markerEnd={`url(#${marques}-fleche${touche ? '-choisie' : ''})`}
+                  /* **La cardinalité se marque au *départ*, la flèche reste à l'arrivée.** Le
+                     côté référencé est toujours *un* — une clé étrangère ne peut viser que des
+                     colonnes uniques —, donc il n'y a qu'un bout où il y ait quelque chose à
+                     dire. Et la pointe qui donne le sens du lien n'est pas déplaçable : une
+                     flèche qui disparaît est un lien qui ne dit plus où il va. */
+                  markerStart={`url(#${marques}-${lien.cardinalite === 'one' ? 'one' : 'many'}${
+                    touche ? '-choisie' : ''
+                  })`}
+                />
+              ))}
             </svg>
             {vue.boites.map((boite) => (
               <Cadre
