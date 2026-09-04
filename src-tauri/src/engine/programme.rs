@@ -21,18 +21,51 @@ use std::path::{Path, PathBuf};
 /// n'hérite pas du `PATH` du shell : macOS lui en donne un minimal, sans `/opt/homebrew/bin` ni
 /// `/usr/local/bin`. Un outil parfaitement installé serait donc introuvable dans l'app packagée
 /// alors qu'il se trouve depuis un terminal — panne d'autant plus déroutante que `which` répond.
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 pub const EMPLACEMENTS_USUELS: &[&str] = &["/opt/homebrew/bin", "/usr/local/bin"];
 
 /// **Vide sous Windows, et c'est la bonne réponse, pas un trou** (31 août 2026).
 ///
-/// Les deux chemins ci-dessus sont ceux de Homebrew, qui n'existe pas là-bas, et Windows n'a pas
+/// Les deux chemins de macOS sont ceux de Homebrew, qui n'existe pas là-bas, et Windows n'a pas
 /// d'équivalent : aucun gestionnaire de paquets n'y est assez répandu pour qu'un chemin en dur
 /// soit « usuel ». Surtout, **le motif qui rend cette liste nécessaire n'a pas cours** — un
 /// processus Windows hérite du `PATH` de la machine, là où une app lancée depuis le Finder
 /// reçoit un `PATH` minimal. Le `PATH` seul suffit donc, et `path_enrichi` n'y ajoute que le
 /// répertoire de l'outil que l'appelant vient de localiser.
 #[cfg(windows)]
+pub const EMPLACEMENTS_USUELS: &[&str] = &[];
+
+/// Sous Linux, deux chemins, **et la liste est courte pour une raison** (4 septembre 2026).
+///
+/// La prémisse est plus faible que sur macOS : une application lancée par un fichier `.desktop`
+/// hérite de l'environnement de la session, qui porte à peu près toujours `/usr/bin` et
+/// `/usr/local/bin`. Ce n'est donc pas le `PATH` minimal du Finder — mais ce n'est pas non plus
+/// une garantie, et les deux chemins retenus sont ceux que les installations réelles emploient :
+///
+/// - **`/usr/local/bin`** est l'endroit que la documentation de `kubectl` dit littéralement
+///   d'employer (`sudo install … /usr/local/bin/kubectl`), et celui où un binaire téléchargé à la
+///   main atterrit ;
+/// - **`~/.local/bin`** est le répertoire personnel d'exécutables de freedesktop, celui où
+///   installent `pip`, `uv` et la plupart des installateurs sans privilèges — et il n'est **pas**
+///   toujours dans le `PATH` : sous Ubuntu il y est ajouté par `~/.profile`, que les sessions
+///   Wayland ne sourcent pas toutes.
+///
+/// **Homebrew pour Linux n'y est pas**, bien que son préfixe soit fixe
+/// (`/home/linuxbrew/.linuxbrew/bin`) : il n'a pas été mesuré sur un poste Linux, et l'ajouter
+/// serait inventer un fait pour couvrir un cas dont on ne sait pas s'il existe ici. C'est
+/// l'arbitrage de Docker Desktop dans `kubernetes/binaire.rs`, appliqué à un autre chemin — à
+/// reprendre si l'usage dit le contraire.
+///
+/// Le `~/` de tête est développé par `emplacements_usuels`, jamais laissé littéral : c'est le
+/// défaut que le job Windows a trouvé le 31 août 2026, et il vaut ici de la même façon.
+#[cfg(target_os = "linux")]
+pub const EMPLACEMENTS_USUELS: &[&str] = &["/usr/local/bin", "~/.local/bin"];
+
+/// Les autres unix — aucun n'a jamais construit ce bundle, donc aucun chemin n'a été mesuré.
+///
+/// La liste est vide plutôt qu'empruntée à Linux : recopier des chemins non vérifiés serait
+/// exactement l'invention de fait que la constante Linux ci-dessus refuse.
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 pub const EMPLACEMENTS_USUELS: &[&str] = &[];
 
 /// Les répertoires du `PATH`, dans l'ordre.
@@ -46,10 +79,17 @@ pub fn dossiers_du_path() -> Vec<PathBuf> {
 ///
 /// L'ordre est une préférence : ce que l'utilisateur a mis dans son `PATH` gagne contre ce que
 /// nous devinons.
+///
+/// **Le `~/` de tête est développé ici** (4 septembre 2026), et non chez l'appelant : la liste
+/// Linux en porte un, et un `PathBuf::from("~/.local/bin")` désignerait un répertoire **nommé
+/// `~`** — le défaut à quatre exemplaires du 31 août 2026, qui ne plantait pas mais mentait.
+/// C'est la même fonction que `kubernetes/binaire.rs` appelle déjà sur ses propres chemins.
 pub fn emplacements_usuels() -> Vec<PathBuf> {
     completer(
         dossiers_du_path(),
-        EMPLACEMENTS_USUELS.iter().map(PathBuf::from),
+        EMPLACEMENTS_USUELS
+            .iter()
+            .map(|connu| chemin_utilisateur(connu)),
     )
 }
 
@@ -203,7 +243,13 @@ pub fn path_enrichi(supplementaires: &[PathBuf]) -> OsString {
         supplementaires
             .iter()
             .cloned()
-            .chain(EMPLACEMENTS_USUELS.iter().map(PathBuf::from)),
+            // Même développement du `~/` que dans `emplacements_usuels` : un littéral « ~ » dans
+            // le `PATH` d'un enfant n'y désignerait rien, et l'échec accuserait l'outil cherché.
+            .chain(
+                EMPLACEMENTS_USUELS
+                    .iter()
+                    .map(|connu| chemin_utilisateur(connu)),
+            ),
     );
     // `join_paths` échoue si un chemin contient le séparateur — impossible pour un chemin lu
     // dans le `PATH` ou écrit en constante. Le repli garde notre `PATH` tel quel plutôt que de
@@ -261,6 +307,25 @@ mod tests {
         assert_eq!(nom_de_fichier("kubectl"), attendu);
     }
 
+    /// **Aucun emplacement usuel ne doit rester un `~` littéral** (4 septembre 2026).
+    ///
+    /// C'est la moitié Linux du défaut du 31 août : `~/.local/bin` posé tel quel dans un
+    /// `PathBuf` désigne un répertoire **nommé `~`**, donc un outil parfaitement installé reste
+    /// introuvable et l'échec accuse une installation correcte. Le test porte sur la liste
+    /// **rendue**, pas sur la constante : c'est le développement qu'il garde, et il vaut sur les
+    /// trois plateformes — sur celles dont la liste ne porte aucun `~`, il est vrai sans effort,
+    /// ce qui est exactement ce qu'on veut d'un garde.
+    #[test]
+    fn aucun_emplacement_usuel_ne_reste_un_tilde_litteral() {
+        for emplacement in emplacements_usuels() {
+            assert!(
+                !emplacement.starts_with("~"),
+                "« {} » n'a pas été développé — il désignerait un répertoire nommé « ~ »",
+                emplacement.display()
+            );
+        }
+    }
+
     #[test]
     fn un_tilde_de_tete_est_developpe_et_le_reste_ne_bouge_pas() {
         let Some(maison) = std::env::var_os("HOME").map(PathBuf::from) else {
@@ -298,18 +363,28 @@ mod tests {
         }
     }
 
-    /// `#[cfg(not(windows))]` : la liste y est **vide**, donc cette boucle ne mesurerait rien.
-    /// Un test qui passe en n'exécutant aucune assertion est un mensonge poli — absent, il dit
-    /// au moins la vérité.
-    #[cfg(not(windows))]
+    /// Chaque emplacement usuel de la plateforme se retrouve dans la liste rendue, même s'il
+    /// n'est pas dans le `PATH` de cette machine.
+    ///
+    /// Les deux seules plateformes à porter une liste non vide sont nommées : ailleurs cette
+    /// boucle ne mesurerait rien, et un test qui passe en n'exécutant aucune assertion est un
+    /// mensonge poli — absent, il dit au moins la vérité.
+    ///
+    /// **La comparaison porte sur le chemin *développé*** (4 septembre 2026), pas sur le
+    /// littéral de la constante : la liste Linux contient `~/.local/bin`, que
+    /// `emplacements_usuels` développe. Comparer aux littéraux aurait fait échouer ce test sur
+    /// le seul chemin dont le développement est justement la garantie qui compte.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[test]
-    fn les_emplacements_usuels_incluent_homebrew_meme_hors_du_path() {
-        let en_texte: Vec<String> = emplacements_usuels()
-            .iter()
-            .map(|c| c.display().to_string())
-            .collect();
+    fn les_emplacements_usuels_de_la_plateforme_sont_tous_la() {
+        let rendus = emplacements_usuels();
         for usuel in EMPLACEMENTS_USUELS {
-            assert!(en_texte.iter().any(|c| c == usuel), "{en_texte:?}");
+            let attendu = chemin_utilisateur(usuel);
+            assert!(
+                rendus.contains(&attendu),
+                "« {} » manque dans {rendus:?}",
+                attendu.display()
+            );
         }
     }
 
@@ -347,8 +422,14 @@ mod tests {
         let dossiers: Vec<PathBuf> = std::env::split_paths(&enrichi).collect();
 
         assert!(dossiers.contains(&supplement), "{dossiers:?}");
+        // Le chemin **développé**, comme dans `les_emplacements_usuels_de_la_plateforme_sont_tous_la`
+        // : la liste Linux porte un `~/`, et un `PATH` qui transmettrait ce littéral à l'enfant ne
+        // lui désignerait rien.
         for usuel in EMPLACEMENTS_USUELS {
-            assert!(dossiers.contains(&PathBuf::from(usuel)), "{dossiers:?}");
+            assert!(
+                dossiers.contains(&chemin_utilisateur(usuel)),
+                "{dossiers:?}"
+            );
         }
         // Et il ne perd rien de ce qu'on avait : un `PATH` remplacé plutôt qu'augmenté
         // priverait l'enfant de ce que l'utilisateur y avait mis.
@@ -365,14 +446,13 @@ mod tests {
         // fait. La propriété vraie est plus étroite et suffit : un `PATH` qui contient déjà tout ce
         // qu'on ajouterait n'en sort pas plus long. C'est elle qui garantit qu'un enrichissement ne
         // grossit pas.
-        let deja_complet = completer(
-            vec![PathBuf::from("/un/dossier/a/soi")],
-            EMPLACEMENTS_USUELS.iter().map(PathBuf::from),
-        );
+        let usuels = || {
+            EMPLACEMENTS_USUELS
+                .iter()
+                .map(|connu| chemin_utilisateur(connu))
+        };
+        let deja_complet = completer(vec![PathBuf::from("/un/dossier/a/soi")], usuels());
         let taille = deja_complet.len();
-        assert_eq!(
-            completer(deja_complet, EMPLACEMENTS_USUELS.iter().map(PathBuf::from)).len(),
-            taille
-        );
+        assert_eq!(completer(deja_complet, usuels()).len(), taille);
     }
 }

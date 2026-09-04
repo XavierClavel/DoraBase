@@ -25,7 +25,7 @@ use crate::config::SecretRef;
 /// sous l'ancien service restent dans le Trousseau, orphelines : rien ne les lit plus, et rien ne les
 /// efface. C'est sans conséquence — l'application n'a jamais été diffusée — mais une machine de
 /// développement peut en porter, et elles s'effacent à la main depuis « Accès au trousseau ».
-const SERVICE: &str = "com.dorabase.desktop";
+pub(super) const SERVICE: &str = "com.dorabase.desktop";
 
 pub struct KeychainStore;
 
