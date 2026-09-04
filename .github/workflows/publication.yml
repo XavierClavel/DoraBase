@@ -115,6 +115,29 @@ jobs:
             echo "Et **les installations Windows ne se mettent pas à jour seules** : il faut"
             echo "retélécharger l'installateur à chaque version."
             echo
+            # **Linux, et les deux choses qu'il faut lire avant de télécharger.** Même raison
+            # que le bloc Windows ci-dessus : le plancher de glibc se remarquerait à
+            # l'exécution, sur une erreur de chargeur qui ne nomme pas la cause, et l'absence
+            # de mise à jour automatique des semaines plus tard. Les deux formes sont annoncées
+            # ensemble parce que le choix entre elles est exactement ce que ce plancher décide.
+            echo "### Linux"
+            echo
+            echo "Deux formes, la même application : \`DoraBase-$VERSION-amd64.deb\` pour"
+            echo "Debian, Ubuntu et dérivées, ou \`DoraBase-$VERSION-amd64.AppImage\` partout"
+            echo "ailleurs — rien à installer, \`chmod +x\` puis lancer."
+            echo
+            echo "\`\`\`bash"
+            echo "sudo apt install ./DoraBase-$VERSION-amd64.deb"
+            echo "\`\`\`"
+            echo
+            echo "**Construits sur la dernière Ubuntu des runners GitHub**, donc liés à sa"
+            echo "glibc : une distribution nettement plus ancienne refusera de les lancer."
+            echo "L'AppImage embarque WebKitGTK, le \`.deb\` s'appuie sur celle du système."
+            echo
+            echo "Et **les installations Linux ne se mettent pas à jour seules** — le"
+            echo "mécanisme ne sait remplacer qu'un AppImage, donc l'offrir aurait marché pour"
+            echo "une moitié des installations et échoué pour l'autre."
+            echo
             echo "## Changements"
             echo
             if [[ -n $precedent ]]; then
@@ -138,8 +161,8 @@ jobs:
           } > publication/notes.md
           cat publication/notes.md
 
-      # **Créée sans aucun asset.** `macos` et `windows` y ajouteront les leurs par
-      # `gh release upload`, en parallèle l'un de l'autre — c'est tout le point de ce job.
+      # **Créée sans aucun asset.** `macos`, `windows` et `linux` y ajouteront les leurs par
+      # `gh release upload`, en parallèle les uns des autres — c'est tout le point de ce job.
       - name: créer la release
         env:
           GH_TOKEN: ${{ github.token }}
