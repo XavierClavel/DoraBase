@@ -2328,18 +2328,45 @@ mod tests_db {
 
     // --- La lecture groupée (3 septembre 2026) ---------------------------------------------------
 
-    /// **Le test d'équivalence, et la seule chose qui compte de cette optimisation.**
+    /// **Décrire quatre tables d'un coup les décrit chacune, et non les quatre mélangées.**
     ///
-    /// `table_details` a réécrit les cinq requêtes de `table_detail` en ensemblistes — filtrées sur
-    /// un ensemble d'oid, groupées en Rust — pour que décrire soixante tables coûte six
-    /// allers-retours au lieu de trois cent soixante. Une réécriture de SQL ne vaut que si elle
-    /// rend **exactement** la même chose, et rien dans le type ne le garantit : deux `TableDetail`
-    /// se ressemblent beaucoup en étant faux.
+    /// `table_details` lit les cinq requêtes de détail en ensemblistes — filtrées sur un ensemble
+    /// d'oid — puis **regroupe les lignes en Rust** par le `relid` qu'elles rendent. C'est là que
+    /// vit le défaut propre à cette forme, et il n'existait pas dans la lecture table par table :
+    /// une clé de regroupement fausse attribue à une table les index, les triggers ou les
+    /// contraintes d'une autre, et rend un `TableDetail` complet, plausible, et faux. Rien dans le
+    /// type ne l'empêche.
+    ///
+    /// # Ce que ce test ne garde pas, et pourquoi son nom serait trompeur sans ceci
+    ///
+    /// Ce n'est **pas** une comparaison de l'ancienne lecture avec la nouvelle : `table_detail`
+    /// *passe par* `table_details` avec un seul nom, délibérément — il n'y a pas deux versions des
+    /// requêtes à faire vieillir séparément. Les deux côtés de l'`assert_eq!` exécutent donc le
+    /// même code, et une omission **partagée** — les triggers oubliés des deux côtés — le laisserait
+    /// vert. Vérifié par sabotage : c'est le cas.
+    ///
+    /// Cette moitié-là est gardée ailleurs, et c'est ce qui rend la division acceptable : les tests
+    /// de détail comparent le décor à ce qu'on sait de lui — `orders` porte le trigger
+    /// `orders_touch`, l'index `orders_status_idx` et la contrainte `total_positif` —, et ils
+    /// passent désormais par la lecture groupée, puisque `table_detail` y délègue. Une requête qui
+    /// cesserait de rendre ses lignes les ferait rougir. Les deux tests ne se recouvrent donc pas :
+    /// l'un dit que chaque requête rend quelque chose, l'autre que ce quelque chose atterrit sur la
+    /// bonne table.
+    ///
+    /// Ce qui diffère entre les deux côtés est le **nombre de tables demandées**, un contre quatre.
+    /// C'est exactement ce qu'il faut pour dénoncer une contamination : lue seule, une table n'a que
+    /// ses propres lignes à se voir attribuer, donc la lecture unique est le témoin de la lecture
+    /// groupée. Sabotée par un regroupement qui ignore sa clé, la suite rougit sur `users`, qui
+    /// reçoit alors les triggers d'`orders`.
     ///
     /// D'où la comparaison terme à terme avec la lecture une par une, sur des tables du décor
     /// choisies pour porter chacune quelque chose : `orders` a des index, des contraintes, un
     /// trigger, une identité et une clé étrangère sortante ; `users` la même clé vue en entrée ;
     /// `montants` des types numériques ; `identites` des colonnes commentées.
+    ///
+    /// **Les deux statistiques en sont écartées** — le compte de lignes et la taille sont des
+    /// mesures d'un instant sur un décor partagé, non des propriétés de la table. La raison
+    /// complète est dans le corps, à l'endroit où elles sont mises de côté.
     #[tokio::test]
     async fn la_lecture_groupee_rend_exactement_ce_que_la_lecture_par_table_rend() {
         let tables = [
@@ -2364,13 +2391,48 @@ mod tests_db {
             vec!["orders", "users", "montants", "identites"]
         );
 
+        // **Les deux statistiques sont mises de côté, et c'est la CI qui l'a imposé.**
+        //
+        // La première version comparait `TableDetail` entier, en s'en félicitant : « la comparaison
+        // porte sur tout, compte de lignes et taille comprises ». Elle est verte en local et l'a
+        // été deux fois en CI, puis a échoué sur `users` — sans qu'une ligne de SQL ait bougé.
+        //
+        // `rows` est estimé depuis `reltuples` et `size_bytes` lu dans `pg_total_relation_size` :
+        // ce sont des **mesures d'un instant**, pas des propriétés de la table. Or les deux chemins
+        // lisent à deux instants, le décor PostgreSQL est **partagé**, et les tests tournent en
+        // parallèle — ceux qui écrivent dans `users` déplacent sa taille entre les deux lectures.
+        // Comparer ces deux champs était donc un tirage au sort (règle n° 3), et il s'est joué en
+        // CI parce que c'est là que la suite entière tourne d'un coup.
+        //
+        // Les mettre de côté ne relâche rien de ce que le test garde : la réécriture porte sur la
+        // **forme** des cinq requêtes, et tout le reste — colonnes, index, contraintes, triggers,
+        // relations, DDL, commentaire — est comparé au terme près. Ce qui subsiste des deux champs
+        // est ce qui ne dépend pas de l'instant : la même *sorte* de comptage, et une taille rendue
+        // par les deux chemins ou par aucun. C'est ce qui attraperait le défaut réaliste — un
+        // chemin qui aurait oublié de lire l'un des deux, et rendrait `None` ou `Exact`.
+        let sans_statistiques = |detail: &crate::engine::TableDetail| {
+            let mut nu = detail.clone();
+            nu.rows = crate::engine::RowCount::Estimated { value: 0 };
+            nu.size_bytes = None;
+            nu
+        };
+
         for (groupe, nom) in groupes.iter().zip(tables.iter()) {
             let seul = detail_de_test(nom).await;
-            // `TableDetail` dérive `PartialEq` : la comparaison porte sur **tout** — colonnes,
-            // index, contraintes, triggers, relations, DDL, compte de lignes, taille, commentaire.
-            // C'est ce qui fait de ce test un contrôle d'équivalence et non un échantillonnage.
+
             assert_eq!(
-                *groupe, seul,
+                std::mem::discriminant(&groupe.rows),
+                std::mem::discriminant(&seul.rows),
+                "la table {nom} ne rend pas la même sorte de comptage selon le chemin de lecture"
+            );
+            assert_eq!(
+                groupe.size_bytes.is_some(),
+                seul.size_bytes.is_some(),
+                "la table {nom} rend une taille par un chemin de lecture et pas par l'autre"
+            );
+            assert_eq!(
+                sans_statistiques(groupe),
+                sans_statistiques(&seul),
                 "la table {nom} diffère selon le chemin de lecture"
             );
         }
