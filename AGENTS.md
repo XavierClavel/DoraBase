@@ -278,11 +278,41 @@ qu'il portait et que le rendu ne dit pas.
     flèche du regard demandait de la sélectionner. Trois segments orthogonaux aux angles arrondis
     remplacent la courbe — deux droites qui se croisent se lisent comme un croisement — et chaque
     lien reçoit un **couloir** dans la gouttière qu'il traverse, attribué du plus court parcours
-    vertical au plus long, de sorte qu'aucune verticale n'en recouvre une autre. Le compte de
-    couloirs est **dérivé de l'écart horizontal**, jamais posé à côté : élargir la gouttière en offre
-    davantage sans qu'on y pense, la rétrécir en retire plutôt que de faire passer un trait sous une
-    boîte. Le coude se place dans la gouttière qui précède la **cible**, pour que toutes les flèches
-    entrant dans une table y arrivent droit, à des hauteurs séparées ;
+    vertical au plus long, de sorte qu'aucune verticale n'en recouvre une autre. Le coude se place
+    dans la gouttière qui précède la **cible**, pour que toutes les flèches entrant dans une table y
+    arrivent droit, à des hauteurs séparées.
+
+    **« Aucune verticale n'en recouvre une autre » a été faux pendant tout ce temps**, et de deux
+    façons à la fois (4 septembre 2026, rapporté à l'usage : « deux traits verticaux ne devraient
+    jamais être dessinés l'un sur l'autre ; c'est acceptable pour les horizontaux, il le faut bien
+    quand ils convergent vers la colonne d'identité d'une table »). Les deux valent d'être connues :
+
+    - **les rangs bouclaient.** Les couloirs s'éloignaient du bord par pas fixe de 14 px et le rang
+      était pris modulo ce que la gouttière tenait — cinq. Un commentaire assumait le compromis,
+      « deux traits confondus valent mieux qu'un trait passant sous une boîte », en ajoutant que le
+      cas « ne se présente qu'à partir de six clés entrant dans une même colonne » : c'est-à-dire
+      **dès le premier moyeu**, ce que toute base réelle a. Le pas se resserre désormais au lieu de
+      boucler, et reste à 14 px tant qu'il y a de la place — donc aucun dessin existant ne bouge
+      d'un pixel ;
+    - **et « en avant » et « en arrière » ne partageaient pas leur gouttière.** Les deux sortes
+      comptent leurs couloirs depuis le **bord gauche d'une colonne**, vers la gauche, mais sous
+      deux identités différentes (`avant:k` et `arriere:k`) : chacune attribuait donc son rang 0, à
+      la même abscisse. Aucun compte de couloirs n'aurait corrigé celle-là — c'est une seule
+      gouttière physique décrite deux fois. Une seule identité, `colonne:k`, depuis.
+
+    **Ce qui reste, et qu'aucun réglage ne lève** : une gouttière de 86 px a une largeur finie, donc
+    quarante liens y sont à deux pixels l'un de l'autre — distincts, non lisibles. L'issue serait un
+    écart horizontal qui suive la demande de chaque gouttière, mais élargir à quarante couloirs
+    demanderait 574 px entre deux colonnes, ce qui abîmerait tout le schéma pour un seul moyeu. C'est
+    une décision de dessin, et elle n'est pas prise.
+
+    **Et une leçon de test, la règle n° 1 par un bout qui coûte cher** : la propriété demandée — deux
+    verticales ne se recouvrent pas — **dépend du décor**, puisque deux verticales à la même abscisse
+    dont les ordonnées sont disjointes ne se recouvrent pas. Le premier test écrit pour cela est
+    resté **vert sous le sabotage du bouclage** : sur son décor, le modulo appariait justement un
+    lien qui monte vers le moyeu avec un lien qui en descend. Le test garde donc aussi le
+    **mécanisme** — dans une gouttière, deux liens n'ont jamais la même abscisse —, qui est vrai de
+    tout décor. Sans les deux assertions, l'une ou l'autre des deux causes passait ;
   - **choisir une table éclaire les colonnes de ses clés, aux deux bouts** (rapporté à l'usage).
     Surligner les traits dit *qu'*une table en référence une autre, pas **par quelle colonne** — or
     c'est la question qu'on se pose en choisissant une boîte. La clé étrangère s'allume chez celle
