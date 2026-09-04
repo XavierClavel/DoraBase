@@ -546,39 +546,11 @@
 }
 
 /*
- * La ligne d'une colonne qu'un lien de la table choisie touche.
- *
- * **Le fond *et* l'encre**, comme partout dans ce dépôt où une couleur seule ne doit pas porter une
- * information : `--selected` est déjà la teinte de ce qui est désigné, et l'encre passe à l'accent
- * profond pour que la marque tienne aussi sans distinguer les couleurs. La colonne reste lisible en
- * « Nuit » sans entrée de plus — les deux jetons y sont redéfinis.
+ * Les parties d'une ligne. **Elles se déclarent avant les variantes qui les repeignent** — non
+ * par style, mais parce qu'une règle de faible spécificité écrite après une plus forte est un
+ * défaut que Biome dénonce (`noDescendingSpecificity`) : elle *paraît* la remplacer et ne le fait
+ * pas.
  */
-.ligneEnEvidence {
-  background: var(--selected);
-}
-
-.ligneEnEvidence .nom {
-  font-weight: var(--weight-bold);
-  color: var(--accent-deeper);
-}
-
-.ligneEnEvidence .type,
-.ligneEnEvidence .cle,
-.ligneEnEvidence .cleEtrangere {
-  color: var(--accent-deep);
-}
-
-/* La colonne qui a fait correspondre sa table — même teinte que le cerclage de la boîte, pour
-   qu'on lise « c'est par là que la recherche l'a trouvée ». */
-.ligneTrouvee {
-  background: var(--info-bg);
-}
-
-.ligneTrouvee .nom {
-  font-weight: var(--weight-bold);
-  color: var(--info);
-}
-
 .cle {
   flex: none;
   color: var(--gold);
@@ -619,6 +591,40 @@
   color: var(--ink-4);
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/*
+ * La ligne d'une colonne qu'un lien de la table choisie touche.
+ *
+ * **Le fond *et* l'encre**, comme partout dans ce dépôt où une couleur seule ne doit pas porter une
+ * information : `--selected` est déjà la teinte de ce qui est désigné, et l'encre passe à l'accent
+ * profond pour que la marque tienne aussi sans distinguer les couleurs. La colonne reste lisible en
+ * « Nuit » sans entrée de plus — les deux jetons y sont redéfinis.
+ */
+.ligneEnEvidence {
+  background: var(--selected);
+}
+
+.ligneEnEvidence .nom {
+  font-weight: var(--weight-bold);
+  color: var(--accent-deeper);
+}
+
+.ligneEnEvidence .type,
+.ligneEnEvidence .cle,
+.ligneEnEvidence .cleEtrangere {
+  color: var(--accent-deep);
+}
+
+/* La colonne qui a fait correspondre sa table — même teinte que le cerclage de la boîte, pour
+   qu'on lise « c'est par là que la recherche l'a trouvée ». */
+.ligneTrouvee {
+  background: var(--info-bg);
+}
+
+.ligneTrouvee .nom {
+  font-weight: var(--weight-bold);
+  color: var(--info);
 }
 
 .reste {

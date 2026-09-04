@@ -1339,5 +1339,4 @@ mod tests_db {
 
         connexion.query_drop(menage).await.unwrap();
     }
-
 }
