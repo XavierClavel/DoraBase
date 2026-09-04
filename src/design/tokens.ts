@@ -80,6 +80,8 @@ export type TokenName =
   | 'leading-code-tight'
   | 'leading-grid'
   | 'leading-ui'
+  | 'link'
+  | 'link-mark'
   | 'logo-plate'
   | 'muted'
   | 'on-dark'
@@ -238,6 +240,8 @@ export const tokens: Record<TokenName, string> = {
   'leading-code-tight': 'var(--leading-code-tight)',
   'leading-grid': 'var(--leading-grid)',
   'leading-ui': 'var(--leading-ui)',
+  'link': 'var(--link)',
+  'link-mark': 'var(--link-mark)',
   'logo-plate': 'var(--logo-plate)',
   'muted': 'var(--muted)',
   'on-dark': 'var(--on-dark)',

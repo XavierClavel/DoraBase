@@ -574,8 +574,11 @@ export function DiagramView({
                     disparaît est un lien qui ne dit plus dans quel sens il va. */}
                 <Fleche id={`${marques}-fleche`} className={styles.pointe} />
                 <Fleche id={`${marques}-fleche-choisie`} className={styles.pointeChoisie} />
-                <Trident id={`${marques}-many`} className={styles.pointe} />
-                <Trident id={`${marques}-many-choisie`} className={styles.pointeChoisie} />
+                <MarqueDePlusieurs id={`${marques}-many`} className={styles.pointe} />
+                <MarqueDePlusieurs
+                  id={`${marques}-many-choisie`}
+                  className={styles.pointeChoisie}
+                />
                 <Barre id={`${marques}-one`} className={styles.pointe} />
                 <Barre id={`${marques}-one-choisie`} className={styles.pointeChoisie} />
               </defs>
@@ -817,48 +820,41 @@ function qualifier(table: string, colonnes: readonly string[]): string {
 }
 
 /**
- * Le trident du côté « plusieurs », posé au départ du lien.
+ * La marque du côté « plusieurs », posée au départ du lien : un demi-cercle.
  *
- * **La notation des diagrammes entité-association, et non une invention** : trois dents qui
- * s'ouvrent *vers* la table qui référence, parce que c'est chez elle que les lignes se multiplient.
- * Elle se lit sans légende par quiconque a déjà vu un schéma, et « en trait, jamais de fill » comme
- * toutes les icônes du projet.
+ * **Elle dit la notation entité-association sans en reprendre le dessin.** Ce que la notation
+ * exige est qu'un bout de lien se distingue de l'autre et qu'on sache lequel se multiplie ; la
+ * patte d'oie est *une* façon de le dire, pas la seule. Le demi-cercle en est une autre, et c'est
+ * celle qui s'accorde à ce dessin-ci : son diamètre s'appuie à plat contre le bord de la boîte, son
+ * arc s'ouvre le long du lien, et il n'a **aucun angle** — là où tout le reste du tracé est fait de
+ * coudes arrondis, la courbe ayant été bannie des liens eux-mêmes pour qu'ils se distinguent les
+ * uns des autres.
  *
- * # Une fourchette, et non trois traits qui convergent (rapporté à l'usage)
+ * # Quatre dessins, et ce qu'ils ont appris (rapporté à l'usage, à chaque tour)
  *
- * Le premier dessin était `M0 1 L7 5 M0 5 L7 5 M0 9 L7 5` — trois segments droits filant vers un
- * même point. C'est la patte d'oie canonique, et dans un dessin fait par ailleurs de **coudes
- * arrondis** — la courbe ayant justement été bannie des liens eux-mêmes pour qu'ils se distinguent
- * les uns des autres —, elle sortait du lot : trois angles vifs au bord de chaque boîte.
- *
- * D'où la forme d'une fourchette : trois dents **parallèles** qui se fondent dans un manche. Elle
- * dit la même chose, occupe la même place, et n'a plus un seul angle.
- *
- * **Trois essais ont été nécessaires, et les deux premiers ont échoué sur la même cause** — la
- * marque était trop petite pour la forme qu'on y mettait, et elle l'était sans que rien le dise :
- *
- * 1. dents parallèles ramenées par une **traverse** d'angle droit arrondi. Elle se lisait comme un
+ * 1. `M0 1 L7 5 M0 5 L7 5 M0 9 L7 5` — trois segments droits convergents, la patte d'oie
+ *    canonique. Trois angles vifs au bord de chaque boîte : le seul endroit anguleux du dessin ;
+ * 2. dents parallèles ramenées par une **traverse** d'angle droit arrondi. Elle se lisait comme un
  *    crochet : des dents d'à peine une épaisseur de trait, et une traverse qui prenait le reste ;
- * 2. dents **cintrées** convergeant vers l'axe, sans partie droite. Plus ronde, mais elle se lisait
- *    comme un double chevron : le raccord occupait plus de place que les dents, donc c'est lui qu'on
- *    voyait ;
- * 3. la forme en place — six pixels et demi de dent droite, puis un raccord **tangent** de quatre
- *    pixels et demi. La moitié de la marque est de la dent, et c'est ce qui la fait lire.
+ * 3. dents **cintrées** convergeant vers l'axe, sans partie droite : un double chevron, le raccord
+ *    occupant plus de place que les dents ;
+ * 4. le demi-cercle. Une seule commande d'arc, aucun raccord à proportionner, et rien qui puisse
+ *    se confondre avec son propre trait.
  *
- * **La cause commune était le `markerUnits`**, et elle est écrite dans la feuille de style : par
- * défaut la boîte d'une marque se compte en multiples de l'épaisseur du trait marqué, donc les
- * cotes qu'on croit poser en pixels n'en sont pas, et le trait de la marque est peint plus gras que
- * le lien qu'il termine. Les trois `marker` sont à l'échelle 1 depuis : **une unité de `viewBox`
- * vaut un pixel**, ce qui rend les cotes ci-dessous lisibles telles quelles.
+ * **Les deux premiers échecs avaient la même cause, et elle n'était pas dans le tracé** : la boîte
+ * de la marque était plus petite qu'on ne le croyait, parce que `markerUnits` vaut `strokeWidth`
+ * par défaut — voir la feuille de style, où le fait est écrit. Une forme à treize pixels se règle
+ * en proportions, et on ne règle pas des proportions dans une unité qu'on ignore.
  *
  * Rien de tout cela ne se voit autrement qu'à la loupe : le test e2e garde que la marque peint, son
- * `refX` et son `orient`, jamais son tracé — un `d` recopié dans une assertion se périme au premier
- * ajustement de forme. La seule mesure qui juge est une capture à `deviceScaleFactor: 6`, regardée.
+ * `refX`, son `orient` et son épaisseur, jamais son tracé — un `d` recopié dans une assertion se
+ * périme au premier ajustement de forme, et celui-ci en a connu quatre. La seule mesure qui juge
+ * est une capture à `deviceScaleFactor: 6`, **regardée**.
  *
  * `refX` vaut 0 : la marque commence exactement au bord de la boîte, et `orient="auto"` la retourne
  * d'elle-même sur les liens qui sortent par la gauche — ceux que les cycles et les couches produisent.
  */
-function Trident({ id, className }: { id: string; className: string | undefined }) {
+function MarqueDePlusieurs({ id, className }: { id: string; className: string | undefined }) {
   return (
     <marker
       id={id}
@@ -870,21 +866,11 @@ function Trident({ id, className }: { id: string; className: string | undefined 
       markerHeight="13"
       orient="auto"
     >
-      {/* Trois dents **parallèles** qui se fondent dans le manche — la forme d'une fourchette, et
-          c'est de là que vient la rondeur : les deux extérieures arrivent sur l'axe *tangentes*
-          (les deux points de contrôle sont à l'horizontale, un de chaque côté du raccord), donc
-          elles s'y confondent au lieu de l'y croiser. Quatre pixels de dent droite avant le
-          raccord : c'est la moitié de la marque, et c'est ce qui la fait lire comme une fourchette
-          plutôt que comme un double chevron — mesuré à la loupe, un raccord qui prend plus de place
-          que les dents domine la forme. */}
-      <path
-        d={
-          'M0 3.3 L6.5 3.3 C8.7 3.3 8.8 6.5 11 6.5 ' +
-          'M0 6.5 L11 6.5 ' +
-          'M0 9.7 L6.5 9.7 C8.7 9.7 8.8 6.5 11 6.5'
-        }
-        className={className}
-      />
+      {/* Un demi-cercle exact : la corde va de 1,5 à 11,5 — dix pixels —, donc le rayon est de
+          cinq et l'arc culmine à cinq pixels du bord. Écrire un rayon plus grand que la moitié de
+          la corde ne lèverait rien : SVG l'agrandit en silence jusqu'à ce qu'un arc soit possible,
+          et le demi-cercle deviendrait un arc quelconque sans qu'on sache pourquoi. */}
+      <path d="M0 1.5 A5 5 0 0 1 0 11.5" className={className} />
     </marker>
   )
 }
@@ -893,7 +879,7 @@ function Trident({ id, className }: { id: string; className: string | undefined 
  * Le trait du côté « un », posé au départ du lien.
  *
  * L'autre moitié de la même notation : une barre perpendiculaire dit « une seule ligne ici ».
- * **Elle n'est pas l'absence de trident** — un lien sans marque se lirait comme un lien qu'on
+ * **Elle n'est pas l'absence de demi-cercle** — un lien sans marque se lirait comme un lien qu'on
  * n'a pas su qualifier, et les deux valeurs de `RelationCardinality` sont toutes deux des réponses.
  */
 function Barre({ id, className }: { id: string; className: string | undefined }) {
@@ -1092,7 +1078,7 @@ function listeCourte(noms: readonly string[]): string {
 /**
  * Le texte de l'infobulle d'une ligne : son type, sa nullité, et ce qu'elle référence.
  *
- * **La cardinalité y est écrite en toutes lettres**, et pas seulement dessinée : un trident se
+ * **La cardinalité y est écrite en toutes lettres**, et pas seulement dessinée : une marque se
  * lit d'un coup d'œil pour qui connaît la notation, et ne dit rien du tout à qui ne la connaît pas.
  * C'est aussi la seule forme qu'une voix puisse rendre — un `marker` SVG n'a pas de texte.
  */

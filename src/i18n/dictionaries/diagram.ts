@@ -39,7 +39,7 @@ export const diagramFr: Dictionnaire = {
       `Aucun chemin de clés entre ${p.a} et ${p.b} parmi les tables dessinées`,
     effacer: 'Ne plus rien choisir',
   },
-  // **La cardinalité, en toutes lettres.** Le trident se lit d'un coup d'œil pour qui connaît
+  // **La cardinalité, en toutes lettres.** La notation se lit d'un coup d'œil pour qui la connaît
   // la notation, et ne dit rien à qui ne la connaît pas — un `marker` SVG n'a d'ailleurs aucun texte
   // qu'une voix puisse rendre. Les deux formes disent la même chose : la brève pour une infobulle,
   // celle qui porte ses espaces pour la lecture d'un chemin.

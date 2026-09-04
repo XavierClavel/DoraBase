@@ -371,9 +371,21 @@
   pointer-events: none;
 }
 
+/*
+ * **Un trait de lien est opaque, et ce n'est pas un détail de teinte.**
+ *
+ * Il portait `--ink-5`, une encre à 30 % : là où deux liens se croisent, la toile en reçoit deux
+ * couches et le croisement se peint à 51 % — un point plus sombre que tout le reste du dessin, qui
+ * se lit comme une désignation alors que rien n'y est désigné. Rapporté à l'usage. `--link` est le
+ * **composite exact** de cette encre sur `--canvas`, donc un trait seul ne bouge pas d'une valeur ;
+ * seuls les croisements cessent de s'assombrir. Un jeton par thème, parce que le composite dépend
+ * du fond — et c'est aussi la raison pour laquelle ce ne pouvait pas être un `--ink-*` de plus.
+ *
+ * `.lienEteint` garde son `opacity`, qui est un effacement voulu et non un accident du tracé.
+ */
 .lien {
   fill: none;
-  stroke: var(--ink-5);
+  stroke: var(--link);
   stroke-width: 1.4;
 }
 
@@ -402,7 +414,7 @@
  */
 .pointe {
   fill: none;
-  stroke: var(--ink-3);
+  stroke: var(--link-mark);
   stroke-width: 1.4;
   stroke-linecap: round;
   stroke-linejoin: round;

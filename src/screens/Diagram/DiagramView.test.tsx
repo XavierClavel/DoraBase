@@ -540,7 +540,7 @@ test('chaque lien porte au départ la marque de sa cardinalité', async () => {
    * ne peut viser que des colonnes uniques —, donc il n'y a qu'un bout où il y ait quelque chose à
    * dire. La flèche reste à l'arrivée : elle donne le sens, et ce n'est pas la même information.
    *
-   * Ce que jsdom peut mesurer ici est le **choix de la marque** ; qu'elle se dessine en fourchette
+   * Ce que jsdom peut mesurer ici est le **choix de la marque** ; qu'elle se dessine en demi-cercle
    * appartient à `e2e/` comme tout ce qui est mise en page (règle n° 9).
    */
   const { container } = monter(
@@ -566,7 +566,7 @@ test('chaque lien porte au départ la marque de sa cardinalité', async () => {
 
 test('la cardinalité s’écrit aussi en toutes lettres, là où une marque ne se lit pas', async () => {
   /*
-   * **Un trident ne dit rien à qui ne connaît pas la notation**, et un `marker` SVG n'a aucun
+   * **Un demi-cercle ne dit rien à qui ne connaît pas la notation**, et un `marker` SVG n'a aucun
    * texte qu'une voix puisse rendre. Les deux endroits où la relation se lit en mots doivent donc la
    * porter : l'infobulle d'une ligne, et la bande qui écrit le chemin entre deux tables.
    */
@@ -964,7 +964,7 @@ test('l’infobulle d’une ligne dit son type, sa nullité et ce qu’elle réf
   monter(<DiagramView schema="public" tables={DEUX} total={2} />)
   // Quatre faits qu'une boîte de 200 px n'a pas la place d'écrire, et que le tracé ne dit pas
   // précisément. Une infobulle **décrit** : c'est un `title`, jamais un `aria-label` (piège n° 4).
-  // La cardinalité s'y est ajoutée le 3 septembre 2026 : le trident ne dit rien à qui ne
+  // La cardinalité s'y est ajoutée le 3 septembre 2026 : la marque ne dit rien à qui ne
   // connaît pas la notation, et un `marker` SVG n'a aucun texte qu'une voix puisse rendre.
   expect(
     screen.getByTitle('int8 · jamais nul · référence public.users.id · un à plusieurs'),
