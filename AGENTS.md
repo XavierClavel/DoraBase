@@ -470,7 +470,7 @@ qu'il portait et que le rendu ne dit pas.
     où le tri des liens le fait visiter en second, donc là où une pile le prendrait en premier.
   - **et un `1:1` ne se dessine pas comme un `1:n`** (3 septembre 2026, à la demande). Le dessin
     disait *qu'*une table en référence une autre, jamais **combien de fois** — or c'est la première
-    chose qu'on lit sur un schéma, et celle qui décide de ce qu'une jointure va rendre. Une fourchette
+    chose qu'on lit sur un schéma, et celle qui décide de ce qu'une jointure va rendre. Un demi-cercle
     marque désormais le départ des liens `1:n`, une barre celui des `1:1`. Six décisions :
     - **la réponse vient du catalogue, et il a fallu l'y aller chercher.** Ce qui sépare les deux est
       l'unicité des colonnes qui **référencent** : clé primaire, contrainte `unique`, ou index unique
@@ -491,7 +491,7 @@ qu'il portait et que le rendu ne dit pas.
       référence, donc les deux moitiés s'accordent — ce dont la déduplication de `liensDe` dépend,
       elle qui garde la première vue sans les comparer. Un test par moteur le vérifie **des deux
       bouts** ;
-    - **elle s'écrit aussi en toutes lettres.** Un trident ne dit rien à qui ne connaît pas la
+    - **elle s'écrit aussi en toutes lettres.** Une marque ne dit rien à qui ne connaît pas la
       notation, et un `marker` SVG n'a aucun texte qu'une voix puisse rendre : l'infobulle d'une
       ligne porte « un à un » / « un à plusieurs », et la bande de relation la notation `1:1` / `1:n`
       doublée du mot en texte masqué ;
@@ -504,12 +504,14 @@ qu'il portait et que le rendu ne dit pas.
       demandent d'écarter l'index **entier** plutôt que ligne à ligne : `unique (code(10), compte_id)`
       dont on ne retirerait que la ligne préfixée laisse l'ensemble `{compte_id}`, qui répond « oui »
       à une clé étrangère sur `compte_id` seule alors que rien n'y garantit son unicité.
-    - **et la marque du côté « plusieurs » est une fourchette** (4 septembre 2026, à la demande :
-      « quelque chose de plus rond, comme un trident ou une fourchette »). La patte d'oie d'origine
-      était trois segments droits convergents — la notation canonique, et le seul endroit du dessin
-      à porter un angle vif, alors que tout le reste est fait de coudes arrondis et que la courbe
-      avait justement été bannie des liens pour cette raison. Trois choses apprises en la
-      redessinant, et la troisième vaut au-delà de cet écran :
+    - **et la marque du côté « plusieurs » est un demi-cercle** (4 septembre 2026, à la demande, en
+      trois tours : « plus rond, comme un trident », puis « comme une fourchette », puis « comme un
+      demi-cercle »). La patte d'oie d'origine était trois segments droits convergents — la notation
+      canonique, et le seul endroit du dessin à porter un angle vif, alors que tout le reste est fait
+      de coudes arrondis et que la courbe avait justement été bannie des liens pour cette raison. Ce
+      que la notation exige est qu'un bout de lien se distingue de l'autre et qu'on sache lequel se
+      multiplie ; la patte d'oie est *une* façon de le dire, pas la seule. Trois choses apprises en
+      la redessinant, et les deux dernières valent au-delà de cet écran :
       - **`markerUnits` vaut `strokeWidth` par défaut, et c'est un piège muet.** La boîte d'un
         `marker` s'exprime alors en **multiples de l'épaisseur du trait marqué** : une marque de 9
         posée sur un lien de 1,4 occupe 12,6 px, sa `viewBox` de 10 s'y étire d'un facteur 1,26, et
@@ -519,18 +521,39 @@ qu'il portait et que le rendu ne dit pas.
         (`userSpaceOnUse`, `markerWidth` égal à la `viewBox`), et leur `stroke-width` s'écrit dans
         la même unité que `.lien` — donc à la même valeur, ce qui est le seul réglage correct : une
         marque au bout d'un trait doit être ce trait qui se termine, pas un second trait plus gras ;
-      - **une forme à treize pixels se règle en proportions, pas en idées.** Trois essais, et les
-        deux premiers ont échoué sur la même cause — la marque était trop petite pour la forme qu'on
-        y mettait. Dents parallèles ramenées par une traverse d'angle droit : un crochet. Dents
-        cintrées convergeant sans partie droite : un double chevron, le raccord prenant plus de
-        place que les dents. Ce qui marche est **la moitié de dent droite**, puis un raccord
-        *tangent* — les deux points de contrôle à l'horizontale de part et d'autre du raccord, de
-        sorte que les dents se **fondent** dans le manche au lieu de l'y croiser ;
+      - **une forme à treize pixels se règle en proportions, et la forme la plus simple gagne.**
+        Quatre dessins : trois segments convergents (des angles vifs) ; des dents parallèles
+        ramenées par une traverse d'angle droit (un crochet — des dents d'à peine une épaisseur de
+        trait) ; des dents cintrées convergeant sans partie droite (un double chevron, le raccord
+        prenant plus de place que les dents) ; puis le demi-cercle, **une seule commande d'arc**,
+        aucun raccord à proportionner, et rien qui puisse se confondre avec son propre trait. Les
+        deux échecs du milieu avaient la même cause, et elle n'était pas dans le tracé : la boîte de
+        la marque était plus petite qu'on ne le croyait, à cause du `markerUnits` ci-dessus. **On ne
+        règle pas des proportions dans une unité qu'on ignore** ;
       - **rien de tout cela ne se voit autrement qu'à la loupe.** Le test e2e qui garde la notation
         vérifie que le `marker` peint, son `refX` et son `orient` — jamais son tracé, et il aurait
         raison de ne pas le faire : un `d` recopié dans une assertion se périme au premier
         ajustement de forme. La seule mesure qui juge est une capture à `deviceScaleFactor: 6`,
         **regardée**. C'est la méthode qui a le plus payé, appliquée à treize pixels.
+  - **et un trait de lien est opaque** (4 septembre 2026, rapporté à l'usage : « la couleur
+    n'est pas cohérente là où deux traits se superposent »). Ils portaient `--ink-5`, une encre
+    à 30 % : deux couches sur la même toile donnent 1 − 0,70² = 51 %, donc le croisement se
+    peint plus sombre que tout le reste du dessin — à l'endroit précis où l'œil cherche à suivre
+    un trait, et avec l'aspect d'une désignation alors que rien n'y est désigné. `--link` et
+    `--link-mark` sont le **composite exact** de ces deux encres sur `--canvas`, donc un trait
+    seul ne bouge pas d'une valeur et seuls les croisements changent. Trois points :
+    - **ce ne pouvait pas être un `--ink-*` de plus.** Le composite dépend du fond, donc chaque
+      thème a le sien — c'est exactement ce que l'échelle d'encres ne peut pas exprimer, ses
+      valeurs étant *une* couleur à des opacités croissantes ;
+    - **`.lienEteint` garde son `opacity`**, qui est un effacement voulu, porte sur l'élément et
+      non sur l'encre, et ne paraît que pendant une recherche ;
+    - **le test garde la cause, pas la conséquence.** Comparer la couleur d'un croisement à
+      celle d'un trait seul demanderait un croisement *dans le décor* — donc un décor à
+      maintenir pour cette seule question, et un test muet le jour où la disposition cesse d'en
+      produire un. Ce qui est vrai indépendamment du dessin est qu'une encre translucide ne peut
+      pas se superposer à elle-même sans s'assombrir : cela tient dans un canal alpha, et se
+      mesure sur n'importe quel trait. Vérifié par sabotage sur les deux moitiés, le lien et la
+      marque.
 
     **Et le premier `⇧`-clic a dénoncé un nom accessible en double** : les boutons de zoom
     s'appelaient « Réduire » et « Agrandir », exactement comme les commandes de fenêtre de la barre

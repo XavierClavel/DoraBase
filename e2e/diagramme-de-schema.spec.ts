@@ -453,7 +453,7 @@ test('un lien 1:1 et un lien 1:n ne se dessinent pas de la même façon', async 
    *
    * `DiagramView.test.tsx` vérifie *quelle* marque chaque lien désigne — c'est du DOM. Qu'elle se
    * **dessine** ne se mesure qu'ici : un `marker` mal ancré (`refX`) ou mal orienté (`orient`) rend
-   * un attribut parfaitement juste et un trident invisible, ou posé à l'envers au milieu du
+   * un attribut parfaitement juste et une marque invisible, ou posée à l'envers au milieu du
    * trait. jsdom ne peint rien, donc il ne verrait ni l'un ni l'autre (règle n° 9).
    */
   const marques = await page.evaluate(() => {
@@ -544,10 +544,51 @@ test('une marque a l’épaisseur du trait qu’elle termine', async ({ page }) 
   }
 })
 
+test('deux liens qui se croisent ne s’assombrissent pas', async ({ page }) => {
+  /*
+   * **Rapporté à l'usage : « la couleur n'est pas cohérente là où deux traits se superposent ».**
+   *
+   * Les liens portaient `--ink-5`, une encre à 30 %. Deux couches sur la même toile donnent
+   * 1 − 0,70² = 51 % : un point plus sombre que tout le reste du dessin, à l'endroit précis où l'œil
+   * cherche à suivre un trait, et qui se lit comme une désignation alors que rien n'y est désigné.
+   *
+   * # Pourquoi l'opacité déclarée, et non deux pixels comparés
+   *
+   * Comparer la couleur d'un croisement à celle d'un trait seul mesurerait la **conséquence**, et il
+   * faudrait un croisement dans le décor pour la mesurer — donc un décor à maintenir pour cette
+   * seule question, et un test muet le jour où la disposition cesse d'en produire un. Ce qui est
+   * vrai indépendamment du dessin est qu'**une encre translucide ne peut pas se superposer à
+   * elle-même sans s'assombrir** : c'est la cause, elle tient dans un canal alpha, et elle se
+   * mesure sur n'importe quel trait.
+   *
+   * `.lienEteint` n'est pas concerné : son `opacity` est un effacement voulu, il porte sur
+   * l'élément et non sur l'encre, et il ne paraît que pendant une recherche.
+   */
+  const encres = await page.evaluate(() => {
+    const peints = [
+      ...document.querySelectorAll('[data-liens] path[data-lien]'),
+      ...document.querySelectorAll('[data-liens] marker path'),
+    ]
+    return peints.map((p) => {
+      const style = getComputedStyle(p)
+      return { stroke: style.stroke, opacite: style.opacity }
+    })
+  })
+
+  expect(encres.length).toBeGreaterThan(0)
+  for (const e of encres) {
+    // `getComputedStyle` rend une couleur résolue : `rgb(…)` quand elle est opaque, `rgba(…, a)`
+    // — ou `color(… / a)` — dès qu'elle ne l'est pas. C'est l'alpha qu'on refuse, sous ses deux
+    // formes, et non une valeur précise : la teinte reste libre de changer.
+    expect(e.stroke).not.toMatch(/rgba|\/\s*0?\.\d/)
+    expect(e.opacite).toBe('1')
+  }
+})
+
 test('la cardinalité s’écrit dans l’infobulle, que la notation soit connue ou non', async ({
   page,
 }) => {
-  // Un trident ne dit rien à qui ne l'a jamais vu, et un `marker` SVG n'a aucun texte qu'une
+  // Un demi-cercle ne dit rien à qui n'a jamais vu la notation, et un `marker` SVG n'a aucun texte qu'une
   // voix puisse rendre : le mot doit exister quelque part.
   const ligne = page.locator('[data-boite="user_profiles"] [data-colonne="user_id"]')
   await expect(ligne).toHaveAttribute('title', /un à un/)
