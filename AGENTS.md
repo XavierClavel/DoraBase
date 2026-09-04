@@ -1232,16 +1232,30 @@ ensembliste : un **regroupement** qui attribue à une table les index ou les tri
 rend un `TableDetail` complet, plausible et faux. Lue seule, une table n'a que ses propres lignes à
 se voir attribuer : la lecture unique est le témoin de la lecture groupée.
 
-**Et deux champs sont écartés de cette comparaison, ce que la CI a imposé.** `rows` est estimé depuis
-`reltuples`, `size_bytes` lu dans `pg_total_relation_size` : ce sont des mesures **d'un instant**,
-pas des propriétés de la table. Les deux chemins lisent à deux instants, le décor PostgreSQL est
-partagé, et les tests tournent en parallèle — ceux qui écrivent dans `users` déplacent sa taille
-entre les deux lectures. Les comparer était un tirage au sort (règle n° 3), vert en local et deux
-fois en CI avant d'échouer sans qu'une ligne de SQL ait bougé. Ce qui subsiste des deux champs est ce
-qui ne dépend pas de l'instant : la même *sorte* de comptage, et une taille rendue par les deux
-chemins ou par aucun — de quoi attraper le défaut réaliste, un chemin qui aurait oublié de lire l'un
-des deux. **La leçon générale** : un test qui compare deux lectures d'une base vivante ne peut
-comparer que ce qui ne bouge pas entre elles, et un décor partagé par des tests parallèles bouge.
+**Et ce que deux lectures d'une base vivante ne peuvent pas comparer en est écarté, ce que la CI a
+imposé.** La première version comparait `TableDetail` entier, en s'en félicitant — « la comparaison
+porte sur tout ». Verte en local et deux fois en CI, puis rouge sur `users` **sans qu'une ligne de
+SQL ait bougé** : la lecture unique voyait une relation entrante de plus, venue d'un schéma nommé
+`ddl_rejeu_orders`. C'est le schéma jetable de `le_ddl_produit_se_rejoue_et_donne_la_meme_table`, qui
+tournait en parallèle et y rejoue le DDL d'`orders` — dont la clé étrangère continue de viser
+`introspection.users`, son propre commentaire le disant. Le temps de ce test, `users` a une
+référente de plus, et les deux lectures tombent de part et d'autre.
+
+**Aucune sérialisation ne réglerait cela proprement** : le décor est partagé, les tests sont
+parallèles par défaut, et un test qui exige que rien d'autre ne tourne s'approprie la suite. Sont
+donc écartés les **relations dont l'autre bout est hors du schéma étudié** — la cause observée, et
+reproduite depuis à volonté en créant ce schéma *entre* les deux lectures, ce qui fait échouer le
+test sans le filtre et passer avec — et, par précaution, le **compte de lignes** et la **taille** :
+`reltuples` et `pg_total_relation_size` sont des mesures d'un instant, que tout test écrivant dans
+une de ces tables déplace. Cette seconde moitié n'a rien cassé — en CI les deux valent zéro et
+`None` — mais c'est un tirage au sort qui n'est pas encore sorti (règle n° 3). Ce qui subsiste d'eux
+est ce qui ne dépend pas de l'instant : la même *sorte* de comptage, et une taille rendue par les
+deux chemins ou par aucun.
+
+**La leçon générale** : un test qui compare deux lectures d'une base vivante ne peut comparer que ce
+qui ne bouge pas entre elles — et sur un décor partagé par des tests parallèles, ce qui bouge n'est
+pas seulement les statistiques, c'est **tout ce qu'un autre test peut créer**, jusqu'à une clé
+étrangère qui apparaît dans un schéma dont le sujet n'a jamais entendu parler.
 
 **Convention Rust à 4 espaces**, pas de `rustfmt.toml` alignant Rust sur le JS du projet.
 
