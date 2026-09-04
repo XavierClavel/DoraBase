@@ -495,53 +495,132 @@ test('un lien 1:1 et un lien 1:n ne se dessinent pas de la même façon', async 
   expect(marques.every((m) => m.refX === '0' && m.orient === 'auto')).toBe(true)
 })
 
-test('une marque a l’épaisseur du trait qu’elle termine', async ({ page }) => {
+test('une marque est le trait qui se termine, à l’arrêt comme choisie', async ({ page }) => {
   /*
-   * **Rapporté à l'usage : « la largeur devrait être la même que le reste du trait ».**
+   * **Deux signalements, la même règle.** « La largeur devrait être la même que le reste du trait »,
+   * puis « le surlignage d'un trait ne s'applique pas à la marque ». Une marque au bout d'un trait
+   * doit être *ce trait qui se termine* : même épaisseur, même encre, dans chacun de ses états.
    *
-   * Elle ne l'était pas, et la cause est un défaut *par défaut* : `markerUnits` vaut `strokeWidth`
-   * si on ne le pose pas, donc la boîte d'un `marker` se compte en **multiples de l'épaisseur du
-   * trait marqué**. Une marque de 9 sur un lien de 1,4 occupait 12,6 px, sa `viewBox` de 10 s'y
-   * étirait d'un facteur 1,26, et son trait de 1,6 était peint à 2 px — 44 % de trop.
+   * Les deux moitiés avaient chacune leur cause :
+   *
+   * - l'épaisseur, parce que `markerUnits` vaut `strokeWidth` par défaut — la boîte d'une marque se
+   *   compte alors en multiples de l'épaisseur du trait marqué, donc une marque de 9 sur un lien de
+   *   1,4 occupait 12,6 px, sa `viewBox` de 10 s'y étirait d'un facteur 1,26, et son trait de 1,6
+   *   était peint à 2 px ;
+   * - l'encre, parce que la marque portait un gris plus sombre que le lien « pour mieux se lire ».
+   *   Le DOM était pourtant juste dans les deux états — la marque *choisie* est bien référencée
+   *   quand le lien est choisi —, mais la teinte n'était jamais celle du trait, donc aucun état du
+   *   lien n'avait l'air de l'atteindre.
    *
    * # Pourquoi ce test-ci, et pas une capture
    *
-   * C'est un **réglage** qu'il faut garder, pas un rendu (règle n° 3). Le remettre à son défaut ne
-   * casse rien, ne prévient rien et ne change que l'épaisseur de trois marques de quelques
-   * dixièmes de pixel : une capture de fidélité compterait quelques dizaines de pixels au-dessus du
-   * seuil et se lirait comme du bruit, là où l'égalité ci-dessous est exacte. Et l'œil ne l'avait
-   * pas vu non plus — il a fallu qu'on le rapporte.
+   * Ce sont des **réglages** (règle n° 3). Les remettre à leur valeur d'avant ne casse rien, ne
+   * prévient rien, et ne déplace que quelques dixièmes de pixel et dix valeurs de gris sur trois
+   * marques : une capture de fidélité compterait cela comme du bruit, là où les égalités ci-dessous
+   * sont exactes. Et l'œil ne l'avait pas vu non plus — il a fallu qu'on le rapporte, deux fois.
    */
-  const mesures = await page.evaluate(() => {
-    const traits = [...document.querySelectorAll('[data-liens] path[marker-start]')]
-    return traits.map((trait) => {
-      const url = trait.getAttribute('marker-start') ?? ''
-      const marque = document.querySelector(url.slice(4, -1))
-      const dessin = marque?.querySelector('path')
-      const boite = marque?.getAttribute('markerWidth')
-      const vue = marque?.getAttribute('viewBox')?.split(/\s+/)[2]
-      return {
-        lien: trait.getAttribute('data-lien'),
-        // Les deux épaisseurs déclarées, prises **calculées** : elles viennent d'une classe CSS,
-        // donc l'attribut n'existe pas et seul le style résolu les porte.
-        traitDuLien: Number.parseFloat(getComputedStyle(trait).strokeWidth),
-        traitDeLaMarque: dessin ? Number.parseFloat(getComputedStyle(dessin).strokeWidth) : null,
-        unites: marque?.getAttribute('markerUnits') ?? null,
-        // Le facteur que la marque applique à son propre tracé.
-        echelle: boite && vue ? Number.parseFloat(boite) / Number.parseFloat(vue) : null,
-      }
+  const mesurer = () =>
+    page.evaluate(() => {
+      const traits = [...document.querySelectorAll('[data-liens] path[marker-start]')]
+      return traits.map((trait) => {
+        const url = trait.getAttribute('marker-start') ?? ''
+        const marque = document.querySelector(url.slice(4, -1))
+        const dessin = marque?.querySelector('path')
+        const boite = marque?.getAttribute('markerWidth')
+        const vue = marque?.getAttribute('viewBox')?.split(/\s+/)[2]
+        const styleDuTrait = getComputedStyle(trait)
+        const styleDeLaMarque = dessin ? getComputedStyle(dessin) : null
+        return {
+          lien: trait.getAttribute('data-lien'),
+          // Les deux styles, pris **calculés** : ils viennent de classes de module CSS, donc les
+          // attributs n'existent pas et seul le style résolu les porte.
+          traitDuLien: Number.parseFloat(styleDuTrait.strokeWidth),
+          traitDeLaMarque: Number.parseFloat(styleDeLaMarque?.strokeWidth ?? 'NaN'),
+          encreDuLien: styleDuTrait.stroke,
+          encreDeLaMarque: styleDeLaMarque?.stroke ?? null,
+          unites: marque?.getAttribute('markerUnits') ?? null,
+          // Le facteur que la marque applique à son propre tracé.
+          echelle: boite && vue ? Number.parseFloat(boite) / Number.parseFloat(vue) : null,
+        }
+      })
     })
-  })
 
-  expect(mesures.length).toBeGreaterThan(0)
-  for (const m of mesures) {
-    // **La déclaration d'abord** : sans `userSpaceOnUse`, l'échelle calculée ci-dessous serait
-    // fausse d'un facteur égal à l'épaisseur du lien, et l'égalité qui suit ne voudrait rien dire.
-    expect(m.unites, m.lien ?? '').toBe('userSpaceOnUse')
-    // Puis l'égalité elle-même, à l'échelle près. C'est la seule tolérance : un dixième de pixel,
-    // là où le défaut de `markerUnits` en coûtait six.
-    expect((m.traitDeLaMarque ?? 0) * (m.echelle ?? 0)).toBeCloseTo(m.traitDuLien, 1)
+  const verifier = async (etat: string) => {
+    const mesures = await mesurer()
+    expect(mesures.length, etat).toBeGreaterThan(0)
+    for (const m of mesures) {
+      // **La déclaration d'abord** : sans `userSpaceOnUse`, l'échelle calculée ci-dessous serait
+      // fausse d'un facteur égal à l'épaisseur du lien, et l'égalité qui suit ne voudrait rien dire.
+      expect(m.unites, `${etat} — ${m.lien}`).toBe('userSpaceOnUse')
+      // Puis les deux égalités. La tolérance d'un dixième de pixel est la seule, là où le défaut
+      // de `markerUnits` en coûtait six ; l'encre, elle, est comparée à la valeur exacte.
+      expect(m.traitDeLaMarque * (m.echelle ?? 0), `${etat} — ${m.lien}`).toBeCloseTo(
+        m.traitDuLien,
+        1,
+      )
+      expect(m.encreDeLaMarque, `${etat} — ${m.lien}`).toBe(m.encreDuLien)
+    }
   }
+
+  await verifier('à l’arrêt')
+
+  // **Et choisie**, ce qui est l'autre moitié du signalement : `orders` porte une clé sortante et
+  // une entrante, donc ce tour-ci mesure des marques des deux sortes, accent et gris, sur le même
+  // dessin — un test qui ne regarderait que l'état de repos laisserait passer un `.pointeChoisie`
+  // désaccordé de `.lienChoisi`.
+  await page.getByRole('button', { name: /^orders ·/ }).click()
+  await verifier('table choisie')
+})
+
+test('un trait accentué n’a jamais un trait ordinaire par-dessus', async ({ page }) => {
+  /*
+   * **Rapporté à l'usage : « parfois un trait gris est rendu au-dessus d'un trait surligné, pareil
+   * pour les flèches ».**
+   *
+   * SVG n'a pas de `z-index` : il peint dans l'**ordre du document**. Un lien gris déclaré après un
+   * lien accentué passe donc par-dessus, et sur un dessin où les traits se croisent cela arrive tout
+   * le temps. C'est aussi ce qui expliquait le signalement précédent — « le surlignage ne s'applique
+   * pas à la marque » : deux liens partant de la même ligne de colonne posent leurs marques au même
+   * pixel, et la grise se peignait après l'accentuée. Le DOM était juste des deux côtés, ce qui
+   * rendait le défaut introuvable en le cherchant dans la couleur ou dans le câblage.
+   *
+   * # Pourquoi l'ordre, et non deux pixels comparés
+   *
+   * L'ordre est la **cause**, il est exact, et il vaut pour tous les recouvrements à la fois — y
+   * compris ceux que ce décor-ci ne produit pas. Comparer la couleur d'un pixel de croisement
+   * demanderait un croisement à l'endroit choisi, donc un décor à maintenir pour cette seule
+   * question, et un test muet le jour où la disposition cesse d'en produire un. C'est le même
+   * arbitrage que pour l'opacité, juste en dessous.
+   */
+  const rangs = async () =>
+    page.evaluate(() => {
+      const styles = [...document.querySelectorAll('[data-liens] path[data-lien]')].map((t) => ({
+        lien: t.getAttribute('data-lien'),
+        // Les deux états se lisent sur le style **calculé** plutôt que sur la classe : celle d'un
+        // module CSS est un nom engendré, et s'y accrocher mesurerait l'outil de construction.
+        accentue: getComputedStyle(t).strokeWidth === '1.8px',
+        eteint: getComputedStyle(t).opacity !== '1',
+      }))
+      return styles.map((s) => ({ ...s, rang: s.eteint ? 0 : s.accentue ? 2 : 1 }))
+    })
+
+  // Une table choisie : ses liens sont accentués, les autres non.
+  await page.getByRole('button', { name: /^orders ·/ }).click()
+  const choisie = await rangs()
+  expect(choisie.some((l) => l.rang === 2)).toBe(true)
+  expect(choisie.some((l) => l.rang === 1)).toBe(true)
+  // **Croissant, donc rien d'ordinaire après un accentué.** Le tri étant stable, l'ordre de
+  // `vue.liens` survit à l'intérieur de chaque rang — peindre n'est pas disposer.
+  expect(choisie.map((l) => l.rang)).toEqual([...choisie.map((l) => l.rang)].sort())
+
+  // Et l'autre bout de la même règle : ce qu'une recherche efface passe **sous** tout le reste.
+  await page.getByRole('button', { name: 'Ne plus rien choisir' }).click()
+  await page.getByRole('textbox', { name: /Chercher une table/ }).fill('users')
+  await expect(page.locator('[data-liens] path[data-lien]').first()).toBeVisible()
+  const cherche = await rangs()
+  expect(cherche.some((l) => l.rang === 0)).toBe(true)
+  expect(cherche.some((l) => l.rang === 1)).toBe(true)
+  expect(cherche.map((l) => l.rang)).toEqual([...cherche.map((l) => l.rang)].sort())
 })
 
 test('deux liens qui se croisent ne s’assombrissent pas', async ({ page }) => {

@@ -558,6 +558,30 @@ qu'il portait et que le rendu ne dit pas.
       pas se superposer à elle-même sans s'assombrir : cela tient dans un canal alpha, et se
       mesure sur n'importe quel trait. Vérifié par sabotage sur les deux moitiés, le lien et la
       marque.
+  - **et les liens se peignent du fond vers la surface : éteint, ordinaire, accentué** (4 septembre
+    2026, rapporté à l'usage : « parfois un trait gris est rendu au-dessus d'un trait surligné,
+    pareil pour les flèches »). SVG n'a pas de `z-index` — il peint dans l'**ordre du document** —,
+    et l'ordre était celui de la disposition, qui ne sait rien de ce qui est désigné. Trois points :
+    - **c'est ce qui expliquait le signalement d'avant**, « le surlignage ne s'applique pas à la
+      marque ». Deux liens qui partent de la même ligne de colonne posent leurs deux marques **au
+      même pixel** : l'accentuée était bien là et bien accentuée — le DOM le disait, et un balayage
+      de toutes les sélections l'a confirmé —, mais la grise du lien voisin se peignait après, donc
+      dessus. **Un défaut de recouvrement se présente comme un défaut de couleur**, et se cherche
+      en vain dans la couleur ou dans le câblage ;
+    - **les deux extrêmes ont la même justification par les deux bouts** : ce qu'une recherche
+      efface ne doit pas recouvrir ce qu'elle désigne, et ce qu'une sélection désigne ne doit rien
+      avoir au-dessus ;
+    - **le tri est stable, et peindre n'est pas disposer.** L'ordre de `vue.liens` est déterministe
+      et les couloirs de la disposition en dépendent : il survit à l'intérieur de chaque rang, et
+      rien ici ne déplace un trait. Le test garde l'**ordre du document**, qui est la cause et vaut
+      pour tous les recouvrements à la fois — y compris ceux que ce décor-ci ne produit pas.
+  - **une marque prend l'encre du lien, pas une teinte à elle** (4 septembre 2026, même
+    signalement). Elle portait un gris d'un cran plus sombre « pour mieux se lire », donc aucun état
+    du lien n'avait l'air de l'atteindre : à l'arrêt elle ne partageait pas son gris, et l'accent
+    d'une sélection semblait s'arrêter au bord de la boîte. **Une marque n'a pas besoin d'un gris à
+    elle pour se distinguer — c'est une forme**, et à épaisseur et teinte égales elle se lit très
+    bien. Il n'y a donc plus qu'un jeton, `--link`. C'est la seconde moitié de la même règle que
+    l'épaisseur : *une marque est le trait qui se termine, pas un second trait posé à son bout*.
 
     **Et le premier `⇧`-clic a dénoncé un nom accessible en double** : les boutons de zoom
     s'appelaient « Réduire » et « Agrandir », exactement comme les commandes de fenêtre de la barre
