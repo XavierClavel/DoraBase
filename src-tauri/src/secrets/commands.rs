@@ -129,19 +129,20 @@ pub fn selectionner_selon_le_systeme(
 
 /// Le magasin du système répond-il ?
 ///
-/// **Une lecture, et rien d'autre.** L'entrée interrogée n'est jamais écrite par le produit :
-/// « aucune entrée » est donc la réponse attendue quand le magasin va bien, et c'est ce qui
-/// distingue une absence de secret d'une absence de magasin — la même distinction que
-/// `KeychainStore::retrieve` fait sur `NoEntry`, et pour la même raison. Écrire une sonde
-/// laisserait une entrée derrière elle dans le trousseau de l'utilisateur.
+/// **`keyring` porte exactement cette question, et il ne faut pas la lui poser autrement.**
+/// `Entry::store_status()` rend le résultat de l'initialisation — faite une seule fois, à la
+/// demande — du magasin de la plateforme : sur Linux, `zbus_secret_service_keyring_store::Store
+/// ::new()`, qui échoue précisément quand aucun démon ne répond sur le bus. La documentation de
+/// la fonction le dit en propres termes : « si vous voulez vérifier l'initialisation du magasin
+/// sans créer d'entrée, appelez ceci avant `Entry::new` ».
+///
+/// **Ce qu'elle évite, et qui était la première version de cette sonde** : lire une entrée
+/// factice. Cela répondait juste — `Entry::new` rend `NoDefaultStore` quand l'initialisation a
+/// échoué — mais au prix d'un aller-retour sur le bus, et en touchant un trousseau réel pour
+/// poser une question sur le trousseau lui-même. Une sonde n'a pas à laisser de trace, et
+/// celle-ci n'en laisse aucune.
 fn magasin_du_systeme_repond() -> bool {
-    match keyring::Entry::new(super::keychain::SERVICE, "dorabase/sonde-de-magasin") {
-        Ok(entree) => !matches!(
-            entree.get_password(),
-            Err(keyring::Error::PlatformFailure(_)) | Err(keyring::Error::NoStorageAccess(_))
-        ),
-        Err(_) => false,
-    }
+    keyring::Entry::store_status().is_ok()
 }
 
 #[cfg(test)]

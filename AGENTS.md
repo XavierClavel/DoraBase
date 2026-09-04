@@ -2042,10 +2042,13 @@ Mais le Secret Service n'est pas le Trousseau : c'est un **démon** (gnome-keyri
 aucun) qu'aucune session n'est obligée de faire tourner, et un bureau minimal — i3, sway — n'en a
 souvent pas. D'où une sonde, et un repli sur le fichier chiffré. Trois points à ne pas défaire :
 
-- **la sonde est une lecture, et l'entrée lue n'est jamais écrite par le produit** : « aucune
-  entrée » est donc la réponse attendue quand le magasin va bien, et c'est ce qui distingue une
-  absence de secret d'une absence de magasin. Écrire une sonde laisserait une entrée derrière elle
-  dans le trousseau de quelqu'un ;
+- **la sonde est `keyring::Entry::store_status()`, et pas une lecture d'entrée factice.** La
+  crate porte exactement cette question : la fonction rend le résultat de l'initialisation — faite
+  une seule fois, à la demande — du magasin de la plateforme, et sa documentation dit en propres
+  termes de l'appeler « avant `Entry::new` » pour vérifier sans créer d'entrée. La première
+  version de cette sonde lisait une entrée factice ; elle répondait juste, mais payait un
+  aller-retour sur le bus et touchait un trousseau réel pour poser une question **sur** le
+  trousseau. Une sonde n'a pas à laisser de trace ;
 - **le repli se dit** — `SecretMechanism` est ce que le badge d'`A2` affiche —, donc ce n'est pas la
   dégradation silencieuse que ce module refuse. Sans lui, enregistrer un mot de passe échouerait sur
   « écriture dans le Trousseau impossible », un message qui accuse une installation correcte ;
