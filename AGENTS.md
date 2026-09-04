@@ -470,7 +470,7 @@ qu'il portait et que le rendu ne dit pas.
     où le tri des liens le fait visiter en second, donc là où une pile le prendrait en premier.
   - **et un `1:1` ne se dessine pas comme un `1:n`** (3 septembre 2026, à la demande). Le dessin
     disait *qu'*une table en référence une autre, jamais **combien de fois** — or c'est la première
-    chose qu'on lit sur un schéma, et celle qui décide de ce qu'une jointure va rendre. Un trident
+    chose qu'on lit sur un schéma, et celle qui décide de ce qu'une jointure va rendre. Une fourchette
     marque désormais le départ des liens `1:n`, une barre celui des `1:1`. Six décisions :
     - **la réponse vient du catalogue, et il a fallu l'y aller chercher.** Ce qui sépare les deux est
       l'unicité des colonnes qui **référencent** : clé primaire, contrainte `unique`, ou index unique
@@ -504,21 +504,33 @@ qu'il portait et que le rendu ne dit pas.
       demandent d'écarter l'index **entier** plutôt que ligne à ligne : `unique (code(10), compte_id)`
       dont on ne retirerait que la ligne préfixée laisse l'ensemble `{compte_id}`, qui répond « oui »
       à une clé étrangère sur `compte_id` seule alors que rien n'y garantit son unicité.
-    - **et la marque du côté « plusieurs » est un trident aux dents cintrées** (4 septembre 2026, à
-      la demande : « quelque chose de plus rond, comme un trident »). La patte d'oie d'origine était
-      trois segments droits convergents — la notation canonique, et le seul endroit du dessin à
-      porter un angle vif, alors que tout le reste est fait de coudes arrondis et que la courbe avait
-      justement été bannie des liens pour cette raison. Deux choses apprises en la redessinant :
-      - **le trident au sens strict ne tient pas dans l'empreinte.** Le premier essai posait deux
-        dents *parallèles* au manche, ramenées sur lui par une traverse arrondie. Rendu à neuf
-        pixels de haut pour un trait de 1,4 px, il donnait des dents d'à peine une épaisseur de
-        trait, et se lisait comme un crochet. Le cintrage garde la longueur des dents *et* la
-        rondeur ;
+    - **et la marque du côté « plusieurs » est une fourchette** (4 septembre 2026, à la demande :
+      « quelque chose de plus rond, comme un trident ou une fourchette »). La patte d'oie d'origine
+      était trois segments droits convergents — la notation canonique, et le seul endroit du dessin
+      à porter un angle vif, alors que tout le reste est fait de coudes arrondis et que la courbe
+      avait justement été bannie des liens pour cette raison. Trois choses apprises en la
+      redessinant, et la troisième vaut au-delà de cet écran :
+      - **`markerUnits` vaut `strokeWidth` par défaut, et c'est un piège muet.** La boîte d'un
+        `marker` s'exprime alors en **multiples de l'épaisseur du trait marqué** : une marque de 9
+        posée sur un lien de 1,4 occupe 12,6 px, sa `viewBox` de 10 s'y étire d'un facteur 1,26, et
+        son trait de 1,6 est peint à **2 px** — 44 % de plus que le lien qu'elle termine. Les cotes
+        qu'on croit poser en pixels n'en sont donc pas, et rien ne le dit : le rendu est *plausible*,
+        simplement gras. Les trois `marker` du diagramme sont à l'échelle 1 depuis
+        (`userSpaceOnUse`, `markerWidth` égal à la `viewBox`), et leur `stroke-width` s'écrit dans
+        la même unité que `.lien` — donc à la même valeur, ce qui est le seul réglage correct : une
+        marque au bout d'un trait doit être ce trait qui se termine, pas un second trait plus gras ;
+      - **une forme à treize pixels se règle en proportions, pas en idées.** Trois essais, et les
+        deux premiers ont échoué sur la même cause — la marque était trop petite pour la forme qu'on
+        y mettait. Dents parallèles ramenées par une traverse d'angle droit : un crochet. Dents
+        cintrées convergeant sans partie droite : un double chevron, le raccord prenant plus de
+        place que les dents. Ce qui marche est **la moitié de dent droite**, puis un raccord
+        *tangent* — les deux points de contrôle à l'horizontale de part et d'autre du raccord, de
+        sorte que les dents se **fondent** dans le manche au lieu de l'y croiser ;
       - **rien de tout cela ne se voit autrement qu'à la loupe.** Le test e2e qui garde la notation
         vérifie que le `marker` peint, son `refX` et son `orient` — jamais son tracé, et il aurait
         raison de ne pas le faire : un `d` recopié dans une assertion se périme au premier
         ajustement de forme. La seule mesure qui juge est une capture à `deviceScaleFactor: 6`,
-        regardée. C'est la méthode qui a le plus payé, appliquée à neuf pixels.
+        **regardée**. C'est la méthode qui a le plus payé, appliquée à treize pixels.
 
     **Et le premier `⇧`-clic a dénoncé un nom accessible en double** : les boutons de zoom
     s'appelaient « Réduire » et « Agrandir », exactement comme les commandes de fenêtre de la barre

@@ -388,10 +388,22 @@
   opacity: 0.25;
 }
 
+/*
+ * Les marques de cardinalité et la flèche.
+ *
+ * **Les deux épaisseurs sont celles des liens, à la valeur près**, et c'est le seul réglage correct :
+ * une marque posée au bout d'un trait doit être ce trait qui se termine, non un second trait plus
+ * gras. Ce qui le rend vrai est le `markerUnits="userSpaceOnUse"` des trois `marker` — sans lui, la
+ * boîte d'une marque est exprimée **en multiples de l'épaisseur du trait marqué**, donc une marque
+ * de 9 sur un lien de 1,4 occupe 12,6 px, sa `viewBox` de 10 s'y étire d'un facteur 1,26, et son
+ * trait de 1,6 est peint à 2 px — 44 % de trop, mesuré, et personne ne l'avait vu parce que c'est
+ * le défaut par défaut. Les trois `marker` sont donc à l'échelle 1 : une unité de `viewBox` vaut un
+ * pixel, et `stroke-width` s'écrit dans la même unité que `.lien`.
+ */
 .pointe {
   fill: none;
   stroke: var(--ink-3);
-  stroke-width: 1.6;
+  stroke-width: 1.4;
   stroke-linecap: round;
   stroke-linejoin: round;
 }

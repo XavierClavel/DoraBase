@@ -495,6 +495,55 @@ test('un lien 1:1 et un lien 1:n ne se dessinent pas de la même façon', async 
   expect(marques.every((m) => m.refX === '0' && m.orient === 'auto')).toBe(true)
 })
 
+test('une marque a l’épaisseur du trait qu’elle termine', async ({ page }) => {
+  /*
+   * **Rapporté à l'usage : « la largeur devrait être la même que le reste du trait ».**
+   *
+   * Elle ne l'était pas, et la cause est un défaut *par défaut* : `markerUnits` vaut `strokeWidth`
+   * si on ne le pose pas, donc la boîte d'un `marker` se compte en **multiples de l'épaisseur du
+   * trait marqué**. Une marque de 9 sur un lien de 1,4 occupait 12,6 px, sa `viewBox` de 10 s'y
+   * étirait d'un facteur 1,26, et son trait de 1,6 était peint à 2 px — 44 % de trop.
+   *
+   * # Pourquoi ce test-ci, et pas une capture
+   *
+   * C'est un **réglage** qu'il faut garder, pas un rendu (règle n° 3). Le remettre à son défaut ne
+   * casse rien, ne prévient rien et ne change que l'épaisseur de trois marques de quelques
+   * dixièmes de pixel : une capture de fidélité compterait quelques dizaines de pixels au-dessus du
+   * seuil et se lirait comme du bruit, là où l'égalité ci-dessous est exacte. Et l'œil ne l'avait
+   * pas vu non plus — il a fallu qu'on le rapporte.
+   */
+  const mesures = await page.evaluate(() => {
+    const traits = [...document.querySelectorAll('[data-liens] path[marker-start]')]
+    return traits.map((trait) => {
+      const url = trait.getAttribute('marker-start') ?? ''
+      const marque = document.querySelector(url.slice(4, -1))
+      const dessin = marque?.querySelector('path')
+      const boite = marque?.getAttribute('markerWidth')
+      const vue = marque?.getAttribute('viewBox')?.split(/\s+/)[2]
+      return {
+        lien: trait.getAttribute('data-lien'),
+        // Les deux épaisseurs déclarées, prises **calculées** : elles viennent d'une classe CSS,
+        // donc l'attribut n'existe pas et seul le style résolu les porte.
+        traitDuLien: Number.parseFloat(getComputedStyle(trait).strokeWidth),
+        traitDeLaMarque: dessin ? Number.parseFloat(getComputedStyle(dessin).strokeWidth) : null,
+        unites: marque?.getAttribute('markerUnits') ?? null,
+        // Le facteur que la marque applique à son propre tracé.
+        echelle: boite && vue ? Number.parseFloat(boite) / Number.parseFloat(vue) : null,
+      }
+    })
+  })
+
+  expect(mesures.length).toBeGreaterThan(0)
+  for (const m of mesures) {
+    // **La déclaration d'abord** : sans `userSpaceOnUse`, l'échelle calculée ci-dessous serait
+    // fausse d'un facteur égal à l'épaisseur du lien, et l'égalité qui suit ne voudrait rien dire.
+    expect(m.unites, m.lien ?? '').toBe('userSpaceOnUse')
+    // Puis l'égalité elle-même, à l'échelle près. C'est la seule tolérance : un dixième de pixel,
+    // là où le défaut de `markerUnits` en coûtait six.
+    expect((m.traitDeLaMarque ?? 0) * (m.echelle ?? 0)).toBeCloseTo(m.traitDuLien, 1)
+  }
+})
+
 test('la cardinalité s’écrit dans l’infobulle, que la notation soit connue ou non', async ({
   page,
 }) => {
