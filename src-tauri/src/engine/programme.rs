@@ -132,12 +132,18 @@ fn completer(
 /// **Ce qu'elle ne fait pas** : ni `$VAR`, ni `~autre-utilisateur`, ni chemin relatif résolu. Les
 /// trois demanderaient de décider *contre quoi* résoudre, et aucun n'a été rencontré.
 ///
-/// **Portée limitée à ce qui passe par ici** (31 août 2026). Deux autres chemins saisis du produit
-/// ne sont **pas** développés — `ca_certificate`, lu en `std::fs::read` par `engine/tls.rs`, et
-/// `private_key_path`, ouvert par `engine/tunnel/`. Les deux annoncent pourtant un `~` : le
-/// `placeholder` du certificat propose `~/certs/interne.pem`, et la capture de fidélité du panneau
-/// remplit la clé privée avec `~/.ssh/id_ed25519`. Le défaut est antérieur et n'a pas été corrigé
-/// ici pour ne pas mêler deux chantiers ; c'est la fonction à leur brancher le jour où on le fera.
+/// **Portée limitée à ce qui passe par ici.** Un chemin saisi du produit n'est **pas** développé :
+/// `private_key_path`, que `engine/tunnel/mod.rs` passe brut à `key::charger`. Il annonce pourtant
+/// un `~` — la capture de fidélité du panneau remplit la clé privée avec `~/.ssh/id_ed25519`. Le
+/// défaut est antérieur et n'a pas été corrigé ici pour ne pas mêler deux chantiers ; c'est cette
+/// fonction à lui brancher le jour où on le fera.
+///
+/// **Ce paragraphe en annonçait deux jusqu'au 4 septembre 2026, et se trompait sur le second.**
+/// `ca_certificate` **est** développé, et l'était déjà quand la phrase a été écrite : `tls.rs`
+/// délègue à cette fonction par `expanser_le_tilde`, arrivé avec le TLS de `06f`, donc avant le
+/// portage Windows qui a rédigé la note. Un commentaire faux sur ce point coûte cher — c'est
+/// exactement celui qu'on relit en cherchant pourquoi un `~` n'est pas développé, et il envoyait
+/// chercher dans le seul des deux fichiers où il n'y avait rien à trouver (règle n° 20).
 pub fn chemin_utilisateur(saisie: &str) -> PathBuf {
     let saisie = saisie.trim();
     match saisie.strip_prefix("~/") {

@@ -1082,12 +1082,18 @@ points à ne pas défaire :
   absolu que l'utilisateur n'a pas saisi, donc une configuration qui cesse d'être vraie sur une autre
   machine ou sous un autre compte. Seul le processus qui lance `kubectl` connaît son `HOME`.
 
-**Deux autres chemins saisis du produit ne sont pas développés, et c'est un défaut antérieur** :
-`ca_certificate`, lu en `std::fs::read` par `engine/tls.rs`, et `private_key_path`, ouvert par
-`engine/tunnel/`. Les deux **annoncent** pourtant un `~` — le `placeholder` du certificat propose
-`~/certs/interne.pem`, et la capture de fidélité du panneau remplit la clé privée avec
-`~/.ssh/id_ed25519`. `programme::chemin_utilisateur` est la fonction à leur brancher ; ce n'a pas été
-fait le 31 août pour ne pas mêler deux chantiers.
+**Un chemin saisi du produit n'est pas développé, et c'est un défaut antérieur** :
+`private_key_path`, que `engine/tunnel/mod.rs` passe brut à `key::charger`. Il **annonce** pourtant
+un `~` — la capture de fidélité du panneau remplit la clé privée avec `~/.ssh/id_ed25519`.
+`programme::chemin_utilisateur` est la fonction à lui brancher ; ce n'a pas été fait le 31 août pour
+ne pas mêler deux chantiers.
+
+**Cette phrase en nommait deux jusqu'au 4 septembre 2026, et se trompait sur le second.**
+`ca_certificate` **est** développé, et l'était déjà quand la note a été écrite : `engine/tls.rs`
+délègue par `expanser_le_tilde`, arrivé avec le TLS de `06f`. C'est la règle n° 20 sur un
+commentaire de fichier plutôt que sur une garantie — celui-ci est précisément celui qu'on relit en
+cherchant pourquoi un `~` n'est pas développé, et il envoyait chercher dans le seul des deux
+fichiers où il n'y avait rien à trouver.
 
 **La cible est une ressource, pas un hôte — et le champ « Hôte » est donc grisé.** Une base qui vit
 dans un cluster n'a pas d'adresse joignable depuis le poste : ce sont trois coordonnées qui la
