@@ -2391,29 +2391,42 @@ mod tests_db {
             vec!["orders", "users", "montants", "identites"]
         );
 
-        // **Les deux statistiques sont mises de côté, et c'est la CI qui l'a imposé.**
+        // **Ce que deux lectures d'une base vivante ne peuvent pas comparer.**
         //
         // La première version comparait `TableDetail` entier, en s'en félicitant : « la comparaison
-        // porte sur tout, compte de lignes et taille comprises ». Elle est verte en local et l'a
-        // été deux fois en CI, puis a échoué sur `users` — sans qu'une ligne de SQL ait bougé.
+        // porte sur tout ». Verte en local et deux fois en CI, puis rouge sur `users` sans qu'une
+        // ligne de SQL ait bougé. La cause était dans le diff, et elle n'a rien à voir avec le SQL :
+        // la lecture unique voyait à `users` **une relation entrante de plus**, venue d'un schéma
+        // nommé `ddl_rejeu_orders`.
         //
-        // `rows` est estimé depuis `reltuples` et `size_bytes` lu dans `pg_total_relation_size` :
-        // ce sont des **mesures d'un instant**, pas des propriétés de la table. Or les deux chemins
-        // lisent à deux instants, le décor PostgreSQL est **partagé**, et les tests tournent en
-        // parallèle — ceux qui écrivent dans `users` déplacent sa taille entre les deux lectures.
-        // Comparer ces deux champs était donc un tirage au sort (règle n° 3), et il s'est joué en
-        // CI parce que c'est là que la suite entière tourne d'un coup.
+        // C'est le schéma jetable de `le_ddl_produit_se_rejoue_et_donne_la_meme_table`, qui tournait
+        // en parallèle : il y rejoue le DDL d'`orders`, dont la clé étrangère continue de viser
+        // `introspection.users` — son propre commentaire le dit. Le temps de ce test, `users` a donc
+        // une référente de plus, et nos deux lectures tombent de part et d'autre. **Aucune
+        // sérialisation ne réglerait cela proprement** : le décor est partagé, les tests sont
+        // parallèles par défaut, et un test qui exige que rien d'autre ne tourne est un test qui
+        // s'appropriera la suite.
         //
-        // Les mettre de côté ne relâche rien de ce que le test garde : la réécriture porte sur la
-        // **forme** des cinq requêtes, et tout le reste — colonnes, index, contraintes, triggers,
-        // relations, DDL, commentaire — est comparé au terme près. Ce qui subsiste des deux champs
-        // est ce qui ne dépend pas de l'instant : la même *sorte* de comptage, et une taille rendue
-        // par les deux chemins ou par aucun. C'est ce qui attraperait le défaut réaliste — un
-        // chemin qui aurait oublié de lire l'un des deux, et rendrait `None` ou `Exact`.
-        let sans_statistiques = |detail: &crate::engine::TableDetail| {
+        // Deux normalisations, donc, chacune sur ce qui dépend de l'instant plutôt que de la table :
+        //
+        // 1. **les relations dont l'autre bout est hors du schéma étudié.** C'est la cause observée,
+        //    et elle se reproduit à volonté : créer ce schéma *entre* les deux lectures fait échouer
+        //    ce test sans le filtre, et passer avec.
+        //    Ce qui reste comparé — tout ce qui vit dans `introspection` — est précisément ce que le
+        //    décor déclare, donc ce qu'une contamination entre tables ferait diverger ;
+        // 2. **le compte de lignes et la taille.** Celle-là est une précaution et non un défaut vu :
+        //    `rows` est estimé depuis `reltuples`, `size_bytes` lu dans `pg_total_relation_size`, et
+        //    ce sont des mesures d'un instant — tout test qui écrit dans une de ces quatre tables
+        //    les déplace entre nos deux lectures. En CI elles valent zéro et `None` des deux côtés,
+        //    donc elles n'ont rien cassé ; c'est un tirage au sort qui n'est pas encore sorti
+        //    (règle n° 3). Ce qui subsiste d'elles est ce qui ne dépend pas de l'instant : la même
+        //    *sorte* de comptage, et une taille rendue par les deux chemins ou par aucun — de quoi
+        //    attraper le défaut réaliste, un chemin qui aurait oublié de lire l'un des deux.
+        let hors_instant = |detail: &crate::engine::TableDetail| {
             let mut nu = detail.clone();
             nu.rows = crate::engine::RowCount::Estimated { value: 0 };
             nu.size_bytes = None;
+            nu.relations.retain(|r| r.target_schema == "introspection");
             nu
         };
 
@@ -2431,8 +2444,8 @@ mod tests_db {
                 "la table {nom} rend une taille par un chemin de lecture et pas par l'autre"
             );
             assert_eq!(
-                sans_statistiques(groupe),
-                sans_statistiques(&seul),
+                hors_instant(groupe),
+                hors_instant(&seul),
                 "la table {nom} diffère selon le chemin de lecture"
             );
         }
