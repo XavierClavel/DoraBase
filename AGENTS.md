@@ -470,8 +470,8 @@ qu'il portait et que le rendu ne dit pas.
     où le tri des liens le fait visiter en second, donc là où une pile le prendrait en premier.
   - **et un `1:1` ne se dessine pas comme un `1:n`** (3 septembre 2026, à la demande). Le dessin
     disait *qu'*une table en référence une autre, jamais **combien de fois** — or c'est la première
-    chose qu'on lit sur un schéma, et celle qui décide de ce qu'une jointure va rendre. Une patte
-    d'oie marque désormais le départ des liens `1:n`, une barre celui des `1:1`. Cinq décisions :
+    chose qu'on lit sur un schéma, et celle qui décide de ce qu'une jointure va rendre. Un trident
+    marque désormais le départ des liens `1:n`, une barre celui des `1:1`. Six décisions :
     - **la réponse vient du catalogue, et il a fallu l'y aller chercher.** Ce qui sépare les deux est
       l'unicité des colonnes qui **référencent** : clé primaire, contrainte `unique`, ou index unique
       total. L'écran ne pouvait pas la déduire de ce qu'il recevait — `KeyKind` ne connaît que
@@ -491,7 +491,7 @@ qu'il portait et que le rendu ne dit pas.
       référence, donc les deux moitiés s'accordent — ce dont la déduplication de `liensDe` dépend,
       elle qui garde la première vue sans les comparer. Un test par moteur le vérifie **des deux
       bouts** ;
-    - **elle s'écrit aussi en toutes lettres.** Une patte d'oie ne dit rien à qui ne connaît pas la
+    - **elle s'écrit aussi en toutes lettres.** Un trident ne dit rien à qui ne connaît pas la
       notation, et un `marker` SVG n'a aucun texte qu'une voix puisse rendre : l'infobulle d'une
       ligne porte « un à un » / « un à plusieurs », et la bande de relation la notation `1:1` / `1:n`
       doublée du mot en texte masqué ;
@@ -504,6 +504,21 @@ qu'il portait et que le rendu ne dit pas.
       demandent d'écarter l'index **entier** plutôt que ligne à ligne : `unique (code(10), compte_id)`
       dont on ne retirerait que la ligne préfixée laisse l'ensemble `{compte_id}`, qui répond « oui »
       à une clé étrangère sur `compte_id` seule alors que rien n'y garantit son unicité.
+    - **et la marque du côté « plusieurs » est un trident aux dents cintrées** (4 septembre 2026, à
+      la demande : « quelque chose de plus rond, comme un trident »). La patte d'oie d'origine était
+      trois segments droits convergents — la notation canonique, et le seul endroit du dessin à
+      porter un angle vif, alors que tout le reste est fait de coudes arrondis et que la courbe avait
+      justement été bannie des liens pour cette raison. Deux choses apprises en la redessinant :
+      - **le trident au sens strict ne tient pas dans l'empreinte.** Le premier essai posait deux
+        dents *parallèles* au manche, ramenées sur lui par une traverse arrondie. Rendu à neuf
+        pixels de haut pour un trait de 1,4 px, il donnait des dents d'à peine une épaisseur de
+        trait, et se lisait comme un crochet. Le cintrage garde la longueur des dents *et* la
+        rondeur ;
+      - **rien de tout cela ne se voit autrement qu'à la loupe.** Le test e2e qui garde la notation
+        vérifie que le `marker` peint, son `refX` et son `orient` — jamais son tracé, et il aurait
+        raison de ne pas le faire : un `d` recopié dans une assertion se périme au premier
+        ajustement de forme. La seule mesure qui juge est une capture à `deviceScaleFactor: 6`,
+        regardée. C'est la méthode qui a le plus payé, appliquée à neuf pixels.
 
     **Et le premier `⇧`-clic a dénoncé un nom accessible en double** : les boutons de zoom
     s'appelaient « Réduire » et « Agrandir », exactement comme les commandes de fenêtre de la barre

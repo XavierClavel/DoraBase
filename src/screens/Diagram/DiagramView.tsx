@@ -574,8 +574,8 @@ export function DiagramView({
                     disparaît est un lien qui ne dit plus dans quel sens il va. */}
                 <Fleche id={`${marques}-fleche`} className={styles.pointe} />
                 <Fleche id={`${marques}-fleche-choisie`} className={styles.pointeChoisie} />
-                <Patte id={`${marques}-many`} className={styles.pointe} />
-                <Patte id={`${marques}-many-choisie`} className={styles.pointeChoisie} />
+                <Trident id={`${marques}-many`} className={styles.pointe} />
+                <Trident id={`${marques}-many-choisie`} className={styles.pointeChoisie} />
                 <Barre id={`${marques}-one`} className={styles.pointe} />
                 <Barre id={`${marques}-one-choisie`} className={styles.pointeChoisie} />
               </defs>
@@ -816,17 +816,34 @@ function qualifier(table: string, colonnes: readonly string[]): string {
 }
 
 /**
- * La patte d'oie du côté « plusieurs », posée au départ du lien.
+ * Le trident du côté « plusieurs », posé au départ du lien.
  *
- * **La notation des diagrammes entité-association, et non une invention** : trois branches qui
+ * **La notation des diagrammes entité-association, et non une invention** : trois dents qui
  * s'ouvrent *vers* la table qui référence, parce que c'est chez elle que les lignes se multiplient.
- * Elle se lit sans légende par quiconque a déjà vu un schéma, et « en trait, jamais de fill »
- * comme toutes les icônes du projet.
+ * Elle se lit sans légende par quiconque a déjà vu un schéma, et « en trait, jamais de fill » comme
+ * toutes les icônes du projet.
+ *
+ * # Un trident, et non trois traits qui convergent (rapporté à l'usage)
+ *
+ * Le premier dessin était `M0 1 L7 5 M0 5 L7 5 M0 9 L7 5` — trois segments droits filant vers un
+ * même point. C'est la patte d'oie canonique, et à neuf pixels de haut, dans un dessin fait par
+ * ailleurs de **coudes arrondis**, elle sortait du lot : trois angles vifs au bord de chaque boîte,
+ * là où tout le reste du tracé est courbe.
+ *
+ * D'où la forme d'un vrai trident : trois dents qui rejoignent le manche, les deux extérieures
+ * **cintrées** plutôt que droites. Elle occupe la même empreinte, dit la même chose, et s'accorde au
+ * reste du dessin.
+ *
+ * **Une première tentative les avait faites parallèles**, ramenées sur le manche par une traverse
+ * arrondie — le trident au sens strict. À l'écran, elle ne se lisait pas : neuf pixels de haut pour
+ * un trait de 1,4 px, donc des dents d'à peine plus d'une épaisseur de trait, et l'ensemble donnait
+ * un crochet arrondi plutôt qu'un trident. Vu à la loupe (× 6), invisible à toute la suite de tests.
+ * Le cintrage garde la longueur des dents *et* la rondeur.
  *
  * `refX` vaut 0 : la marque commence exactement au bord de la boîte, et `orient="auto"` la retourne
  * d'elle-même sur les liens qui sortent par la gauche — ceux que les cycles et les couches produisent.
  */
-function Patte({ id, className }: { id: string; className: string | undefined }) {
+function Trident({ id, className }: { id: string; className: string | undefined }) {
   return (
     <marker
       id={id}
@@ -837,7 +854,14 @@ function Patte({ id, className }: { id: string; className: string | undefined })
       markerHeight="9"
       orient="auto"
     >
-      <path d="M0 1 L7 5 M0 5 L7 5 M0 9 L7 5" className={className} />
+      {/* Trois dents qui rejoignent le manche, les deux extérieures **cintrées** — c'est la forme
+          d'un trident, et c'est ce qui la rend ronde. Les cotes sont contraintes par l'empreinte :
+          neuf pixels de haut pour un trait de 1,4, donc une dent doit faire au moins trois unités
+          pour se distinguer de son propre trait. */}
+      <path
+        d="M0 1.2 C3.2 1.2 5.2 2.6 7.2 5 M0 5 L7.2 5 M0 8.8 C3.2 8.8 5.2 7.4 7.2 5"
+        className={className}
+      />
     </marker>
   )
 }
@@ -846,7 +870,7 @@ function Patte({ id, className }: { id: string; className: string | undefined })
  * Le trait du côté « un », posé au départ du lien.
  *
  * L'autre moitié de la même notation : une barre perpendiculaire dit « une seule ligne ici ».
- * **Elle n'est pas l'absence de patte d'oie** — un lien sans marque se lirait comme un lien qu'on
+ * **Elle n'est pas l'absence de trident** — un lien sans marque se lirait comme un lien qu'on
  * n'a pas su qualifier, et les deux valeurs de `RelationCardinality` sont toutes deux des réponses.
  */
 function Barre({ id, className }: { id: string; className: string | undefined }) {
@@ -1044,7 +1068,7 @@ function listeCourte(noms: readonly string[]): string {
 /**
  * Le texte de l'infobulle d'une ligne : son type, sa nullité, et ce qu'elle référence.
  *
- * **La cardinalité y est écrite en toutes lettres**, et pas seulement dessinée : une patte d'oie se
+ * **La cardinalité y est écrite en toutes lettres**, et pas seulement dessinée : un trident se
  * lit d'un coup d'œil pour qui connaît la notation, et ne dit rien du tout à qui ne la connaît pas.
  * C'est aussi la seule forme qu'une voix puisse rendre — un `marker` SVG n'a pas de texte.
  */

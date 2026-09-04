@@ -453,7 +453,7 @@ test('un lien 1:1 et un lien 1:n ne se dessinent pas de la même façon', async 
    *
    * `DiagramView.test.tsx` vérifie *quelle* marque chaque lien désigne — c'est du DOM. Qu'elle se
    * **dessine** ne se mesure qu'ici : un `marker` mal ancré (`refX`) ou mal orienté (`orient`) rend
-   * un attribut parfaitement juste et une patte d'oie invisible, ou posée à l'envers au milieu du
+   * un attribut parfaitement juste et un trident invisible, ou posé à l'envers au milieu du
    * trait. jsdom ne peint rien, donc il ne verrait ni l'un ni l'autre (règle n° 9).
    */
   const marques = await page.evaluate(() => {
@@ -498,7 +498,7 @@ test('un lien 1:1 et un lien 1:n ne se dessinent pas de la même façon', async 
 test('la cardinalité s’écrit dans l’infobulle, que la notation soit connue ou non', async ({
   page,
 }) => {
-  // Une patte d'oie ne dit rien à qui ne l'a jamais vue, et un `marker` SVG n'a aucun texte qu'une
+  // Un trident ne dit rien à qui ne l'a jamais vu, et un `marker` SVG n'a aucun texte qu'une
   // voix puisse rendre : le mot doit exister quelque part.
   const ligne = page.locator('[data-boite="user_profiles"] [data-colonne="user_id"]')
   await expect(ligne).toHaveAttribute('title', /un à un/)
