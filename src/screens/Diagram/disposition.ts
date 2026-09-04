@@ -227,20 +227,21 @@ const LIGNES_APERCU = 8
  */
 const RAYON_COUDE = 8
 /**
- * L'écart entre deux couloirs voisins d'une même gouttière.
+ * L'écart **souhaité** entre deux couloirs voisins d'une même gouttière.
  *
- * Assez large pour que deux verticales ne se confondent pas au trait de 1,4 px, assez étroit pour
- * que la gouttière en tienne cinq — voir `COULOIRS_PAR_GOUTTIERE`.
+ * Assez large pour que deux verticales ne se confondent pas au trait de 1,4 px. C'est un souhait et
+ * non une garantie : quand une gouttière porte plus de liens qu'elle n'en tient à ce pas, les
+ * couloirs se resserrent — voir `couloirDe`.
  */
 const ECART_COULOIR = 14
 /**
- * Combien de couloirs tiennent entre deux colonnes de boîtes.
+ * La largeur d'une gouttière réellement offerte aux couloirs.
  *
- * **Dérivé de l'écart horizontal**, jamais posé à côté : élargir la gouttière doit en offrir
- * davantage sans qu'on y pense, et la rétrécir doit en retirer plutôt que de faire passer un trait
+ * **Dérivée de l'écart horizontal**, jamais posée à côté : élargir la gouttière doit en offrir
+ * davantage sans qu'on y pense, et la rétrécir doit resserrer plutôt que de faire passer un trait
  * sous une boîte. Les 8 px réservés laissent le dernier couloir à distance de la boîte précédente.
  */
-const COULOIRS_PAR_GOUTTIERE = Math.max(1, Math.floor((ECART_HORIZONTAL - 8) / ECART_COULOIR))
+const LARGEUR_DE_GOUTTIERE = Math.max(ECART_COULOIR, ECART_HORIZONTAL - 8)
 /** De combien un lien réflexif ressort à droite de sa boîte. */
 const BOUCLE = 24
 /**
@@ -1123,7 +1124,15 @@ function tracerTout(
         cible,
         depart: { x: source.x + source.width, y: y1 },
         arrivee: { x: cible.x, y: y2 },
-        gouttiere: `avant:${cible.couche}`,
+        /*
+         * **La gouttière est celle de la colonne visée, et les liens « en arrière » la partagent.**
+         *
+         * Les deux sortes comptent leurs couloirs depuis le **bord gauche d'une colonne**, vers la
+         * gauche : deux clés d'une même gouttière décrites sous deux identités auraient reçu le
+         * rang 0 chacune, donc la **même abscisse**. C'était la seconde façon dont deux verticales
+         * se superposaient, et celle qu'aucun compte de couloirs n'aurait corrigée.
+         */
+        gouttiere: `colonne:${cible.couche}`,
         bord: cible.x,
         sens: -1,
         sensDepart: 1,
@@ -1142,7 +1151,7 @@ function tracerTout(
       cible,
       depart: { x: source.x, y: y1 },
       arrivee: { x: cible.x + cible.width, y: y2 },
-      gouttiere: `arriere:${source.couche}`,
+      gouttiere: `colonne:${source.couche}`,
       bord: source.x,
       sens: -1,
       sensDepart: -1,
@@ -1162,7 +1171,7 @@ function tracerTout(
    * il en obtient l'essentiel : deux verticales ne se superposent plus, et une flèche se suit du
    * regard sans avoir à la sélectionner.
    */
-  const couloirs = new Map<string, number>()
+  const couloirs = new Map<string, { rang: number; total: number }>()
   const parGouttiere = new Map<string, Resolu[]>()
   for (const resolu of resolus) {
     parGouttiere.set(resolu.gouttiere, [...(parGouttiere.get(resolu.gouttiere) ?? []), resolu])
@@ -1174,7 +1183,9 @@ function tracerTout(
       if (parcoursA !== parcoursB) return parcoursA - parcoursB
       return a.candidat.id.localeCompare(b.candidat.id)
     })
-    for (const [rang, resolu] of ordonnes.entries()) couloirs.set(resolu.candidat.id, rang)
+    for (const [rang, resolu] of ordonnes.entries()) {
+      couloirs.set(resolu.candidat.id, { rang, total: ordonnes.length })
+    }
   }
 
   return (
@@ -1193,13 +1204,17 @@ function tracerTout(
           sensDepart: resolu.sensDepart,
           sensArrivee: resolu.sensArrivee,
         }
-        const rang = couloirs.get(resolu.candidat.id) ?? 0
+        const couloir = couloirs.get(resolu.candidat.id) ?? { rang: 0, total: 1 }
         if (resolu.reflexif) {
-          return { ...commun, chemin: boucle(resolu.depart, resolu.arrivee, rang) }
+          return { ...commun, chemin: boucle(resolu.depart, resolu.arrivee, couloir.rang) }
         }
         return {
           ...commun,
-          chemin: coude(resolu.depart, resolu.arrivee, couloirDe(resolu.bord, resolu.sens, rang)),
+          chemin: coude(
+            resolu.depart,
+            resolu.arrivee,
+            couloirDe(resolu.bord, resolu.sens, couloir.rang, couloir.total),
+          ),
         }
       })
       // Un ordre stable, pour que deux dispositions équivalentes se comparent et que le DOM ne se
@@ -1209,14 +1224,32 @@ function tracerTout(
 }
 
 /**
- * L'abscisse du couloir de rang `rang`, à `sens` du bord de la gouttière.
+ * L'abscisse du couloir de rang `rang` parmi `total`, à `sens` du bord de la gouttière.
  *
- * Les couloirs s'éloignent du bord par pas fixe, et **bouclent** au-delà de ce que la gouttière peut
- * tenir : deux traits confondus valent mieux qu'un trait passant sous une boîte. Le cas ne se
- * présente qu'à partir de six clés entrant dans une même colonne de tables.
+ * **Deux verticales ne se superposent jamais** (4 septembre 2026, rapporté à l'usage : « deux
+ * traits verticaux ne devraient jamais être dessinés l'un sur l'autre ; c'est acceptable pour les
+ * horizontaux, il le faut bien quand ils convergent vers la colonne d'identité d'une table »).
+ *
+ * Les couloirs s'éloignaient du bord par pas **fixe** et **bouclaient** au-delà de ce que la
+ * gouttière tenait, sur un commentaire qui assumait le compromis — « deux traits confondus valent
+ * mieux qu'un trait passant sous une boîte ». Le cas n'était pas rare : il se présentait dès
+ * **six** liens dans une même gouttière, ce qu'un moyeu comme `users` atteint tout seul, et deux
+ * liens confondus se lisent comme un seul.
+ *
+ * Le pas se **resserre** donc au lieu de boucler : chaque lien de la gouttière a son abscisse, quel
+ * qu'en soit le nombre. Tant qu'il y a de la place, le pas reste `ECART_COULOIR` et le dessin ne
+ * bouge pas d'un pixel.
+ *
+ * **Ce qui reste vrai de la limite**, et qu'aucun réglage ne lève : une gouttière de 86 px n'a
+ * qu'une largeur finie, donc quarante liens y sont à deux pixels l'un de l'autre. Ils sont
+ * distincts, non lisibles — et l'issue serait une gouttière dont la largeur suive la demande, donc
+ * un écart horizontal variable d'une colonne à l'autre. C'est une décision de dessin qui n'a pas
+ * été prise : élargir à quarante couloirs demanderait 574 px entre deux colonnes, ce qui abîmerait
+ * tout le reste du schéma pour un seul moyeu.
  */
-function couloirDe(bord: number, sens: -1 | 1, rang: number): number {
-  return bord + sens * ECART_COULOIR * ((rang % COULOIRS_PAR_GOUTTIERE) + 1)
+function couloirDe(bord: number, sens: -1 | 1, rang: number, total: number): number {
+  const pas = Math.min(ECART_COULOIR, LARGEUR_DE_GOUTTIERE / Math.max(total, 1))
+  return bord + sens * pas * (rang + 1)
 }
 
 /**

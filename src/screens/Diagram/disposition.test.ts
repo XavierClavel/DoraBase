@@ -895,6 +895,138 @@ describe('le tracé', () => {
       Math.max(...(lien(vue, contrainte).chemin.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number))
     expect(loin('pricing_rules_parent_id_fkey')).not.toBe(loin('pricing_rules_remplace_id_fkey'))
   })
+
+  /** Les segments strictement verticaux d'un tracé, avec la plage d'ordonnées qu'ils occupent. */
+  function verticalesDe(liens: readonly Lien[]) {
+    return liens.flatMap((trace) =>
+      commandes(trace.chemin)
+        .filter(
+          (c) =>
+            c.sorte === 'L' &&
+            Math.abs(c.de.x - c.vers.x) < 0.01 &&
+            Math.abs(c.de.y - c.vers.y) > 0.01,
+        )
+        .map((c) => ({
+          lien: trace.id,
+          x: c.de.x,
+          haut: Math.min(c.de.y, c.vers.y),
+          bas: Math.max(c.de.y, c.vers.y),
+        })),
+    )
+  }
+
+  it('ne superpose jamais deux verticales, quel que soit le nombre de liens', () => {
+    /*
+     * **Rapporté à l'usage : « deux traits verticaux ne devraient jamais être dessinés l'un sur
+     * l'autre ; c'est acceptable pour les horizontaux, il le faut bien quand ils convergent vers la
+     * colonne d'identité d'une table ».**
+     *
+     * Le décor porte les **deux** façons dont cela arrivait, et il faut les deux — chacune restait
+     * verte sous l'autre :
+     *
+     * - **neuf tables référencent le moyeu.** Les couloirs s'éloignaient du bord par pas fixe et
+     *   **bouclaient** au-delà de ce que la gouttière tenait, soit cinq : les liens de rang 5 à 8
+     *   retombaient exactement sur ceux de rang 0 à 3. Un moyeu de neuf référentes n'a rien
+     *   d'exceptionnel ;
+     * - **un cycle**, qui met dans la même gouttière physique des liens « en avant » et des liens
+     *   « en arrière ». Les deux sortes comptaient leurs couloirs depuis le bord gauche de la même
+     *   colonne, vers la gauche, sous **deux identités de gouttière différentes** — donc deux
+     *   rangs 0, donc la même abscisse. Aucun compte de couloirs n'aurait corrigé celle-là.
+     *
+     * L'assertion porte sur le **chevauchement**, non sur l'égalité des abscisses : deux verticales
+     * à la même abscisse dont les plages d'ordonnées sont disjointes ne se recouvrent pas, et
+     * l'interdire serait plus strict que ce qui a été demandé (règle du test plus strict que son
+     * contrat).
+     */
+    const moyeu: EntreeDeTable = {
+      schema: 'public',
+      name: 'moyeu',
+      columns: [
+        colonne({ position: 1, name: 'id', key: 'primary' }),
+        colonne({ position: 2, name: 'racine_id', key: 'foreign', nullable: true }),
+      ],
+      // Le lien qui referme le cycle : `moyeu` référence l'une de ses référentes.
+      relations: [sortante('moyeu_racine_id_fkey', 'racine_id', 'ref1')],
+    }
+    const referentes = Array.from({ length: 9 }, (_, n): EntreeDeTable => {
+      const nom = `ref${n + 1}`
+      return {
+        schema: 'public',
+        name: nom,
+        columns: [
+          colonne({ position: 1, name: 'id', key: 'primary' }),
+          // Une ordonnée d'ancre différente d'une table à l'autre, sinon les parcours verticaux se
+          // ressemblent et le tri par longueur ne départage rien (règle n° 5).
+          ...Array.from({ length: n }, (_, i) =>
+            colonne({ position: i + 2, name: `bourrage_${i}`, typeName: 'text' }),
+          ),
+          colonne({ position: n + 2, name: 'moyeu_id', key: 'foreign' }),
+        ],
+        relations: [sortante(`${nom}_moyeu_id_fkey`, 'moyeu_id', 'moyeu')],
+      }
+    })
+
+    const vue = disposition([moyeu, ...referentes])
+    const verticales = verticalesDe(vue.liens)
+    // Le décor doit bien produire plus de verticales que la gouttière ne tenait de couloirs, sinon
+    // ce test ne mesure rien de particulier.
+    expect(verticales.length).toBeGreaterThan(5)
+
+    /*
+     * **Deux assertions, et il faut les deux.**
+     *
+     * La seconde — aucun recouvrement — est la propriété demandée, mais elle **dépend du décor** :
+     * deux verticales à la même abscisse ne se recouvrent que si leurs plages d'ordonnées se
+     * croisent, et le bouclage d'origine appariait justement, sur ce décor-ci, un lien qui monte
+     * vers le moyeu avec un lien qui en descend — donc deux plages disjointes. Le test restait vert
+     * sous sabotage, ce qui le rendait sans valeur (règle n° 1) ; mesuré, il fallait le constater.
+     *
+     * La première assertion garde donc le **mécanisme** : dans une gouttière, deux liens n'ont
+     * jamais la même abscisse. C'est ce qui rend la seconde vraie pour *tout* décor, et non pour
+     * celui-ci (règle n° 3, appliquée à une garantie plutôt qu'à une durée).
+     */
+    const bords = [...new Set(vue.boites.map((b) => b.x))].sort((a, b) => a - b)
+    // La gouttière d'une verticale est la colonne de boîtes qu'elle précède : son bord est la plus
+    // petite abscisse de colonne qui lui soit supérieure.
+    const gouttiereDe = (x: number) => bords.find((bord) => bord > x - 0.01) ?? Number.NaN
+    const parGouttiere = new Map<number, typeof verticales>()
+    for (const v of verticales) {
+      const bord = gouttiereDe(v.x)
+      parGouttiere.set(bord, [...(parGouttiere.get(bord) ?? []), v])
+    }
+    for (const [bord, groupe] of parGouttiere) {
+      const abscisses = groupe.map((v) => v.x)
+      expect(new Set(abscisses).size, `gouttière du bord ${bord} : ${abscisses.join(', ')}`).toBe(
+        abscisses.length,
+      )
+    }
+
+    for (const [rang, a] of verticales.entries()) {
+      for (const b of verticales.slice(rang + 1)) {
+        if (a.lien === b.lien) continue
+        const memeAbscisse = Math.abs(a.x - b.x) < 1
+        const chevauchent = a.haut < b.bas - 0.5 && b.haut < a.bas - 0.5
+        expect(
+          memeAbscisse && chevauchent,
+          `${a.lien} et ${b.lien} se superposent en x=${a.x}`,
+        ).toBe(false)
+      }
+    }
+  })
+
+  it('garde le pas des couloirs tant que la gouttière le permet', () => {
+    // **Le resserrement ne doit pas se déclencher quand il n'y a rien à resserrer** : sur trois
+    // tables en chaîne, le dessin est exactement celui d'avant. Sans cette garde, un pas dérivé du
+    // seul nombre de liens rétrécirait les gouttières de tous les schémas.
+    const vue = disposition(TROIS)
+    const verticales = verticalesDe(vue.liens)
+    for (const v of verticales) {
+      // Le premier couloir d'une gouttière est à un pas de son bord, et le bord est celui d'une
+      // boîte : l'abscisse d'une verticale est donc à distance entière de multiples de 14.
+      const distances = vue.boites.map((b) => Math.abs(b.x - v.x))
+      expect(Math.min(...distances) % 14, `couloir à x=${v.x}`).toBeCloseTo(0, 5)
+    }
+  })
 })
 
 describe('les colonnes montrées', () => {
