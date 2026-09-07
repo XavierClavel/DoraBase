@@ -113,13 +113,10 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn kubectl_est_trouve_dans_les_repertoires_donnes() {
-        use std::os::unix::fs::PermissionsExt;
-
         let base = std::env::temp_dir().join(format!("dorabase-kubectl-{}", std::process::id()));
         std::fs::create_dir_all(&base).expect("répertoire");
         let chemin = base.join(NOM);
-        std::fs::write(&chemin, "#!/bin/sh\nexit 0\n").expect("écriture");
-        std::fs::set_permissions(&chemin, std::fs::Permissions::from_mode(0o755)).expect("droits");
+        crate::engine::programme::poser_un_executable(&chemin, "#!/bin/sh\nexit 0\n");
 
         assert_eq!(
             localiser_dans(std::slice::from_ref(&base)).expect("trouvé"),

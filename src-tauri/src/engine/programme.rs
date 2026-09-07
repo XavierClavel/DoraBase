@@ -273,6 +273,44 @@ pub fn path_enrichi(supplementaires: &[PathBuf]) -> OsString {
     std::env::join_paths(&dossiers).unwrap_or_else(|_| std::env::var_os("PATH").unwrap_or_default())
 }
 
+/// Pose un exécutable factice à `chemin`, dont le contenu est `corps`.
+///
+/// **Ce que ce détour corrige, et il l'a déjà fait deux fois** (26 août 2026 pour `cloudsql`,
+/// 7 septembre 2026 pour `dump::discover`, les deux sur `main` et les deux en CI). Écrire le
+/// fichier par `std::fs::write` ouvre un descripteur **en écriture dans notre processus**. Les
+/// tests tournent en parallèle : si un autre fil lance un programme pendant ce temps, le `fork`
+/// qui précède son `exec` duplique ce descripteur dans l'enfant, et Linux refuse d'exécuter un
+/// fichier qu'un processus tient ouvert en écriture — `ETXTBSY`, « Text file busy ». Rust pose
+/// bien `O_CLOEXEC`, donc la fenêtre se referme à l'`exec` de l'enfant ; elle dure quelques
+/// microsecondes, et **c'est assez**. Ce n'est pas reproductible à volonté : trois tours verts en
+/// local ne prouvent rien, seule la CI juge — d'où l'intérêt de n'avoir qu'un seul endroit qui
+/// puisse se tromper.
+///
+/// Écrit par le shell, le descripteur n'existe **jamais** dans notre table : il vit dans un
+/// processus qui s'achève avant que cette fonction ne rende la main. Le corps voyage en argv,
+/// donc aucune source intermédiaire ne traîne dans le répertoire du double — que `discover`
+/// ajoute, lui, à ses emplacements de recherche.
+///
+/// **Une fonction et non sept, et elle vit ici plutôt que dans un fichier à elle.** Sept endroits
+/// du dépôt posent un faux exécutable, et **deux le lancent** — le `--version` de
+/// `dump::discover` et le faux outil lent de `dump::run`. Seuls `cloudsql` et `kubernetes` avaient
+/// reçu le détour, chacun de son côté, ce qui allait ; les cinq autres l'ignoraient, et c'est ce
+/// qui a rendu `main` rouge deux fois. Un seul endroit peut se tromper désormais, et
+/// `tests/faux_executable.rs` refuse tout autre `chmod` d'exécution. Un fichier à part
+/// demanderait une exception à `tests/sans_console.rs`, qui n'en admet aucune, délibérément.
+#[cfg(all(test, unix))]
+pub(crate) fn poser_un_executable(chemin: &Path, corps: &str) {
+    let statut = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(r#"printf '%s' "$1" > "$2" && chmod 755 "$2""#)
+        .arg("sh")
+        .arg(corps)
+        .arg(chemin)
+        .status()
+        .expect("installation du faux binaire");
+    assert!(statut.success(), "installation du faux binaire : {statut}");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,14 +318,10 @@ mod tests {
     /// Un répertoire portant un exécutable factice du nom donné.
     #[cfg(unix)]
     fn repertoire_avec_executable(nom: &str) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt;
-
         let base =
             std::env::temp_dir().join(format!("dorabase-programme-{nom}-{}", std::process::id()));
         std::fs::create_dir_all(&base).expect("répertoire");
-        let chemin = base.join(nom);
-        std::fs::write(&chemin, "#!/bin/sh\nexit 0\n").expect("écriture");
-        std::fs::set_permissions(&chemin, std::fs::Permissions::from_mode(0o755)).expect("droits");
+        poser_un_executable(&base.join(nom), "#!/bin/sh\nexit 0\n");
         base
     }
 

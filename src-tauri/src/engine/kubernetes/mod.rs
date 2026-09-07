@@ -650,29 +650,14 @@ for argument in "$@"; do dernier="$argument"; done
 
     /// Écrit un faux `kubectl` exécutable, et le rend.
     ///
-    /// **Le fichier est écrit par un sous-processus, et ce détour corrige une panne de CI** —
-    /// exactement celle du 26 août 2026 sur `cloudsql`, dont le commentaire porte le détail.
-    /// `std::fs::write` ouvre le fichier en écriture dans **notre** processus ; les tests tournant
-    /// en parallèle, le `fork` qu'un autre fil fait avant son `exec` duplique ce descripteur dans
-    /// l'enfant, et Linux refuse d'exécuter un fichier qu'un processus tient ouvert en écriture
-    /// (`ETXTBSY`). Écrit par `cp`, le descripteur n'existe jamais chez nous.
+    /// **Le fichier est posé par un sous-processus, et ce détour corrige une panne de CI** —
+    /// la course `ETXTBSY`, dont `programme::poser_un_executable` porte le détail.
     fn faux_kubectl(nom: &str, corps: &str) -> std::path::PathBuf {
         let base =
             std::env::temp_dir().join(format!("dorabase-kubectl-{nom}-{}", std::process::id()));
         std::fs::create_dir_all(&base).expect("répertoire");
-        let source = base.join("source");
         let chemin = base.join("kubectl");
-        std::fs::write(&source, format!("{PREAMBULE}{corps}")).expect("écriture de la source");
-
-        let statut = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(r#"cp "$1" "$2" && chmod 755 "$2""#)
-            .arg("sh")
-            .arg(&source)
-            .arg(&chemin)
-            .status()
-            .expect("installation du faux binaire");
-        assert!(statut.success(), "installation du faux binaire : {statut}");
+        programme::poser_un_executable(&chemin, &format!("{PREAMBULE}{corps}"));
         chemin
     }
 

@@ -126,14 +126,10 @@ mod tests {
     /// Un répertoire contenant un exécutable factice du nom donné.
     #[cfg(unix)]
     fn repertoire_avec_executable(nom: &str) -> std::path::PathBuf {
-        use std::os::unix::fs::PermissionsExt;
-
         let base =
             std::env::temp_dir().join(format!("dorabase-binaire-{nom}-{}", std::process::id()));
         std::fs::create_dir_all(&base).expect("répertoire");
-        let chemin = base.join(nom);
-        std::fs::write(&chemin, "#!/bin/sh\nexit 0\n").expect("écriture");
-        std::fs::set_permissions(&chemin, std::fs::Permissions::from_mode(0o755)).expect("droits");
+        crate::engine::programme::poser_un_executable(&base.join(nom), "#!/bin/sh\nexit 0\n");
         base
     }
 
@@ -192,13 +188,10 @@ mod tests {
         let installe = repertoire_avec_executable("cloud-sql-proxy-du-path");
         // Le second répertoire porte le binaire sous son vrai nom, lui aussi : c'est bien
         // d'un choix entre deux candidats valables qu'il s'agit.
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let chemin = installe.join("cloud-sql-proxy");
-            std::fs::write(&chemin, "#!/bin/sh\nexit 0\n").expect("écriture");
-            std::fs::set_permissions(&chemin, std::fs::Permissions::from_mode(0o755))
-                .expect("droits");
-        }
+        crate::engine::programme::poser_un_executable(
+            &installe.join("cloud-sql-proxy"),
+            "#!/bin/sh\nexit 0\n",
+        );
 
         let trouve = localiser_dans(&[embarque.clone(), installe]).expect("un des deux");
         assert_eq!(trouve, embarque.join("cloud-sql-proxy"));

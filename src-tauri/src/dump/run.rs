@@ -416,19 +416,11 @@ mod tests {
     /// qu'il ressemble à `pg_dump`. À reprendre si l'annulation devient suspecte là-bas.
     #[cfg(unix)]
     fn script_lent(dossier: &Path) -> PathBuf {
-        use std::io::Write;
-        use std::os::unix::fs::PermissionsExt;
-
         let chemin = dossier.join("lent");
-        let mut fichier = std::fs::File::create(&chemin).expect("création du script");
-        write!(
-            fichier,
-            "#!/bin/sh\n: > \"$1\"\ni=0\nwhile [ $i -lt 400 ]; do\n  echo \"-- ligne $i\" >> \"$1\"\n  sleep 0.05\n  i=$((i+1))\ndone\n"
-        )
-        .expect("écriture du script");
-        drop(fichier);
-        std::fs::set_permissions(&chemin, std::fs::Permissions::from_mode(0o755))
-            .expect("droits d'exécution");
+        crate::engine::programme::poser_un_executable(
+            &chemin,
+            "#!/bin/sh\n: > \"$1\"\ni=0\nwhile [ $i -lt 400 ]; do\n  echo \"-- ligne $i\" >> \"$1\"\n  sleep 0.05\n  i=$((i+1))\ndone\n",
+        );
         chemin
     }
 

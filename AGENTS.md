@@ -2054,10 +2054,22 @@ manière de reprendre des données sans que `serde` les efface en silence.
   cet enfant atteigne son `exec`. Rust pose bien `O_CLOEXEC` — la fenêtre dure quelques
   microsecondes, et c'est assez : elle a fait tomber `main` et une PR le 26 août 2026, sur **deux
   tests différents**, ce qui est la marque d'une course et non d'un test faux. Le remède est que le
-  descripteur n'existe jamais chez nous : le faux binaire de `cloudsql` est posé par `cp` dans un
-  sous-processus, qui s'achève avant qu'on l'exécute. La source, elle, s'écrit normalement —
-  `ETXTBSY` porte sur l'inode qu'on exécute, pas sur celui qu'on lit. Et ce n'est pas reproductible
-  à volonté : trois tours verts en local ne prouvent rien, seule la CI juge.
+  descripteur n'existe jamais chez nous : le fichier est écrit **par un sous-processus**, qui
+  s'achève avant qu'on l'exécute. Et ce n'est pas reproductible à volonté : trois tours verts en
+  local ne prouvent rien, seule la CI juge.
+
+  **Et il a fallu qu'il tombe deux fois pour que le remède aille au seul endroit qui compte**
+  (7 septembre 2026, `main` rouge sur `dump::discover`). Le 26 août, `cloudsql` puis `kubernetes`
+  l'avaient reçu chacun de son côté ; les **cinq autres** poses de faux exécutable du dépôt ne
+  l'avaient pas, dont les deux qui *lancent* le leur — le `--version` de `dump::discover`, et le
+  faux outil lent de `dump::run`. C'est `programme::poser_un_executable` désormais, seul endroit
+  qui puisse se tromper, et `tests/faux_executable.rs` refuse tout autre `chmod` d'exécution :
+  **aucun test de comportement ne peut mordre là**, la course n'étant pas reproductible et
+  `ETXTBSY` ne se présentant pas de la même façon sur le macOS où l'on développe — un test qui
+  poserait un faux binaire puis le lancerait serait vert sous le sabotage. Le verdict rendu, au
+  passage, accusait tout autre chose : un `--version` qui ne part pas est indiscernable d'un outil
+  absent, donc l'écran aurait dit « `pg_dump` est introuvable, voilà comment l'installer » à
+  quelqu'un qui l'a installé.
 - **Un sous-processus dont personne ne lit la sortie se bloque en écriture** : le tampon du
   système se remplit et l'enfant s'arrête au milieu d'un `write`. Une tâche de drain n'est
   pas un raffinement, c'est une condition de fonctionnement.

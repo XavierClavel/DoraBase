@@ -221,9 +221,6 @@ pub fn analyser_version(ligne: &str) -> Option<Version> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // Seul `faux_binaire` s'en sert, et il est `#[cfg(unix)]`.
-    #[cfg(unix)]
-    use std::io::Write;
 
     /// Un faux binaire qui annonce la version qu'on lui donne. Le seul moyen d'exercer
     /// `ToolTooOld` sans installer un PostgreSQL 13 sur la machine.
@@ -233,19 +230,21 @@ mod tests {
     /// règle de version, ne dépend d'aucune plateforme. Le porter coûterait une divergence
     /// possible entre les deux doubles pour ne rien mesurer de plus (règle 14 d'AGENTS.md : ce
     /// qu'un double émet doit venir d'une observation de l'original).
+    ///
+    /// **Ce double est *lancé* par son sujet** — `lire_version` appelle `--version` —, donc la
+    /// course `ETXTBSY` l'atteint. Elle l'a fait le 7 septembre 2026, sur `main`, et le verdict
+    /// rendu accusait tout autre chose : un `--version` qui ne part pas est indiscernable d'un
+    /// outil absent, donc `ToolMissing`. `programme::poser_un_executable` porte le remède et sa
+    /// raison ; `dump::run::script_lent` est l'autre double que son sujet lance.
     #[cfg(unix)]
     fn faux_binaire(nom: &str, annonce: &str) -> tempfile::TempDir {
         let dossier = tempfile::tempdir().expect("dossier temporaire");
-        let chemin = dossier.path().join(nom);
-        let mut fichier = std::fs::File::create(&chemin).expect("création du faux binaire");
-        writeln!(fichier, "#!/bin/sh\necho \"{annonce}\"").expect("écriture");
-        drop(fichier);
-        std::fs::set_permissions(&chemin, std::fs::Permissions::from_mode(0o755))
-            .expect("droits d'exécution");
+        programme::poser_un_executable(
+            &dossier.path().join(nom),
+            &format!("#!/bin/sh\necho \"{annonce}\"\n"),
+        );
         dossier
     }
-    #[cfg(unix)]
-    use std::os::unix::fs::PermissionsExt;
 
     /// L'étoile comme **segment entier** — la forme du repli Postgres.app, et celle des deux
     /// motifs Windows.
