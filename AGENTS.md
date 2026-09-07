@@ -1933,6 +1933,38 @@ retiré le dernier `std::os::unix` non gardé du dépôt **par suppression**, pa
 plus — et `programme::EMPLACEMENTS_USUELS` est **vide** sous Windows, où le motif qui rend cette
 liste nécessaire (le `PATH` minimal d'une app lancée depuis le Finder) n'a pas cours.
 
+**Et un enfant qui est un outil de terminal ouvre une fenêtre, qu'il faut refuser** (7 septembre
+2026, rapporté à l'usage : « une fenêtre de terminal apparaît »). Une application graphique Windows
+n'a pas de console ; lancer un programme qui en est une — `pg_dump`, `psql`, `kubectl`,
+`cloud-sql-proxy` — en fait donc ouvrir une, et c'est une **vraie fenêtre** que l'utilisateur voit.
+Elle clignote le temps d'un `--version`, et pour les deux sortes de proxy à sous-processus elle
+**reste ouverte aussi longtemps que la connexion** : une fenêtre noire vide à côté de
+l'application, que fermer coupe la base. Le `#![windows_subsystem = "windows"]` de `main.rs` ne dit
+rien de cela — il retire *notre* console, pas celle que nos enfants demandent, et son
+`not(debug_assertions)` laisse d'ailleurs la nôtre en développement, délibérément : c'est là que
+les journaux Rust se lisent. Quatre points à ne pas défaire :
+
+- **`CREATE_NO_WINDOW`, et pas `DETACHED_PROCESS`.** Le premier est nommé pour exactement ce cas et
+  laisse la **redirection des flux intacte** — or tout ce qui lance ici lit les deux sorties de son
+  enfant, c'est même la condition de fonctionnement de `SousProcessus`. Le second parle de la
+  console *héritée*, qu'une application graphique n'a de toute façon pas, et Windows l'annonce
+  incompatible avec le premier ;
+- **un constructeur, pas un réglage à poser** : `programme::commande` et
+  `programme::commande_asynchrone` rendent un `Command` déjà marqué, pour la raison que
+  `SousProcessus::ouvrir` donne de ses trois redirections — le laisser à l'appelant serait offrir de
+  l'oublier. Deux fonctions parce qu'il y a deux types de `Command` dans le dépôt, un seul endroit
+  qui porte le drapeau ;
+- **la règle est sans exception, y compris pour `codesign`**, que `secrets/signature.rs` lance et
+  qui n'est jamais atteint sous Windows. Une liste d'exceptions se périme, et la première y aurait
+  fait entrer la deuxième ;
+- **et c'est une règle qui est gardée, pas son effet.** `tests/sans_console.rs` refuse tout
+  `Command::new` livré ailleurs que dans `programme.rs` — parce qu'un sixième lancement qui
+  l'oublierait ne se verrait **d'aucune façon depuis ce poste** : macOS n'a pas de fenêtre à ouvrir,
+  le job Windows de la CI compile sans exécuter, et WebView2 n'est pas plus pilotable que WKWebView.
+  Le test coupe chaque fichier au couple `#[cfg(…test…)]` + `mod tests` et non au seul attribut :
+  `postgres/introspect.rs` en porte un au milieu, et couper là masquerait tout ce qui suit
+  (vérifié par sabotage, comme le contrôle positif qui refuse un balayage qui ne trouve rien).
+
 Le nom du fichier chez Google suit un **troisième** vocabulaire, ni le triplet ni `windows.amd64`
 mais `cloud-sql-proxy.x64.exe` (vérifié : `windows.amd64` rend 404). Il n'existe pas de binaire
 Windows arm64 ; l'émulation x64 couvre ce cas.
@@ -2404,6 +2436,11 @@ que Windows n'a rien changé à macOS.
   du Finder.
 - **L'installateur NSIS** : qu'il s'ouvre, installe, et que l'application se lance. SmartScreen
   avertira — c'est attendu, faute de certificat Authenticode.
+- **Qu'aucune fenêtre de terminal ne paraisse**, sur un build **release** : une lecture de version
+  au moment d'ouvrir la modale d'export, puis un export, puis une connexion Kubernetes ou Cloud SQL
+  — c'est celle-là qui compte, sa fenêtre restant ouverte tout le temps de la connexion là où les
+  autres clignotent. `tests/sans_console.rs` garde la règle ; le drapeau lui-même n'a de juge que
+  l'œil.
 
 ---
 

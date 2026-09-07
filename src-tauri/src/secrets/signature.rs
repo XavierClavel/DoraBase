@@ -3,7 +3,7 @@
 //! Le parseur est **pur** : il prend la sortie de `codesign` en chaîne, donc se teste sur
 //! des sorties réelles enregistrées, sans dépendre de la machine ni lancer de sous-processus.
 
-use std::process::Command;
+use crate::engine::programme;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SignatureKind {
@@ -67,7 +67,7 @@ pub fn signature_courante() -> SignatureKind {
         return SignatureKind::AdHoc;
     };
 
-    let sortie = Command::new("codesign")
+    let sortie = programme::commande("codesign")
         .args(["-dv", "--verbose=4"])
         .arg(&executable)
         .output();

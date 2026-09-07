@@ -1,4 +1,5 @@
-//! Trouver un programme tiers sur la machine, et lui donner un `PATH` utilisable.
+//! Trouver un programme tiers sur la machine, lui donner un `PATH` utilisable, et le lancer sans
+//! ouvrir de fenêtre.
 //!
 //! **Pourquoi ce module existe** (31 août 2026). Trois scopes cherchent un exécutable —
 //! `cloudsql/binaire.rs` (le proxy Cloud SQL), `dump/discover.rs` (`pg_dump` et `psql`) et
@@ -10,9 +11,10 @@
 //! **Ce qui n'est pas ici** : les règles propres à chaque outil — la préséance du sidecar embarqué
 //! (`06h`), le développement d'un `postgresql@*`, le contrôle de version. Elles restent chez leur
 //! appelant, parce qu'elles ne sont vraies que de lui. Ce module ne porte que ce que les trois
-//! disent de la même façon.
+//! disent de la même façon — auquel s'est ajouté, le 7 septembre 2026, le refus de la console
+//! Windows : cinq lancements, cinq fois le même drapeau à ne pas oublier.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
 /// Les emplacements où un outil installé se trouve **hors du `PATH`**, sur macOS.
@@ -184,6 +186,66 @@ pub fn localiser_dans(emplacements: &[PathBuf], nom: &str) -> Option<PathBuf> {
         .iter()
         .map(|repertoire| repertoire.join(&fichier))
         .find(|candidat| est_executable(candidat))
+}
+
+/// `CREATE_NO_WINDOW` de `CreateProcess` — le seul endroit du dépôt qui porte ce nombre.
+#[cfg(windows)]
+const SANS_CONSOLE: u32 = 0x0800_0000;
+
+/// Un programme tiers prêt à être lancé, **sans fenêtre de console**.
+///
+/// **Le défaut, et il se voit** (7 septembre 2026, rapporté à l'usage : « une fenêtre de terminal
+/// apparaît »). Sous Windows, une application graphique n'a pas de console ; lancer un programme
+/// qui en est une — `pg_dump`, `psql`, `kubectl`, `cloud-sql-proxy`, tous des outils de terminal —
+/// en fait donc ouvrir une, et c'est une **vraie fenêtre** que l'utilisateur voit. Elle clignote le
+/// temps d'un `--version`, et pour les deux sortes de proxy à sous-processus elle **reste ouverte
+/// aussi longtemps que la connexion** : une fenêtre noire vide à côté de l'application, que fermer
+/// coupe la base. Le `#![windows_subsystem = "windows"]` de `main.rs` ne dit rien de cela — il
+/// retire *notre* console, pas celle que nos enfants demandent.
+///
+/// **`CREATE_NO_WINDOW` est le drapeau nommé pour exactement cela** — « le processus est une
+/// application console lancée sans fenêtre de console », dit sa documentation —, là où les deux
+/// autres réponses possibles règlent autre chose : `DETACHED_PROCESS` parle de la console
+/// *héritée*, qu'une application graphique n'a de toute façon pas, et Windows l'annonce
+/// **incompatible** avec celui-ci ; `STARTF_USESHOWWINDOW` + `SW_HIDE` demanderait un
+/// `STARTUPINFO` que Rust n'expose pas. Ce qui décide surtout est qu'il laisse la **redirection
+/// des flux intacte** : tout ce qui passe par ici lit les deux sorties de son enfant — c'est même
+/// la condition de fonctionnement de `SousProcessus` —, et un drapeau qui les casserait serait
+/// pire que la fenêtre.
+///
+/// **Un constructeur et non un réglage à poser**, pour la raison que `SousProcessus::ouvrir` donne
+/// de ses trois redirections : le laisser à l'appelant serait offrir de l'oublier. Et un oubli ne
+/// se voit pas d'ici — macOS n'a aucune fenêtre à ouvrir, donc ni Vitest, ni `cargo test`, ni
+/// Playwright, ni une capture de fidélité n'en dirait quoi que ce soit. C'est
+/// `tests/sans_console.rs` qui garde la règle, en refusant tout `Command::new` livré ailleurs que
+/// dans ce module.
+pub fn commande(programme: impl AsRef<OsStr>) -> std::process::Command {
+    // **`allow` hors Windows, et il n'y a pas mieux.** Le seul usage du `mut` est dans le bloc
+    // ci-dessous, que macOS ne compile pas : `creation_flags` n'existe que là-bas, donc il n'y a
+    // rien à mettre derrière un `cfg!` qui garderait les deux branches vivantes — le compromis
+    // d'`est_executable`, pour la même raison.
+    #[cfg_attr(not(windows), allow(unused_mut))]
+    let mut commande = std::process::Command::new(programme);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        commande.creation_flags(SANS_CONSOLE);
+    }
+    commande
+}
+
+/// La même chose pour un enfant piloté par tokio.
+///
+/// **Deux fonctions, un seul endroit qui porte le drapeau**, et c'est ce qui compte : il y a deux
+/// types de `Command` dans ce dépôt — le dump lance ses outils en bloquant, dans un fil qui attend,
+/// et les deux proxys surveillent les leurs en asynchrone — et rien ne les fait se rejoindre.
+pub fn commande_asynchrone(programme: impl AsRef<OsStr>) -> tokio::process::Command {
+    // `allow` hors Windows, pour la raison dite au-dessus.
+    #[cfg_attr(not(windows), allow(unused_mut))]
+    let mut commande = tokio::process::Command::new(programme);
+    #[cfg(windows)]
+    commande.creation_flags(SANS_CONSOLE);
+    commande
 }
 
 /// Le `PATH` à donner à un sous-processus : le nôtre, augmenté des emplacements usuels.

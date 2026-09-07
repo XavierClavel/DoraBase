@@ -25,11 +25,10 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::process::Command;
-
 use crate::config::ProxyCloudSql;
 use crate::engine::journal::Journal;
 use crate::engine::port;
+use crate::engine::programme;
 use crate::engine::proxy::EtatProxy;
 use crate::engine::sous_processus::{EchecDeLancement, Reperes, SousProcessus};
 use crate::engine::EngineError;
@@ -123,7 +122,7 @@ impl CloudSqlProxy {
     ) -> Result<Self, EngineError> {
         let port_demande = port::choisir_port_libre(port_local_demande).await?;
 
-        let mut commande = Command::new(binaire);
+        let mut commande = programme::commande_asynchrone(binaire);
         commande
             .arg(&proxy.instance_connection_name)
             .arg("--port")
