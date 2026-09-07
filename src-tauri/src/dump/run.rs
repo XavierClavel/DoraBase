@@ -7,11 +7,12 @@
 //! passe sans traitement.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use super::{Cible, DumpTool};
+use crate::engine::programme;
 use crate::secrets::Secret;
 
 /// Le rythme de sondage : progression, fin du fils, demande d'annulation.
@@ -167,7 +168,7 @@ async fn executer(
     surveille: Option<(&Path, &(dyn Fn(u64) + Send + Sync))>,
     annulation: &Annulation,
 ) -> Result<(), DumpError> {
-    let mut commande = Command::new(binaire);
+    let mut commande = programme::commande(binaire);
     commande.args(argv);
     if let Some(secret) = mot_de_passe {
         commande.envs(outil.child_env(secret.expose()));

@@ -7,7 +7,6 @@
 //! d'autre. Le seul appel lancé ici est `<binaire> --version`.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use super::{regle_de_version, DumpAvailability, Version, VersionVerdict};
 use crate::engine::programme;
@@ -186,7 +185,10 @@ fn developper(motif: &str) -> Vec<PathBuf> {
 /// la forme `17.4` ou `17`, et **pas** le dernier : « (Homebrew) » n'en est pas un, mais un
 /// paquet Debian écrit `17.6-1.pgdg13+1` en queue de ligne.
 pub fn lire_version(binaire: &Path) -> Option<Version> {
-    let sortie = Command::new(binaire).arg("--version").output().ok()?;
+    let sortie = programme::commande(binaire)
+        .arg("--version")
+        .output()
+        .ok()?;
     if !sortie.status.success() {
         return None;
     }

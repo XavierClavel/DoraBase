@@ -40,8 +40,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::process::Command;
-
 use crate::config::ProxyKubernetes;
 use crate::engine::journal::Journal;
 use crate::engine::port;
@@ -181,7 +179,7 @@ impl KubernetesProxy {
         controler(proxy, port_cible)?;
         let port_demande = port::choisir_port_libre(port_local_demande).await?;
 
-        let mut commande = Command::new(binaire);
+        let mut commande = programme::commande_asynchrone(binaire);
         commande.args(arguments(
             proxy,
             port_demande,
@@ -388,7 +386,7 @@ async fn entete(binaire: &Path, proxy: &ProxyKubernetes) -> String {
 /// Ce qu'il achète est le seul remède au compromis de `ProxyKubernetes::context` — sans lui, un
 /// échec sur le mauvais cluster ne dirait pas lequel.
 async fn contexte_courant(binaire: &Path, proxy: &ProxyKubernetes) -> Option<String> {
-    let mut commande = Command::new(binaire);
+    let mut commande = programme::commande_asynchrone(binaire);
     // **Le même `--kubeconfig` que le transfert, et c'est indispensable** (31 août 2026). Sans lui,
     // cet appel lirait le fichier *par défaut* pendant que le transfert emploie celui qui est
     // déclaré : l'en-tête nommerait un contexte venu d'un autre fichier — donc affirmerait, avec
