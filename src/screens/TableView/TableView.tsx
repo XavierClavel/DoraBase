@@ -134,6 +134,15 @@ type TableViewProps = {
    */
   edition?: boolean
   /**
+   * Bascule ce mode — le **même acte** que le `⌘E` de l'écran de travail, et pas une seconde
+   * mécanique : les deux appellent la fonction que l'écran détient. Deux voies pour un même acte en
+   * laissent une en arrière, et le dépôt en a déjà payé une (règle n° 17).
+   *
+   * Absent, la barre d'outils ne montre pas la bascule : la vue ne possède pas ce mode, elle le
+   * reçoit.
+   */
+  onBasculerEdition?: () => void
+  /**
    * Les modifications en attente, **détenues par l'écran** (`11b`).
    *
    * Contrôlées et non locales : le compte s'affiche à quatre endroits hors de cette vue — bandeau,
@@ -232,6 +241,7 @@ export function TableView({
   rang = null,
   onRangChange,
   edition = false,
+  onBasculerEdition,
   rafraichissement = 0,
   onRelireLaStructure,
   structureEnCours = false,
@@ -256,6 +266,14 @@ export function TableView({
   // qu'elle est. Comme `masquees` et `largeurs`, seul l'écart au défaut est tenu — et pour la même
   // raison, aucun moteur ne pouvant dire si un `bigint` porte une date (voir `horodatage.ts`).
   const [lectures, setLectures] = useState<Readonly<Record<string, Echelle>>>({})
+  /**
+   * Le signal « descends au bas de la grille », incrémenté par le `+` de la barre d'outils.
+   *
+   * **Un compteur, non un booléen** : chaque clic pose une ligne de plus, donc le geste se répète, et
+   * un drapeau devrait être rabaissé par quelqu'un — un état de plus qui ne décrit rien. C'est
+   * l'idiome de `rafraichissement`, que cette vue reçoit déjà de l'écran pour la même raison.
+   */
+  const [descendreEnBas, setDescendreEnBas] = useState(0)
   // L'ordre d'affichage des colonnes, par nom — `null` tant qu'on n'a rien réordonné, auquel cas
   // l'ordre est celui de `colonnesEffectives` (le catalogue). Même écart-au-défaut que `masquees`
   // et `largeurs` : changer de table ne demande aucune remise à zéro.
@@ -928,14 +946,25 @@ export function TableView({
           })
         }
         sql={fenetre?.sql ?? null}
+        edition={edition}
+        onBasculerEdition={onBasculerEdition}
         // **Le `+` s'adapte au moteur, il ne s'ajoute pas.** Sur MongoDB, poser une ligne vide
         // éditée cellule par cellule n'a pas de sens sans colonnes déclarées : le geste ouvre
         // directement l'éditeur JSON (`18g`), qui compose le document entier d'un coup.
+        /* **Et l'ajout descend jusqu'à la ligne qu'il vient de poser** (8 septembre 2026, à la
+           demande). Elle s'ajoute en **bas** de la grille : sur une fenêtre de cinq cents lignes,
+           le `+` la posait à douze mille pixels sous le regard, et rien ne bougeait — un bouton dont
+           l'effet est hors de l'écran se lit comme un bouton qui ne fait rien, le défaut n° 36 sous
+           une autre forme. Le compteur ne monte que pour la grille : sur MongoDB le `+` ouvre une
+           modale, qui n'a rien à voir avec le défilement. */
         onAjouterUneLigne={
           edition && onAttenteChange !== undefined
             ? moteur === 'mongodb'
               ? () => setDocumentJsonOuvert({ sorte: 'creer' })
-              : () => onAttenteChange(ajouterUneLigne(attente))
+              : () => {
+                  onAttenteChange(ajouterUneLigne(attente))
+                  setDescendreEnBas((precedent) => precedent + 1)
+                }
             : undefined
         }
         libelleAjouter={moteur === 'mongodb' ? t('tableView.documentJson.createTitle') : undefined}
@@ -954,6 +983,7 @@ export function TableView({
             label={t('tableView.grid.gridLabel', { schema, table })}
             columns={colonnes}
             rows={toutesLesLignes}
+            scrollToBottom={descendreEnBas}
             // L'identité locale d'une ligne ajoutée, jamais son rang : `+1` et la première ligne
             // lue partagent le rang 1, et deux lignes de même identité feraient sauter la sélection
             // de l'une à l'autre.

@@ -63,3 +63,22 @@ if (typeof Range !== 'undefined' && Range.prototype.getClientRects === undefined
 if (typeof Element !== 'undefined' && Element.prototype.scrollIntoView === undefined) {
   Element.prototype.scrollIntoView = () => {}
 }
+
+// `Element.prototype.scrollTo` n'existe pas non plus sous jsdom, et pour la même raison :
+// il n'y a pas de mise en page, donc aucune position à atteindre. `VirtualGrid` l'appelle à deux
+// endroits — ramener la ligne sélectionnée dans la fenêtre, et descendre au bas de la grille quand
+// `A5` ajoute une ligne.
+//
+// **Ce complément a manqué longtemps sans qu'on le sache** : le premier appel n'était atteint par
+// aucun test — il faut que la sélection sorte de la fenêtre visible, ce qu'aucun décor ne faisait —
+// et le second est arrivé le 8 septembre 2026, faisant tomber d'un coup les huit tests qui cliquent
+// « Ajouter une ligne ». Un `TypeError` sur une API absente ne se distingue pas d'un défaut du
+// sujet, ce qui est le mode d'échec le plus coûteux à lire.
+//
+// **Une fonction vide, comme `scrollIntoView`** : « rien à faire » est la vérité sous jsdom. Ce que
+// le défilement produit vraiment se mesure dans `e2e/`, et l'état interne qui décide des lignes
+// montées, lui, reste observable — c'est `aria-rowindex` qui le dit, et ce sont les tests de
+// `VirtualGrid` qui le lisent.
+if (typeof Element !== 'undefined' && Element.prototype.scrollTo === undefined) {
+  Element.prototype.scrollTo = () => {}
+}

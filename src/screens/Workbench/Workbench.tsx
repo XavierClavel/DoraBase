@@ -176,8 +176,6 @@ type WorkbenchProps = {
     ancien: string,
     nouveau: string,
   ) => Promise<void>
-  /** Ouvre l'écran en mode édition au montage — la démo s'en sert (`11a`). */
-  edition?: boolean
 }
 
 /**
@@ -213,7 +211,6 @@ export function Workbench({
   passerellePreview,
   passerelleApply,
   passerelleExecution,
-  edition = false,
 }: WorkbenchProps) {
   /**
    * Le cache des structures, **au-dessus de l'arbre et du panneau** : les deux le lisent, et
@@ -549,7 +546,12 @@ export function Workbench({
   const [vues, setVues] = useState<Record<string, VueObjet>>({})
 
   const idActif = actif ? idOnglet(actif) : null
-  const enEdition = edition || (idActif !== null && ongletsEnEdition.has(idActif))
+  // **Le mode vient du seul `Set`.** Un drapeau d'écran l'a forcé jusqu'au 8 septembre 2026 — la
+  // démo de `11a` s'en servait pour ouvrir l'édition au montage —, et plus personne ne le passait
+  // depuis que `11b` a livré la bascule ; son commentaire l'affirmait pourtant encore. Il devait
+  // partir avec le bouton : forcé à vrai, il aurait rendu une bascule qui allume sans pouvoir
+  // éteindre — le bouton inerte du défaut n° 36, exactement ce que ce bouton vient offrir.
+  const enEdition = idActif !== null && ongletsEnEdition.has(idActif)
   const vue: VueObjet = idActif === null ? 'donnees' : (vues[idActif] ?? 'donnees')
   const structureActive = table !== null && vue === 'structure'
   const attente = idActif === null ? [] : (attentes[idActif] ?? [])
@@ -941,6 +943,26 @@ export function Workbench({
   )
 
   /**
+   * Bascule le mode édition de l'onglet actif.
+   *
+   * **Un seul geste, deux commandes** — `⌘E` et le bouton de la barre d'outils de `A5` appellent
+   * celle-ci. C'est l'idiome de la croix d'un chip et du champ de filtre qu'elle vide : deux voies
+   * pour un même acte en laissent une en arrière dès qu'on touche à l'une (règle n° 17), et le
+   * bouton est arrivé après le raccourci.
+   */
+  const basculerLEdition = useCallback(() => {
+    if (idActif === null) return
+    setOngletsEnEdition((precedent) => {
+      const suivant = new Set(precedent)
+      // **Quitter le mode garde les modifications en attente** : les perdre sur une frappe serait
+      // le défaut qu'`esc` fermant une modale pleine a déjà produit.
+      if (suivant.has(idActif)) suivant.delete(idActif)
+      else suivant.add(idActif)
+      return suivant
+    })
+  }, [idActif])
+
+  /**
    * `⌘E` bascule le mode édition de l'onglet actif.
    *
    * `10c` avait retiré « ⌘E pour éditer » de la barre d'état faute d'écran qui l'honore — un
@@ -952,18 +974,11 @@ export function Workbench({
     function auClavier(evenement: KeyboardEvent) {
       if (!modificateurActif(evenement) || evenement.key !== 'e') return
       evenement.preventDefault()
-      setOngletsEnEdition((precedent) => {
-        const suivant = new Set(precedent)
-        // **Quitter le mode garde les modifications en attente** : les perdre sur une frappe serait
-        // le défaut qu'`esc` fermant une modale pleine a déjà produit.
-        if (suivant.has(idActif as string)) suivant.delete(idActif as string)
-        else suivant.add(idActif as string)
-        return suivant
-      })
+      basculerLEdition()
     }
     window.addEventListener('keydown', auClavier)
     return () => window.removeEventListener('keydown', auClavier)
-  }, [idActif])
+  }, [idActif, basculerLEdition])
 
   function ouvrirTable(objet: TableSummary) {
     if (!contexte) return
@@ -1139,6 +1154,7 @@ export function Workbench({
           rang={rangChoisi}
           onRangChange={setRangChoisi}
           edition={enEdition}
+          onBasculerEdition={basculerLEdition}
           rafraichissement={rafraichissement}
           // Le « Rafraîchir » de la toolbar relit **ce que l'écran montre** : les lignes, que
           // la vue sait relire seule, et la structure, qui vit ici.

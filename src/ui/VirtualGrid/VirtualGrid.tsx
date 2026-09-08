@@ -224,6 +224,17 @@ type VirtualGridProps<Row> = {
   rowTint?: (row: Row, index: number) => 'modified' | 'deleted' | undefined
   /** Teinte une **cellule**, et lui ajoute le coin ambre du mockup (`11b`). */
   cellTint?: (row: Row, column: string) => 'modified' | undefined
+  /**
+   * Un compteur qui, à chaque changement, amène la fenêtre **au bas** de la grille.
+   *
+   * **Un nombre et non un booléen** : le geste se répète — chaque `+` de `A5` pose une ligne de plus
+   * — et un drapeau qu'il faudrait rabaisser demanderait à l'appelant de tenir un état qui ne décrit
+   * rien. C'est l'idiome de `rafraichissement` chez `TableView`, pour la même raison.
+   *
+   * **La grille ne sait pas pourquoi** on l'envoie en bas, et c'est voulu : ajouter une ligne
+   * appartient à `A5`, qui tient les modifications en attente. Elle sait seulement défiler.
+   */
+  scrollToBottom?: number
   /** Rendu à la place des lignes quand `rows` est vide. */
   empty?: ReactNode
 }
@@ -255,6 +266,7 @@ export function VirtualGrid<Row>({
   onDeleteKey,
   rowTint,
   cellTint,
+  scrollToBottom = 0,
   empty,
   onColumnResize,
   onColumnReorder,
@@ -475,12 +487,34 @@ export function VirtualGrid<Row>({
     onColumnReorder?.(suivant)
   }
 
-  // Ramener la ligne sélectionnée dans la fenêtre visible : sans cela, `↓` déplacerait une
-  // sélection invisible dès qu'elle sort du bas de l'écran.
+  /**
+   * Ramener la ligne sélectionnée dans la fenêtre visible : sans cela, `↓` déplacerait une
+   * sélection invisible dès qu'elle sort du bas de l'écran.
+   *
+   * **Il ne se déclenche que si la sélection *bouge*** (8 septembre 2026, rapporté à l'usage : « en
+   * cliquant un champ d'une ligne à ajouter, la page revient là où on était avant de descendre »).
+   * Il partait à chaque rendu de l'hôte — `rowId` est une fonction fléchée écrite dans le JSX de
+   * `A5`, donc une identité neuve à chaque fois —, et il ramenait alors la fenêtre sur une sélection
+   * qui, elle, n'avait pas changé. Descendre jusqu'à la ligne ajoutée puis ouvrir une de ses
+   * cellules renvoyait donc à la ligne sélectionnée douze mille pixels plus haut. Mesuré : de
+   * 12 405 px à 26.
+   *
+   * **Le témoin porte l'index autant que l'identité.** Ce qu'on suit est un *déplacement* : la même
+   * ligne qui change de rang — un tri, un filtre — doit être ramenée, une relecture qui la laisse où
+   * elle était ne doit rien bouger. Garder la seule identité manquerait le premier cas ; garder le
+   * seul index ramènerait la fenêtre quand la ligne du même rang change d'identité.
+   */
+  const suiviAffiche = useRef<{ id: string; index: number } | null>(null)
   useEffect(() => {
-    if (selectedId === null) return
+    if (selectedId === null) {
+      suiviAffiche.current = null
+      return
+    }
     const index = rows.findIndex((row, rang) => rowId(row, rang) === selectedId)
     if (index === -1) return
+    const dernier = suiviAffiche.current
+    if (dernier?.id === selectedId && dernier.index === index) return
+    suiviAffiche.current = { id: selectedId, index }
     const haut = index * rowHeight
     const bas = haut + rowHeight
     setScrollTop((actuel) => {
@@ -490,6 +524,28 @@ export function VirtualGrid<Row>({
       return cible
     })
   }, [selectedId, rows, rowId, rowHeight, viewportHeight])
+
+  /**
+   * Descendre au bas de la grille, à la demande de l'hôte.
+   *
+   * **Mesuré sur la zone, non calculé depuis `rows`.** `scrollHeight` compte l'en-tête collé et
+   * tout ce que la toile porte ; `rows.length * rowHeight` l'oublierait, et la dernière ligne
+   * resterait sous le bord. L'effet part après la peinture, donc la ligne qu'on vient d'ajouter est
+   * déjà dans la toile — c'est ce qui permet de lire la hauteur plutôt que de la prévoir.
+   *
+   * **`scrollToBottom === 0` ne fait rien** : c'est la valeur au montage, et une grille ne s'ouvre
+   * pas en bas.
+   */
+  useEffect(() => {
+    if (scrollToBottom === 0) return
+    const zone = viewport.current
+    if (!zone) return
+    const cible = Math.max(0, zone.scrollHeight - zone.clientHeight)
+    zone.scrollTo({ top: cible })
+    // Posé aussi dans l'état : `scrollTo` n'émet son `scroll` qu'après, et la fenêtre de lignes
+    // montées se calcule sur cet état. L'attendre laisserait une trame de vide en bas.
+    setScrollTop(cible)
+  }, [scrollToBottom])
 
   function deplacer(evenement: KeyboardEvent<HTMLDivElement>) {
     if (onSelect && (evenement.key === 'ArrowDown' || evenement.key === 'ArrowUp')) {

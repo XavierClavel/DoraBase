@@ -1607,6 +1607,10 @@ const LIGNES_DEMO: LigneDemo[] = Array.from({ length: 100_000 }, (_, i) => ({
  */
 function ToolbarGallery() {
   const [limite, setLimite] = useState<RowLimit>('fiveHundred')
+  // La bascule du mode édition est **réellement basculable ici** : c'est le seul endroit qui montre
+  // ses deux visages — le verrou sur fond clair, le crayon sur la pastille sombre — et une vitrine
+  // qui n'en montrerait qu'un ne dirait pas ce que le bouton fait. Le `+` la suit, comme dans `A5`.
+  const [edition, setEdition] = useState(false)
   const colonne = (name: string, typeName: string): ColumnInfo => ({
     position: 1,
     name,
@@ -1640,6 +1644,9 @@ function ToolbarGallery() {
             onToggleColonne={() => {}}
             sql="select * from atelier.paliers limit 500 offset 0"
             onRefresh={() => {}}
+            edition={edition}
+            onBasculerEdition={() => setEdition((precedent) => !precedent)}
+            onAjouterUneLigne={edition ? () => {} : undefined}
           />
         </div>
       </Sub>

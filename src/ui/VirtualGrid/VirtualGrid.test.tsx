@@ -87,6 +87,65 @@ describe('VirtualGrid', () => {
     expect(screen.getAllByRole('row')[1]).toHaveAttribute('aria-rowindex', '190')
   })
 
+  it('un rendu de l’hôte ne ramène pas la fenêtre sur la sélection', () => {
+    // La ligne 1 est sélectionnée, et on descend loin d'elle à la main.
+    const { rerender } = grille({ selectedId: '1', onSelect: () => {} })
+    const viewport = screen.getByRole('grid').querySelector('[class*="viewport"]')
+    if (!viewport) throw new Error('conteneur de défilement introuvable')
+    fireEvent.scroll(viewport, { target: { scrollTop: 5_000 } })
+    const rangApresDefilement = screen.getAllByRole('row')[1]?.getAttribute('aria-rowindex')
+    expect(rangApresDefilement).toBe('190')
+
+    // **Un rendu de l'hôte, sans que la sélection bouge.** `rowId` est une fonction fléchée écrite
+    // dans le JSX de `A5` : elle a une identité neuve à chaque rendu, donc l'effet de suivi partait
+    // à chaque fois et ramenait la fenêtre sur la ligne 1. Rapporté à l'usage le 8 septembre 2026 —
+    // descendre jusqu'à une ligne ajoutée puis ouvrir une de ses cellules renvoyait douze mille
+    // pixels plus haut.
+    rerender(
+      <VirtualGrid
+        label="Lignes de public.orders"
+        columns={COLONNES}
+        rows={lignes(100_000)}
+        rowId={(l) => String(l.id)}
+        viewportHeight={260}
+        selectedId="1"
+        onSelect={() => {}}
+      />,
+    )
+    expect(screen.getAllByRole('row')[1]).toHaveAttribute('aria-rowindex', rangApresDefilement)
+  })
+
+  it('une sélection qui bouge, elle, revient dans la fenêtre', async () => {
+    // Le contrôle positif du test précédent : sans lui, un effet de suivi entièrement supprimé
+    // passerait les deux.
+    const utilisateur = userEvent.setup()
+    function Hote() {
+      const [selection, setSelection] = useState<string | null>('1')
+      return (
+        <VirtualGrid
+          label="Lignes"
+          columns={COLONNES}
+          rows={lignes(100_000)}
+          rowId={(l) => String(l.id)}
+          viewportHeight={260}
+          selectedId={selection}
+          onSelect={(l) => setSelection(String(l.id))}
+        />
+      )
+    }
+    render(<Hote />)
+    const viewport = screen.getByRole('grid').querySelector('[class*="viewport"]')
+    if (!viewport) throw new Error('conteneur de défilement introuvable')
+    fireEvent.scroll(viewport, { target: { scrollTop: 5_000 } })
+    expect(screen.getAllByRole('row')[1]).toHaveAttribute('aria-rowindex', '190')
+
+    // `↓` déplace la sélection de la ligne 1 à la ligne 2, à douze mille pixels d'ici : la fenêtre
+    // doit la suivre, sans quoi on déplacerait une sélection invisible.
+    screen.getByRole('grid').focus()
+    await utilisateur.keyboard('{ArrowDown}')
+    expect(screen.getAllByRole('row')[1]).not.toHaveAttribute('aria-rowindex', '190')
+  })
+
   it('la seconde ligne d’en-tête n’existe que si on la demande', () => {
     grille({ rows: lignes(3) })
     expect(screen.queryByLabelText('filtre nom')).not.toBeInTheDocument()

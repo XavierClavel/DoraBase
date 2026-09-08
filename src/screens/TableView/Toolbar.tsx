@@ -2,7 +2,9 @@ import { useEffect, useRef } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type { ColumnInfo, Filter, RowLimit, SortKey } from '../../domain/engine'
 import { useT } from '../../i18n/LanguageContext'
+import { raccourci } from '../../shell/plateforme'
 import { Chip } from '../../ui/Chip/Chip'
+import { cx } from '../../ui/cx'
 import { Popover } from '../../ui/Popover/Popover'
 import { Tooltip } from '../../ui/Tooltip/Tooltip'
 import styles from './Toolbar.module.css'
@@ -36,6 +38,25 @@ type ToolbarProps = {
   /** Le SQL réellement exécuté, rendu par `RowWindow`. `null` tant qu'aucune lecture n'a abouti. */
   sql: string | null
   onRefresh: () => void
+  /**
+   * Le mode édition de l'onglet, et sa bascule.
+   *
+   * **Un bouton, parce qu'un geste qu'on ne peut pas deviner n'existe pas.** `11b` n'ouvrait
+   * l'édition qu'au `⌘E` de l'écran de travail, annoncé par une phrase de la barre d'état — 26 px
+   * de texte qui *disent* le raccourci sans rien offrir à cliquer. C'est la raison qui a déjà fait
+   * doubler le `⇧`-clic du diagramme et le renommage des consoles : un chemin unique au clavier est
+   * un chemin que personne ne trouve.
+   *
+   * **Le nom ne bouge pas, `aria-pressed` porte l'état.** Un bouton qui s'appellerait tour à tour
+   * « Éditer » puis « Quitter l'édition » changerait de nom sous le doigt qui vient de le trouver ;
+   * c'est le motif ARIA de la bascule, celui du choix d'une table dans le diagramme et de l'épingle
+   * du panneau de détail.
+   *
+   * Absent, le bouton ne paraît pas — la galerie monte cette barre sans écran autour d'elle, et
+   * l'aiguillage du mode vit dans l'onglet, pas ici.
+   */
+  edition?: boolean
+  onBasculerEdition?: () => void
   /**
    * Ajoute une ligne au modèle — **absent hors mode édition**, où il n'y aurait rien à en faire.
    *
@@ -114,6 +135,8 @@ export function Toolbar({
   onToggleColonne,
   sql,
   onRefresh,
+  edition = false,
+  onBasculerEdition,
   onAjouterUneLigne,
   libelleAjouter,
   enCours = false,
@@ -180,6 +203,32 @@ export function Toolbar({
           </button>
         </span>
       </div>
+
+      {/* **La bascule d'abord, le `+` ensuite** : c'est elle qui fait paraître celui-ci, et les deux
+          se lisent comme une paire — on ouvre l'édition, la ligne à ajouter s'ouvre à côté. Elle
+          appartient au groupe de gauche pour la raison qui y a mis le `+` : à gauche ce qui agit sur
+          les lignes, à droite ce qui les regarde. */}
+      {onBasculerEdition !== undefined && (
+        <Tooltip label={t('tableView.toolbar.editModeHint', { raccourci: raccourci('E') })}>
+          <button
+            type="button"
+            className={cx(styles.carre, edition && styles.actif)}
+            onClick={onBasculerEdition}
+            aria-pressed={edition}
+            aria-label={t('tableView.toolbar.editMode')}
+          >
+            {/* **Le crayon dans les deux états, et non un verrou qui deviendrait crayon** (rapporté
+                à l'usage : « l'interface n'est pas claire »). Le verrou disait l'état *courant* —
+                « c'est fermé » — là où un bouton doit dire l'**acte** qu'il offre : on ne devinait
+                pas qu'il ouvrait quelque chose, on lisait un cadenas. C'est le partage avec la barre
+                d'état, qui garde ses deux icônes parce qu'elle **décrit** là où le bouton **agit**.
+                Ce qui reste de l'argument d'accessibilité : la pastille n'inverse pas une teinte,
+                elle inverse le fond *et* l'encre, comme le couple de vues d'`A9` — et `aria-pressed`
+                porte l'état pour qui ne voit ni l'un ni l'autre. */}
+            <Icon name="pencil" size={14} strokeWidth={1.9} />
+          </button>
+        </Tooltip>
+      )}
 
       {/* **Contre le stepper, et non dans la moitié droite.** La barre se lit en deux temps : à
           gauche ce qui décide des lignes qu'on voit — relire, la limite, les filtres —, à droite ce

@@ -189,3 +189,177 @@ test.describe('l’attente du rafraîchissement', () => {
     expect(enCours?.occupe).toBe('true')
   })
 })
+
+/**
+ * La bascule du mode édition, **dans l'écran assemblé**.
+ *
+ * Le composant est déjà vérifié en pur, et la galerie le montre : ni l'un ni l'autre ne dit que le
+ * bouton est branché à l'onglet, qui est le seul endroit où le mode existe (règle n° 8 — un
+ * composant juste dans sa vitrine ne prouve rien de l'assemblage). Ce test part donc de l'écran de
+ * travail, comme l'utilisateur.
+ */
+test.describe('mode édition', () => {
+  test('le bouton ouvre l’édition, et le clavier ferme celle qu’il a ouverte', async ({ page }) => {
+    const bascule = page.getByRole('button', { name: 'Mode édition' })
+    await expect(bascule).toHaveAttribute('aria-pressed', 'false')
+    // Rien n'est éditable tant que rien n'est ouvert : sans ce témoin, la mesure d'après passerait
+    // sur un écran qui aurait toujours été en édition.
+    await expect(page.getByRole('button', { name: 'Modifier status' })).toHaveCount(0)
+
+    await bascule.click()
+    await expect(bascule).toHaveAttribute('aria-pressed', 'true')
+    // C'est **ceci** que la galerie ne peut pas montrer : la grille de l'onglet a suivi le bouton.
+    await expect(page.getByRole('button', { name: 'Modifier status' }).first()).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Ajouter une ligne' })).toBeVisible()
+
+    // **Un seul état, deux commandes.** Le raccourci doit fermer ce que le bouton a ouvert — deux
+    // mécaniques parallèles laisseraient l'une des deux en arrière (règle n° 17), et la première
+    // divergence se lirait comme un bouton qui ne répond plus.
+    // `Meta+e`, la syntaxe de Playwright et non celle de `userEvent` — c'est déjà celle des trois
+    // specs de `11a`–`11c`. Ce fichier ne tourne que sous le projet `macos` : le projet `windows`
+    // n'exécute que les `*.windows.spec.ts`.
+    await page.keyboard.press('Meta+e')
+    await expect(bascule).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByRole('button', { name: 'Modifier status' })).toHaveCount(0)
+  })
+
+  test('la pastille inverse le fond et l’encre, et le crayon ne bouge pas', async ({ page }) => {
+    const bascule = page.getByRole('button', { name: 'Mode édition' })
+
+    const lire = () =>
+      bascule.evaluate((e) => ({
+        fond: getComputedStyle(e).backgroundColor,
+        encre: getComputedStyle(e).color,
+        icone: e.querySelector('use')?.getAttribute('href'),
+      }))
+
+    const eteinte = await lire()
+    await bascule.click()
+    const allumee = await lire()
+
+    // **Le fond *et* l'encre**, non une teinte posée sur un fond inchangé : c'est ce qui fait tenir
+    // la distinction sans la couleur, l'icône restant la même dans les deux états.
+    expect(allumee.fond).not.toBe(eteinte.fond)
+    expect(allumee.encre).not.toBe(eteinte.encre)
+    // Le crayon des deux côtés : un bouton dit l'acte qu'il offre, pas l'état où il se trouve.
+    expect(eteinte.icone).toBe('#i-pencil')
+    expect(allumee.icone).toBe('#i-pencil')
+  })
+
+  /**
+   * L'infobulle du bouton, **lisible et dans la fenêtre**.
+   *
+   * Rapporté à l'usage : « l'infobulle est illisible, la fenêtre est trop courte ». Ce n'était pas
+   * la fenêtre — une infobulle absolument positionnée se dimensionne contre son bloc conteneur,
+   * donc contre le carré de 27 px qui la déclenche : elle rendait 55 px de large et 98 px de haut,
+   * un mot par ligne, et ces 98 px la portaient hors de la fenêtre par le haut.
+   *
+   * Le test garde la **cause** — la largeur ne dépend pas du déclencheur — plutôt que la
+   * conséquence, qui variait avec la longueur du libellé. Une hauteur d'une seule ligne le dit
+   * mieux qu'un compte de pixels : deux lignes veulent dire que la largeur est retombée.
+   */
+  test('l’infobulle tient sur une ligne et reste dans la fenêtre', async ({ page }) => {
+    const bascule = page.getByRole('button', { name: 'Mode édition' })
+    await bascule.hover()
+    const info = page.getByRole('tooltip')
+    await expect(info).toBeVisible()
+
+    const mesures = await page.evaluate(() => {
+      const bulle = document.querySelector('[role=tooltip]') as HTMLElement
+      const boite = bulle.getBoundingClientRect()
+      const ligne = Number.parseFloat(getComputedStyle(bulle).lineHeight)
+      return {
+        boite: {
+          haut: boite.top,
+          bas: boite.bottom,
+          gauche: boite.left,
+          droite: boite.right,
+          hauteur: boite.height,
+        },
+        ligne,
+        fenetre: { w: window.innerWidth, h: window.innerHeight },
+        // **Les ancêtres qui rognent, et non `elementFromPoint`.** C'est la mesure que le défaut
+        // n° 35 recommande, et elle ne s'applique pas ici : une infobulle porte `pointer-events:
+        // none` — délibérément, sans quoi elle disparaîtrait sous le curseur qui l'atteint —, donc
+        // `elementFromPoint` rend toujours ce qu'il y a **dessous**. L'assertion était verte pour
+        // une raison qui n'avait rien à voir avec la question posée. On énumère donc la chaîne
+        // d'ancêtres : le rognage de n° 35 vient d'un `overflow` non visible, et il n'y en a aucun.
+        rogneurs: (() => {
+          const noms: string[] = []
+          let n = bulle.parentElement
+          while (n && n !== document.body) {
+            const style = getComputedStyle(n)
+            const cache =
+              style.overflow !== 'visible' ||
+              style.overflowX !== 'visible' ||
+              style.overflowY !== 'visible'
+            if (cache) noms.push(n.className)
+            n = n.parentElement
+          }
+          return noms
+        })(),
+      }
+    })
+
+    // Une seule ligne : la largeur vient du contenu, non du carré de 27 px qui la déclenche.
+    expect(mesures.boite.hauteur).toBeLessThan(mesures.ligne * 2)
+    // Et les quatre bords sont dans la fenêtre — c'est la moitié « trop courte » du signalement.
+    expect(mesures.boite.haut).toBeGreaterThanOrEqual(0)
+    expect(mesures.boite.bas).toBeLessThanOrEqual(mesures.fenetre.h)
+    expect(mesures.boite.gauche).toBeGreaterThanOrEqual(0)
+    expect(mesures.boite.droite).toBeLessThanOrEqual(mesures.fenetre.w)
+    expect(mesures.rogneurs).toEqual([])
+  })
+
+  /**
+   * Le `+` **descend jusqu'à la ligne qu'il pose**, et l'y laisse.
+   *
+   * Rapporté à l'usage le 8 septembre 2026. Une ligne ajoutée va en **bas** de la grille : sur les
+   * cinq cents lignes de la fenêtre, le `+` la posait à douze mille pixels sous le regard et rien ne
+   * bougeait à l'écran — un bouton dont l'effet est hors du champ se lit comme un bouton qui ne fait
+   * rien, le défaut n° 36 sous une autre forme.
+   *
+   * **Et ouvrir une de ses cellules ne ramène pas la fenêtre.** Second signalement du même geste,
+   * cause différente : l'effet qui suit la ligne *sélectionnée* partait à chaque rendu de `A5` —
+   * `rowId` y est une fonction fléchée du JSX, donc une identité neuve à chaque fois — et ramenait
+   * la fenêtre sur une sélection qui n'avait pas bougé. Mesuré : de 12 405 px à 26. Les deux tiennent
+   * dans le même parcours parce que c'est le même parcours qui les a trouvés.
+   */
+  test('le + descend au bas de la grille, et y reste quand on remplit la ligne', async ({
+    page,
+  }) => {
+    const position = () =>
+      page.evaluate(() => {
+        const zone = document.querySelector('[role=grid] > [role=presentation]') as HTMLElement
+        return { haut: Math.round(zone.scrollTop), fond: zone.scrollHeight - zone.clientHeight }
+      })
+
+    await page.getByRole('button', { name: 'Mode édition' }).click()
+    // Le témoin de départ : sans lui, une grille déjà en bas passerait le test sans rien prouver.
+    expect((await position()).haut).toBe(0)
+
+    // **La sélection se prend ici, en haut, et c'est ce qui arme le second défaut.** Prise une fois
+    // descendu, elle porterait sur une ligne du bas et il n'y aurait nulle part où revenir : le test
+    // resterait vert sous le sabotage du dédoublonnage — mesuré, c'est la première version qu'il en
+    // a coûté. **Et on constate qu'elle a bien eu lieu** : `getByRole('row')` compte aussi les deux
+    // lignes d'en-tête, dont celle des filtres, et cliquer l'une d'elles ne sélectionne rien — c'est
+    // la seconde version qu'il en a coûté, verte pour cette raison-là.
+    await page.getByRole('row').nth(2).click()
+    await expect(page.locator('[role=row][aria-selected=true]')).toHaveCount(1)
+
+    await page.getByRole('button', { name: 'Ajouter une ligne' }).click()
+    await expect.poll(async () => (await position()).haut).toBe((await position()).fond)
+
+    // La ligne ajoutée est la dernière, et sa gouttière porte `+` plutôt qu'un rang.
+    const ajoutee = page.getByRole('row').last()
+    await expect(ajoutee).toContainText('+1')
+
+    const avant = (await position()).haut
+    await ajoutee
+      .getByRole('button', { name: /^Renseigner / })
+      .first()
+      .click()
+    await expect(page.locator('[data-saisie]')).toBeVisible()
+    expect((await position()).haut).toBe(avant)
+  })
+})
