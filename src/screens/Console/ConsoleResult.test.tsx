@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import type { QueryResult } from '../../domain/engine'
 import { LanguageProvider } from '../../i18n/LanguageContext'
@@ -19,10 +20,39 @@ const RESULTAT: QueryResult = {
   appliedLimit: null,
 }
 
+/**
+ * Le harnais d'état : les masquées et l'ordre vivent chez l'écran (`ConsoleView`) depuis que la
+ * barre d'outils montre le menu des colonnes et que chaque geste réécrit la requête — le composant
+ * les reçoit. Le harnais rejoue cette tenue d'état, sans l'éditeur.
+ */
+function Harnais({ resultat = RESULTAT }: { resultat?: QueryResult }) {
+  const [masquees, setMasquees] = useState<ReadonlySet<string>>(new Set())
+  const [ordre, setOrdre] = useState<readonly string[] | null>(null)
+  return (
+    <ConsoleResult
+      resultat={resultat}
+      erreur={null}
+      enCours={false}
+      masquees={masquees}
+      ordre={ordre}
+      onBasculerColonne={(nom) =>
+        setMasquees((precedent) => {
+          const suivantes = new Set(precedent)
+          if (suivantes.has(nom)) suivantes.delete(nom)
+          else suivantes.add(nom)
+          return suivantes
+        })
+      }
+      onReafficher={() => setMasquees(new Set())}
+      onOrdreChange={setOrdre}
+    />
+  )
+}
+
 function monter(resultat: QueryResult = RESULTAT) {
   render(
     <LanguageProvider preferences={{ language: 'fr' }}>
-      <ConsoleResult resultat={resultat} erreur={null} enCours={false} />
+      <Harnais resultat={resultat} />
     </LanguageProvider>,
   )
   return screen.getByRole('grid')
@@ -121,7 +151,7 @@ describe('ConsoleResult', () => {
     const utilisateur = userEvent.setup()
     const { rerender } = render(
       <LanguageProvider preferences={{ language: 'fr' }}>
-        <ConsoleResult resultat={RESULTAT} erreur={null} enCours={false} />
+        <Harnais />
       </LanguageProvider>,
     )
     const grille = screen.getByRole('grid')
@@ -138,7 +168,7 @@ describe('ConsoleResult', () => {
     // jamais perdue.
     rerender(
       <LanguageProvider preferences={{ language: 'fr' }}>
-        <ConsoleResult
+        <Harnais
           resultat={{
             ...RESULTAT,
             columns: ['id', 'statut', 'total', 'devise'],
@@ -151,8 +181,6 @@ describe('ConsoleResult', () => {
               ],
             ],
           }}
-          erreur={null}
-          enCours={false}
         />
       </LanguageProvider>,
     )

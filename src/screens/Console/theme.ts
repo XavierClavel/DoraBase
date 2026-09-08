@@ -71,6 +71,21 @@ export const habillage = EditorView.theme(
     '.cm-lineNumbers .cm-gutterElement': {
       padding: '0 var(--space-3) 0 var(--space-5)',
     },
+    // La gouttière de pli : la même encre atténuée que les numéros de ligne, relevée au survol —
+    // c'est un contrôle, pas un décor.
+    '.cm-foldGutter .cm-marqueDePli': { color: 'var(--syn-linenum)', cursor: 'pointer' },
+    '.cm-foldGutter .cm-gutterElement:hover .cm-marqueDePli': { color: 'var(--syn-ident)' },
+    // La marque de repli des longues listes de colonnes (`SqlEditor`, `codeFolding`) : le fond
+    // relevé de l'éditeur et une encre de code, à la place des gris littéraux du thème de base de
+    // CodeMirror — qui jureraient sur cette surface sombre et ignoreraient « Nuit ».
+    '.cm-foldPlaceholder': {
+      backgroundColor: 'var(--dark-2)',
+      border: 'none',
+      borderRadius: '3px',
+      color: 'var(--syn-ident)',
+      cursor: 'pointer',
+      padding: '0 var(--space-3)',
+    },
     // La ligne active : un fond à peine plus clair, pas une bordure — une bordure décalerait le
     // texte d'un pixel à chaque déplacement du curseur.
     '.cm-activeLine': { backgroundColor: 'var(--dark-2)' },

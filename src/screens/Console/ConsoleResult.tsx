@@ -40,6 +40,41 @@ type ConsoleResultProps = {
   dialecte?: Dialecte
   /** La densité de `15c`, pour que la grille du résultat suive celle des tables. */
   rowHeight?: number
+  /**
+   * Les colonnes masquées et l'ordre d'affichage, **tenus par l'écran** (`ConsoleView`) : la barre
+   * d'outils y montre le menu « colonnes affichées », et chaque geste — masquer, réafficher,
+   * réordonner — y réécrit la projection de la requête (`projection.ts`). Les tenir ici aussi
+   * ferait deux vérités. Absents, la grille montre tout, dans l'ordre du résultat, et les entrées
+   * de menu qui n'ont pas de rappel sont désactivées.
+   */
+  masquees?: ReadonlySet<string>
+  ordre?: readonly string[] | null
+  /** Masque ou réaffiche une colonne — le menu d'en-tête n'expose que le masquage. */
+  onBasculerColonne?: (nom: string) => void
+  /** Réaffiche toutes les colonnes masquées. */
+  onReafficher?: () => void
+  /** L'ordre déposé par la grille : ses clés visibles, dans leur nouvel ordre. */
+  onOrdreChange?: (ordre: readonly string[]) => void
+}
+
+/** L'ensemble vide, partagé : un défaut `new Set()` en ligne changerait d'identité à chaque rendu. */
+const AUCUNE: ReadonlySet<string> = new Set()
+
+/**
+ * L'ordre d'affichage : celui que la poignée a posé, ou celui du résultat tant que rien n'a été
+ * glissé. Un nom de `ordre` absent du résultat est ignoré ; un nom du résultat absent de `ordre`
+ * (la requête a changé depuis) reste affiché, en fin — jamais perdu. Même tolérance que dans `A5`,
+ * par un tri **stable** : deux colonnes homonymes gardent leur ordre relatif, là où une table de
+ * correspondance en perdrait une.
+ */
+export function ordonner<Entree extends { nom: string }>(
+  entrees: readonly Entree[],
+  ordre: readonly string[] | null,
+): Entree[] {
+  if (ordre === null) return [...entrees]
+  const rangs = new Map(ordre.map((nom, rang) => [nom, rang] as const))
+  const enBout = Number.MAX_SAFE_INTEGER
+  return [...entrees].sort((a, b) => (rangs.get(a.nom) ?? enBout) - (rangs.get(b.nom) ?? enBout))
 }
 
 /**
@@ -58,6 +93,11 @@ export function ConsoleResult({
   onVueChange,
   dialecte = 'sql',
   rowHeight,
+  masquees = AUCUNE,
+  ordre = null,
+  onBasculerColonne,
+  onReafficher,
+  onOrdreChange,
 }: ConsoleResultProps) {
   const t = useT()
   // La ligne sélectionnée, pour la vue JSON : elle **suit la sélection**, comme le panneau de `10f`.
@@ -71,16 +111,12 @@ export function ConsoleResult({
     | ({ sorte: 'entete'; colonne: string } & PositionDuMenu)
     | null
   >(null)
-  // Les colonnes masquées, par nom — l'écart au défaut, comme dans `A5`. Elles survivent à une
-  // nouvelle exécution : corriger sa requête ne doit pas défaire la mise en page qu'on vient de
-  // régler, et un nom absent du nouveau résultat est simplement sans effet.
-  const [masquees, setMasquees] = useState<ReadonlySet<string>>(new Set())
   // Les largeurs posées à la main, par nom — elles l'emportent sur l'ajustement, comme dans `A5` :
-  // ce qu'on a réglé soi-même ne bouge plus. Même survie que `masquees`, pour la même raison.
+  // ce qu'on a réglé soi-même ne bouge plus. Elles survivent à une nouvelle exécution — corriger
+  // sa requête ne doit pas défaire la mise en page qu'on vient de régler — et un nom absent du
+  // nouveau résultat est simplement sans effet. Le seul état de mise en page resté ici : les
+  // masquées et l'ordre sont remontés à l'écran, qui en réécrit la requête.
   const [largeurs, setLargeurs] = useState<Record<string, number>>({})
-  // L'ordre d'affichage des colonnes, par nom — `null` tant que rien n'a été glissé, auquel cas
-  // l'ordre est celui du résultat. Même écart-au-défaut que `masquees` et `largeurs`.
-  const [ordre, setOrdre] = useState<readonly string[] | null>(null)
   /**
    * La largeur ajustée de chaque colonne, par nom (`ajustement.ts`).
    *
@@ -145,17 +181,10 @@ export function ConsoleResult({
   // requête n'est pas un geste de grille ; c'est l'éditeur au-dessus qui le porte.
   const visibles = resultat.columns.filter((nom) => !masquees.has(nom))
 
-  // L'ordre d'affichage : celui que la poignée a posé, ou celui du résultat tant que rien n'a été
-  // glissé. Un nom de `ordre` absent du résultat est ignoré ; un nom du résultat absent de `ordre`
-  // (la requête a changé depuis) reste affiché, en fin — jamais perdu. Même tolérance que dans
-  // `A5`, par un tri **stable** : deux colonnes homonymes gardent leur ordre relatif, là où une
-  // table de correspondance en perdrait une.
-  const rangs = new Map((ordre ?? []).map((nom, rang) => [nom, rang] as const))
-  const enBout = Number.MAX_SAFE_INTEGER
-
-  const colonnes: GridColumn<readonly Value[]>[] = resultat.columns
-    .map((nom, index) => ({ nom, index }))
-    .sort((a, b) => (rangs.get(a.nom) ?? enBout) - (rangs.get(b.nom) ?? enBout))
+  const colonnes: GridColumn<readonly Value[]>[] = ordonner(
+    resultat.columns.map((nom, index) => ({ nom, index })),
+    ordre,
+  )
     .filter(({ nom }) => !masquees.has(nom))
     .map(({ nom, index }) => ({
       key: nom,
@@ -245,7 +274,7 @@ export function ConsoleResult({
           onColumnResize={(cle, largeur) =>
             setLargeurs((precedent) => ({ ...precedent, [cle]: largeur }))
           }
-          onColumnReorder={(nouvelOrdre) => setOrdre(nouvelOrdre)}
+          onColumnReorder={onOrdreChange}
           onHeaderContextMenu={(cle, position) =>
             setMenu({ sorte: 'entete', colonne: cle, ...position })
           }
@@ -294,8 +323,8 @@ export function ConsoleResult({
                 // souci — sa barre d'outils compte les colonnes et les rend —, la console n'a pas
                 // cette barre.
                 onClick:
-                  visibles.length > 1
-                    ? () => setMasquees((precedent) => new Set(precedent).add(menu.colonne))
+                  onBasculerColonne !== undefined && visibles.length > 1
+                    ? () => onBasculerColonne(menu.colonne)
                     : undefined,
                 raison: visibles.length > 1 ? undefined : t('console.resultat.derniereColonne'),
               },
@@ -307,7 +336,7 @@ export function ConsoleResult({
                       libelle: t('console.resultat.reafficherLesColonnes', {
                         n: resultat.columns.length - visibles.length,
                       }),
-                      onClick: () => setMasquees(new Set()),
+                      onClick: onReafficher,
                     },
                   ]
                 : []),

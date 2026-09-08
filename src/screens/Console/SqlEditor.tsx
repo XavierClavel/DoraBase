@@ -2,6 +2,7 @@ import { acceptCompletion, autocompletion, completionKeymap } from '@codemirror/
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { javascript } from '@codemirror/lang-javascript'
 import { PostgreSQL, sql } from '@codemirror/lang-sql'
+import { codeFolding, foldEffect, foldGutter, foldService } from '@codemirror/language'
 import { EditorState } from '@codemirror/state'
 import {
   EditorView,
@@ -14,10 +15,33 @@ import { useEffect, useRef } from 'react'
 import { useT } from '../../i18n/LanguageContext'
 import type { Dialecte } from '../Workbench/onglets'
 import { type Catalogue, sourceDeCompletion } from './completion'
+import { repliDeLaProjection } from './projection'
 import { themeDuHandoff } from './theme'
 
 /** Un catalogue vide : l'autocomplétion se replie alors sur les mots-clés, toujours sûrs. */
 const CATALOGUE_VIDE: Catalogue = { tables: [], colonnes: {}, schemas: [], tablesParSchema: {} }
+
+/**
+ * Ce que l'écran peut demander à l'éditeur, hors du flux des props — voir la prop `commandes`.
+ */
+export type CommandesEditeur = {
+  /**
+   * Remplace tout le document, en une transaction CodeMirror.
+   *
+   * **Ce n'est pas le retour de l'éditeur contrôlé** que `texteInitial` documente et refuse : la
+   * course venait d'une valeur *réimposée à chaque rendu*, en retard d'un cycle sur la frappe. Ici
+   * c'est un geste **ponctuel** — réordonner une colonne du résultat réécrit la projection — qui ne
+   * passe jamais par le cycle de rendu. Et une transaction, contrairement au remontage que la `key`
+   * d'onglet emploie, garde la vue montée : l'historique d'annulation survit, donc `⌘Z` rend le
+   * texte d'avant la réécriture — c'est le chemin de retour du geste.
+   *
+   * `repli`, fourni, replie ces bornes du **nouveau** texte derrière une `…` cliquable
+   * (`codeFolding`). C'est un pli d'affichage, jamais une élision : le document porte la requête
+   * entière — c'est elle que `⌘↩` exécute, qu'une copie emporte et que les réécritures relisent.
+   * Cliquer la `…` déplie ; le texte, lui, n'a jamais bougé.
+   */
+  remplacerTexte: (texte: string, repli?: { de: number; a: number }) => void
+}
 
 type SqlEditorProps = {
   /**
@@ -55,6 +79,12 @@ type SqlEditorProps = {
    */
   catalogue?: () => Catalogue
   /**
+   * Reçoit les commandes de l'éditeur (`CommandesEditeur`), posées au montage, retirées au
+   * démontage. Une ref et non des props : la vue n'est construite qu'une fois, et ces gestes
+   * sont impératifs par nature — ils *font*, ils ne décrivent pas un état.
+   */
+  commandes?: { current: CommandesEditeur | null }
+  /**
    * La grammaire colorée (`13a`).
    *
    * **Le thème ne change pas** : les jetons `--syn-*` décrivent des mots-clés, des chaînes et des
@@ -87,6 +117,7 @@ export function SqlEditor({
   onExecuterLaSelection,
   onSelectionChange,
   catalogue,
+  commandes,
   dialecte = 'sql',
 }: SqlEditorProps) {
   const t = useT()
@@ -174,6 +205,39 @@ export function SqlEditor({
                 ]),
               ]),
           keymap.of([...defaultKeymap, ...historyKeymap]),
+          // Le repli d'affichage des longues listes de colonnes (voir `remplacerTexte`). Le
+          // marqueur par défaut de CodeMirror est repris à un détail près : ses libellés sont les
+          // nôtres — « folded code » à la voix, dans un produit en français, nommerait mal.
+          codeFolding({
+            placeholderDOM: (_vue, onclick) => {
+              const marque = document.createElement('span')
+              marque.textContent = '…'
+              marque.className = 'cm-foldPlaceholder'
+              marque.title = t('console.sqlEditor.deplier')
+              marque.setAttribute('aria-label', t('console.sqlEditor.colonnesRepliees'))
+              marque.onclick = onclick
+              return marque
+            },
+          }),
+          // Ce que l'éditeur sait replier : les lignes de continuation d'une liste de colonnes
+          // (`repliDeLaProjection`). C'est ce qui rend le pli **réversible** — la gouttière le
+          // repose après qu'une `…` a été dépliée — et l'offre aussi à une liste écrite à la main.
+          foldService.of((etat, debutDeLigne, finDeLigne) => {
+            const repli = repliDeLaProjection(etat.doc.toString())
+            if (repli === null || repli.de < debutDeLigne || repli.de > finDeLigne) return null
+            return { from: repli.de, to: repli.a }
+          }),
+          foldGutter({
+            markerDOM: (ouvert) => {
+              const marque = document.createElement('span')
+              marque.textContent = ouvert ? '⌵' : '›'
+              marque.title = ouvert
+                ? t('console.sqlEditor.replier')
+                : t('console.sqlEditor.deplier')
+              marque.className = 'cm-marqueDePli'
+              return marque
+            },
+          }),
           langue.current === 'mongo' ? javascript() : sql({ dialect: PostgreSQL }),
           // **Le nom accessible va sur `.cm-content`**, seul élément à porter `role="textbox"`. Le
           // poser sur l'hôte ne servait à rien : un `aria-label` sur un élément sans rôle est ignoré
@@ -200,7 +264,22 @@ export function SqlEditor({
     })
     vue.current = editeur
 
+    if (commandes) {
+      commandes.current = {
+        remplacerTexte: (texte, repli) => {
+          // Le remplacement passe par le circuit normal : `docChanged` notifie `onTexteChange`,
+          // donc l'écran reçoit le nouveau texte comme s'il avait été tapé.
+          editeur.dispatch({ changes: { from: 0, to: editeur.state.doc.length, insert: texte } })
+          // Le pli part **après**, dans sa propre transaction : ses bornes parlent du nouveau
+          // document, et un effet joint aux changements serait re-projeté à travers eux. Hors de
+          // l'historique par nature — `⌘Z` rend donc directement le texte d'avant.
+          if (repli) editeur.dispatch({ effects: foldEffect.of({ from: repli.de, to: repli.a }) })
+        },
+      }
+    }
+
     return () => {
+      if (commandes) commandes.current = null
       editeur.destroy()
       vue.current = null
     }

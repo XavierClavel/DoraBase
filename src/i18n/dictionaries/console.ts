@@ -44,7 +44,8 @@ export const consoleFr: Dictionnaire = {
     ariaLabel: 'Actions de la console',
     enCours: 'Exécution…',
     autoLimitMongo: 'auto-$limit 1000',
-    autoLimitSql: 'auto-LIMIT 1000',
+    limiteImplicite:
+      'La requête ne porte pas de LIMIT : celui-ci sera ajouté par DoraBase. Les flèches l’écrivent dans la requête.',
     actions: {
       executer: {
         libelle: 'Exécuter',
@@ -85,6 +86,9 @@ export const consoleFr: Dictionnaire = {
   sqlEditor: {
     ariaLabelSql: 'Requête SQL',
     ariaLabelMongo: 'Commande MongoDB',
+    deplier: 'Déplier',
+    replier: 'Replier',
+    colonnesRepliees: 'Colonnes repliées à l’affichage — la requête les porte toutes',
   },
   vues: {
     jsonInvite: 'Sélectionnez une ligne du résultat pour la voir en JSON.',
@@ -141,7 +145,8 @@ export const consoleEn: Dictionnaire = {
     ariaLabel: 'Console actions',
     enCours: 'Running…',
     autoLimitMongo: 'auto-$limit 1000',
-    autoLimitSql: 'auto-LIMIT 1000',
+    limiteImplicite:
+      'The query carries no LIMIT: DoraBase will add one. The arrows write it into the query.',
     actions: {
       executer: {
         libelle: 'Run',
@@ -183,6 +188,9 @@ export const consoleEn: Dictionnaire = {
   sqlEditor: {
     ariaLabelSql: 'SQL query',
     ariaLabelMongo: 'MongoDB command',
+    deplier: 'Unfold',
+    replier: 'Fold',
+    colonnesRepliees: 'Columns folded in the display — the query carries them all',
   },
   vues: {
     jsonInvite: 'Select a row from the result to view it as JSON.',
