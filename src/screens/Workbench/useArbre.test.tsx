@@ -87,6 +87,7 @@ const OUVERTE: readonly ConnectionStateEntry[] = [
 /** Une passerelle qui compte ses ouvertures et dont les états sont pilotables. */
 function passerelleDe(etats: { courant: readonly ConnectionStateEntry[] }) {
   const compte = { ouvertures: 0 }
+  const abonnes = new Set<() => void>()
   const passerelle: PasserelleArbre = {
     openDatabase: async () => {
       compte.ouvertures += 1
@@ -96,8 +97,18 @@ function passerelleDe(etats: { courant: readonly ConnectionStateEntry[] }) {
     connectionStates: async () => [...etats.courant],
     listSchemas: async () => [schema('public')],
     listObjects: async () => [],
+    surEchecDeCommande: (ecouteur) => {
+      abonnes.add(ecouteur)
+      return () => {
+        abonnes.delete(ecouteur)
+      }
+    },
   }
-  return { passerelle, compte }
+  /** Ce que `commandes.ts` annonce quand une commande échoue — une lecture, une exécution. */
+  const annoncerUnEchec = () => {
+    for (const ecouteur of abonnes) ecouteur()
+  }
+  return { passerelle, compte, annoncerUnEchec }
 }
 
 /** Le hook monté dans un composant jetable, comme `useStructures.test.tsx`. */
@@ -330,4 +341,75 @@ test('relire une connexion dont rien n’est en cache ne demande rien', async ()
 
   expect(compte.lectures).toBe(0)
   expect(vu.courant.charge.schemas[ID_BASE]).toBeUndefined()
+})
+
+// --- La reconnexion (8 septembre 2026) ---
+
+/**
+ * **Le cas qu'aucun signal ne couvrait.**
+ *
+ * Le registre retire désormais une connexion dont le socket est mort — session coupée par le
+ * serveur, veille, proxy tombé — et bascule son état en « hors ligne ». Mais une lecture de table
+ * ou une exécution de console **ne change rien à la configuration** : `projects` ne bouge pas, donc
+ * l'effet qui relit les états ne se rejoue pas, et l'arbre continuait d'annoncer « OK » sur une base
+ * morte jusqu'à la prochaine écriture de configuration.
+ *
+ * **Rien n'est reprojeté ici, et c'est tout le test.** Le seul événement est l'échec annoncé.
+ */
+test('un échec de commande fait relire les états, sans qu’aucune configuration ne change', async () => {
+  const etats = { courant: OUVERTE }
+  const { passerelle, compte, annoncerUnEchec } = passerelleDe(etats)
+  const { vu } = monter(passerelle, projets('cooknco'))
+
+  await act(async () => {
+    vu.courant.basculer(noeudDeBase)
+  })
+  expect(vu.courant.etatDeBase(PROJET, BASE, ENV)).toMatchObject({ kind: 'connected' })
+  expect(compte.ouvertures).toBe(1)
+
+  // Le registre vient de perdre la connexion et de la retirer : c'est ce que `connectionStates`
+  // dira désormais.
+  etats.courant = []
+  await act(async () => {
+    annoncerUnEchec()
+  })
+
+  await waitFor(() => expect(vu.courant.etatDeBase(PROJET, BASE, ENV)).toEqual({ kind: 'never' }))
+  // **La purge compte autant que l'état.** Sans elle la ligne passerait au rouge en gardant ses
+  // schémas, `charger` ne rappellerait jamais `chargerBase`, et la base serait annoncée morte *et*
+  // irrécupérable.
+  expect(vu.courant.charge.schemas[ID_BASE]).toBeUndefined()
+
+  // Le geste rend ce qu'il promet : le clic suivant rouvre.
+  await act(async () => {
+    vu.courant.basculer(noeudDeBase)
+  })
+  expect(compte.ouvertures).toBe(2)
+})
+
+/**
+ * **Le contrôle négatif** : un échec ordinaire ne défait rien.
+ *
+ * Sans lui, une relecture qui purgerait sans regarder ce que le registre tient passerait le test
+ * précédent — et la première faute de frappe dans la console replierait l'arbre et jetterait le
+ * cache d'une connexion en parfait état.
+ */
+test('un échec sur une connexion toujours ouverte ne purge rien', async () => {
+  const etats = { courant: OUVERTE }
+  const { passerelle, compte, annoncerUnEchec } = passerelleDe(etats)
+  const { vu } = monter(passerelle, projets('cooknco'))
+
+  await act(async () => {
+    vu.courant.basculer(noeudDeBase)
+  })
+  expect(vu.courant.charge.schemas[ID_BASE]).toHaveLength(1)
+
+  await act(async () => {
+    annoncerUnEchec()
+  })
+
+  expect(vu.courant.etatDeBase(PROJET, BASE, ENV)).toMatchObject({ kind: 'connected' })
+  expect(vu.courant.charge.schemas[ID_BASE]).toHaveLength(1)
+  expect(vu.courant.deplies.has(ID_BASE)).toBe(true)
+  expect(compte.ouvertures).toBe(1)
 })

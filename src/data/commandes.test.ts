@@ -1,7 +1,29 @@
+import { invoke } from '@tauri-apps/api/core'
 import type { ConfigLoad } from '../domain/config'
+import type { RowQuery } from '../domain/engine'
 import { TRIO_DE_TEST } from '../screens/NewConnection/pourLesTests'
 import { PREFERENCES_PAR_DEFAUT } from '../screens/Preferences/preferences'
-import { databaseKey, etatDe, interpreter } from './commandes'
+import {
+  connectionStates,
+  databaseKey,
+  etatDe,
+  interpreter,
+  listSchemas,
+  readRows,
+  surEchecDeCommande,
+} from './commandes'
+
+const REQUETE: RowQuery = {
+  schema: 'public',
+  table: 'orders',
+  limit: 'oneHundred',
+  offset: 0,
+  filters: [],
+  sort: [],
+}
+
+/** Le seul appel que le double laisse passer, pour distinguer « échec » de « passage ». */
+const loadConfigVerte = () => invoke('toujours_vert')
 
 // --- Les quatre issues de `load_config` ---
 
@@ -112,4 +134,49 @@ test('deux environnements de la même base ont deux états distincts', () => {
   ]
   expect(etatDe(entrees, 'Halle', 'analytics', 'dev').kind).toBe('connected')
   expect(etatDe(entrees, 'Halle', 'analytics', 'prod').kind).toBe('offline')
+})
+
+// --- L'annonce d'un échec de commande (8 septembre 2026) ---
+
+// **Le déclencheur de la moitié écran du correctif « connexion perdue ».** Le registre retire
+// désormais une connexion dont le socket est mort ; encore faut-il que l'arbre relise ce qu'il en
+// dit, et rien ne le lui apprenait quand la configuration ne changeait pas — le cas d'une lecture
+// de table ou d'une exécution de console.
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(async (commande: string) => {
+    if (commande === 'toujours_vert') return null
+    throw new Error(`la commande ${commande} a échoué`)
+  }),
+}))
+
+test('une commande qui échoue est annoncée aux abonnés', async () => {
+  const vues: number[] = []
+  const desabonner = surEchecDeCommande(() => vues.push(1))
+
+  await expect(readRows(databaseKey('Halle', 'analytics', 'dev'), REQUETE)).rejects.toThrow()
+  expect(vues).toHaveLength(1)
+
+  // Une commande qui réussit n'annonce rien : l'annonce dit un échec, pas un passage.
+  await loadConfigVerte()
+  expect(vues).toHaveLength(1)
+
+  // Et le désabonnement rend vraiment le silence — sans quoi un arbre démonté continuerait de
+  // relire les états, indéfiniment.
+  desabonner()
+  await expect(listSchemas(databaseKey('Halle', 'analytics', 'dev'))).rejects.toThrow()
+  expect(vues).toHaveLength(1)
+})
+
+// **La boucle que ce contrôle empêche.** L'unique abonné est l'arbre, et il répond à l'annonce en
+// appelant `connection_states`. Si cette commande s'annonçait elle-même, un pont muet — le cas
+// ordinaire hors de la webview, donc toute la galerie et tout `pnpm dev` — ferait tourner la
+// boucle sans fin.
+test('l’échec de « connection_states » ne s’annonce pas lui-même', async () => {
+  const vues: number[] = []
+  const desabonner = surEchecDeCommande(() => vues.push(1))
+
+  await expect(connectionStates()).rejects.toThrow()
+  expect(vues).toHaveLength(0)
+
+  desabonner()
 })

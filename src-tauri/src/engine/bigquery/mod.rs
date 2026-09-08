@@ -82,6 +82,13 @@ impl BigQueryAdapter {
         None
     }
 
+    /// **Jamais.** Chaque appel est une requête HTTPS indépendante vers l'API : il n'y a pas de
+    /// connexion à perdre entre deux, et un jeton expiré se renouvelle plutôt que de fermer quoi
+    /// que ce soit.
+    pub fn connexion_perdue(&self) -> bool {
+        false
+    }
+
     pub async fn close(self) {
         // Rien à attendre : pas de port local à rendre, pas de socket à fermer.
     }

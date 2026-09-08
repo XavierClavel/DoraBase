@@ -7,6 +7,7 @@ import {
   listObjects,
   listSchemas,
   openDatabase,
+  surEchecDeCommande,
 } from '../../data/commandes'
 import type { EnvironmentId, Project } from '../../domain/config'
 import type {
@@ -30,6 +31,14 @@ export type PasserelleArbre = {
   connectionStates: typeof connectionStates
   listSchemas: typeof listSchemas
   listObjects: typeof listObjects
+  /**
+   * L'abonnement aux échecs de commande, injecté comme le reste.
+   *
+   * Ce n'est pas le pont — la fonction répond partout —, mais l'abonnement décide de ce que
+   * l'arbre relit : le laisser hors de la passerelle rendrait ce câblage invérifiable, alors que
+   * c'est précisément la moitié écran qui manquait au défaut du 8 septembre 2026.
+   */
+  surEchecDeCommande: typeof surEchecDeCommande
 }
 
 export const PASSERELLE_TAURI: PasserelleArbre = {
@@ -38,6 +47,7 @@ export const PASSERELLE_TAURI: PasserelleArbre = {
   connectionStates,
   listSchemas,
   listObjects,
+  surEchecDeCommande,
 }
 
 const CHARGE_VIDE: Charge = { schemas: {}, objets: {}, enCours: new Set(), echecs: {} }
@@ -208,6 +218,31 @@ export function useArbre(
   useEffect(() => {
     void synchroniserAvecLeRegistre()
   }, [projects, synchroniserAvecLeRegistre])
+
+  /**
+   * **Et relu après tout échec de commande** — la moitié écran du correctif du 8 septembre 2026.
+   *
+   * Le registre retire désormais une connexion dont le socket est mort (`ConnectionRegistry::avec`)
+   * et bascule son état en « hors ligne ». Restait le cas qu'aucun signal ne couvrait : une lecture
+   * de table ou une exécution de console **ne change rien à la configuration**, donc `projects` ne
+   * bouge pas, donc l'effet ci-dessus ne se rejoue pas. L'arbre affichait « OK » sur une base morte
+   * jusqu'à la prochaine écriture de configuration — c'est-à-dire souvent jusqu'à la fin de la
+   * session.
+   *
+   * **La purge compte autant que l'état** : sans elle, la ligne passerait au rouge mais garderait
+   * ses schémas en cache, et `charger` ne rappellerait jamais `chargerBase`. La base serait
+   * annoncée morte *et* irrécupérable — le défaut du 31 août, par l'autre bout.
+   *
+   * Une commande qui échoue pour une raison ordinaire déclenche la même relecture, et c'est sans
+   * conséquence : le registre tient toujours la base, donc rien n'est purgé.
+   */
+  useEffect(
+    () =>
+      passerelle.surEchecDeCommande(() => {
+        void synchroniserAvecLeRegistre()
+      }),
+    [passerelle, synchroniserAvecLeRegistre],
+  )
 
   const marquer = useCallback((id: string, enCours: boolean, echec?: string) => {
     setCharge((precedent) => {

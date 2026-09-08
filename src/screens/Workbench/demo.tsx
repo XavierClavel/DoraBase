@@ -516,6 +516,7 @@ const PASSERELLE: PasserelleArbre = {
     tunnelLocalPort: null,
   }),
   closeDatabase: async () => {},
+  surEchecDeCommande: () => () => {},
   connectionStates: async () => [
     {
       key: { project: 'Atelier Nord', database: 'analytics', environment: 'prod' },

@@ -92,6 +92,20 @@ impl MysqlAdapter {
         self.proxy.as_ref().map(ProxyOuvert::port_local)
     }
 
+    /// La connexion est-elle définitivement perdue ?
+    ///
+    /// **Le pool répond pour le pilote, donc seul le transport décide.** `mysql_async` écarte une
+    /// connexion morte et en rouvre une au besoin : un socket coupé n'est pas définitif ici,
+    /// contrairement à PostgreSQL, et déclarer perdu ce que le pool sait réparer fermerait un pool
+    /// en parfait état — donc un tunnel, et le prochain clic paierait une poignée de main SSH pour
+    /// rien.
+    ///
+    /// Ce qui est définitif, c'est un proxy tombé : le pool rouvrirait alors indéfiniment vers un
+    /// port local que plus personne n'écoute.
+    pub fn connexion_perdue(&self) -> bool {
+        self.proxy.as_ref().is_some_and(ProxyOuvert::est_tombe)
+    }
+
     pub async fn close(self) {
         // **Le pool se ferme avant le tunnel.** L'inverse fermerait l'écouteur local pendant que des
         // connexions l'utilisent encore, et le pilote signalerait des erreurs de réseau à la

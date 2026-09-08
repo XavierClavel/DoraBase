@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { type InvokeArgs, invoke } from '@tauri-apps/api/core'
 import type {
   ConfigLoad,
   ConnectionSettings,
@@ -37,9 +37,60 @@ import { PREFERENCES_PAR_DEFAUT } from '../screens/Preferences/preferences'
  * `08d` : le pont ne répond pas hors de la webview, et ce qui est testable est le câblage.
  */
 
+type Ecouteur = () => void
+
+const ecouteurs = new Set<Ecouteur>()
+
+/**
+ * S'abonne aux **échecs de commande**. Rend de quoi se désabonner.
+ *
+ * # Pourquoi ce signal existe (8 septembre 2026)
+ *
+ * Le registre retire désormais une connexion dont le socket est mort et bascule son état en
+ * « hors ligne » (`ConnectionRegistry::avec`). **Encore faut-il que l'écran le demande** : sans
+ * quoi la moitié Rust serait juste et l'arbre continuerait d'afficher « OK » sur une base morte,
+ * exactement le défaut n° 20 — une garantie posée d'un seul côté du pont ne garantit rien.
+ *
+ * L'arbre relit déjà les états à chaque changement de `projects`, ce qui couvre les six commandes
+ * de configuration qui ferment des connexions. Il manquait le cas où **rien ne change dans la
+ * configuration** : une lecture de table, une exécution de console. Ce signal est ce déclencheur-là.
+ *
+ * **Une règle, pas N branchements** — c'est le même arbitrage que la relecture sur `projects` :
+ * brancher chaque commande demanderait de les connaître, et la suivante l'oublierait. La règle
+ * tient en une phrase : *toute commande qui échoue peut avoir échoué parce que le registre a perdu
+ * une connexion, donc l'écran relit ce que le registre dit maintenant*. Une relecture inutile ne
+ * coûte qu'une lecture de table en mémoire, et ne purge rien tant que le registre tient toujours la
+ * base.
+ */
+export function surEchecDeCommande(ecouteur: Ecouteur): () => void {
+  ecouteurs.add(ecouteur)
+  return () => {
+    ecouteurs.delete(ecouteur)
+  }
+}
+
+/**
+ * `invoke`, plus l'annonce de son échec — le seul point de passage vers l'IPC.
+ *
+ * **`connection_states` est exclue, et ce n'est pas une optimisation.** L'unique abonné est
+ * l'arbre, et il répond à l'annonce en appelant `connection_states`. S'annoncer à soi-même ferait
+ * tourner la boucle sans fin dès que le pont est muet — ce qui est le cas ordinaire hors de la
+ * webview, donc dans toute la galerie et tout `pnpm dev`.
+ */
+async function appeler<T>(commande: string, args?: InvokeArgs): Promise<T> {
+  try {
+    return await invoke<T>(commande, args)
+  } catch (cause) {
+    if (commande !== 'connection_states') {
+      for (const ecouteur of ecouteurs) ecouteur()
+    }
+    throw cause
+  }
+}
+
 /** Lit la configuration. Ses quatre issues sont distinctes, et `09b` les traite toutes. */
 export async function loadConfig(): Promise<ConfigLoad> {
-  return invoke<ConfigLoad>('load_config')
+  return appeler<ConfigLoad>('load_config')
 }
 
 /**
@@ -54,7 +105,7 @@ export async function openDatabase(
   engine: Engine,
   variant: ConnectionSettings,
 ): Promise<ConnectionState> {
-  return invoke<ConnectionState>('open_database', { key, engine, variant })
+  return appeler<ConnectionState>('open_database', { key, engine, variant })
 }
 
 /**
@@ -65,11 +116,11 @@ export async function openDatabase(
  * une valeur que le disque a refusée — deux vérités, dont la visible serait fausse.
  */
 export async function savePreferences(preferences: Preferences): Promise<Preferences> {
-  return invoke<Preferences>('save_preferences', { preferences })
+  return appeler<Preferences>('save_preferences', { preferences })
 }
 
 export async function closeDatabase(key: DatabaseKey): Promise<void> {
-  return invoke<void>('close_database', { key })
+  return appeler<void>('close_database', { key })
 }
 
 /**
@@ -81,15 +132,15 @@ export async function closeDatabase(key: DatabaseKey): Promise<void> {
  * mieux n'en avoir qu'une.
  */
 export async function connectionStates(): Promise<ConnectionStateEntry[]> {
-  return invoke<ConnectionStateEntry[]>('connection_states')
+  return appeler<ConnectionStateEntry[]>('connection_states')
 }
 
 export async function listSchemas(key: DatabaseKey): Promise<SchemaInfo[]> {
-  return invoke<SchemaInfo[]>('list_schemas', { key })
+  return appeler<SchemaInfo[]>('list_schemas', { key })
 }
 
 export async function listObjects(key: DatabaseKey, schema: string): Promise<TableSummary[]> {
-  return invoke<TableSummary[]>('list_objects', { key, schema })
+  return appeler<TableSummary[]>('list_objects', { key, schema })
 }
 
 export async function describeTable(
@@ -97,7 +148,7 @@ export async function describeTable(
   schema: string,
   table: string,
 ): Promise<TableDetail> {
-  return invoke<TableDetail>('describe_table', { key, schema, table })
+  return appeler<TableDetail>('describe_table', { key, schema, table })
 }
 
 /**
@@ -118,7 +169,7 @@ export async function describeTables(
   schema: string,
   tables: readonly string[],
 ): Promise<TableDetail[]> {
-  return invoke<TableDetail[]>('describe_tables', { key, schema, tables })
+  return appeler<TableDetail[]>('describe_tables', { key, schema, tables })
 }
 
 /**
@@ -129,7 +180,7 @@ export async function describeTables(
  * lecture ; `10c` a ajouté la commande, qui manquait.
  */
 export async function readRows(key: DatabaseKey, query: RowQuery): Promise<RowWindow> {
-  return invoke<RowWindow>('read_rows', { key, query })
+  return appeler<RowWindow>('read_rows', { key, query })
 }
 
 /**
@@ -146,7 +197,7 @@ export async function rowAsInsert(
   table: string,
   values: readonly Value[],
 ): Promise<string> {
-  return invoke<string>('row_as_insert', { key, schema, table, values })
+  return appeler<string>('row_as_insert', { key, schema, table, values })
 }
 
 /**
@@ -157,7 +208,7 @@ export async function rowAsInsert(
  * endroit où l'on vérifie avant d'écrire en production. `11d` exécutera cette suite.
  */
 export async function previewUpdates(key: DatabaseKey, plan: UpdatePlan): Promise<string> {
-  return invoke<string>('preview_updates', { key, plan })
+  return appeler<string>('preview_updates', { key, plan })
 }
 
 /**
@@ -167,7 +218,7 @@ export async function previewUpdates(key: DatabaseKey, plan: UpdatePlan): Promis
  * qu'un texte. Rend le nombre de lignes écrites et le SQL qui les défait.
  */
 export async function applyChanges(key: DatabaseKey, plan: UpdatePlan): Promise<ApplyOutcome> {
-  return invoke<ApplyOutcome>('apply_changes', { key, plan })
+  return appeler<ApplyOutcome>('apply_changes', { key, plan })
 }
 
 /**
@@ -184,22 +235,22 @@ export async function applyChanges(key: DatabaseKey, plan: UpdatePlan): Promise<
  * l'écran et le disque divergent.
  */
 export async function createConsole(request: ConsoleRequest): Promise<Project[]> {
-  return invoke<Project[]>('create_console', { request })
+  return appeler<Project[]>('create_console', { request })
 }
 
 /** Écrit le texte d'une console. */
 export async function saveConsole(request: ConsoleRequest): Promise<Project[]> {
-  return invoke<Project[]>('save_console', { request })
+  return appeler<Project[]>('save_console', { request })
 }
 
 /** Retire une console. */
 export async function deleteConsole(request: ConsoleRequest): Promise<Project[]> {
-  return invoke<Project[]>('delete_console', { request })
+  return appeler<Project[]>('delete_console', { request })
 }
 
 /** Renomme une console. */
 export async function renameConsole(request: ConsoleRequest): Promise<Project[]> {
-  return invoke<Project[]>('rename_console', { request })
+  return appeler<Project[]>('rename_console', { request })
 }
 
 /**
@@ -210,7 +261,7 @@ export async function renameConsole(request: ConsoleRequest): Promise<Project[]>
  * schémas affichés qui sont une préférence et attendent « Enregistrer ».
  */
 export async function createSchema(key: DatabaseKey, name: string): Promise<void> {
-  return invoke<void>('create_schema', { key, name })
+  return appeler<void>('create_schema', { key, name })
 }
 
 /**
@@ -221,7 +272,7 @@ export async function createSchema(key: DatabaseKey, name: string): Promise<void
  * `update_variant` : rien de ce qui décrit le serveur n'a changé.
  */
 export async function saveVisibleSchemas(request: VisibleSchemasRequest): Promise<Project[]> {
-  return invoke<Project[]>('save_visible_schemas', { request })
+  return appeler<Project[]>('save_visible_schemas', { request })
 }
 
 /**
@@ -232,7 +283,7 @@ export async function saveVisibleSchemas(request: VisibleSchemasRequest): Promis
  * demandé. C'est à l'appelant de retomber sur `null`, ce que fait `MiseAJour`.
  */
 export async function checkUpdate(): Promise<AvailableUpdate | null> {
-  return invoke<AvailableUpdate | null>('check_update')
+  return appeler<AvailableUpdate | null>('check_update')
 }
 
 /**
@@ -243,11 +294,11 @@ export async function checkUpdate(): Promise<AvailableUpdate | null> {
  * ait à traiter.
  */
 export async function installUpdate(): Promise<void> {
-  return invoke<void>('install_update')
+  return appeler<void>('install_update')
 }
 
 export async function runSql(key: DatabaseKey, sql: string, limit: RowLimit): Promise<QueryResult> {
-  return invoke<QueryResult>('run_sql', { key, sql, limit })
+  return appeler<QueryResult>('run_sql', { key, sql, limit })
 }
 
 /**

@@ -1146,6 +1146,118 @@ connaître, et la septième l'aurait oublié. Trois points à ne pas défaire :
   croisent — l'effet et le chargement —, et une lecture partie avant une ouverture peut répondre
   après elle. C'est le défaut n° 112 par un autre bout.
 
+**Et une entrée du registre pouvait survivre à son socket** (8 septembre 2026). C'est le même défaut
+par le troisième bout : le 31 août, le registre avait fermé et l'écran disait ouvert ; ici l'écran
+**et** le registre disent ouvert, et c'est le socket qui est parti. `tokio-postgres` sépare le client
+de sa boucle d'entrées-sorties, et quand celle-ci s'arrête — session inactive coupée par le serveur,
+veille du Mac, changement de réseau, proxy tombé — le `Client` **survit, muet**. La seule trace était
+un `log::debug!` dans `postgres/connect.rs`. L'entrée restait au registre, l'état restait
+`Connected`, et **toute** lecture suivante échouait : la grille affichait « connection closed » — le
+mot du pilote, en anglais — pendant que la barre disait « lecture impossible » et que l'arbre disait
+« OK » sur la même base.
+
+**Rien n'en sortait, et c'est ce qui en faisait une panne plutôt qu'un incident.**
+`marquer_hors_ligne` n'était appelé qu'à l'ouverture ; le front n'expose aucun « fermer la
+connexion » — `closeDatabase` existe des deux côtés et **aucun composant ne l'appelle** ; et replier
+puis déplier ne rouvre rien, `charger` ne rappelant `chargerBase` que si les schémas ont quitté le
+cache. Il fallait relancer l'application.
+
+Le remède tient en une question posée au bon moment, et en quatre points à ne pas défaire :
+
+- **la question est posée au moteur, pas déduite d'une chaîne.** `AnyEngine::connexion_perdue` est
+  inhérente et répartie par un `match` sans bras attrape-tout, comme `close` : un sixième moteur ne
+  compilera pas tant qu'il n'aura pas répondu. Une méthode de trait à corps par défaut lui donnerait
+  « toujours vivante » sans que personne l'ait choisi — le bras attrape-tout de la règle n° 16, avec
+  le même prix. Et les réponses **diffèrent** : PostgreSQL est le seul à tenir un socket unique
+  (`Client::is_closed`), MySQL et MongoDB s'en remettent à leur pool et ne concluent que d'un proxy
+  tombé, SQLite et BigQuery n'ont rien à perdre ;
+- **elle n'est posée qu'après un échec.** Une requête qui a rendu ses lignes a prouvé sa connexion,
+  et interroger le pilote à chaque succès ferait payer un verdict à tout le chemin heureux. Un échec
+  **ordinaire** — SQL fautif, droits refusés — laisse la connexion en place, ce qu'un contrôle
+  négatif garde des deux côtés du pont : sans lui, la première faute de frappe dans la console
+  fermerait la connexion, tunnel compris ;
+- **on ferme, on ne se contente pas de retirer.** L'adaptateur détient le proxy : un client mort
+  derrière un tunnel SSH vivant fuirait sa session et son port jusqu'à la fin de l'application ;
+- **et l'écran doit demander, sinon la moitié Rust ne garantit rien** (règle n° 20). Une lecture de
+  table ou une exécution de console **ne change rien à la configuration**, donc `projects` ne bouge
+  pas et l'effet du 31 août ne se rejoue pas. `data/commandes.ts` — le seul point de contact avec
+  l'IPC — annonce donc tout échec de commande, et l'arbre y répond par `synchroniserAvecLeRegistre`.
+  **Une règle, pas N branchements**, exactement comme la relecture sur `projects` : *toute commande
+  qui échoue peut avoir échoué parce que le registre a perdu une connexion*. `connection_states` est
+  la seule exclue — l'abonné y répond en l'appelant, et s'annoncer à soi-même ferait tourner la
+  boucle sans fin dès que le pont est muet, ce qui est le cas ordinaire hors de la webview.
+
+**Le message aussi a changé, et pour la même raison que l'arbre.** « connection closed » est tout ce
+que `Kind::Closed` dit, sans source : ni la cause, ni la manœuvre. `postgres/error.rs` le remplace
+par une phrase qui nomme les quatre causes et dit de rouvrir la base — ce qui n'est une vraie
+manœuvre que parce que le registre a retiré l'entrée. **Ce n'est pas la réécriture d'un message de
+moteur** que la règle des états hors ligne interdit : il n'y a pas de message de moteur ici, il n'y a
+plus de moteur au bout du socket.
+
+**`pg_terminate_backend(pg_backend_pid())` est ce qui rend tout cela testable sans dormir.** Le
+serveur coupe notre propre session, donc la coupure est un fait et non une attente (règle n° 3). Un
+piège en revanche : **c'est la seconde requête qui juge, pas celle qui coupe.** Celle-ci reçoit un
+`FATAL` du serveur, donc une erreur *de base* avec son `SQLSTATE`, et la boucle d'entrées-sorties
+peut n'avoir pas encore vu la fin du flux. La suivante est fermée dans les deux ordres possibles —
+ou l'émetteur est déjà clos, ou la réponse n'arrive jamais et `Responses::next` rend le même
+`Error::closed()`. C'est la raison pour laquelle le test du **registre** ne juge pas le message,
+qui dépend de l'ordre, mais l'issue — plus d'entrée, un état qui le dit — pendant que le test de
+l'**adaptateur** juge le message, où il est déterministe.
+
+**Et le registre rouvre ce qu'il a déjà ouvert** (8 septembre 2026). Retirer une connexion morte
+rendait l'arbre honnête ; il restait à l'utilisateur un clic à faire pour une panne dont il n'était
+pour rien. La reconnexion a **deux étages**, et c'est la distinction qui porte tout le reste :
+
+- **rouvrir *avant* d'exécuter est sûr pour tout le monde** — l'opération n'a pas encore tourné.
+  C'est l'étage du bas, qu'aucun appelant n'a à demander : une entrée absente dont la recette est là
+  se rouvre, et le geste suivant marche sans que personne ait rien cliqué ;
+- **rejouer *après* un échec ne l'est pas.** Une écriture peut avoir été **validée par le serveur
+  avant** que la coupure n'empêche l'accusé de réception d'arriver : la rejouer insérerait une
+  seconde fois les lignes ajoutées — le geste que ce fichier dit déjà ne pas savoir défaire.
+
+D'où `Reprise`, **paramètre obligatoire d'`avec` et non seconde méthode** : une méthode « avec
+reprise » s'oublie, et le silence prendrait alors la réponse la moins vraie sans que personne l'ait
+choisie. C'est la leçon du bras attrape-tout (règle n° 16) appliquée à une décision qui peut écrire
+deux fois. Six opérations sont `Rejouable` — les cinq lectures, plus `preview_updates`, qui n'ouvre
+aucune transaction et ne rend que du texte. Deux sont `Unique` : `apply_changes`, et **`run_sql`,
+dont rien ici ne sait s'il lit ou s'il écrit** — la console accepte les DML. Le prix de `Fn` est un
+clone de la requête par essai, qui ne pèse rien contre un aller-retour réseau.
+
+Quatre points à ne pas défaire :
+
+- **une reprise, jamais une boucle.** Un serveur qui coupe chaque session — un répartiteur mal
+  réglé, un `idle_session_timeout` à zéro — ferait sinon tourner le registre indéfiniment. Le test
+  qui le garde compte les passages de la fermeture : deux, jamais trois ;
+- **la recette part à la fermeture, et c'est ce qui distingue une perte d'une fermeture demandée.**
+  Les six commandes de configuration qui appellent `fermer` sont exactement celles qui **périment**
+  ce que la recette décrit : rouvrir sur l'ancien hôte, ou avec l'ancien secret, serait pire que ne
+  rien rouvrir. Corollaire : *le registre ne rouvre que ce qu'il a déjà ouvert avec succès*, donc
+  une base jamais jointe s'entend toujours dire qu'elle doit l'être d'abord ;
+- **la recette garde un secret en mémoire**, et cela se dit plutôt que se découvre. Ce n'est pas une
+  exposition d'une nature nouvelle — le client du pilote détient déjà la configuration qui le porte,
+  d'où le `Debug` écrit à la main de chaque adaptateur —, mais c'est un exemplaire de plus ; `Secret`
+  n'a ni `Display` ni `Serialize`, donc une recette ne peut ni se journaliser ni traverser l'IPC ;
+- **l'entrée morte est retirée sous le verrou qui a porté l'opération**, pas un instant plus tard.
+  Le relâcher d'abord ouvrait une fenêtre où une seconde lecture, tombée sur la même connexion
+  morte, la retire, la ferme et en rouvre une **neuve** — que nous fermerions ensuite en croyant
+  fermer la nôtre. La reconnexion crée cette fenêtre : avant elle, deux lectures concurrentes ne
+  pouvaient que retirer deux fois la même entrée, ce qui est sans effet.
+
+**Un défaut antérieur trouvé en route, et corrigé** : la garde d'entrée d'`ouvrir` est relâchée
+pendant la connexion, donc deux ouvertures concurrentes de la même base la franchissaient toutes les
+deux, et la seconde `insert` **remplaçait** la première sans la fermer — un tunnel SSH et son port
+perdus, sans la moindre erreur. Personne ne l'avait vu parce que l'écran sérialise ses ouvertures
+(`enCours` d'`useArbre`) ; la reconnexion en crée une nouvelle occasion, deux lectures pouvant
+retomber ensemble sur une connexion morte. Sous le verrou, c'est désormais **la nôtre** qu'on
+referme quand l'autre a gagné.
+
+**Ce qui prouve une reconnexion, c'est `pg_backend_pid`.** Un test qui vérifierait seulement que la
+lecture réussit passerait sur un serveur qui n'aurait rien coupé : le numéro de session nomme le
+processus serveur, et deux valeurs différentes ne s'obtiennent qu'en ayant vraiment rouvert. Et
+pour le rejeu, c'est un **compte de passages** de la fermeture qui juge, non le message rendu —
+mesurer le rejeu par un effet de bord en base aurait demandé une table d'appoint sans rien dire de
+plus.
+
 **Ouvrir une console ouvre sa connexion** (1er septembre 2026). L'ouverture n'avait qu'un
 déclencheur — regarder ou déplier la ligne de la base dans l'arbre —, or une console s'ouvre
 ailleurs : le menu « … » d'une connexion est atteignable dès que son **environnement** est déplié, et
@@ -2569,6 +2681,19 @@ présenter comme vérifiées tant qu'un humain ne les a pas faites :
   chemin réellement non exercé : le lancement d'un *exec credential plugin*, donc la raison d'être de
   l'enrichissement du `PATH`. Le geste décisif est de lancer le bundle **depuis le Finder** et
   d'ouvrir une connexion GKE : c'est là, et seulement là, que le `PATH` est minimal.
+- **Laisser une connexion mourir pour de vrai**, puis lire une table. Le correctif du 8 septembre
+  2026 est exercé contre une session que `pg_terminate_backend` coupe — donc une coupure **franche
+  et immédiate**. Les causes réelles ne le sont pas : mettre le Mac en veille une heure, débrancher
+  le Wi-Fi, redémarrer le serveur, ou attendre un `idle_session_timeout`. Ce qu'il reste à voir, et
+  qu'aucun test ne dira : que la ligne d'arbre passe bien au rouge **au moment de la lecture qui
+  échoue**, et que la lecture aboutisse d'elle-même après la reconnexion — sans redemander le mot de
+  passe, que la recette porte. Le cas d'un proxy tombé vaut d'être fait séparément — tuer le `ssh` ou
+  le `kubectl` à la main —, la détection y passant par `ProxyOuvert::est_tombe` et non par le pilote,
+  et la reconnexion y remontant un tunnel entier plutôt qu'un socket. C'est aussi le seul geste qui
+  dira si l'attente est **supportable** : rouvrir un tunnel SSH ou un `kubectl port-forward` prend
+  des secondes, pendant lesquelles la grille paraît simplement lente, et rien à l'écran ne dit
+  pourquoi. Si cette attente se révèle pénible, c'est là qu'un mot de l'interface se justifiera —
+  pas avant de l'avoir vue.
 - **Ouvrir le `.dmg` publié, sur un écran Retina et sur un écran 1×.** Que le fond soit
   *appliqué* se vérifie par script (`verifier-dmg-monte.sh` : le fichier est dans le volume et
   le `.DS_Store` le référence) ; qu'il soit **net**, cadré, et que les deux icônes tombent bien
