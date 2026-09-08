@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { Sprite } from '../../design/icons/Sprite'
 import type { ColumnInfo, DatabaseKey, RowQuery } from '../../domain/engine'
@@ -65,6 +66,21 @@ function limiteDe(requete: RowQuery): number {
 function derniereRequete(readRows: ReturnType<typeof monter>['readRows']): RowQuery {
   const appels = vi.mocked(readRows).mock.calls
   return appels[appels.length - 1]?.[1] as RowQuery
+}
+
+/** Une fenêtre d’une ligne, pour les tests qui ne portent que sur la barre. */
+const FENETRE_LUE = {
+  offset: 0,
+  rows: [
+    [
+      { kind: 'text' as const, value: 'paid' },
+      { kind: 'int' as const, value: 12_900 },
+      { kind: 'null' as const },
+    ],
+  ],
+  total: null,
+  sql: 'select * from public.orders limit 500 offset 0',
+  durationMs: 41,
 }
 
 /** Une fenêtre sans ligne, pour les tests qui ne portent pas sur les données. */
@@ -210,6 +226,106 @@ describe('rafraîchir relit tout ce que l’écran montre', () => {
     // L'animation est portée par une classe sur l'icône ; la rotation elle-même se mesure en e2e,
     // jsdom ne calculant aucune animation.
     expect(bouton.querySelector('svg')?.getAttribute('class')).toMatch(/tourne/)
+  })
+
+  it('la bascule d’édition n’existe pas sans gestionnaire', async () => {
+    const { readRows } = monter()
+    await waitFor(() => expect(readRows).toHaveBeenCalled())
+
+    // La vue ne possède pas ce mode, elle le reçoit : sans quoi l’écrire, la barre n’offre rien à
+    // cliquer plutôt qu’un bouton qui ne ferait rien.
+    expect(screen.queryByRole('button', { name: 'Mode édition' })).toBeNull()
+  })
+
+  it('le bouton bascule le mode édition, et aria-pressed le dit des deux côtés', async () => {
+    const utilisateur = userEvent.setup()
+
+    // Contrôlé depuis un parent, comme l’écran de travail le fait : c’est **la bascule** qui rend
+    // `aria-pressed` honnête. Un bouton qui ne s’allumerait jamais passerait un test qui ne
+    // regarderait que l’état de départ.
+    function Ecran() {
+      const [edition, setEdition] = useState(false)
+      return (
+        <TableView
+          cle={CLE}
+          schema="public"
+          table="orders"
+          columns={COLONNES}
+          passerelle={{ readRows: async () => FENETRE_LUE } as unknown as PasserelleLignes}
+          edition={edition}
+          onBasculerEdition={() => setEdition((precedent) => !precedent)}
+          // Le `+` demande en plus de quoi écrire ce qu'il ajoute : sans lui, il ne paraîtrait pas
+          // même en édition, et le test mesurerait son absence pour la mauvaise raison.
+          onAttenteChange={() => {}}
+        />
+      )
+    }
+    render(
+      <>
+        <Sprite />
+        <LanguageProvider preferences={{ language: 'fr' }}>
+          <Ecran />
+        </LanguageProvider>
+      </>,
+    )
+
+    const bascule = screen.getByRole('button', { name: 'Mode édition' })
+    expect(bascule).toHaveAttribute('aria-pressed', 'false')
+    // **Le `+` n’est pas là tant que l’édition ne l’est pas**, et c’est ce qui rend la paire
+    // lisible : la bascule fait paraître son voisin.
+    expect(screen.queryByRole('button', { name: 'Ajouter une ligne' })).toBeNull()
+
+    await utilisateur.click(bascule)
+    expect(bascule).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Ajouter une ligne' })).toBeInTheDocument()
+
+    await utilisateur.click(bascule)
+    expect(bascule).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByRole('button', { name: 'Ajouter une ligne' })).toBeNull()
+  })
+
+  it('le crayon reste le crayon, et le nom ne bouge pas non plus', async () => {
+    const utilisateur = userEvent.setup()
+
+    function Ecran() {
+      const [edition, setEdition] = useState(false)
+      return (
+        <TableView
+          cle={CLE}
+          schema="public"
+          table="orders"
+          columns={COLONNES}
+          passerelle={{ readRows: async () => FENETRE_LUE } as unknown as PasserelleLignes}
+          edition={edition}
+          onBasculerEdition={() => setEdition((precedent) => !precedent)}
+          // Le `+` demande en plus de quoi écrire ce qu'il ajoute : sans lui, il ne paraîtrait pas
+          // même en édition, et le test mesurerait son absence pour la mauvaise raison.
+          onAttenteChange={() => {}}
+        />
+      )
+    }
+    render(
+      <>
+        <Sprite />
+        <LanguageProvider preferences={{ language: 'fr' }}>
+          <Ecran />
+        </LanguageProvider>
+      </>,
+    )
+
+    const bascule = screen.getByRole('button', { name: 'Mode édition' })
+    // **Le crayon au repos, et non un verrou** (rapporté à l’usage : « l’interface n’est pas
+    // claire »). Un bouton dit l’**acte** qu’il offre ; un cadenas disait l’état courant, et rien
+    // n’annonçait qu’on pouvait l’ouvrir. La barre d’état, elle, garde ses deux icônes : elle
+    // décrit là où le bouton agit.
+    expect(bascule.querySelector('use')?.getAttribute('href')).toBe('#i-pencil')
+
+    await utilisateur.click(bascule)
+    // Ni le nom ni l’icône ne bougent : un bouton qui se renommerait ou changerait de dessin sous
+    // le doigt se chercherait à nouveau à chaque bascule. C’est `aria-pressed` qui distingue les
+    // deux états — et, à l’écran, la pastille sombre que `10e-toolbar.spec.ts` mesure.
+    expect(screen.getByRole('button', { name: 'Mode édition' })).toBe(bascule)
+    expect(bascule.querySelector('use')?.getAttribute('href')).toBe('#i-pencil')
   })
 
   it('un triple clic n’émet qu’une relecture', async () => {

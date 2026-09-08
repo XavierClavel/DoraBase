@@ -16,10 +16,27 @@
   position: absolute;
   left: 50%;
   z-index: 300;
-  transform: translateX(-50%);
+  /* Le décalage est posé par le composant quand l'infobulle mordrait un bord vertical de la
+     fenêtre — zéro le reste du temps, et sous jsdom, où rien ne se mesure. */
+  transform: translateX(calc(-50% + var(--decalage, 0px)));
   /* Une infobulle ne doit jamais intercepter le pointeur : elle disparaîtrait au moment où le
    * curseur l'atteint, et le survol clignoterait. */
   pointer-events: none;
+  /*
+   * **`max-content`, sans quoi l'infobulle est large comme son déclencheur** (8 septembre 2026,
+   * rapporté à l'usage : « l'infobulle est illisible »).
+   *
+   * Un élément absolument positionné se dimensionne contre son bloc conteneur — ici `.root`, qui
+   * épouse le contrôle. Sur un carré de 27 px de la barre d'outils de `A5`, la largeur au rendu
+   * tombait donc à **55 px** : une colonne d'un mot par ligne, haute de 98 px, où `max-width: 220px`
+   * ne s'appliquait jamais puisqu'il n'y avait pas 220 px de disponibles. Mesuré, pas supposé — et
+   * c'est la moitié « illisible » du défaut, l'autre étant le débordement par le haut, que
+   * `placement` règle chez l'appelant.
+   *
+   * `max-content` d'abord, le plafond ensuite : une phrase courte tient sur une ligne, une longue
+   * revient à la ligne à 220 px au lieu de le faire à la largeur d'une icône.
+   */
+  width: max-content;
   max-width: 220px;
   padding: var(--space-1) var(--space-4);
   border-radius: var(--radius-control);

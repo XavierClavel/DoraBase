@@ -11,6 +11,12 @@ export const tableViewFr: Dictionnaire = {
     refresh: 'Rafraîchir',
     increaseLimit: 'Augmenter la limite',
     decreaseLimit: 'Réduire la limite',
+    // Le nom **ne bouge pas** entre les deux états : c'est `aria-pressed` qui les distingue, et un
+    // bouton qui changerait de nom sous le doigt se chercherait à nouveau à chaque bascule.
+    editMode: 'Mode édition',
+    // L'infobulle *décrit*, elle ne *nomme* pas : elle porte ce que le nom ne peut pas dire — le
+    // raccourci qui fait le même geste.
+    editModeHint: (p) => `Modifier les lignes de la table · ${p.raccourci}`,
     addRow: 'Ajouter une ligne',
     removeFilter: (p) => `Retirer le filtre sur ${p.column}`,
     sqlExecuted: 'SQL exécuté',
@@ -179,6 +185,8 @@ export const tableViewEn: Dictionnaire = {
     refresh: 'Refresh',
     increaseLimit: 'Increase the limit',
     decreaseLimit: 'Decrease the limit',
+    editMode: 'Edit mode',
+    editModeHint: (p) => `Edit the table's rows · ${p.raccourci}`,
     addRow: 'Add a row',
     removeFilter: (p) => `Remove the filter on ${p.column}`,
     sqlExecuted: 'SQL executed',

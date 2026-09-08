@@ -668,6 +668,103 @@ qu'il portait et que le rendu ne dit pas.
     **tient ses réponses à la main** : quand il répond tout de suite, la boucle s'achève avant qu'on
     ait pu l'interrompre, et il n'y a plus rien à mesurer.
 
+- **Le mode édition s'ouvre aussi d'un bouton** (8 septembre 2026, `API-28`). Il ne s'ouvrait qu'au
+  `⌘E` de l'écran de travail, annoncé par une phrase de la barre d'état — 26 px de texte qui *disent*
+  le raccourci sans rien offrir à cliquer. C'est la raison qui a déjà fait doubler le `⇧`-clic du
+  diagramme et le renommage des consoles : **un chemin unique au clavier est un chemin que personne
+  ne trouve**. Quatre points :
+  - **le raccourci et le bouton appellent la même fonction**, `basculerLEdition`, plutôt que deux
+    mécaniques qui écriraient le même `Set` — l'idiome de la croix d'un chip et du champ de filtre
+    qu'elle vide. Deux voies pour un même acte en laissent une en arrière (règle n° 17), et ici la
+    seconde est arrivée un mois après la première ;
+  - **le nom du bouton ne bouge pas, `aria-pressed` porte l'état.** « Éditer » puis « Quitter
+    l'édition » ferait changer de nom sous le doigt qui vient de le trouver ; c'est le motif de
+    l'épingle du panneau de détail et du choix d'une table dans le diagramme ;
+  - **le crayon dans les deux états, et non un verrou qui deviendrait crayon** (rapporté à l'usage :
+    « l'interface n'est pas claire »). Le premier jet montrait le cadenas de la barre d'état au repos,
+    ce qui disait l'état *courant* là où un bouton doit dire l'**acte** qu'il offre : on lisait un
+    cadenas, on ne devinait pas qu'on pouvait l'ouvrir. La barre d'état, elle, garde ses deux icônes —
+    elle **décrit** là où le bouton **agit** ;
+  - **la pastille sombre porte donc l'état seule, et elle en a les moyens.** Le fond allumé est celui
+    d'`A9` pour dire quelle vue est à l'écran (`ColonneDroite.vueActive`), non `--accent`, qui veut
+    dire « désigné » et que les préférences laissent recolorer. Ce n'est pas une teinte posée sur un
+    fond inchangé : le fond **et** l'encre s'inversent, donc la distinction tient sans la couleur, et
+    `aria-pressed` la dit à qui ne voit ni l'une ni l'autre. Ce n'est pas non plus un état de survol
+    inventé — c'est l'état d'un contrôle ;
+  - **le drapeau `edition` de `Workbench` est parti avec.** Il forçait le mode au montage pour la
+    démo de `11a`, plus personne ne le passait depuis que `11b` a livré la bascule, et son
+    commentaire l'affirmait encore — le motif du `var()` mort et du `grid-column` inerte. Laissé en
+    place, il aurait rendu un bouton qui allume sans pouvoir éteindre, c'est-à-dire le défaut n° 36
+    au moyen de son propre remède.
+
+  **Ce que la galerie ne pouvait pas prouver** : que le bouton est branché à l'onglet, seul endroit
+  où ce mode existe. Elle monte la barre sans écran autour d'elle — d'où un test qui part de l'écran
+  de travail et regarde la **grille** suivre le bouton (règle n° 8), et un second qui vérifie que le
+  raccourci ferme ce que le bouton a ouvert.
+
+  **Et son infobulle a dénoncé un défaut de `Tooltip` vieux de `09f`** (rapporté à l'usage :
+  « l'infobulle est illisible, la fenêtre est trop courte »). Ce n'était pas la fenêtre, et les trois
+  points valent au-delà de ce bouton :
+
+  - **une infobulle était large comme son déclencheur.** Un élément absolument positionné se
+    dimensionne contre son bloc conteneur, ici l'enveloppe, qui épouse le contrôle : sur un carré de
+    27 px, elle rendait **55 px de large et 98 px de haut**, un mot par ligne, et son
+    `max-width: 220px` ne s'appliquait jamais faute de 220 px disponibles. `width: max-content`
+    d'abord, le plafond ensuite ;
+  - **le débordement par le haut en était la conséquence, pas la cause.** Ces 98 px la portaient à
+    `top: -23`. Rien ne la rognait — aucun ancêtre en `overflow: hidden`, donc **pas le défaut
+    n° 35** —, et une fois la largeur rendue elle tient au-dessus sans qu'aucun appelant ait à
+    choisir son côté. La leçon : un symptôme de position peut n'être qu'un symptôme de taille, et
+    poser `placement="bottom"` chez les appelants aurait « corrigé » l'écran en laissant les 55 px ;
+  - **et la rendre a ouvert l'autre bord.** Mesuré sur « Exporter CSV » du panneau de détail :
+    1367 px dans une fenêtre de 1360. Une largeur bornée par le déclencheur ne dépassait jamais ; une
+    largeur bornée par son contenu, oui. `Tooltip` mesure donc son décalage horizontal **depuis
+    l'ancre** — la leçon de `Popover`, une condition portant sur la position courante oscillerait —
+    et laisse le côté vertical explicite, pour la raison qu'`ouvertureVers` donne déjà : l'horizontale
+    dépend de la largeur du contenu, la verticale est structurelle chez l'appelant. Une bascule
+    verticale automatique a été écrite puis retirée le jour même : **aucun déclencheur du produit
+    n'est assez haut dans la fenêtre pour la déclencher**, donc rien n'aurait pu l'exercer.
+
+  **Et le `+` voisin a livré deux défauts de défilement, du même parcours** (8 septembre 2026,
+  rapporté à l'usage). Une ligne ajoutée va en **bas** de la grille :
+
+  - **le `+` ne descendait pas.** Sur une fenêtre de cinq cents lignes, il posait la ligne à douze
+    mille pixels sous le regard et rien ne bougeait à l'écran — un bouton dont l'effet est hors du
+    champ se lit comme un bouton qui ne fait rien, le défaut n° 36 sous une autre forme. `VirtualGrid`
+    reçoit donc un `scrollToBottom`, **compteur et non booléen** : le geste se répète, et un drapeau
+    devrait être rabaissé par quelqu'un. La cible est **mesurée sur la zone** (`scrollHeight -
+    clientHeight`), non calculée depuis `rows` : la hauteur compte l'en-tête collé, et la prévoir
+    laisserait la dernière ligne sous le bord ;
+  - **et ouvrir une cellule de cette ligne ramenait la fenêtre.** L'effet qui suit la ligne
+    *sélectionnée* partait à **chaque rendu de l'hôte** — `rowId` est une fonction fléchée écrite dans
+    le JSX de `A5`, donc une identité neuve à chaque fois —, et ramenait la vue sur une sélection qui,
+    elle, n'avait pas bougé. Mesuré : de 12 405 px à 26. Il ne part plus que si la sélection **se
+    déplace**, et le témoin porte l'**index autant que l'identité** : la même ligne qui change de rang
+    (un tri, un filtre) doit être ramenée, une relecture qui la laisse en place ne doit rien bouger.
+
+  **`Element.prototype.scrollTo` n'existe pas sous jsdom, et cela avait caché le premier effet à
+  toute la suite.** Aucun test unitaire ne l'atteignait — il faut que la sélection sorte de la fenêtre
+  visible, ce qu'aucun décor ne faisait —, si bien que le complément manquait sans qu'on le sache :
+  le second appel, ajouté ce jour-là, a fait tomber d'un coup les huit tests qui cliquent « Ajouter
+  une ligne », sur un `TypeError` qui ne se distingue pas d'un défaut du sujet. Il vit désormais dans
+  `src/test/setup.ts`, à côté de `scrollIntoView` et pour la même raison.
+
+  **Le test de bout en bout a menti deux fois avant de mordre** (règle n° 1, et c'est le meilleur
+  exemple du fichier). Version 1 : la sélection était prise **après** la descente, donc sur une ligne
+  du bas — il n'y avait nulle part où revenir. Version 2 : elle était prise sur
+  `getByRole('row').nth(1)`, qui est la **ligne des filtres** — `getByRole('row')` compte les deux
+  lignes d'en-tête, donc rien n'était sélectionné du tout. Les deux fois, le sabotage laissait le test
+  vert. Ce qui l'a réparé est une assertion sur le **décor** et non sur le sujet :
+  `[role=row][aria-selected=true]` doit exister avant qu'on mesure quoi que ce soit.
+
+  **Deux tests, à deux niveaux, parce que le défaut a deux bords.** L'infobulle du bouton tient sur
+  une ligne et reste dans la fenêtre (`10e`) ; et **aucune** infobulle du panneau de détail ne
+  franchit un bord (`geometrie-reelle`), le panneau étant contre le bord droit — c'est le niveau qui
+  n'appartient à aucun écran, et le seul d'où le second bord se voyait. À ne pas remplacer par
+  `elementFromPoint`, que le défaut n° 35 recommande pourtant : une infobulle porte
+  `pointer-events: none`, donc la mesure rend toujours ce qu'il y a **dessous** — verte pour une
+  raison qui n'a rien à voir avec la question posée.
+
 ### Les filtres suivent la colonne (3 septembre 2026)
 
 Le popover d'en-tête proposait **les mêmes cinq opérateurs à toutes les colonnes**, et les quatre

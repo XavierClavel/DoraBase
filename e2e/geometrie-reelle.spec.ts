@@ -445,6 +445,57 @@ test('les libellés des actions du panneau tiennent dans leur bouton', async ({ 
   expect(debordements).toEqual([])
 })
 
+/**
+ * **Aucune infobulle ne franchit un bord de la fenêtre.**
+ *
+ * Le niveau que ce fichier existe pour tenir : une infobulle n'appartient à aucun écran, elle
+ * appartient au contrôle qui la déclenche, et sa géométrie dépend d'où celui-ci se trouve. Le
+ * panneau de détail est contre le bord droit — c'est là que « Exporter CSV » a fini à 1367 px dans
+ * une fenêtre de 1360, le 8 septembre 2026, le jour où l'infobulle a cessé d'être large comme son
+ * déclencheur. Un bord tenait l'autre par accident.
+ *
+ * **Toutes celles de l'écran, pas la plus suspecte** : celle qui déborde est celle qu'on n'a pas
+ * choisie, et un test qui vise une seule action se périme au premier libellé raccourci.
+ */
+test('aucune infobulle du panneau ne franchit un bord de la fenêtre', async ({ page }) => {
+  await page.goto('/?demo')
+  await deplierUnEnvironnement(page)
+  await page.getByRole('treeitem', { name: /^analytics/ }).dblclick()
+  await page.getByRole('treeitem', { name: 'public' }).dblclick()
+  await page.waitForSelector('nav[aria-label]')
+  await page.getByRole('row').nth(1).click()
+  // Le refus de l'ensemble vide, et il attend : sans sélection, le panneau n'a aucune action et le
+  // test passerait sur zéro infobulle (règle n° 15).
+  await expect(page.getByRole('button', { name: /SELECT dans console/ })).toHaveCount(1)
+  await page.evaluate(() => document.fonts.ready)
+
+  const actions = page.locator('[aria-disabled="true"]')
+  const combien = await actions.count()
+  expect(combien).toBeGreaterThan(0)
+
+  for (let rang = 0; rang < combien; rang++) {
+    await actions.nth(rang).hover()
+    const bulle = page.getByRole('tooltip')
+    await expect(bulle).toBeVisible()
+    const boite = await bulle.evaluate((e) => {
+      const r = e.getBoundingClientRect()
+      return {
+        haut: r.top,
+        bas: r.bottom,
+        gauche: r.left,
+        droite: r.right,
+        w: window.innerWidth,
+        h: window.innerHeight,
+        texte: e.textContent,
+      }
+    })
+    expect(boite.droite, `droite de « ${boite.texte} »`).toBeLessThanOrEqual(boite.w)
+    expect(boite.gauche, `gauche de « ${boite.texte} »`).toBeGreaterThanOrEqual(0)
+    expect(boite.haut, `haut de « ${boite.texte} »`).toBeGreaterThanOrEqual(0)
+    expect(boite.bas, `bas de « ${boite.texte} »`).toBeLessThanOrEqual(boite.h)
+  }
+})
+
 test('rien ne se sélectionne, sauf ce qui s’édite', async ({ page }) => {
   await ouvrirUneTable(page)
 
