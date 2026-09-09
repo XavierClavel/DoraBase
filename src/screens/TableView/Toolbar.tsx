@@ -26,6 +26,127 @@ export const VALEURS: Record<RowLimit, number> = {
   fiveThousand: 5000,
 }
 
+/**
+ * Le stepper `LIMIT` — extrait pour que la console porte **le même** (ses libellés compris) : la
+ * même commande sur la même donnée ne doit pas se dire de deux façons.
+ *
+ * Il parle en **nombres**, pas en `RowLimit` : la console lit la limite que la requête porte, qui
+ * peut être n'importe quel entier (`limit 37`). Les flèches, elles, ne produisent que les quatre
+ * paliers — le palier suivant au-dessus ou en dessous de la valeur affichée —, donc `A5` reste
+ * dans son énumération fermée : « demander tout » n'est toujours pas exprimable.
+ */
+export function StepperDeLimite({
+  valeur,
+  onChoisir,
+  titre,
+}: {
+  valeur: number
+  /** Reçoit toujours l'une des quatre valeurs de `VALEURS`. */
+  onChoisir: (valeur: number) => void
+  /** Infobulle de la valeur — la console y dit qu'une limite implicite s'applique. */
+  titre?: string
+}) {
+  const t = useT()
+  const paliers = PALIERS.map((palier) => VALEURS[palier])
+  const auDessus = paliers.find((candidat) => candidat > valeur)
+  const enDessous = [...paliers].reverse().find((candidat) => candidat < valeur)
+
+  return (
+    <div className={styles.stepper}>
+      <span className={styles.stepperLabel}>LIMIT</span>
+      <span className={styles.stepperValeur} title={titre}>
+        {valeur}
+      </span>
+      <span className={styles.fleches}>
+        <button
+          type="button"
+          className={styles.fleche}
+          aria-label={t('tableView.toolbar.increaseLimit')}
+          disabled={auDessus === undefined}
+          onClick={() => {
+            if (auDessus !== undefined) onChoisir(auDessus)
+          }}
+        >
+          <Icon name="chevd" size={8} strokeWidth={3} className={styles.haut} />
+        </button>
+        <button
+          type="button"
+          className={styles.fleche}
+          aria-label={t('tableView.toolbar.decreaseLimit')}
+          disabled={enDessous === undefined}
+          onClick={() => {
+            if (enDessous !== undefined) onChoisir(enDessous)
+          }}
+        >
+          <Icon name="chevd" size={8} strokeWidth={3} />
+        </button>
+      </span>
+    </div>
+  )
+}
+
+/**
+ * Le menu « colonnes affichées » — extrait pour la console, comme le stepper.
+ *
+ * `raisonDeLaDerniere` est l'ajout de la console : fournie, la dernière colonne visible ne se
+ * décoche plus, avec l'infobulle qui dit pourquoi. `A5` ne la passe pas — sa barre d'outils reste
+ * un chemin de retour même toutes colonnes masquées, quand la console n'a que ce menu.
+ */
+export function MenuDesColonnes({
+  colonnes,
+  masquees,
+  onToggle,
+  raisonDeLaDerniere,
+}: {
+  colonnes: readonly { name: string; typeName?: string }[]
+  masquees: ReadonlySet<string>
+  onToggle: (name: string) => void
+  raisonDeLaDerniere?: string
+}) {
+  const t = useT()
+  const visibles = colonnes.length - masquees.size
+
+  return (
+    <Popover
+      align="end"
+      title={t('tableView.toolbar.columnsShown')}
+      content={
+        <ul className={styles.colonnes}>
+          {colonnes.map((colonne) => {
+            const derniere =
+              raisonDeLaDerniere !== undefined && visibles === 1 && !masquees.has(colonne.name)
+            return (
+              <li key={colonne.name}>
+                <label className={styles.colonne} title={derniere ? raisonDeLaDerniere : undefined}>
+                  <input
+                    type="checkbox"
+                    checked={!masquees.has(colonne.name)}
+                    disabled={derniere}
+                    onChange={() => onToggle(colonne.name)}
+                  />
+                  {colonne.name}
+                  {colonne.typeName !== undefined && (
+                    <span className={styles.type}>{colonne.typeName}</span>
+                  )}
+                </label>
+              </li>
+            )
+          })}
+        </ul>
+      }
+    >
+      <button
+        type="button"
+        className={styles.bouton}
+        aria-label={t('tableView.toolbar.columnsShown')}
+      >
+        <Icon name="cols" size={13} strokeWidth={1.9} />
+        {visibles}/{colonnes.length}
+      </button>
+    </Popover>
+  )
+}
+
 type ToolbarProps = {
   limite: RowLimit
   onLimiteChange: (limite: RowLimit) => void
@@ -142,8 +263,6 @@ export function Toolbar({
   enCours = false,
 }: ToolbarProps) {
   const t = useT()
-  const rang = PALIERS.indexOf(limite)
-  const visibles = columns.length - masquees.size
   const chips = useDefilementHorizontal()
 
   return (
@@ -172,37 +291,16 @@ export function Toolbar({
 
       {/* **Le stepper ne peut pas produire une valeur hors des quatre paliers.** `RowLimit` est
           une énumération fermée depuis `06a`, précisément pour que « demander tout » ne soit pas
-          exprimable ; un champ de saisie libre rouvrirait le trou que le type a fermé. */}
-      <div className={styles.stepper}>
-        <span className={styles.stepperLabel}>LIMIT</span>
-        <span className={styles.stepperValeur}>{VALEURS[limite]}</span>
-        <span className={styles.fleches}>
-          <button
-            type="button"
-            className={styles.fleche}
-            aria-label={t('tableView.toolbar.increaseLimit')}
-            disabled={rang >= PALIERS.length - 1}
-            onClick={() => {
-              const suivant = PALIERS[rang + 1]
-              if (suivant) onLimiteChange(suivant)
-            }}
-          >
-            <Icon name="chevd" size={8} strokeWidth={3} className={styles.haut} />
-          </button>
-          <button
-            type="button"
-            className={styles.fleche}
-            aria-label={t('tableView.toolbar.decreaseLimit')}
-            disabled={rang <= 0}
-            onClick={() => {
-              const precedent = PALIERS[rang - 1]
-              if (precedent) onLimiteChange(precedent)
-            }}
-          >
-            <Icon name="chevd" size={8} strokeWidth={3} />
-          </button>
-        </span>
-      </div>
+          exprimable ; un champ de saisie libre rouvrirait le trou que le type a fermé — et le
+          composant partagé ne rend que des valeurs de `VALEURS`, donc la recherche du palier
+          retrouve toujours le sien. */}
+      <StepperDeLimite
+        valeur={VALEURS[limite]}
+        onChoisir={(valeur) => {
+          const palier = PALIERS.find((candidat) => VALEURS[candidat] === valeur)
+          if (palier) onLimiteChange(palier)
+        }}
+      />
 
       {/* **La bascule d'abord, le `+` ensuite** : c'est elle qui fait paraître celui-ci, et les deux
           se lisent comme une paire — on ouvre l'édition, la ligne à ajouter s'ouvre à côté. Elle
@@ -291,36 +389,7 @@ export function Toolbar({
         </button>
       </Popover>
 
-      <Popover
-        align="end"
-        title={t('tableView.toolbar.columnsShown')}
-        content={
-          <ul className={styles.colonnes}>
-            {columns.map((colonne) => (
-              <li key={colonne.name}>
-                <label className={styles.colonne}>
-                  <input
-                    type="checkbox"
-                    checked={!masquees.has(colonne.name)}
-                    onChange={() => onToggleColonne(colonne.name)}
-                  />
-                  {colonne.name}
-                  <span className={styles.type}>{colonne.typeName}</span>
-                </label>
-              </li>
-            ))}
-          </ul>
-        }
-      >
-        <button
-          type="button"
-          className={styles.bouton}
-          aria-label={t('tableView.toolbar.columnsShown')}
-        >
-          <Icon name="cols" size={13} strokeWidth={1.9} />
-          {visibles}/{columns.length}
-        </button>
-      </Popover>
+      <MenuDesColonnes colonnes={columns} masquees={masquees} onToggle={onToggleColonne} />
 
       {/* **L'export est un sujet, pas un bouton.** La CSP refuse `blob:`, et il reste à trancher
           la fenêtre ou le résultat complet, l'encodage, le séparateur, le traitement des `NULL` —

@@ -1,14 +1,20 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
 import type { QueryResult } from '../../domain/engine'
 import { useT } from '../../i18n/LanguageContext'
 import { raccourci } from '../../shell/plateforme'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
+import { MenuDesColonnes, StepperDeLimite } from '../TableView/Toolbar'
 import type { Dialecte } from '../Workbench/onglets'
-import { ConsoleResult, type VueResultat } from './ConsoleResult'
+import { ConsoleResult, ordonner, type VueResultat } from './ConsoleResult'
 import styles from './ConsoleView.module.css'
 import type { Catalogue } from './completion'
-import { SqlEditor } from './SqlEditor'
+import { limiteDe, poserLaLimite } from './limite'
+import { reordonnerLaProjection } from './projection'
+import { type CommandesEditeur, SqlEditor } from './SqlEditor'
+
+/** Ce que le moteur applique quand la requête ne porte pas de `limit` — l'« auto-LIMIT 1000 ». */
+const LIMITE_AUTOMATIQUE = 1000
 
 type ConsoleViewProps = {
   /**
@@ -71,6 +77,79 @@ export function ConsoleView({
   // requête entière quand il n'y a rien de sélectionné — un bouton qui ne ferait rien sur une
   // sélection vide se lirait comme une panne.
   const [selection, setSelection] = useState('')
+  // Les commandes de l'éditeur — le canal impératif de `SqlEditor`, rempli au montage.
+  const editeur = useRef<CommandesEditeur | null>(null)
+  // Les colonnes masquées et l'ordre d'affichage du résultat — tenus **ici**, pas dans
+  // `ConsoleResult` : la barre d'outils montre le menu « colonnes affichées », et chaque geste
+  // réécrit la requête. Écart-au-défaut, par nom : un nom absent du prochain résultat est sans
+  // effet, donc corriger sa requête ne défait pas la mise en page.
+  const [masquees, setMasquees] = useState<ReadonlySet<string>>(new Set())
+  const [ordre, setOrdre] = useState<readonly string[] | null>(null)
+
+  /** Les colonnes visibles, dans l'ordre d'affichage — ce que la projection de la requête devient. */
+  function projectionVisible(
+    ordreCourant: readonly string[] | null,
+    masqueesCourantes: ReadonlySet<string>,
+  ): string[] {
+    if (!resultat) return []
+    return ordonner(
+      resultat.columns.map((nom) => ({ nom })),
+      ordreCourant,
+    )
+      .map((entree) => entree.nom)
+      .filter((nom) => !masqueesCourantes.has(nom))
+  }
+
+  /**
+   * Chaque geste de colonnes — réordonner, masquer, réafficher — réécrit la projection de la
+   * requête, quand celle-ci se laisse lire avec certitude (`projection.ts` — sinon `null`, et la
+   * requête reste telle quelle ; l'affichage, lui, a déjà suivi le geste). Trois points :
+   *
+   * - **rien n'est réexécuté.** Une requête de console n'est pas forcément idempotente — un
+   *   `update … returning` relancé sur un glissement de colonne écrirait deux fois. Le journal des
+   *   messages continue donc de porter le SQL réellement exécuté, qui peut différer de l'éditeur ;
+   * - la réécriture passe par une transaction CodeMirror (`remplacerTexte`), donc `⌘Z` rend le
+   *   texte d'avant — c'est le chemin de retour du geste ;
+   * - `onTexteChange` est notifié par l'éditeur lui-même, comme pour une frappe : l'écran garde
+   *   la vérité du texte sans second circuit.
+   */
+  function reecrireLaProjection(colonnes: readonly string[]) {
+    if (dialecte === 'mongo' || colonnes.length === 0) return
+    const reecriture = reordonnerLaProjection(texte, colonnes)
+    if (reecriture === null || reecriture.sql === texte) return
+    // Le repli : une longue liste s'affiche pliée derrière une `…` cliquable, mais le texte reste
+    // entier — exécutable, copiable, relisible. Voir `Reecriture.repli`.
+    editeur.current?.remplacerTexte(reecriture.sql, reecriture.repli ?? undefined)
+  }
+
+  function poserLOrdre(nouvelOrdre: readonly string[]) {
+    setOrdre(nouvelOrdre)
+    reecrireLaProjection(projectionVisible(nouvelOrdre, masquees))
+  }
+
+  function basculerLaColonne(nom: string) {
+    const suivantes = new Set(masquees)
+    if (suivantes.has(nom)) suivantes.delete(nom)
+    else suivantes.add(nom)
+    setMasquees(suivantes)
+    reecrireLaProjection(projectionVisible(ordre, suivantes))
+  }
+
+  function reafficherTout() {
+    setMasquees(new Set())
+    reecrireLaProjection(projectionVisible(ordre, new Set()))
+  }
+
+  // Le stepper `LIMIT` est **bidirectionnel** : il affiche la limite que la requête porte — lue à
+  // chaque frappe, puisque le texte redescend par les props — et ses flèches l'écrivent dedans.
+  // Sans limite écrite, il montre celle que le moteur ajoutera, et l'infobulle le dit.
+  const limiteEcrite = dialecte === 'mongo' ? null : limiteDe(texte)
+
+  function choisirLaLimite(valeur: number) {
+    const nouveau = poserLaLimite(texte, valeur)
+    if (nouveau === null || nouveau === texte) return
+    editeur.current?.remplacerTexte(nouveau)
+  }
 
   const executer = onExecuter === undefined ? undefined : () => onExecuter(texte)
   const executerLaSelection =
@@ -117,16 +196,35 @@ export function ConsoleView({
           </button>
         ))}
         <span className={styles.espace} />
-        {/* Le mockup montre l'auto-`LIMIT` comme un état affiché, pas comme un réglage : c'est `12c`
-            qui l'appliquera, et `A10` qui le rendra réglable.
+        {/* **En mongo, l'auto-`$limit` reste un état affiché** : ce n'est pas un `LIMIT` SQL mais
+            un `$limit` ajouté en fin de pipeline (`18g`), que le stepper ne sait pas écrire.
 
-            **En mongo, le mot change** : ce n'est pas un `LIMIT` SQL mais un `$limit` ajouté en fin
-            de pipeline (`18g`). Garder « LIMIT » ferait chercher une clause qui n'existe pas. */}
-        <span className={styles.limite}>
-          {dialecte === 'mongo'
-            ? t('console.toolbar.autoLimitMongo')
-            : t('console.toolbar.autoLimitSql')}
-        </span>
+            **En SQL, l'état est devenu les deux réglages d'`A5`** — le stepper `LIMIT` et le menu
+            des colonnes affichées, les mêmes composants — et tous deux parlent à la **requête** :
+            le stepper affiche la limite écrite (ou celle que le moteur ajoutera, l'infobulle le
+            dit) et ses flèches l'écrivent ; le menu coche les colonnes du dernier résultat, et
+            chaque bascule réécrit la projection. */}
+        {dialecte === 'mongo' ? (
+          <span className={styles.limite}>{t('console.toolbar.autoLimitMongo')}</span>
+        ) : (
+          <>
+            <StepperDeLimite
+              valeur={limiteEcrite ?? LIMITE_AUTOMATIQUE}
+              onChoisir={choisirLaLimite}
+              titre={limiteEcrite === null ? t('console.toolbar.limiteImplicite') : undefined}
+            />
+            {resultat !== null && resultat.columns.length > 0 && (
+              <MenuDesColonnes
+                colonnes={resultat.columns.map((name) => ({ name }))}
+                masquees={masquees}
+                onToggle={basculerLaColonne}
+                // La console n'a que ce menu et celui des en-têtes pour revenir : la dernière
+                // colonne visible ne se décoche pas, même règle que le menu d'en-tête.
+                raisonDeLaDerniere={t('console.resultat.derniereColonne')}
+              />
+            )}
+          </>
+        )}
       </div>
 
       <div className={styles.corps}>
@@ -145,6 +243,7 @@ export function ConsoleView({
                 onExecuter={executer}
                 onExecuterLaSelection={executerLaSelection}
                 catalogue={catalogue}
+                commandes={editeur}
                 dialecte={dialecte}
               />
             </div>
@@ -158,6 +257,11 @@ export function ConsoleView({
               onVueChange={onVueChange}
               dialecte={dialecte}
               rowHeight={rowHeight}
+              masquees={masquees}
+              ordre={ordre}
+              onBasculerColonne={basculerLaColonne}
+              onReafficher={reafficherTout}
+              onOrdreChange={poserLOrdre}
             />
           }
         />

@@ -36,6 +36,38 @@ test('exécuter affiche le résultat sous l’éditeur, avec ses chiffres', asyn
   await expect(barre).toContainText('limité à 1000 par DoraBase')
 })
 
+test('réordonner une colonne du résultat réécrit la projection dans l’éditeur', async ({
+  page,
+}) => {
+  // `select *` : le cas le plus courant, et celui que la réécriture développe — le décor rend
+  // toujours `jour, commandes, ca_eur`, donc la liste écrite doit devenir ces trois noms.
+  await page.keyboard.insertText('select * from ventes')
+  await page.getByRole('button', { name: /Exécuter/ }).click()
+  await page.waitForSelector('[role=grid]')
+
+  await page.getByRole('button', { name: 'Déplacer commandes (flèches gauche et droite)' }).focus()
+  await page.keyboard.press('ArrowLeft')
+
+  // En `poll` : la réécriture passe par une transaction CodeMirror, dont le rendu suit le geste.
+  const editeur = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('.cm-content > .cm-line')]
+        .map((ligne) => ligne.textContent)
+        .join('\n'),
+    )
+  await expect.poll(editeur).toBe('select commandes, jour, ca_eur from ventes')
+
+  // Le menu des colonnes de la barre — celui d'`A5` — masque `jour`, et le select la perd.
+  await page.getByRole('button', { name: 'Colonnes affichées' }).click()
+  await page.getByRole('checkbox', { name: 'jour' }).uncheck()
+  await expect.poll(editeur).toBe('select commandes, ca_eur from ventes')
+  await page.keyboard.press('Escape')
+
+  // Et le stepper LIMIT écrit dans la requête ce qu'il affichait comme implicite.
+  await page.getByRole('button', { name: 'Réduire la limite' }).click()
+  await expect.poll(editeur).toBe('select commandes, ca_eur from ventes\nlimit 500')
+})
+
 test('le résultat appartient à sa console : basculer d’onglet le change', async ({ page }) => {
   await page.keyboard.insertText('select 1')
   await page.getByRole('button', { name: /Exécuter/ }).click()

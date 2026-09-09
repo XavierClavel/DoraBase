@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import type { QueryResult } from '../../domain/engine'
 import { LanguageProvider } from '../../i18n/LanguageContext'
@@ -19,10 +20,39 @@ const RESULTAT: QueryResult = {
   appliedLimit: null,
 }
 
+/**
+ * Le harnais d'état : les masquées et l'ordre vivent chez l'écran (`ConsoleView`) depuis que la
+ * barre d'outils montre le menu des colonnes et que chaque geste réécrit la requête — le composant
+ * les reçoit. Le harnais rejoue cette tenue d'état, sans l'éditeur.
+ */
+function Harnais({ resultat = RESULTAT }: { resultat?: QueryResult }) {
+  const [masquees, setMasquees] = useState<ReadonlySet<string>>(new Set())
+  const [ordre, setOrdre] = useState<readonly string[] | null>(null)
+  return (
+    <ConsoleResult
+      resultat={resultat}
+      erreur={null}
+      enCours={false}
+      masquees={masquees}
+      ordre={ordre}
+      onBasculerColonne={(nom) =>
+        setMasquees((precedent) => {
+          const suivantes = new Set(precedent)
+          if (suivantes.has(nom)) suivantes.delete(nom)
+          else suivantes.add(nom)
+          return suivantes
+        })
+      }
+      onReafficher={() => setMasquees(new Set())}
+      onOrdreChange={setOrdre}
+    />
+  )
+}
+
 function monter(resultat: QueryResult = RESULTAT) {
   render(
     <LanguageProvider preferences={{ language: 'fr' }}>
-      <ConsoleResult resultat={resultat} erreur={null} enCours={false} />
+      <Harnais resultat={resultat} />
     </LanguageProvider>,
   )
   return screen.getByRole('grid')
@@ -89,6 +119,79 @@ describe('ConsoleResult', () => {
     // Le geste n'a pas eu lieu.
     await utilisateur.keyboard('{Escape}')
     expect(noms(grille)).toEqual(['seule'])
+  })
+
+  it('une colonne se déplace aux flèches, comme dans la grille des tables', async () => {
+    const utilisateur = userEvent.setup()
+    const grille = monter()
+    expect(noms(grille)).toEqual(['id', 'statut', 'total'])
+
+    // Le même libellé mot pour mot qu'`A5` : le même geste ne se dit pas de deux façons.
+    screen.getByRole('button', { name: 'Déplacer statut (flèches gauche et droite)' }).focus()
+    await utilisateur.keyboard('{ArrowLeft}')
+    expect(noms(grille)).toEqual(['statut', 'id', 'total'])
+    // Les cellules ont suivi : l'ordre est celui de l'affichage, les valeurs restent les bonnes.
+    expect(valeurs(grille)).toEqual(['paid', '7', '12.50'])
+  })
+
+  it('la poignée redimensionne, et la largeur posée à la main l’emporte sur l’ajustement', async () => {
+    const utilisateur = userEvent.setup()
+    const grille = monter()
+
+    const poignee = within(grille).getByRole('slider', { name: 'Redimensionner statut' })
+    const ajustee = Number(poignee.getAttribute('aria-valuenow'))
+    poignee.focus()
+    await utilisateur.keyboard('{ArrowRight}')
+    // +8 : le pas clavier de la grille. La nouvelle valeur relue ici prouve que la console a bien
+    // repris la largeur dans son état — sans quoi la poignée retomberait sur l'ajustement.
+    expect(Number(poignee.getAttribute('aria-valuenow'))).toBe(ajustee + 8)
+  })
+
+  it('l’ordre et la largeur posés survivent à une nouvelle exécution', async () => {
+    const utilisateur = userEvent.setup()
+    const { rerender } = render(
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <Harnais />
+      </LanguageProvider>,
+    )
+    const grille = screen.getByRole('grid')
+
+    screen.getByRole('button', { name: 'Déplacer statut (flèches gauche et droite)' }).focus()
+    await utilisateur.keyboard('{ArrowLeft}')
+    const poignee = within(grille).getByRole('slider', { name: 'Redimensionner statut' })
+    poignee.focus()
+    await utilisateur.keyboard('{ArrowRight}')
+    const posee = Number(poignee.getAttribute('aria-valuenow'))
+
+    // Une nouvelle exécution : mêmes colonnes plus une — corriger sa requête ne doit pas défaire
+    // la mise en page qu'on vient de régler, et la colonne inconnue de l'ordre arrive **en fin**,
+    // jamais perdue.
+    rerender(
+      <LanguageProvider preferences={{ language: 'fr' }}>
+        <Harnais
+          resultat={{
+            ...RESULTAT,
+            columns: ['id', 'statut', 'total', 'devise'],
+            rows: [
+              [
+                { kind: 'int', value: 7 },
+                { kind: 'text', value: 'paid' },
+                { kind: 'decimal', value: '12.50' },
+                { kind: 'text', value: 'EUR' },
+              ],
+            ],
+          }}
+        />
+      </LanguageProvider>,
+    )
+    expect(noms(grille)).toEqual(['statut', 'id', 'total', 'devise'])
+    expect(
+      Number(
+        within(grille)
+          .getByRole('slider', { name: 'Redimensionner statut' })
+          .getAttribute('aria-valuenow'),
+      ),
+    ).toBe(posee)
   })
 
   it('le clic droit sur une cellule copie sa valeur', async () => {
