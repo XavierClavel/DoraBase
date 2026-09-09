@@ -1181,10 +1181,12 @@ export function WorkbenchDemo() {
                   affected: null,
                 }
 
-            // Le pendant du journal du registre : en mode manuel, l'instruction entre dans la
-            // transaction de **sa connexion**. C'est `useTransaction` qui la relira.
-            if (mode === 'manual') {
-              const id = indexDeConnexion(cle)
+            // Le pendant du journal du registre, **règle comprise** : le mode décide de
+            // l'*ouverture*, mais le journal dit ce que la transaction *contient* — une requête
+            // lancée en `auto` pendant qu'une transaction est ouverte y entre de toute façon, la
+            // session la portant. C'est `useTransaction` qui le relira.
+            const id = indexDeConnexion(cle)
+            if (mode === 'manual' || (journaux.current[id]?.length ?? 0) > 0) {
               journaux.current[id] = [
                 ...(journaux.current[id] ?? []),
                 {

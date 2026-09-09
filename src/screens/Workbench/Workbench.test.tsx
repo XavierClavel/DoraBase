@@ -2593,6 +2593,8 @@ describe('la transaction manuelle de la console', () => {
       inscrire(rendue: TransactionStatement, reponse: QueryResult | null = null) {
         journal = [...journal, { rendue, reponse }]
       },
+      /** Vrai quand une transaction est ouverte — voir la règle du registre, dans `runSql`. */
+      ouverte: () => journal.length > 0,
       passerelle: {
         transactionState: async (cle: DatabaseKey) => {
           vus.lectures.push(cle)
@@ -2650,9 +2652,12 @@ describe('la transaction manuelle de la console', () => {
           const reponse: QueryResult = ecrit
             ? { ...RESULTAT, sql, columns: [], rows: [], affected: 3 }
             : { ...RESULTAT, sql, columns: ['n'], rows: [[{ kind: 'int', value: 41 }]] }
-          // Le pendant du registre : c'est le mode qui décide de l'ouverture, et l'instruction
-          // entre alors dans la transaction — avec sa réponse, que le cœur garde.
-          if (mode === 'manual') {
+          // Le pendant du registre, **règle comprise** : le mode décide de l'*ouverture*, mais le
+          // journal dit ce que la transaction *contient* — une requête lancée en `auto` pendant
+          // qu'une transaction est ouverte y entre de toute façon, la session la portant. Un décor
+          // qui ne l'inscrirait qu'en manuel rendrait invisible l'écart que le régime par console
+          // laisse ouvert, c'est-à-dire exactement ce qu'un test doit pouvoir voir.
+          if (mode === 'manual' || factice.ouverte()) {
             factice.inscrire(
               {
                 sql,
@@ -2802,6 +2807,71 @@ describe('la transaction manuelle de la console', () => {
     // Et le journal est relu : le panneau retombe sur son invite plutôt que de garder une liste que
     // la validation a emportée.
     await waitFor(() => expect(panneau).toHaveTextContent(/Rien n’est encore retenu/))
+  })
+
+  it('le régime est celui de la console, non de sa connexion', async () => {
+    const utilisateur = userEvent.setup()
+    await ouvrirUneConsoleAvecTransaction(utilisateur)
+    await utilisateur.click(screen.getByRole('switch', { name: 'Transaction manuelle' }))
+    await saisir(utilisateur, 'delete from ventes')
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+    const panneau = await screen.findByRole('complementary', { name: 'Transaction en cours' })
+    await waitFor(() => expect(panneau).toHaveTextContent('3 lignes touchées'))
+
+    // **Une seconde console sur la même connexion**, et c'est le nerf du test : elle part en
+    // automatique, et le panneau de la première ne la suit pas. Le régime est réglé *sur un onglet*
+    // — comme son texte et son résultat —, non sur la base.
+    await ouvrirUneConsole(utilisateur)
+    expect(screen.queryByRole('complementary', { name: 'Transaction en cours' })).toBeNull()
+    expect(screen.getByRole('switch', { name: 'Transaction manuelle' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    )
+
+    // Et revenir la retrouve, avec ce qu'elle retenait : l'état suit l'onglet, il ne se perd pas.
+    await utilisateur.click(screen.getByRole('tab', { name: /console 1/ }))
+    const retrouve = await screen.findByRole('complementary', { name: 'Transaction en cours' })
+    expect(retrouve).toHaveTextContent('3 lignes touchées')
+    expect(screen.getByRole('switch', { name: 'Transaction manuelle' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+  })
+
+  it('une console en automatique dit qu’une transaction est ouverte sur sa connexion', async () => {
+    const utilisateur = userEvent.setup()
+    await ouvrirUneConsoleAvecTransaction(utilisateur)
+    await utilisateur.click(screen.getByRole('switch', { name: 'Transaction manuelle' }))
+    await saisir(utilisateur, 'delete from ventes')
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+    await waitFor(() =>
+      expect(screen.getByRole('complementary', { name: 'Transaction en cours' })).toHaveTextContent(
+        '3 lignes touchées',
+      ),
+    )
+
+    await ouvrirUneConsole(utilisateur)
+
+    // **Le seul écart que le régime par console laisse ouvert, et il se dit.** Les deux consoles
+    // partagent une session : les requêtes de celle-ci entreront dans la transaction que sa voisine
+    // a ouverte, et qu'un « Valider » d'ailleurs décidera. Le taire serait laisser croire à une
+    // écriture validée.
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Une transaction est ouverte sur cette connexion/),
+      ).toBeInTheDocument(),
+    )
+
+    // Et ce qu'elle exécute entre bien dans cette transaction — le panneau de la première le
+    // montre, puisque le journal est celui de la connexion.
+    await saisir(utilisateur, 'update ventes set statut = 2')
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter/ }))
+    // **Celle-ci est confirmée, elle** : le régime est réglé par console, et cette console-ci est en
+    // automatique — c'est la dispense de confirmation qui suit le régime, pas la transaction.
+    await utilisateur.click(screen.getByRole('button', { name: /Exécuter ce UPDATE/ }))
+    await utilisateur.click(screen.getByRole('tab', { name: /console 1/ }))
+    const panneau = await screen.findByRole('complementary', { name: 'Transaction en cours' })
+    await waitFor(() => expect(within(panneau).getAllByRole('listitem')).toHaveLength(2))
   })
 
   it('une transaction qui n’a fait que lire se valide sans confirmation', async () => {

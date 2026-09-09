@@ -544,12 +544,23 @@ export function Workbench({
    * réécrivent, et une transaction fermée avec sa connexion doit disparaître du panneau plutôt que
    * d'y offrir un « Valider » qui n'a plus rien à valider.
    */
-  const transaction = useTransaction(passerelleTransaction, cleConsole, projects)
+  /**
+   * L'adresse de la console active pour la transaction : sa connexion **et** son onglet (`API-38`).
+   *
+   * Les deux, parce que les deux états ne sont pas au même endroit — le régime appartient à la
+   * console, la transaction à la session. `null` hors d'une console : le régime ne se règle pas sur
+   * une table.
+   */
+  const consoleDeTransaction =
+    consoleActive === null || cleConsole === null
+      ? null
+      : { cle: cleConsole, id: idOnglet(consoleActive) }
+  const transaction = useTransaction(passerelleTransaction, consoleDeTransaction, projects)
   const execution = useExecution(
     cleConsole,
     passerelleExecution ?? PASSERELLE_EXECUTION,
     idConsoleActive,
-    transaction.mode(cleConsole),
+    transaction.mode(consoleDeTransaction),
     transaction.apresExecution,
   )
 
@@ -592,10 +603,10 @@ export function Workbench({
    * se **refuse** avec sa raison, et les deux boutons du panneau restent les deux seules issues.
    * C'est la règle du bouton désactivé qui nomme ce qui manque (`09f`).
    */
-  function raisonDeFigerLaTransaction(cleDeLaConsole: DatabaseKey): string | null {
+  function raisonDeFigerLaTransaction(console: { cle: DatabaseKey; id: string }): string | null {
     const refus = raisonSansTransaction(moteurConsole)
     if (refus !== null) return t(refus)
-    const etat = transaction.etat(cleDeLaConsole)
+    const etat = transaction.etat(console)
     if (etat.statements.length === 0) return null
     // **La raison nomme le geste qui reste.** Sur une transaction abandonnée, « validez-la ou
     // annulez-la » proposerait ce que le panneau vient justement de retirer.
@@ -1198,12 +1209,17 @@ export function Workbench({
              puisse figer la bascule. Les deux cas ne peuvent pas se présenter en même temps : un
              moteur qui ne tient pas de transaction n'en a jamais d'ouverte. */
           transaction={
-            cleConsole === null
+            consoleDeTransaction === null
               ? undefined
               : {
-                  mode: transaction.mode(cleConsole),
-                  onModeChange: (mode) => transaction.poserLeMode(cleConsole, mode),
-                  raison: raisonDeFigerLaTransaction(cleConsole),
+                  mode: transaction.mode(consoleDeTransaction),
+                  onModeChange: (mode) => transaction.poserLeMode(consoleDeTransaction, mode),
+                  raison: raisonDeFigerLaTransaction(consoleDeTransaction),
+                  /* **Le seul écart que le régime par console laisse ouvert** : les consoles d'une
+                     même base partagent une session, donc les requêtes de celle-ci entrent dans une
+                     transaction qu'une voisine a ouverte. Le pied le dit — le taire serait laisser
+                     croire à une écriture validée. */
+                  etrangere: transaction.transactionEtrangere(consoleDeTransaction),
                 }
           }
           /* **« Enregistrer » donne un nom à un brouillon**, et le fait exister dans l'arbre. Sur un
@@ -1469,7 +1485,7 @@ export function Workbench({
              transaction » y serait faux, et c'est la seule phrase de cet écran qui promette quelque
              chose. La requête part dans la transaction en cours, donc rien n'est écrit avant sa
              validation. */
-          dansUneTransaction={cleConsole !== null && transaction.mode(cleConsole) === 'manual'}
+          dansUneTransaction={transaction.mode(consoleDeTransaction) === 'manual'}
           cible={contexte ? `${libelleActuel} · ${contexte.schema}` : '—'}
           // **Le drapeau de production, non le libellé** (`23g`) : un environnement nommé « live » et
           // marqué production doit porter l'encart rouge, et un environnement nommé « prod » que
@@ -1494,7 +1510,7 @@ export function Workbench({
           onClose={transaction.annulerLaValidation}
           onConfirmer={() => {
             const cible = transaction.aValider
-            if (cible !== null) transaction.valider(cible.cle)
+            if (cible !== null) transaction.valider(cible.console)
           }}
         />
       )}
@@ -1767,7 +1783,8 @@ export function Workbench({
                 start={<AucuneSelection />}
                 end={<AucuneSelection variante="colonne" />}
               />
-            ) : consoleActive && cleConsole && transaction.mode(cleConsole) === 'manual' ? (
+            ) : consoleDeTransaction !== null &&
+              transaction.mode(consoleDeTransaction) === 'manual' ? (
               // **La seule exception à « une console occupe toute la largeur »** (`API-38`) : en
               // mode manuel, il y a enfin quelque chose à montrer à droite — ce que la transaction
               // retient, et ce qu'un « Valider » emporterait. En mode automatique, rien n'a changé.
@@ -1788,24 +1805,24 @@ export function Workbench({
                 start={centre}
                 end={
                   <TransactionPanel
-                    etat={transaction.etat(cleConsole)}
+                    etat={transaction.etat(consoleDeTransaction)}
                     contexte={libelleActuel ?? undefined}
-                    erreur={transaction.erreur(cleConsole)}
+                    erreur={transaction.erreur(consoleDeTransaction)}
                     enCours={transaction.enCours}
                     /* **Demander, non valider** (`API-38`) : une transaction qui a écrit passe par
                        la confirmation, une transaction qui n'a fait que lire part directement.
                        C'est `useTransaction` qui tranche, avec le classificateur qui décide déjà de
                        la confirmation d'une requête isolée. */
-                    onValider={() => transaction.demanderLaValidation(cleConsole)}
-                    onAnnuler={() => transaction.annuler(cleConsole)}
+                    onValider={() => transaction.demanderLaValidation(consoleDeTransaction)}
+                    onAnnuler={() => transaction.annuler(consoleDeTransaction)}
                     /* **Désigner une instruction remet sa réponse dans la grille** (`API-38`), et
                        rien n'est rejoué : les lignes viennent du cœur, qui les a gardées — une
                        requête de console n'est pas forcément idempotente. Deux états à leur place :
                        le rang désigné vit avec la transaction (par connexion), le résultat affiché
                        avec la console (par onglet). */
-                    affichee={transaction.affichee(cleConsole)}
+                    affichee={transaction.affichee(consoleDeTransaction)}
                     onAfficher={async (index) => {
-                      const resultat = await transaction.afficher(cleConsole, index)
+                      const resultat = await transaction.afficher(consoleDeTransaction, index)
                       // `null` : le cœur a refusé, et le panneau porte déjà son message. La grille
                       // reste sur ce qu'elle montrait plutôt que de se vider.
                       if (resultat !== null) execution.poserLeResultat(resultat)

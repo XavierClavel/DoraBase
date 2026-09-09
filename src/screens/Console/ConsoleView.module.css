@@ -118,6 +118,25 @@
   color: var(--ink-4);
 }
 
+/* **Le pied porte deux choses désormais** : sur quoi la console porte, et — le cas échéant — qu'une
+   transaction ouverte ailleurs recueille ses requêtes. La seconde est un avertissement : elle prend
+   l'encre du danger, et un point médian les sépare. */
+.pied {
+  gap: var(--space-4);
+}
+
+.etrangere {
+  font-family: var(--font-ui);
+  font-weight: var(--weight-semibold);
+  color: var(--danger-ink);
+}
+
+.etrangere::before {
+  content: "·";
+  margin-right: var(--space-4);
+  color: var(--ink-4);
+}
+
 .corps {
   flex: 1;
   min-height: 0;

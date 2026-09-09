@@ -6,7 +6,10 @@ import { LanguageProvider } from '../../i18n/LanguageContext'
 import { CommitConfirm } from './CommitConfirm'
 import type { ValidationADemander } from './useTransaction'
 
-const CLE = { project: 'Atelier Nord', database: 'analytics', environment: 'prod' }
+const CONSOLE = {
+  cle: { project: 'Atelier Nord', database: 'analytics', environment: 'prod' },
+  id: 'Atelier Nord/analytics/prod::console:console 1',
+}
 
 function monter(
   validation: Partial<ValidationADemander> = {},
@@ -18,7 +21,7 @@ function monter(
       <LanguageProvider preferences={{ language: 'fr' }}>
         <CommitConfirm
           validation={{
-            cle: CLE,
+            console: CONSOLE,
             instructions: 3,
             ecritures: ['UPDATE', 'DELETE'],
             sansRestriction: false,

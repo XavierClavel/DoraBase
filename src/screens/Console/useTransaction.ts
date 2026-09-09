@@ -33,6 +33,19 @@ export const PASSERELLE_TRANSACTION: PasserelleTransaction = {
 const AUCUNE_TRANSACTION: TransactionState = { open: false, statements: [], aborted: false }
 
 /**
+ * Une console, et la connexion sur laquelle elle porte.
+ *
+ * **Les deux, parce que les deux états ne sont pas au même endroit** : le régime et ce qu'on
+ * regarde appartiennent à la **console** — l'onglet —, la transaction elle-même appartient à la
+ * **session**, donc à la connexion. Une seule clef aurait forcé l'un des deux à mentir.
+ */
+export type Console = {
+  cle: DatabaseKey
+  /** L'identité de l'onglet, celle d'`idOnglet` — le même index que le texte et le résultat. */
+  id: string
+}
+
+/**
  * L'index d'une connexion dans les tables de ce module.
  *
  * **Ce n'est pas la clé du registre**, que le Rust compose lui-même (`registry::cle`) et que le
@@ -51,7 +64,8 @@ function index(cle: DatabaseKey): string {
  * écrit ? » finiraient par diverger, et c'est la question dont dépend l'affichage de cette modale.
  */
 export type ValidationADemander = {
-  cle: DatabaseKey
+  /** La console qui a demandé la validation : c'est elle qui la reçoit, et son onglet la porte. */
+  console: Console
   /** Le nombre d'instructions de la transaction, écritures comprises. */
   instructions: number
   /** Les verbes des écritures, dans l'ordre — « DELETE », « UPDATE »… */
@@ -66,31 +80,41 @@ export type ValidationADemander = {
 }
 
 export type Transactions = {
-  /** Le mode de cette connexion — `auto` tant que personne n'a rien réglé. */
-  mode: (cle: DatabaseKey | null) => TransactionMode
-  poserLeMode: (cle: DatabaseKey, mode: TransactionMode) => void
-  /** Ce que la transaction de cette connexion contient, tel que le Rust l'a dit. */
-  etat: (cle: DatabaseKey | null) => TransactionState
-  /** Le refus d'une validation, d'une annulation ou d'une lecture de réponse, s'il y en a un. */
-  erreur: (cle: DatabaseKey | null) => string | null
+  /** Le régime de **cette console** — `auto` tant que personne n'a rien réglé sur elle. */
+  mode: (console: Console | null) => TransactionMode
+  poserLeMode: (console: Console, mode: TransactionMode) => void
+  /** Ce que la transaction de sa **connexion** contient, tel que le Rust l'a dit. */
+  etat: (console: Console | null) => TransactionState
   /**
-   * Le rang de l'instruction dont la réponse est dans la grille, ou `null`.
+   * Vrai quand une transaction est ouverte sur la connexion de cette console alors qu'elle est,
+   * elle, en mode `auto`.
+   *
+   * **Le seul écart que le régime par console laisse ouvert, et il se dit.** Les consoles d'une même
+   * connexion partagent une session : les requêtes de celle-ci entrent donc dans une transaction
+   * qu'une voisine a ouverte, et qu'un « Valider » ou un « Annuler » d'ailleurs décidera. Le taire
+   * serait laisser croire à une écriture validée.
+   */
+  transactionEtrangere: (console: Console | null) => boolean
+  /** Le refus d'une validation, d'une annulation ou d'une lecture de réponse, s'il y en a un. */
+  erreur: (console: Console | null) => string | null
+  /**
+   * Le rang de l'instruction dont la réponse est dans la grille de cette console, ou `null`.
    *
    * **`null` après chaque exécution**, et le panneau ne marque alors rien : la grille montre la
    * réponse de la dernière exécution *de cette console*, et rien ne dit quelle entrée du journal
    * l'a produite — deux consoles y écrivent. Marquer la dernière entrée serait juste presque
    * toujours, et faux dès qu'une voisine a exécuté après nous.
    */
-  affichee: (cle: DatabaseKey | null) => number | null
+  affichee: (console: Console | null) => number | null
   /**
    * Demande la réponse d'une instruction, et retient laquelle est affichée.
    *
    * Rend `null` quand le cœur a refusé — l'appelant laisse alors sa grille telle quelle, et le
    * refus paraît dans le panneau.
    */
-  afficher: (cle: DatabaseKey, index: number) => Promise<QueryResult | null>
+  afficher: (console: Console, index: number) => Promise<QueryResult | null>
   /** Relit le journal. Appelé après chaque exécution, et par l'effet de cette fonction. */
-  apresExecution: (cle: DatabaseKey) => void
+  apresExecution: (console: Console) => void
   /**
    * Demande la validation — passe par la confirmation quand la transaction contient des écritures.
    *
@@ -98,13 +122,13 @@ export type Transactions = {
    * manuelle, le moment où l'on s'engage est la validation. Une transaction qui n'a fait que lire
    * n'a rien à confirmer, comme un `select` n'en demande pas.
    */
-  demanderLaValidation: (cle: DatabaseKey) => void
+  demanderLaValidation: (console: Console) => void
   /** Ce qu'une validation met en jeu, quand elle attend une confirmation. */
   aValider: ValidationADemander | null
   annulerLaValidation: () => void
   /** Valide pour de bon. Appelé par la confirmation. */
-  valider: (cle: DatabaseKey) => void
-  annuler: (cle: DatabaseKey) => void
+  valider: (console: Console) => void
+  annuler: (console: Console) => void
   /** Vrai pendant une validation ou une annulation : les deux boutons attendent. */
   enCours: boolean
 }
@@ -112,14 +136,28 @@ export type Transactions = {
 /**
  * La transaction manuelle d'une console (`API-38`).
  *
- * # Le mode appartient à la connexion, pas à la console
+ * # Le régime appartient à la console, la transaction à la session
  *
- * Le registre ne tient qu'un adaptateur par connexion, donc une seule session : un `begin` posé
- * depuis une console englobe ce que ses voisines exécutent. Un mode par console aurait donc laissé
- * une console réglée « auto » participer **en silence** à la transaction d'une autre, jusqu'à ce
- * qu'un `commit` qu'elle n'a pas demandé valide ce qu'elle a écrit. Les deux tables de ce module
- * sont donc indexées par connexion, et non par identité d'onglet comme le texte (`12a`), le
- * résultat (`12c`) et les modifications en attente (`11b`).
+ * **Deux états, et ils ne sont pas au même endroit.** Le régime — manuel ou automatique — et ce
+ * qu'on regarde sont des propriétés de l'**onglet** : c'est sur cette console-là qu'on a allumé
+ * l'interrupteur, et passer à une autre ne doit pas en montrer le panneau. Ils sont donc indexés par
+ * identité d'onglet, comme le texte (`12a`), le résultat (`12c`) et les modifications en attente
+ * (`11b`).
+ *
+ * La **transaction**, elle, appartient à la session, donc à la connexion : le registre ne tient
+ * qu'un adaptateur par base, et un `begin` posé depuis une console englobe ce que ses voisines
+ * exécutent. C'est un fait du serveur, pas un choix d'écran, et le journal est indexé par connexion
+ * pour cette raison — deux consoles réglées en manuel sur la même base regardent **la même**
+ * transaction, et un `commit` de l'une emporte ce que l'autre a écrit.
+ *
+ * # L'écart que cela laisse, et comment il se dit
+ *
+ * Une console en `auto` sur une connexion dont une voisine a ouvert une transaction y écrit sans
+ * l'avoir demandé. Rien ne peut l'empêcher — c'est une seule session —, mais le taire serait laisser
+ * croire à une écriture validée : `transactionEtrangere` le rend, et le pied de la console le dit.
+ * Une première version faisait du régime une propriété de la connexion pour supprimer le cas ; ce
+ * qu'elle supprimait vraiment était le **choix** — le panneau d'une console apparaissait sur toutes
+ * celles de la même base.
  *
  * # Le journal n'est pas tenu ici
  *
@@ -130,9 +168,9 @@ export type Transactions = {
  *
  * # Rien ne part avant qu'on le demande
  *
- * En mode `auto` — le défaut — aucune commande n'est appelée : la galerie, `?demo` et toute la suite
- * Playwright n'y touchent pas, et le panneau ne paraît pas. C'est l'arbitrage de la recherche de
- * mise à jour, pour la même raison.
+ * Tant qu'aucune console de la connexion n'est en manuel et qu'aucune transaction n'est connue
+ * ouverte, aucune commande n'est appelée : la galerie, `?demo` et toute la suite Playwright n'y
+ * touchent pas. C'est l'arbitrage de la recherche de mise à jour, pour la même raison.
  *
  * @param revision le témoin de configuration, `projects` en pratique : **les six commandes qui
  * ferment une connexion le réécrivent**, et une transaction fermée avec sa connexion doit
@@ -141,7 +179,7 @@ export type Transactions = {
  */
 export function useTransaction(
   passerelle: PasserelleTransaction,
-  cleActive: DatabaseKey | null,
+  consoleActive: Console | null,
   revision?: unknown,
 ): Transactions {
   const [modes, setModes] = useState<Readonly<Record<string, TransactionMode>>>({})
@@ -176,27 +214,37 @@ export function useTransaction(
     [passerelle],
   )
 
-  const idActif = cleActive === null ? null : index(cleActive)
-  const modeActif = idActif === null ? 'auto' : (modes[idActif] ?? 'auto')
+  const connexionActive = consoleActive === null ? null : index(consoleActive.cle)
+  const modeActif = consoleActive === null ? 'auto' : (modes[consoleActive.id] ?? 'auto')
+  /**
+   * Vrai quand le journal de cette connexion est **connu** ouvert.
+   *
+   * C'est ce qui fait relire une console en `auto` : sans transaction connue, rien ne part — et dès
+   * qu'une voisine en a ouvert une, la lecture reprend, pour que le pied puisse le dire. Une
+   * transaction qu'aucune console n'a jamais lue reste invisible, ce qui est le prix de « rien ne
+   * part avant qu'on le demande ».
+   */
+  const journalConnu = connexionActive !== null && (etats[connexionActive]?.open ?? false)
 
-  // Deux dépendances que le corps ne nomme pas, et il en faut deux :
+  // Trois dépendances que le corps ne nomme pas, et il en faut trois :
   //
-  // - `idActif` **remplace** `cleActive`, que l'appelant reconstruit à chaque rendu — c'est l'index
-  //   qui dit qu'on a changé de connexion, pas l'identité de l'objet. Le piège de `10d`, où une
-  //   passerelle littérale relisait les lignes à chaque frappe ;
+  // - `connexionActive` **remplace** la clef, que l'appelant reconstruit à chaque rendu — c'est
+  //   l'index qui dit qu'on a changé de connexion, pas l'identité de l'objet. Le piège de `10d`, où
+  //   une passerelle littérale relisait les lignes à chaque frappe ;
+  // - `modeActif` et `journalConnu` sont les deux raisons de relire, chacune lue par la garde ;
   // - `revision` est un **témoin** : on ne le lit pas, on constate qu'il a bougé. C'est le signal
   //   commun aux six commandes qui ferment une connexion (voir la doc de tête).
   // biome-ignore lint/correctness/useExhaustiveDependencies: voir ci-dessus
   useEffect(() => {
-    // **Seulement en mode manuel** : c'est le seul cas où quelque chose peut être ouvert, le mode
-    // étant une propriété de la connexion. En `auto`, aucune commande ne part.
-    if (cleActive === null || modeActif !== 'manual') return
-    relire(cleActive)
-  }, [idActif, modeActif, revision, relire])
+    // **En manuel, ou sur une transaction déjà connue** : hors de ces deux cas il n'y a rien à
+    // lire, et aucune commande ne part — la galerie et `?demo` n'y touchent pas.
+    if (consoleActive === null || (modeActif !== 'manual' && !journalConnu)) return
+    relire(consoleActive.cle)
+  }, [connexionActive, modeActif, journalConnu, revision, relire])
 
   const achever = useCallback(
-    (cle: DatabaseKey, ordre: 'valider' | 'annuler') => {
-      const id = index(cle)
+    (console: Console, ordre: 'valider' | 'annuler') => {
+      const { cle, id } = console
       setEnCours(true)
       const geste =
         ordre === 'valider'
@@ -224,61 +272,70 @@ export function useTransaction(
   )
 
   return {
-    mode: (cle) => (cle === null ? 'auto' : (modes[index(cle)] ?? 'auto')),
-    affichee: (cle) => (cle === null ? null : (affichees[index(cle)] ?? null)),
-    afficher: async (cle, rang) => {
-      const id = index(cle)
+    mode: (console) => (console === null ? 'auto' : (modes[console.id] ?? 'auto')),
+    poserLeMode: (console, mode) => setModes((precedent) => ({ ...precedent, [console.id]: mode })),
+    etat: (console) =>
+      console === null ? AUCUNE_TRANSACTION : (etats[index(console.cle)] ?? AUCUNE_TRANSACTION),
+    transactionEtrangere: (console) => {
+      if (console === null) return false
+      // **Ouverte sur la connexion, alors que cette console-ci ne l'a pas demandé.** C'est le seul
+      // écart que le régime par console laisse ouvert : une seule session, plusieurs onglets.
+      const ouverte = etats[index(console.cle)]?.open ?? false
+      return ouverte && (modes[console.id] ?? 'auto') === 'auto'
+    },
+    erreur: (console) => (console === null ? null : (erreurs[console.id] ?? null)),
+    affichee: (console) => (console === null ? null : (affichees[console.id] ?? null)),
+    afficher: async (console, rang) => {
       try {
-        const resultat = await passerelle.transactionResult(cle, rang)
-        setErreurs((precedent) => ({ ...precedent, [id]: null }))
-        setAffichees((precedent) => ({ ...precedent, [id]: rang }))
+        const resultat = await passerelle.transactionResult(console.cle, rang)
+        setErreurs((precedent) => ({ ...precedent, [console.id]: null }))
+        setAffichees((precedent) => ({ ...precedent, [console.id]: rang }))
         return resultat
       } catch (raison: unknown) {
         // **Le refus se dit** : c'est un geste demandé, et un clic qui ne change rien se lirait
         // comme une panne (défaut n° 36). La marque ne bouge pas — la grille non plus.
-        setErreurs((precedent) => ({ ...precedent, [id]: messageDe(raison) }))
+        setErreurs((precedent) => ({ ...precedent, [console.id]: messageDe(raison) }))
         return null
       }
     },
-    poserLeMode: (cle, mode) => setModes((precedent) => ({ ...precedent, [index(cle)]: mode })),
-    etat: (cle) => (cle === null ? AUCUNE_TRANSACTION : (etats[index(cle)] ?? AUCUNE_TRANSACTION)),
-    erreur: (cle) => (cle === null ? null : (erreurs[index(cle)] ?? null)),
-    apresExecution: (cle) => {
-      const id = index(cle)
-      // **Rien ne part en mode automatique**, et la condition porte sur les deux faits : le mode de
-      // *cette* connexion, et une transaction qu'on sait déjà ouverte — celle qu'un mode passé à
-      // `auto` derrière notre dos laisserait derrière lui. Lire de toute façon aurait ajouté un
-      // aller-retour d'IPC à chaque exécution d'une console qui n'a rien demandé, y compris là où le
-      // pont ne répond pas.
-      if ((modes[id] ?? 'auto') !== 'manual' && !(etats[id]?.open ?? false)) return
+    apresExecution: (console) => {
+      // **Rien ne part en mode automatique sur une connexion sans transaction connue.** La
+      // condition porte sur les deux faits, et le second est ce qui fait suivre une console `auto`
+      // dont la voisine a ouvert une transaction : ses requêtes y entrent, et le pied doit le dire.
+      if (
+        (modes[console.id] ?? 'auto') !== 'manual' &&
+        !(etats[index(console.cle)]?.open ?? false)
+      ) {
+        return
+      }
       // **L'erreur part avec la transaction qu'elle décrivait.** Une validation refusée a terminé la
       // sienne ; la garder afficherait son refus au-dessus des instructions d'une transaction neuve.
-      setErreurs((precedent) => ({ ...precedent, [id]: null }))
+      setErreurs((precedent) => ({ ...precedent, [console.id]: null }))
       // **La marque part avec l'exécution** : la grille montre désormais la réponse toute neuve, et
       // non celle de l'instruction qu'on avait désignée.
-      setAffichees((precedent) => ({ ...precedent, [id]: null }))
-      relire(cle)
+      setAffichees((precedent) => ({ ...precedent, [console.id]: null }))
+      relire(console.cle)
     },
-    demanderLaValidation: (cle) => {
-      const enjeu = enJeu(cle, etats[index(cle)]?.statements ?? [])
+    demanderLaValidation: (console) => {
+      const enjeu = enJeu(console, etats[index(console.cle)]?.statements ?? [])
       // Rien d'écrit dans la transaction : il n'y a rien à confirmer, et un clic de plus ne
       // protégerait de rien. C'est la règle de `demandeConfirmation`, appliquée à un lot.
       if (enjeu.ecritures.length === 0) {
-        achever(cle, 'valider')
+        achever(console, 'valider')
         return
       }
       setAValider(enjeu)
     },
     aValider,
     annulerLaValidation: () => setAValider(null),
-    valider: (cle) => {
+    valider: (console) => {
       setAValider(null)
-      achever(cle, 'valider')
+      achever(console, 'valider')
     },
     // **L'annulation ne se confirme pas.** Elle rend la base à son état : c'est le geste de repli,
     // et le confronter à une question ferait hésiter là où il n'y a rien à perdre. Ce qui se perd —
     // les instructions qu'on avait écrites — est dans l'éditeur, que rien n'efface.
-    annuler: (cle) => achever(cle, 'annuler'),
+    annuler: (console) => achever(console, 'annuler'),
     enCours,
   }
 }
@@ -291,7 +348,7 @@ export function useTransaction(
  * pas eu lieu.
  */
 function enJeu(
-  cle: DatabaseKey,
+  console: Console,
   instructions: readonly TransactionStatement[],
 ): ValidationADemander {
   const ecrivantes = instructions.filter((instruction) => {
@@ -299,7 +356,7 @@ function enJeu(
     return demandeConfirmation(natureDe(instruction.sql))
   })
   return {
-    cle,
+    console,
     instructions: instructions.length,
     ecritures: ecrivantes.map((instruction) => {
       const nature = natureDe(instruction.sql)

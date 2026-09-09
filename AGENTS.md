@@ -926,14 +926,34 @@ d'outils, à côté du stepper `LIMIT` — allumé, la première exécution ouvr
 suivantes s'y ajoutent, et le panneau de droite liste ce qu'elle retient avec deux boutons pour la
 finir.
 
-**Le mode appartient à la connexion, pas à la console**, et c'est la décision qui tient tout le
-reste. Le registre ne détient qu'un adaptateur par connexion, donc **une** session : un `begin`
-posé depuis une console englobe ce que ses voisines exécutent, qu'elles l'aient demandé ou non. Un
-réglage par onglet aurait donc laissé une console réglée « auto » participer **en silence** à la
-transaction d'une autre, jusqu'à ce qu'un `commit` qu'elle n'a pas demandé valide ce qu'elle avait
-écrit. C'est la même raison qui met le journal côté Rust plutôt que côté écran : ce qu'un
-« Valider » emporte est le contenu de la **transaction**, pas celui d'un onglet, et une liste tenue
-par l'écran aurait été juste sur son onglet et fausse sur ce qu'elle validait.
+**Le régime appartient à la console, la transaction à la session** — et c'est la distinction qui
+tient tout le reste. Le régime, manuel ou automatique, est une propriété de l'**onglet** : c'est sur
+cette console-là qu'on a allumé l'interrupteur, et passer à une autre n'en montre pas le panneau. Il
+est donc indexé par identité d'onglet, comme le texte (`12a`), le résultat (`12c`) et les
+modifications en attente (`11b`).
+
+La **transaction**, elle, appartient à la session, donc à la connexion : le registre ne détient qu'un
+adaptateur par base, et un `begin` posé depuis une console englobe ce que ses voisines exécutent,
+qu'elles l'aient demandé ou non. C'est un fait du serveur, pas un choix d'écran. Le journal est donc
+indexé par connexion — deux consoles réglées en manuel sur la même base regardent **la même**
+transaction, et un `commit` de l'une emporte ce que l'autre a écrit. C'est aussi la raison qui met ce
+journal côté Rust plutôt que côté écran : ce qu'un « Valider » emporte est le contenu de la
+transaction, pas celui d'un onglet, et une liste tenue par l'écran aurait été juste sur son onglet et
+fausse sur ce qu'elle validait.
+
+**Une première version faisait du régime une propriété de la connexion**, justement pour supprimer le
+cas d'une console « auto » qui écrirait dans la transaction d'une voisine. Ce qu'elle supprimait
+vraiment était le **choix** : l'interrupteur d'une console commandait toutes celles de la même base,
+et leur panneau paraissait sur chacune. Rapporté à l'usage, et refait.
+
+**L'écart que cela laisse est réel, et il se dit.** Une console en `auto` sur une connexion dont une
+voisine a ouvert une transaction y écrit sans l'avoir demandé. Rien ne peut l'en empêcher — une seule
+session —, mais le taire serait laisser croire à une écriture validée : son **pied** porte alors
+« Une transaction est ouverte sur cette connexion : vos requêtes y entrent. » Deux corollaires : la
+lecture du journal reprend dès qu'une transaction est **connue** ouverte, même sur une console en
+automatique — sans quoi le pied ne saurait rien —, et la dispense de confirmation suit le **régime**
+de la console, non la transaction : cette console-ci confirme ses écritures comme avant, puisque
+c'est elle qui les lance à découvert de son point de vue.
 
 Dix décisions à ne pas défaire :
 

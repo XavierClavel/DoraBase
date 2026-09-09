@@ -92,6 +92,10 @@ export const consoleFr: Dictionnaire = {
       'Une instruction a échoué et le moteur a abandonné la transaction : elle ne peut plus être validée, seulement annulée.',
     rienAValider: 'Aucune transaction n’est ouverte : il n’y a rien à valider.',
     rienAAnnuler: 'Aucune transaction n’est ouverte : il n’y a rien à annuler.',
+    // **L'écart que le régime par console laisse ouvert**, dit dans le pied de la console qui le
+    // subit : une seule session par connexion, donc les requêtes de cette console entrent dans la
+    // transaction qu'une voisine a ouverte.
+    etrangere: 'Une transaction est ouverte sur cette connexion : vos requêtes y entrent.',
     modeLabel: 'Transaction manuelle',
     // **Le réglage vaut pour la connexion**, pas pour cet onglet, et la phrase le dit : c'est ce qui
     // explique pourquoi la console voisine change d'aspect en même temps, et pourquoi un « Valider »
@@ -259,6 +263,7 @@ export const consoleEn: Dictionnaire = {
       'A statement failed and the engine abandoned the transaction: it can no longer be committed, only rolled back.',
     rienAValider: 'No transaction is open: there is nothing to commit.',
     rienAAnnuler: 'No transaction is open: there is nothing to roll back.',
+    etrangere: 'A transaction is open on this connection: your queries join it.',
     modeLabel: 'Manual transaction',
     modeAide:
       'Off, every query is committed by the server. On, queries pile up in a transaction that you commit or roll back yourself. The setting belongs to this connection: consoles open on the same database share its transaction.',

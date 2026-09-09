@@ -150,6 +150,30 @@ test('le panneau tient dans la fenêtre, et laisse sa place à l’éditeur', as
   expect(cotes.sqlDroite).toBeLessThanOrEqual(cotes.panneau.right + 1)
 })
 
+test('le panneau suit la console, non sa connexion', async ({ page }) => {
+  await page.getByRole('switch', { name: 'Transaction manuelle' }).click()
+  await page.locator('.cm-content').click()
+  await page.keyboard.insertText('select jour from ventes')
+  await page.getByRole('button', { name: /Exécuter/ }).click()
+  await expect(page.locator(panneau)).toContainText('lignes rendues')
+
+  // **Une seconde console sur la même connexion** : elle part en automatique, et le panneau de la
+  // première ne la suit pas. Le régime est réglé sur un onglet, comme son texte et son résultat.
+  await ouvrirUneConsole(page, 'analytics')
+  await expect(page.locator(panneau)).toHaveCount(0)
+  await expect(page.getByRole('switch', { name: 'Transaction manuelle' })).toHaveAttribute(
+    'aria-checked',
+    'false',
+  )
+  // Et elle dit que ses requêtes entreront dans la transaction ouverte à côté : une seule session
+  // par connexion, et le taire serait laisser croire à une écriture validée.
+  await expect(page.getByText(/Une transaction est ouverte sur cette connexion/)).toBeVisible()
+
+  // Revenir la retrouve, avec ce qu'elle retenait.
+  await page.getByRole('tab', { name: /console 1/ }).click()
+  await expect(page.locator(panneau)).toContainText('lignes rendues')
+})
+
 test('les deux sortes de carte ont le même rythme', async ({ page }) => {
   await page.getByRole('switch', { name: 'Transaction manuelle' }).click()
   // Une écriture — carte non désignable — puis une lecture, qui l'est : les deux formes côte à côte.

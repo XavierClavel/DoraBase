@@ -71,6 +71,16 @@ type ConsoleViewProps = {
      * l'appelant de deviner laquelle vaut, alors qu'il n'y en a jamais qu'une.
      */
     raison?: string | null
+    /**
+     * Vrai quand une transaction est ouverte sur la **connexion** alors que cette console est en
+     * mode automatique (`API-38`).
+     *
+     * Les consoles d'une même base partagent une session : les requêtes de celle-ci entrent donc
+     * dans une transaction qu'une voisine a ouverte, et qu'un « Valider » d'ailleurs décidera. Le
+     * pied le dit — le taire serait laisser croire à une écriture validée, ce qui est le pire défaut
+     * que cette fonction puisse avoir.
+     */
+    etrangere?: boolean
   }
 }
 
@@ -324,7 +334,18 @@ export function ConsoleView({
         />
       </div>
 
-      {contexte && <div className={styles.pied}>{contexte}</div>}
+      {(contexte || transaction?.etrangere) && (
+        <div className={styles.pied}>
+          {contexte}
+          {/* **Une transaction ouverte ailleurs, dite ici.** Elle ne se règle pas depuis cette
+              console — son interrupteur est éteint —, mais ses requêtes y entrent : c'est le seul
+              endroit de cet onglet qui puisse l'annoncer, et le pied est déjà celui qui dit sur quoi
+              la console porte. */}
+          {transaction?.etrangere && (
+            <span className={styles.etrangere}>{t('console.transaction.etrangere')}</span>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -106,7 +106,7 @@ export function useExecution(
    * et le panneau doit la montrer — sur PostgreSQL c'est même elle qu'on cherche, la transaction
    * étant abandonnée jusqu'à son annulation.
    */
-  apresExecution?: (cle: DatabaseKey) => void,
+  apresExecution?: (console: { cle: DatabaseKey; id: string }) => void,
 ): Execution {
   const [parConsole, setParConsole] = useState<Readonly<Record<string, EtatConsole>>>({})
   const etat = (idConsole === null ? undefined : parConsole[idConsole]) ?? AU_REPOS
@@ -123,8 +123,9 @@ export function useExecution(
       const id = idConsole
       poser(id, (precedent) => ({ ...precedent, enCours: true, erreur: null }))
       // La clé est capturée comme l'identité, et pour la même raison : `apresExecution` relit le
-      // journal de la connexion qui a exécuté, non de celle que l'arbre montre au retour.
-      const connexion = cle
+      // journal de la connexion qui a exécuté, non de celle que l'arbre montre au retour — et il
+      // porte **les deux**, le régime étant réglé par console (`API-38`).
+      const console = { cle, id }
       passerelle
         .runSql(cle, sql, LIMITE_CONSOLE, mode)
         .then((issue) => {
@@ -150,7 +151,7 @@ export function useExecution(
         })
         // **Dans les deux cas** : un refus fait partie de la transaction, et c'est la seule chose
         // que le panneau ait à montrer quand la suite sera refusée jusqu'à l'annulation.
-        .finally(() => apresExecution?.(connexion))
+        .finally(() => apresExecution?.(console))
     },
     [cle, idConsole, passerelle, poser, mode, apresExecution],
   )
