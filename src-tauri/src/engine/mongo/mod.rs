@@ -395,7 +395,31 @@ impl EngineAdapter for MongoAdapter {
         let base = self.base_courante();
         executer(&self.client, &base, &operation, limite, debut).await
     }
+
+    /// Refusé, et **pas pour un retard** (`API-38`).
+    ///
+    /// MongoDB sait ouvrir une transaction — `apply_updates` en ouvre une dès qu'il a plus d'une
+    /// écriture à porter, quand le déploiement le permet. Ce qui n'existe pas ici, c'est ce qu'elle
+    /// contiendrait : la console mongo ne fait que **lire**. `commande::Genre` en énumère les quatre
+    /// formes — `find`, `aggregate`, `countDocuments`, `distinct` — et aucune n'écrit, donc une
+    /// transaction manuelle n'aurait jamais rien à valider ni rien à annuler.
+    ///
+    /// Le jour où la console écrirait, deux choses seraient à faire, et le refus est le bon endroit
+    /// pour les nommer : tenir une `ClientSession` aussi longtemps que la transaction — `executer`
+    /// parle au client directement — et refuser sur un déploiement isolé, comme `18f` le fait déjà.
+    async fn transaction(
+        &self,
+        _ordre: crate::engine::OrdreDeTransaction,
+    ) -> Result<(), EngineError> {
+        Err(EngineError::local(REFUS_DE_TRANSACTION))
+    }
 }
+
+/// Pourquoi la console mongo n'a pas de transaction manuelle — voir `MongoAdapter::transaction`.
+pub const REFUS_DE_TRANSACTION: &str =
+    "la console MongoDB ne fait que lire — find, aggregate, countDocuments, distinct : une \
+     transaction manuelle n'y aurait rien à valider. Les modifications de la grille, elles, \
+     ouvrent déjà la leur quand elles portent plus d'une écriture.";
 
 impl MongoAdapter {
     /// La base visée par la console quand aucun `use` ne la nomme.
@@ -635,12 +659,46 @@ async fn executer(
         sql: commande_executee,
         duration_ms: u64::try_from(debut.elapsed().as_millis()).unwrap_or(u64::MAX),
         applied_limit: limite_ajoutee,
+        // **Aucune ligne touchée, parce qu'aucune ne peut l'être** : les quatre genres de
+        // `commande::Genre` lisent. Ce n'est pas « le pilote ne le dit pas », c'est « il n'y a rien
+        // à dire » — la même raison qui fait refuser la transaction manuelle.
+        affected: None,
     })
 }
 
 /// Le n-ième argument d'une opération, s'il est un document.
 fn argument_document(operation: &commande::Operation, rang: usize) -> Option<Document> {
     operation.arguments.get(rang)?.as_document().cloned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Le refus de la transaction manuelle dit **ce qui manque**, et pas « pas encore » (`API-38`).
+    ///
+    /// C'est ce qui décide de ce que l'écran en fait : une transaction manuelle n'aurait rien à
+    /// valider sur une console qui ne fait que lire, alors que la grille, elle, en ouvre déjà une.
+    /// Un message qui dirait « pas encore » ferait attendre une fonction qui n'a pas d'objet.
+    #[test]
+    fn le_refus_de_transaction_nomme_ce_qui_manque() {
+        assert!(
+            REFUS_DE_TRANSACTION.contains("ne fait que lire"),
+            "{REFUS_DE_TRANSACTION}"
+        );
+        // Les quatre genres de `commande::Genre`, nommés : c'est la liste qui justifie le refus, et
+        // le jour où un cinquième écrira, ce test tombera avec elle.
+        for genre in ["find", "aggregate", "countDocuments", "distinct"] {
+            assert!(
+                REFUS_DE_TRANSACTION.contains(genre),
+                "{genre} devrait être nommé : {REFUS_DE_TRANSACTION}"
+            );
+        }
+        assert!(
+            !REFUS_DE_TRANSACTION.contains("pas encore"),
+            "ce n'est pas un retard : {REFUS_DE_TRANSACTION}"
+        );
+    }
 }
 
 /// Les tests contre un MongoDB **réel**, en jeu de réplicas à un nœud.

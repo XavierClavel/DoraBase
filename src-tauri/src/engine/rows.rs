@@ -267,6 +267,17 @@ pub struct QueryResult {
     /// un mensonge sur les données, la pire catégorie de défaut pour cet outil.
     #[ts(type = "number | null")]
     pub applied_limit: Option<u32>,
+    /// Les lignes **touchées**, pour une instruction qui n'en rend aucune (`API-38`).
+    ///
+    /// `None` dès que l'instruction rend des lignes : le compte est alors celui de `rows`, et un
+    /// second nombre à côté ferait chercher ce qui les distingue. `None` aussi là où le pilote ne le
+    /// dit pas sur ce chemin — la console MongoDB, qui ne fait que lire.
+    ///
+    /// **Sans ce champ, un `update` de console s'affichait « 0 ligne ».** C'est vrai de ce qu'il
+    /// rend et faux de ce qu'il a fait, et le panneau de transaction en aurait fait sa réponse
+    /// principale : le seul chiffre qui décide d'un `commit` aurait dit « rien ne s'est passé ».
+    #[ts(type = "number | null")]
+    pub affected: Option<u64>,
 }
 
 /// Ce qu'une application de modifications a produit (`11d`).

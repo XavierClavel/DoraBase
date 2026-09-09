@@ -44,6 +44,66 @@ pub struct MysqlAdapter {
     version: String,
     /// Même raison qu'en `06b` et `18b` : le tunnel vit aussi longtemps que la connexion.
     proxy: Option<ProxyOuvert>,
+    /// La connexion qui tient la transaction manuelle, quand il y en a une (`API-38`).
+    ///
+    /// # Pourquoi ce champ n'existe ni chez PostgreSQL ni chez SQLite
+    ///
+    /// Ces deux-là détiennent **une** connexion : un `BEGIN` y survit d'un appel à l'autre sans que
+    /// personne ait rien à garder. Le pilote MySQL travaille sur un **pool**, et c'est le seul écart
+    /// qui compte ici : sans ce champ, le `START TRANSACTION` serait resté sur une connexion rendue
+    /// au pool aussitôt après, et les requêtes suivantes en auraient pris une autre — donc une
+    /// transaction qui ne contient rien, des écritures validées d'office par l'autocommit de leur
+    /// propre connexion, et un panneau qui promet un `commit` sur du vide. Le pire mode de
+    /// défaillance possible pour cette fonction : pas une panne, une écriture définitive présentée
+    /// comme en attente.
+    ///
+    /// `Mutex` de `tokio` et non de la bibliothèque standard : la garde traverse l'`await` de la
+    /// requête. Il n'est jamais disputé — le registre sérialise déjà les opérations d'une même
+    /// connexion — mais c'est lui qui rend le montage juste plutôt que seulement suffisant.
+    transaction: tokio::sync::Mutex<Option<Conn>>,
+}
+
+/// Une connexion prise le temps d'une opération : celle de la transaction s'il y en a une, une du
+/// pool sinon.
+///
+/// **C'est ce qui fait qu'un `BEGIN` survit d'un appel à l'autre**, là où PostgreSQL et SQLite n'ont
+/// rien à garder — voir le champ `transaction`.
+///
+/// **Ce qu'il ne faut plus y lire** : que la grille verrait ce qu'une transaction de console
+/// retient. C'était vrai tant que le registre ne tenait qu'un adaptateur par connexion, et cela
+/// avait été noté comme une propriété à garder ; depuis qu'une console tient sa transaction dans
+/// **sa propre session** (`API-38`), cet adaptateur-ci est celui de la console, et la grille lit
+/// sur celui de la connexion. Elle ne voit donc pas les lignes retenues — c'est l'isolation que le
+/// serveur promet, et c'est vrai des trois moteurs de la même façon.
+enum Prise<'a> {
+    Pool(Conn),
+    Transaction(tokio::sync::MutexGuard<'a, Option<Conn>>),
+}
+
+/// **`expect` sur une invariante de construction** : `connexion()` ne rend `Prise::Transaction`
+/// qu'après avoir constaté que la transaction tient bien une connexion, et la garde qu'elle
+/// emporte interdit à quiconque de la retirer entre-temps.
+const PRISE_SANS_CONNEXION: &str =
+    "Prise::Transaction n'est construite que sur une transaction qui tient sa connexion";
+
+impl std::ops::Deref for Prise<'_> {
+    type Target = Conn;
+
+    fn deref(&self) -> &Conn {
+        match self {
+            Self::Pool(connexion) => connexion,
+            Self::Transaction(garde) => garde.as_ref().expect(PRISE_SANS_CONNEXION),
+        }
+    }
+}
+
+impl std::ops::DerefMut for Prise<'_> {
+    fn deref_mut(&mut self) -> &mut Conn {
+        match self {
+            Self::Pool(connexion) => connexion,
+            Self::Transaction(garde) => garde.as_mut().expect(PRISE_SANS_CONNEXION),
+        }
+    }
 }
 
 /// `Debug` à la main, pour la raison de `05c` : un dérivé exposerait la configuration du pool, qui
@@ -74,6 +134,7 @@ impl MysqlAdapter {
                 pool,
                 version,
                 proxy,
+                transaction: tokio::sync::Mutex::new(None),
             }),
             // La qualification de `06e` : sans elle, un bastion tombé produit un « connection
             // refused » sur `127.0.0.1`, qui envoie chercher un problème de MySQL.
@@ -107,6 +168,11 @@ impl MysqlAdapter {
     }
 
     pub async fn close(self) {
+        // **La connexion de la transaction est rendue d'abord**, sinon `disconnect()` attendrait une
+        // connexion que nous tenons encore. Ce qu'elle contenait est annulé par le serveur, qui
+        // annule toute transaction inachevée à la fermeture — c'est aussi ce qui se passe pour les
+        // deux autres moteurs, et la raison pour laquelle le registre vide son journal en fermant.
+        drop(self.transaction.into_inner());
         // **Le pool se ferme avant le tunnel.** L'inverse fermerait l'écouteur local pendant que des
         // connexions l'utilisent encore, et le pilote signalerait des erreurs de réseau à la
         // fermeture — bruit inutile dans le journal.
@@ -116,8 +182,20 @@ impl MysqlAdapter {
         }
     }
 
-    async fn connexion(&self) -> Result<Conn, EngineError> {
-        self.pool.get_conn().await.map_err(|e| error::traduire(&e))
+    async fn connexion(&self) -> Result<Prise<'_>, EngineError> {
+        let garde = self.transaction.lock().await;
+        if garde.is_some() {
+            return Ok(Prise::Transaction(garde));
+        }
+        // La garde est rendue avant d'aller au pool : la tenir pendant l'attente d'une connexion
+        // sérialiserait des opérations qui n'ont aucune transaction à partager.
+        drop(garde);
+        Ok(Prise::Pool(
+            self.pool
+                .get_conn()
+                .await
+                .map_err(|e| error::traduire(&e))?,
+        ))
     }
 
     /// Le moteur de stockage d'une table, ou `None` pour une vue.
@@ -311,8 +389,13 @@ impl EngineAdapter for MysqlAdapter {
         let (borne, ajoutee) = rows::avec_limite(sql, limite);
 
         let mut connexion = self.connexion().await?;
-        let lignes: Vec<Row> = connexion
-            .query(&borne)
+        // **`query_iter` et non `query`, pour deux renseignements que le second perd** (`API-38`) :
+        // les colonnes du protocole *avant* de lire les lignes — donc les en-têtes d'un `select` qui
+        // n'en rend aucune, que la version d'avant laissait vides — et la distinction entre « jeu de
+        // résultats vide » et « instruction qui n'en rend pas », qui est ce qui décide si le compte de
+        // lignes touchées veut dire quelque chose.
+        let mut issue = connexion
+            .query_iter(&borne)
             .await
             .map_err(|e| error::traduire(&e))?;
 
@@ -320,18 +403,30 @@ impl EngineAdapter for MysqlAdapter {
         // `QueryResult` et `RowWindow` que `12c` a posée. Et les catégories viennent du **type
         // annoncé par le protocole**, seul renseignement disponible pour une colonne calculée :
         // `count(*)` n'existe dans aucun catalogue.
-        let (colonnes, categories) = match lignes.first() {
-            Some(premiere) => {
-                let refs = premiere.columns_ref();
-                (
-                    refs.iter().map(|c| c.name_str().into_owned()).collect(),
-                    refs.iter()
-                        .map(|c| categorie_du_protocole(c.column_type()))
-                        .collect::<Vec<_>>(),
-                )
-            }
-            None => (Vec::new(), Vec::new()),
-        };
+        let declarees = issue.columns_ref();
+        // **Une liste vide veut dire « cette instruction n'a jamais eu de lignes à rendre »** — le
+        // mot du pilote, et non `None`, qui n'arrive pas ici. Mesuré : un `insert` rend
+        // `Some(liste vide)`, donc tester l'option aurait rendu « aucune ligne touchée » sur chaque
+        // écriture, ce qui est exactement le mensonge que ce champ existe pour éviter.
+        let rend_des_lignes = !declarees.is_empty();
+        let (colonnes, categories): (Vec<String>, Vec<TypeCategory>) = (
+            declarees
+                .iter()
+                .map(|c| c.name_str().into_owned())
+                .collect(),
+            declarees
+                .iter()
+                .map(|c| categorie_du_protocole(c.column_type()))
+                .collect(),
+        );
+
+        let lignes: Vec<Row> = issue.collect().await.map_err(|e| error::traduire(&e))?;
+        // **Lu après la lecture du jeu de résultats**, qui est ce qui laisse le paquet `OK` final
+        // dans la connexion — et seulement pour une instruction sans jeu de résultats : pour un
+        // `select`, MySQL y met zéro, ce qui se lirait « aucune ligne touchée » sur une lecture qui
+        // en a rendu mille.
+        let affectees = (!rend_des_lignes).then(|| issue.affected_rows());
+        drop(issue);
 
         Ok(QueryResult {
             columns: colonnes,
@@ -342,7 +437,60 @@ impl EngineAdapter for MysqlAdapter {
             sql: borne,
             duration_ms: u64::try_from(debut.elapsed().as_millis()).unwrap_or(u64::MAX),
             applied_limit: ajoutee,
+            affected: affectees,
         })
+    }
+
+    /// `START TRANSACTION`, `COMMIT`, `ROLLBACK` sur une connexion **tenue** (`API-38`).
+    ///
+    /// C'est le seul des trois moteurs relationnels où l'ordre ne se réduit pas à une instruction :
+    /// ouvrir demande de **prendre** une connexion au pool et de ne pas la rendre, valider ou
+    /// annuler de la rendre. Voir le champ `transaction` pour ce que l'oubli coûterait.
+    async fn transaction(
+        &self,
+        ordre: crate::engine::OrdreDeTransaction,
+    ) -> Result<(), EngineError> {
+        use crate::engine::OrdreDeTransaction as Ordre;
+        let mut garde = self.transaction.lock().await;
+        match ordre {
+            Ordre::Ouvrir => {
+                let mut connexion = self
+                    .pool
+                    .get_conn()
+                    .await
+                    .map_err(|e| error::traduire(&e))?;
+                // **`START TRANSACTION`, le mot de MySQL** : `BEGIN` y est un synonyme accepté, mais
+                // c'est aussi le mot-clef d'un bloc de procédure stockée — la documentation du
+                // serveur recommande le premier pour cette raison.
+                connexion
+                    .query_drop("START TRANSACTION")
+                    .await
+                    .map_err(|e| error::traduire(&e))?;
+                // **Après l'ouverture, jamais avant** : une connexion posée là puis refusée par le
+                // serveur ferait passer toutes les opérations suivantes par une connexion qui n'a
+                // pas de transaction, en promettant qu'elle en a une.
+                *garde = Some(connexion);
+                Ok(())
+            }
+            Ordre::Valider | Ordre::Annuler => {
+                let Some(mut connexion) = garde.take() else {
+                    // Le registre ne le demande que sur une transaction qu'il a ouverte ; le dire
+                    // plutôt que de rendre `Ok` évite de faire croire à une validation qui n'a rien
+                    // validé.
+                    return Err(EngineError::local(
+                        "aucune transaction n'est ouverte sur cette connexion MySQL",
+                    ));
+                };
+                let issue = connexion
+                    .query_drop(ordre.sql())
+                    .await
+                    .map_err(|e| error::traduire(&e));
+                // La connexion retourne au pool dans les deux cas : `take()` l'a déjà retirée, donc
+                // la garder ici la perdrait pour de bon.
+                drop(connexion);
+                issue
+            }
+        }
     }
 }
 
@@ -907,6 +1055,119 @@ mod tests_db {
             message.as_deref(),
             Some("intact"),
             "rien ne doit avoir été écrit"
+        );
+    }
+
+    /// Le compte d'une table jetable, vu par l'adaptateur qu'on lui passe.
+    async fn jetons_vus_par(adaptateur: &MysqlAdapter) -> i64 {
+        let resultat = adaptateur
+            .run_sql(
+                "select count(*) as n from dorabase_test.jetons_transaction",
+                RowLimit::OneHundred,
+            )
+            .await
+            .expect("lecture");
+        match &resultat.rows[0][0] {
+            Value::Int { value } => *value,
+            autre => panic!("un compte doit être un entier : {autre:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn une_transaction_manuelle_tient_sur_la_meme_connexion_du_pool() {
+        // **Le test qui garde `MysqlAdapter::transaction`** (`API-38`), et le seul des trois moteurs
+        // relationnels qui en ait vraiment besoin : PostgreSQL et SQLite détiennent une connexion,
+        // MySQL travaille sur un pool. Sans la connexion tenue, l'`insert` ci-dessous partirait sur
+        // une connexion sans transaction, donc en autocommit — et l'annulation ne reprendrait rien.
+        let console = adaptateur().await;
+
+        // La table est créée **hors** transaction : un `create table` valide implicitement ce qui
+        // était en cours, donc la créer après l'ouverture reviendrait à tester autre chose.
+        let mut preparation = console.connexion().await.unwrap();
+        preparation
+            .query_drop("drop table if exists dorabase_test.jetons_transaction")
+            .await
+            .unwrap();
+        preparation
+            .query_drop("create table dorabase_test.jetons_transaction (valeur int) engine=InnoDB")
+            .await
+            .unwrap();
+        drop(preparation);
+
+        console
+            .transaction(crate::engine::OrdreDeTransaction::Ouvrir)
+            .await
+            .expect("ouverture");
+        let ecriture = console
+            .run_sql(
+                "insert into dorabase_test.jetons_transaction (valeur) values (1)",
+                RowLimit::OneHundred,
+            )
+            .await
+            .expect("écriture");
+        assert_eq!(
+            ecriture.affected,
+            Some(1),
+            "le compte de lignes touchées est la réponse que le panneau affiche"
+        );
+
+        // **Deux mesures, et il faut les deux.** La même session voit sa ligne — donc l'écriture a
+        // bien eu lieu, elle n'est pas perdue —, et une **autre** session ne la voit pas — donc rien
+        // n'est validé. Une seule des deux laisserait passer l'un des deux défauts possibles : une
+        // écriture qui n'arrive pas, ou une écriture définitive présentée comme en attente.
+        assert_eq!(jetons_vus_par(&console).await, 1);
+        // Une seconde connexion, donc un second pool et une autre session.
+        let temoin = adaptateur().await;
+        assert_eq!(
+            jetons_vus_par(&temoin).await,
+            0,
+            "une autre session ne doit pas voir ce que la transaction n'a pas validé"
+        );
+
+        console
+            .transaction(crate::engine::OrdreDeTransaction::Annuler)
+            .await
+            .expect("annulation");
+        assert_eq!(jetons_vus_par(&console).await, 0);
+
+        let mut menage = console.connexion().await.unwrap();
+        menage
+            .query_drop("drop table dorabase_test.jetons_transaction")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn une_lecture_de_console_ne_rend_aucun_compte_de_lignes_touchees() {
+        // MySQL met zéro dans le paquet `OK` d'un jeu de résultats : rendre ce zéro afficherait
+        // « aucune ligne touchée » sur une lecture qui en a rendu plusieurs (`API-38`).
+        let resultat = adaptateur()
+            .await
+            .run_sql("select nom from ateliers", RowLimit::OneHundred)
+            .await
+            .expect("exécution");
+        assert!(!resultat.rows.is_empty());
+        assert_eq!(resultat.affected, None, "{resultat:?}");
+    }
+
+    #[tokio::test]
+    async fn une_lecture_sans_ligne_garde_ses_en_tetes() {
+        // **Les colonnes viennent du protocole, pas de la première ligne** : sans cela un `select`
+        // qui ne rend rien n'avait aucun en-tête à afficher, là où PostgreSQL les donne par son
+        // `prepare`. Trouvé en branchant `query_iter` pour le compte de lignes touchées (`API-38`).
+        let resultat = adaptateur()
+            .await
+            .run_sql(
+                "select nom, ville from ateliers where 1 = 0",
+                RowLimit::OneHundred,
+            )
+            .await
+            .expect("exécution");
+        assert!(resultat.rows.is_empty());
+        assert_eq!(resultat.columns, vec!["nom".to_owned(), "ville".to_owned()]);
+        assert_eq!(
+            resultat.affected, None,
+            "un jeu de résultats vide reste un jeu de résultats"
         );
     }
 

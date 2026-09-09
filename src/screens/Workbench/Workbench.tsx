@@ -9,17 +9,26 @@ import type {
   TableSummary,
   Value,
 } from '../../domain/engine'
+import { useT } from '../../i18n/LanguageContext'
 import { modificateurActif } from '../../shell/plateforme'
 import { SelectionIndicator } from '../../shell/SelectionIndicator/SelectionIndicator'
 import { TitleBar } from '../../shell/TitleBar/TitleBar'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
+import { CommitConfirm } from '../Console/CommitConfirm'
 import { ConsoleView } from '../Console/ConsoleView'
 import { RunConfirm } from '../Console/RunConfirm'
+import { TransactionPanel } from '../Console/TransactionPanel'
+import { raisonSansTransaction } from '../Console/transactions'
 import {
   PASSERELLE_EXECUTION,
   type PasserelleExecution,
   useExecution,
 } from '../Console/useExecution'
+import {
+  PASSERELLE_TRANSACTION,
+  type PasserelleTransaction,
+  useTransaction,
+} from '../Console/useTransaction'
 import { DiagramStatusBar, DiagramView } from '../Diagram/DiagramView'
 import { useDiagramme } from '../Diagram/useDiagramme'
 import { idBase, idSchema, type Noeud } from '../Explorer/arbre'
@@ -141,6 +150,15 @@ type WorkbenchProps = {
   /** Le pont vers `run_sql` (`12c`) — le SQL de l'utilisateur. */
   passerelleExecution?: PasserelleExecution
   /**
+   * Le pont vers les trois commandes de transaction (`API-38`). Injectable, et par défaut le vrai.
+   *
+   * **Ce qui laisse la galerie et `?demo` intactes n'est pas cette prop mais le mode**, qui part à
+   * `auto` : aucune de ces trois commandes n'est appelée avant que l'interrupteur ne soit allumé,
+   * et le panneau ne paraît pas. C'est l'arbitrage de la recherche de mise à jour, pour la même
+   * raison — une fonction que personne n'a demandée ne doit rien demander au pont.
+   */
+  passerelleTransaction?: PasserelleTransaction
+  /**
    * Le pont vers les deux écritures du gestionnaire de schémas (`API-33`). Injectable.
    *
    * **La lecture n'y est pas** : la modale lit par `passerelle.listSchemas`, la commande de l'arbre —
@@ -220,8 +238,13 @@ export function Workbench({
   passerellePreview,
   passerelleApply,
   passerelleExecution,
+  passerelleTransaction = PASSERELLE_TRANSACTION,
   passerelleSchemas = PASSERELLE_SCHEMAS,
 }: WorkbenchProps) {
+  // **Le premier `useT` de cet écran**, et il n'en faut qu'un : tout le texte vit dans les
+  // composants qu'il assemble. Celui-ci sert la seule phrase que l'écran doit **choisir** plutôt
+  // qu'afficher — la raison qui fige la bascule de transaction, parmi deux (`API-38`).
+  const t = useT()
   /**
    * Le cache des structures, **au-dessus de l'arbre et du panneau** : les deux le lisent, et
    * le préchauffage l'alimente. Le poser dans l'un des deux l'aurait rendu inaccessible à l'autre.
@@ -443,18 +466,29 @@ export function Workbench({
    * rien à interroger, et l'inverse non plus : le bouton « Nouvelle console » ouvre donc la console
    * de la base sur laquelle on est, sans poser la question.
    */
-  const dialecteDe = useCallback(
-    (nomProjet: string, nomBase: string, environnement: EnvironmentId): Dialecte => {
+  const moteurDe = useCallback(
+    (nomProjet: string, nomBase: string, environnement: EnvironmentId) =>
       // **L'environnement fait partie de l'identité de la connexion** (`23b`) : chercher par le seul
       // nom rendait le moteur de la première homonyme — le dialecte de la console d'`analytics` en dev
       // pour la console d'`analytics` en prod. `useArbre.baseDeclaree` filtrait déjà correctement ;
       // cette fonction était en retard.
-      const moteur = projects
+      projects
         .find((p) => p.name === nomProjet)
-        ?.databases.find((d) => d.name === nomBase && d.environment === environnement)?.engine
-      return moteur === 'mongodb' ? 'mongo' : 'sql'
-    },
+        ?.databases.find((d) => d.name === nomBase && d.environment === environnement)?.engine,
     [projects],
+  )
+
+  /**
+   * Le dialecte que la base parle (`13a`), **dérivé du moteur déclaré** — voir `moteurDe`.
+   *
+   * Le tri par nom et par environnement vit là-haut : deux fonctions qui cherchaient la même
+   * déclaration en auraient laissé une en arrière au premier écart (règle n° 17), et c'est déjà
+   * arrivé une fois sur l'environnement.
+   */
+  const dialecteDe = useCallback(
+    (nomProjet: string, nomBase: string, environnement: EnvironmentId): Dialecte =>
+      moteurDe(nomProjet, nomBase, environnement) === 'mongodb' ? 'mongo' : 'sql',
+    [moteurDe],
   )
 
   const objets: readonly TableSummary[] = contexte
@@ -500,10 +534,33 @@ export function Workbench({
    * basculant d'onglet — deux requêtes, un seul résultat.
    */
   const idConsoleActive = consoleActive === null ? null : idOnglet(consoleActive)
+  /**
+   * L'adresse de la console active pour la transaction : sa connexion **et** son onglet (`API-38`).
+   *
+   * Les deux, parce que les deux états ne sont pas au même endroit — le régime et ce que le panneau
+   * montre appartiennent à la console, la transaction à la session. `null` hors d'une console : le
+   * régime ne se règle pas sur une table.
+   *
+   * Déclaré au-dessus de `useExecution`, qui reçoit le mode et le jeton de la console : c'est le
+   * même ordre et la même raison que pour les renommages, une dépendance de `useCallback` étant
+   * évaluée à la déclaration.
+   *
+   * `projects` en témoin : les six commandes de configuration qui **ferment** une connexion le
+   * réécrivent, et une transaction fermée avec sa connexion doit disparaître du panneau plutôt que
+   * d'y offrir un « Valider » qui n'a plus rien à valider.
+   */
+  const consoleDeTransaction =
+    consoleActive === null || cleConsole === null
+      ? null
+      : { cle: cleConsole, id: idOnglet(consoleActive) }
+  const transaction = useTransaction(passerelleTransaction, consoleDeTransaction, projects)
   const execution = useExecution(
     cleConsole,
     passerelleExecution ?? PASSERELLE_EXECUTION,
     idConsoleActive,
+    transaction.mode(consoleDeTransaction),
+    transaction.jeton(consoleDeTransaction),
+    transaction.apresExecution,
   )
 
   /**
@@ -511,12 +568,53 @@ export function Workbench({
    * déclaration**, comme `dialecteDe`, jamais deviné depuis le contenu de l'écran.
    */
   const moteurActuel = contexte
-    ? projects
-        .find((p) => p.name === contexte.project)
-        ?.databases.find(
-          (d) => d.name === contexte.database && d.environment === contexte.environment,
-        )?.engine
+    ? moteurDe(contexte.project, contexte.database, contexte.environment)
     : undefined
+
+  /**
+   * Le moteur de la connexion de la **console active** — celui qui décide si elle peut tenir une
+   * transaction manuelle (`API-38`).
+   *
+   * `moteurActuel` ne suffisait pas : il dérive de `contexte`, qui exige un schéma sélectionné dans
+   * l'arbre, alors qu'une console n'en a pas. C'est le même écart que `cleConsole` a comblé pour
+   * l'exécution, et la même réponse — une console sait sur quoi elle porte.
+   */
+  const moteurConsole =
+    consoleActive === null
+      ? undefined
+      : moteurDe(
+          consoleActive.key.project,
+          consoleActive.key.database,
+          consoleActive.key.environment,
+        )
+
+  /**
+   * Pourquoi la bascule « Transaction manuelle » ne peut pas bouger, quand elle ne peut pas
+   * (`API-38`).
+   *
+   * **Deux raisons, jamais les deux à la fois**, et une seule prop pour les deux sens : un moteur
+   * qui ne tient pas de transaction manuelle la fige éteinte et n'en a jamais d'ouverte ; une
+   * transaction qui retient des instructions la fige allumée, le temps de la valider ou de
+   * l'annuler.
+   *
+   * **Sortir du mode manuel n'est ni une validation ni une annulation.** Valider d'office
+   * écrirait ce que personne n'a relu, annuler d'office jetterait un travail en cours : le réglage
+   * se **refuse** avec sa raison, et les deux boutons du panneau restent les deux seules issues.
+   * C'est la règle du bouton désactivé qui nomme ce qui manque (`09f`).
+   */
+  function raisonDeFigerLaTransaction(console: { cle: DatabaseKey; id: string }): string | null {
+    const refus = raisonSansTransaction(moteurConsole)
+    if (refus !== null) return t(refus)
+    const etat = transaction.etat(console)
+    if (etat.statements.length === 0) return null
+    // **La raison nomme le geste qui reste.** Sur une transaction abandonnée, « validez-la ou
+    // annulez-la » proposerait ce que le panneau vient justement de retirer.
+    return t(
+      etat.aborted
+        ? 'console.transaction.modeVerrouilleAbandon'
+        : 'console.transaction.modeVerrouille',
+    )
+  }
 
   /**
    * Le libellé d'affichage de la base ouverte (27 août 2026), pour le fil d'Ariane du centre, la
@@ -653,13 +751,18 @@ export function Workbench({
       // **Le résultat suit le nom, comme le texte** : son identité en dérive, et le laisser sous
       // l'ancienne clé viderait la grille sur un renommage.
       execution.reindexer((id) => (id === ancienId ? nouvelId : id))
+      // **La transaction suit aussi** (`API-38`), et c'est celle dont l'oubli coûte le plus cher :
+      // le cœur garde l'origine des instructions déjà jouées, donc un jeton laissé sous l'ancien
+      // nom rendrait à cette console ses propres instructions comme **étrangères** — panneau vide,
+      // et un « Valider » qui emporte ce qu'elle ne voit plus.
+      transaction.reindexer((id) => (id === ancienId ? nouvelId : id))
       setConsolesOuvertes((precedent) => {
         if (!(ancienId in precedent)) return precedent
         const { [ancienId]: _oubliee, ...reste } = precedent
         return { ...reste, [nouvelId]: { project, database, environment, nom: nouveau } }
       })
     },
-    [onRenameConsole, execution.reindexer],
+    [onRenameConsole, execution.reindexer, transaction.reindexer],
   )
 
   /**
@@ -697,6 +800,7 @@ export function Workbench({
       setTextes((precedent) => reindexerParConnexion(precedent, key, nouveau))
       setAttentes((precedent) => reindexerParConnexion(precedent, key, nouveau))
       execution.reindexer((id) => idApresRenommage(id, key, nouveau))
+      transaction.reindexer((id) => idApresRenommage(id, key, nouveau))
       setOngletsEnEdition(
         (precedent) => new Set([...precedent].map((id) => idApresRenommage(id, key, nouveau))),
       )
@@ -730,7 +834,7 @@ export function Workbench({
       )
       return issue
     },
-    [onRenameDatabase, structures, execution.reindexer],
+    [onRenameDatabase, structures, execution.reindexer, transaction.reindexer],
   )
 
   /**
@@ -1040,7 +1144,16 @@ export function Workbench({
       <WorkbenchTabs
         etat={etatOnglets}
         onSelect={(id) => setEtatOnglets((etat) => ({ ...etat, actif: id }))}
-        onClose={(id) => setEtatOnglets((etat) => fermer(etat, id))}
+        /* **Fermer une console rend sa session** (`API-38`). Le panneau de transaction et ses deux
+           boutons vivent dans l'onglet : une transaction dont l'onglet est fermé ne serait plus
+           atteignable par aucun geste, et attendrait en tenant ses verrous — sur un fichier SQLite,
+           en empêchant toute autre console d'en ouvrir une. C'est `useTransaction` qui annule et
+           oublie ; l'onglet, lui, dit seulement laquelle. */
+        onClose={(id) => {
+          const ferme = etatOnglets.onglets.find((onglet) => idOnglet(onglet) === id)
+          if (ferme?.sorte === 'console') transaction.oublier({ cle: ferme.key, id })
+          setEtatOnglets((etat) => fermer(etat, id))
+        }}
         onReorder={(ids) => setEtatOnglets((etat) => reordonner(etat, ids))}
         /* **Le même geste qu'au double-clic sur la ligne d'arbre.** Une console se rencontre aux
            deux endroits, et n'être renommable qu'à l'un des deux obligerait à se souvenir lequel.
@@ -1106,6 +1219,18 @@ export function Workbench({
           catalogue={catalogue}
           vue={execution.vue}
           onVueChange={execution.setVue}
+          /* **Le régime de transaction de cette console** (`API-38`), avec la seule raison qui
+             puisse figer la bascule. Les deux cas ne peuvent pas se présenter en même temps : un
+             moteur qui ne tient pas de transaction n'en a jamais d'ouverte. */
+          transaction={
+            consoleDeTransaction === null
+              ? undefined
+              : {
+                  mode: transaction.mode(consoleDeTransaction),
+                  onModeChange: (mode) => transaction.poserLeMode(consoleDeTransaction, mode),
+                  raison: raisonDeFigerLaTransaction(consoleDeTransaction),
+                }
+          }
           /* **« Enregistrer » donne un nom à un brouillon**, et le fait exister dans l'arbre. Sur un
              onglet déjà relié à une console, il n'a plus d'objet : chaque frappe est déjà écrite. */
           /* **« Enregistrer » fait exister le brouillon**, sans rien demander : il reçoit le nom par
@@ -1125,6 +1250,7 @@ export function Workbench({
                   // `idOnglet`) — donc le résultat déjà affiché doit la suivre, sans quoi
                   // « Enregistrer » viderait la grille sous les yeux.
                   execution.reindexer((autre) => (autre === brouillon ? id : autre))
+                  transaction.reindexer((autre) => (autre === brouillon ? id : autre))
                   setConsolesOuvertes((precedent) => ({
                     ...precedent,
                     [id]: { project, database, environment, nom },
@@ -1365,6 +1491,11 @@ export function Workbench({
         <RunConfirm
           nature={execution.aConfirmer.nature}
           sansRestriction={execution.aConfirmer.sansWhere}
+          /* **Le rappel de la modale change de sens en mode manuel** (`API-38`) : « sans
+             transaction » y serait faux, et c'est la seule phrase de cet écran qui promette quelque
+             chose. La requête part dans la transaction en cours, donc rien n'est écrit avant sa
+             validation. */
+          dansUneTransaction={transaction.mode(consoleDeTransaction) === 'manual'}
           cible={contexte ? `${libelleActuel} · ${contexte.schema}` : '—'}
           // **Le drapeau de production, non le libellé** (`23g`) : un environnement nommé « live » et
           // marqué production doit porter l'encart rouge, et un environnement nommé « prod » que
@@ -1374,6 +1505,23 @@ export function Workbench({
           enCours={execution.enCours}
           onClose={execution.annulerLaConfirmation}
           onConfirmer={execution.executer}
+        />
+      )}
+      {/* La confirmation d'une validation de transaction (`API-38`), montée à côté de celle d'une
+          requête isolée : les deux sont des sous-modales de cet écran, comme celle de `11d`. */}
+      {transaction.aValider !== null && (
+        <CommitConfirm
+          validation={transaction.aValider}
+          cible={libelleActuel ?? '—'}
+          // **Le drapeau de la déclaration, jamais le libellé** (`23g`), comme les deux autres
+          // confirmations : un environnement nommé « live » et marqué production porte l'encart.
+          production={environnementIndique?.production ?? false}
+          enCours={transaction.enCours}
+          onClose={transaction.annulerLaValidation}
+          onConfirmer={() => {
+            const cible = transaction.aValider
+            if (cible !== null) transaction.valider(cible.console)
+          }}
         />
       )}
       {application.confirmation && table && (
@@ -1644,6 +1792,53 @@ export function Workbench({
                 sized="end"
                 start={<AucuneSelection />}
                 end={<AucuneSelection variante="colonne" />}
+              />
+            ) : consoleDeTransaction !== null &&
+              transaction.mode(consoleDeTransaction) === 'manual' ? (
+              // **La seule exception à « une console occupe toute la largeur »** (`API-38`) : en
+              // mode manuel, il y a enfin quelque chose à montrer à droite — ce que la transaction
+              // retient, et ce qu'un « Valider » emporterait. En mode automatique, rien n'a changé.
+              //
+              // **Un `storageKey` à lui**, et non celui du panneau de détail : ce partage-là n'est
+              // pas le même, et régler la largeur de l'un déplacerait l'autre. C'est déjà la règle
+              // du partage vertical de la console (`console:resultat`).
+              //
+              // **Aucun cadre `ColonneDroite`** : son en-tête porte le couple de vues et les
+              // flèches de ligne, dont aucun n'a de sens sous une console — il ne resterait qu'une
+              // bande de 35 px et un filet qui ne prolonge rien.
+              <SplitPane
+                storageKey="console:transaction"
+                defaultSize={330}
+                min={260}
+                max={460}
+                sized="end"
+                start={centre}
+                end={
+                  <TransactionPanel
+                    etat={transaction.etat(consoleDeTransaction)}
+                    contexte={libelleActuel ?? undefined}
+                    erreur={transaction.erreur(consoleDeTransaction)}
+                    enCours={transaction.enCours}
+                    /* **Demander, non valider** (`API-38`) : une transaction qui a écrit passe par
+                       la confirmation, une transaction qui n'a fait que lire part directement.
+                       C'est `useTransaction` qui tranche, avec le classificateur qui décide déjà de
+                       la confirmation d'une requête isolée. */
+                    onValider={() => transaction.demanderLaValidation(consoleDeTransaction)}
+                    onAnnuler={() => transaction.annuler(consoleDeTransaction)}
+                    /* **Désigner une instruction remet sa réponse dans la grille** (`API-38`), et
+                       rien n'est rejoué : les lignes viennent du cœur, qui les a gardées — une
+                       requête de console n'est pas forcément idempotente. Le rang désigné est celui
+                       du **journal**, non la place de la carte dans une liste filtrée par console —
+                       c'est l'adresse que le cœur attend. */
+                    affichee={transaction.affichee(consoleDeTransaction)}
+                    onAfficher={async (index) => {
+                      const resultat = await transaction.afficher(consoleDeTransaction, index)
+                      // `null` : le cœur a refusé, et le panneau porte déjà son message. La grille
+                      // reste sur ce qu'elle montrait plutôt que de se vider.
+                      if (resultat !== null) execution.poserLeResultat(resultat)
+                    }}
+                  />
+                }
               />
             ) : consoleActive || diagramme ? (
               // **Une console occupe toute la largeur ; un diagramme aussi, et pour la même

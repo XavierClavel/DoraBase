@@ -312,7 +312,19 @@ sql: string, durationMs: number,
  * **Annoncée, jamais silencieuse.** Une limite tue ferait croire à une table de mille lignes —
  * un mensonge sur les données, la pire catégorie de défaut pour cet outil.
  */
-appliedLimit: number | null, };
+appliedLimit: number | null, 
+/**
+ * Les lignes **touchées**, pour une instruction qui n'en rend aucune (`API-38`).
+ *
+ * `None` dès que l'instruction rend des lignes : le compte est alors celui de `rows`, et un
+ * second nombre à côté ferait chercher ce qui les distingue. `None` aussi là où le pilote ne le
+ * dit pas sur ce chemin — la console MongoDB, qui ne fait que lire.
+ *
+ * **Sans ce champ, un `update` de console s'affichait « 0 ligne ».** C'est vrai de ce qu'il
+ * rend et faux de ce qu'il a fait, et le panneau de transaction en aurait fait sa réponse
+ * principale : le seul chiffre qui décide d'un `commit` aurait dit « rien ne s'est passé ».
+ */
+affected: number | null, };
 
 /**
  * Une clé étrangère, dans un sens ou dans l'autre.
@@ -457,6 +469,93 @@ sizeBytes: number | null, columnCount: number, primaryKey: string | null,
  * fier. `A4` en fait une colonne.
  */
 lastAnalyze: string | null, comment: string | null, };
+
+/**
+ * Ce que la console demande à l'exécution : validation immédiate, ou transaction tenue ouverte.
+ *
+ * **Deux valeurs, pas un booléen**, parce que les deux ont un nom que l'écran affiche et que
+ * `manual` n'est pas « `auto` désactivé » : c'est un autre régime, avec son panneau et ses deux
+ * issues.
+ */
+export type TransactionMode = "auto" | "manual";
+
+/**
+ * L'état de la transaction **d'une console**, tel que son panneau l'affiche.
+ */
+export type TransactionState = { 
+/**
+ * Vrai quand cette console tient une transaction ouverte.
+ *
+ * **Distinct d'un journal non vide**, et les deux cas existent : une transaction s'ouvre avant
+ * sa première instruction, et une instruction refusée la laisse ouverte — donc à annuler.
+ *
+ * Il ne dit **rien des autres consoles** : chacune a sa session, donc sa réponse. C'est ce qui
+ * a fait disparaître la notion de « transaction étrangère » qu'une session partagée imposait.
+ */
+open: boolean, 
+/**
+ * Les instructions de cette transaction, dans l'ordre où elles ont été jouées.
+ *
+ * **Entier, et non filtré** : le journal est celui d'une console, puisque la session l'est.
+ * La place d'une instruction dans cette liste est donc son rang dans la transaction — c'est
+ * l'adresse que `transaction_result` attend, et elle n'a pas à voyager à part.
+ */
+statements: Array<TransactionStatement>, 
+/**
+ * Vrai quand une instruction a échoué **sur un moteur qui abandonne** la transaction.
+ *
+ * # Ce que l'écran en fait, et pourquoi ce n'est pas lui qui conclut
+ *
+ * Le panneau retire alors « Valider » et ne laisse que « Annuler » : sur PostgreSQL, un
+ * `commit` après une erreur se comporte comme un `rollback` — le bouton promettrait l'inverse
+ * de ce qu'il fait, ce qui est pire qu'un bouton absent. Mais **SQLite et MySQL n'abandonnent
+ * pas** : leurs instructions précédentes restent validables, et le déduire d'un simple échec
+ * aurait retiré à ces deux-là une capacité qu'ils ont. C'est donc le moteur qui répond —
+ * `AnyEngine::transaction_abandonnee_par_une_erreur`.
+ *
+ * **Figé au moment de l'échec**, non recalculé à la lecture : c'est cette instruction-là qui a
+ * abandonné la transaction, et une reconnexion survenue depuis ne doit pas changer la réponse.
+ */
+aborted: boolean, };
+
+/**
+ * Une instruction jouée dans la transaction en cours, et ce que le serveur en a dit.
+ *
+ * **Les échecs y figurent aussi.** Une instruction refusée fait partie de ce qui s'est passé — et
+ * c'est même elle qu'on cherche : PostgreSQL abandonne la transaction après une erreur, donc la
+ * suite sera refusée jusqu'à l'annulation. Un journal qui ne garderait que les succès laisserait
+ * chercher pourquoi plus rien ne répond.
+ */
+export type TransactionStatement = { sql: string, durationMs: number, 
+/**
+ * Les lignes rendues.
+ */
+returned: number, 
+/**
+ * Les lignes touchées, quand l'instruction n'en rend pas — voir `QueryResult::affected`.
+ */
+affected: number | null, 
+/**
+ * Vrai quand le cœur a **gardé** la réponse de cette instruction, donc quand l'écran peut la
+ * remettre dans sa grille.
+ *
+ * # Pourquoi un drapeau, et pas les lignes
+ *
+ * **Le journal est lu à chaque exécution** : y mettre les lignes ferait traverser l'IPC à
+ * toutes les réponses de la transaction chaque fois qu'on en ajoute une, ce qui est
+ * exactement ce que la contrainte transverse du projet interdit. Les lignes restent donc au
+ * cœur — c'est lui qui détient les résultats, depuis toujours — et l'écran en demande **une**
+ * quand on la lui désigne (`transaction_result`).
+ *
+ * Faux pour une instruction qui n'a rendu aucune ligne : un `update` n'a rien à remettre dans
+ * une grille, et son compte de lignes touchées est déjà sa réponse. C'est ce drapeau qui rend
+ * son entrée non cliquable, plutôt qu'un clic qui viderait la grille.
+ */
+displayable: boolean, 
+/**
+ * Le refus du serveur, quand l'instruction a échoué.
+ */
+error: string | null, };
 
 export type TriggerInfo = { name: string, definition: string, };
 

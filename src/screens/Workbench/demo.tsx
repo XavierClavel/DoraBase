@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   Database,
   EnvironmentColor,
@@ -9,10 +9,13 @@ import type {
 } from '../../domain/config'
 import type {
   ColumnInfo,
+  DatabaseKey,
+  QueryResult,
   Relation,
   SchemaInfo,
   TableDetail,
   TableSummary,
+  TransactionStatement,
 } from '../../domain/engine'
 import { LanguageProvider, langueAppliquee } from '../../i18n/LanguageContext'
 import { NewConnection } from '../NewConnection/NewConnection'
@@ -841,6 +844,57 @@ export function WorkbenchDemo() {
    */
   const [preferences, setPreferences] = useState<Preferences>(PREFERENCES_PAR_DEFAUT)
   const [preferencesOuvertes, setPreferencesOuvertes] = useState(false)
+  /**
+   * Le journal de la transaction manuelle, **par console** (`API-38`).
+   *
+   * **La démo ne retient rien** : elle inscrit une instruction plausible pour que le panneau d'`A7`
+   * soit visible sans base réelle, comme son `runSql` rend un résultat plausible sans rien exécuter.
+   * Ce qu'une transaction fait vraiment — retenir, puis écrire ou rendre — est ce que les tests Rust
+   * mesurent contre un vrai fichier SQLite et un vrai serveur.
+   *
+   * Un `useRef` suffit : c'est `useTransaction` qui relit ce journal après chaque exécution, et son
+   * état à lui déclenche le rendu.
+   */
+  const journaux = useRef<
+    Record<string, { rendue: TransactionStatement; reponse: QueryResult | null }[]>
+  >({})
+  /**
+   * **Mémoïsée, et c'est la règle de toute passerelle** (`useLignes`) : une littérale reconstruite
+   * à chaque rendu relancerait la lecture du journal indéfiniment. Le `useRef` qu'elle referme est
+   * stable, donc la liste de dépendances est vide à bon droit.
+   */
+  const passerelleTransaction = useMemo(
+    () => ({
+      transactionState: async (_cle: DatabaseKey, console: string) => {
+        // **Indexé par console, comme le registre l'est par session** (`API-38`) : une transaction
+        // appartient à une console, pas à la connexion. Un décor qui les mettrait en commun ferait
+        // passer en démo ce que l'application isole — et l'écart ne se verrait nulle part.
+        const journal = journaux.current[console] ?? []
+        return {
+          open: journal.length > 0,
+          statements: journal.map((entree) => entree.rendue),
+          // **La démo n'échoue jamais** : son `runSql` rend toujours une réponse, donc aucune de
+          // ses transactions n'est abandonnée. C'est ce que les tests unitaires du panneau
+          // couvrent, et ce que les tests Rust mesurent contre un vrai PostgreSQL.
+          aborted: false,
+        }
+      },
+      transactionResult: async (_cle: DatabaseKey, console: string, rang: number) => {
+        const reponse = journaux.current[console]?.[rang]?.reponse
+        // Le même refus que le cœur, dans les mêmes termes : sans lui, un clic sur une instruction
+        // sans réponse rendrait `undefined` et la grille se viderait en silence.
+        if (!reponse) throw new Error('cette instruction n’a rendu aucune ligne.')
+        return reponse
+      },
+      commitTransaction: async (_cle: DatabaseKey, console: string) => {
+        delete journaux.current[console]
+      },
+      rollbackTransaction: async (_cle: DatabaseKey, console: string) => {
+        delete journaux.current[console]
+      },
+    }),
+    [],
+  )
 
   useEffect(() => {
     const racine = document.documentElement
@@ -1045,8 +1099,13 @@ export function WorkbenchDemo() {
         // La démo **n'exécute rien** : elle rend un résultat plausible pour que `12c` soit visible sans
         // base réelle. Une exécution simulée ne prouve rien du moteur — c'est ce que les tests Rust sur
         // PostgreSQL vérifient. La limite ajoutée est annoncée, comme le fait la commande réelle.
+        /* **La transaction de la console** (`API-38`), simulée au même degré que l'exécution : le
+           journal est celui que la démo tient, pas celui d'un registre. Sans elle, le panneau
+           paraîtrait vide en mode manuel — le pont ne répondant pas en Chromium — et l'écran ne
+           serait vérifiable qu'à l'œil dans l'application réelle. */
+        passerelleTransaction={passerelleTransaction}
         passerelleExecution={{
-          runSql: async (cle, sql) => {
+          runSql: async (cle, sql, _limite, mode, console) => {
             // **Le décor mongo rend des documents**, pas des lignes : sans cela l'arbre de `13b`
             // n'aurait rien à déplier, et `A8` ne se verrait pas en démo.
             if (estMongo(cle.database)) {
@@ -1079,26 +1138,66 @@ export function WorkbenchDemo() {
                 sql: `${sql}\n// $limit 1000 ajouté par DoraBase`,
                 durationMs: 61,
                 appliedLimit: 1000,
+                // Une lecture ne touche rien, et la console mongo ne fait que lire (`API-38`).
+                affected: null,
               }
             }
-            return {
-              columns: ['jour', 'commandes', 'ca_eur'],
-              rows: [
-                [
-                  { kind: 'timestamp', value: '2026-07-31' },
-                  { kind: 'int', value: 1204 },
-                  { kind: 'decimal', value: '184902.40' },
-                ],
-                [
-                  { kind: 'timestamp', value: '2026-07-30' },
-                  { kind: 'int', value: 1188 },
-                  { kind: 'decimal', value: '176320.00' },
-                ],
-              ],
-              sql: `${sql}\nlimit 1000`,
-              durationMs: 128,
-              appliedLimit: 1000,
+            // **Une écriture ne rend pas de lignes, elle en touche** (`API-38`) : le décor le
+            // distingue, sans quoi le panneau de transaction n'aurait qu'une réponse à montrer et la
+            // moitié de son intérêt — le chiffre qui décide d'un « Valider » — resterait invisible.
+            const ecrit = !/^\s*(select|with|show|explain)\b/i.test(sql)
+            const resultat: QueryResult = ecrit
+              ? {
+                  columns: [],
+                  rows: [],
+                  sql,
+                  durationMs: 34,
+                  appliedLimit: null,
+                  affected: 2,
+                }
+              : {
+                  columns: ['jour', 'commandes', 'ca_eur'],
+                  rows: [
+                    [
+                      { kind: 'timestamp', value: '2026-07-31' },
+                      { kind: 'int', value: 1204 },
+                      { kind: 'decimal', value: '184902.40' },
+                    ],
+                    [
+                      { kind: 'timestamp', value: '2026-07-30' },
+                      { kind: 'int', value: 1188 },
+                      { kind: 'decimal', value: '176320.00' },
+                    ],
+                  ],
+                  sql: `${sql}\nlimit 1000`,
+                  durationMs: 128,
+                  appliedLimit: 1000,
+                  affected: null,
+                }
+
+            // Le pendant du journal du registre, **règle comprise** : le mode décide de
+            // l'*ouverture*, mais le journal dit ce que la transaction *contient* — une requête
+            // lancée par une console qui tient déjà la sienne y entre de toute façon, sa session
+            // la portant. C'est `useTransaction` qui le relira.
+            if (mode === 'manual' || (journaux.current[console]?.length ?? 0) > 0) {
+              journaux.current[console] = [
+                ...(journaux.current[console] ?? []),
+                {
+                  rendue: {
+                    sql: resultat.sql,
+                    durationMs: resultat.durationMs,
+                    returned: resultat.rows.length,
+                    affected: resultat.affected,
+                    displayable: resultat.rows.length > 0,
+                    error: null,
+                  },
+                  // La réponse est gardée ici, comme le cœur la garde : c'est ce qui permet de la
+                  // remettre dans la grille en désignant son instruction.
+                  reponse: resultat.rows.length > 0 ? resultat : null,
+                },
+              ]
             }
+            return resultat
           },
         }}
         passerelleApply={{

@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react'
 import { Icon } from '../../design/icons/Icon'
-import type { QueryResult } from '../../domain/engine'
+import type { QueryResult, TransactionMode } from '../../domain/engine'
 import { useT } from '../../i18n/LanguageContext'
 import { raccourci } from '../../shell/plateforme'
+import { cx } from '../../ui/cx'
 import { SplitPane } from '../../ui/SplitPane/SplitPane'
+import { Toggle } from '../../ui/Toggle/Toggle'
 import { MenuDesColonnes, StepperDeLimite } from '../TableView/Toolbar'
 import type { Dialecte } from '../Workbench/onglets'
 import { ConsoleResult, ordonner, type VueResultat } from './ConsoleResult'
@@ -47,6 +49,30 @@ type ConsoleViewProps = {
   dialecte?: Dialecte
   /** La densité de `15c`, transmise à la grille du résultat. */
   rowHeight?: number
+  /**
+   * Le régime de transaction de **cette console** (`API-38`), et de quoi le changer.
+   *
+   * **De la console, et rien qu'elle** : c'est sur cet onglet-là qu'on l'allume, passer à un voisin
+   * n'en montre pas le panneau, et la transaction qu'il ouvre vit dans une session à elle — donc
+   * aucune console voisine n'y entre. C'est l'appelant qui en tient le compte, voir
+   * `useTransaction`.
+   *
+   * Absent, le réglage n'est pas rendu : la galerie et les vitrines montent la console sans lui, et
+   * une bascule sans effet se lirait comme une panne (défaut n° 36).
+   */
+  transaction?: {
+    mode: TransactionMode
+    onModeChange: (mode: TransactionMode) => void
+    /**
+     * Pourquoi la bascule ne peut pas bouger, quand elle ne peut pas.
+     *
+     * **Une seule raison pour les deux sens**, parce que la question est la même — « pourquoi ce
+     * réglage ne répond-il pas ? » : un moteur qui ne sait pas tenir de transaction manuelle la
+     * fige éteinte, une transaction en cours la fige allumée. Deux props auraient demandé à
+     * l'appelant de deviner laquelle vaut, alors qu'il n'y en a jamais qu'une.
+     */
+    raison?: string | null
+  }
 }
 
 /**
@@ -71,6 +97,7 @@ export function ConsoleView({
   onEnregistrer,
   dialecte = 'sql',
   rowHeight,
+  transaction,
 }: ConsoleViewProps) {
   const t = useT()
   // La sélection courante, publiée par l'éditeur : « Sélection » l'exécute, et se replie sur la
@@ -196,6 +223,37 @@ export function ConsoleView({
           </button>
         ))}
         <span className={styles.espace} />
+        {/* **Le régime de transaction, avant les deux réglages de lecture** (`API-38`). Un
+            interrupteur et non un contrôle segmenté « Auto | Manuel » : c'est un réglage binaire
+            dont le défaut est éteint, et la forme d'un interrupteur éteint l'annonce — la leçon du
+            « Toutes les colonnes » du diagramme. Le libellé nomme l'état allumé, comme là-bas. */}
+        {transaction !== undefined && (
+          <span className={styles.reglage}>
+            <Toggle
+              checked={transaction.mode === 'manual'}
+              // **Figée par un `aria-disabled`, jamais par `disabled`** : elle porte sa raison, et
+              // un bouton désactivé ne reçoit ni survol ni focus — l'infobulle serait
+              // inatteignable là où elle explique (piège n° 3). Le gestionnaire est donc retiré.
+              aria-disabled={transaction.raison ? true : undefined}
+              className={cx(transaction.raison && styles.reglageFige)}
+              title={transaction.raison ?? t('console.transaction.modeAide')}
+              onCheckedChange={
+                transaction.raison
+                  ? () => {}
+                  : (coche) => transaction.onModeChange(coche ? 'manual' : 'auto')
+              }
+              label={t('console.transaction.modeLabel')}
+            />
+            <span
+              className={cx(
+                styles.reglageNom,
+                transaction.mode === 'auto' && styles.reglageNomEteint,
+              )}
+            >
+              {t('console.transaction.modeLabel')}
+            </span>
+          </span>
+        )}
         {/* **En mongo, l'auto-`$limit` reste un état affiché** : ce n'est pas un `LIMIT` SQL mais
             un `$limit` ajouté en fin de pipeline (`18g`), que le stepper ne sait pas écrire.
 

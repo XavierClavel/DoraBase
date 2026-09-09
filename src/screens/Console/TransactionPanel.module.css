@@ -1,0 +1,296 @@
+/*
+ * Le panneau de la transaction manuelle d'une console (`API-38`), 330 px.
+ *
+ * **Les cotes sont celles de `PendingPanel`**, et ce n'est pas une économie : les deux panneaux
+ * répondent à la même question — « qu'est-ce qui n'est pas encore écrit, et qu'est-ce que
+ * “appliquer” emporte ? » — à deux endroits du produit. Deux largeurs différentes pour deux
+ * réponses de même nature se liraient comme deux composants sans rapport.
+ */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* Même raison que dans `PendingPanel` : sans `min-width: 0`, ce panneau refuse de descendre sous
+     la largeur minimale de son pied, et déborde de la colonne qui le porte. */
+  min-width: 0;
+  height: 100%;
+  background: var(--paper);
+  border-left: 1px solid var(--divider);
+}
+
+.entete {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  box-sizing: content-box;
+  height: var(--h-bar);
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--divider);
+  background: var(--bar);
+}
+
+.icone {
+  flex: none;
+  color: var(--warn-ink);
+}
+
+.titre {
+  margin: 0;
+  flex: 1;
+  font-family: var(--font-ui);
+  font-size: var(--text-dense);
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+}
+
+/* Le corps défile ; l'en-tête et le pied restent. Vingt instructions ne doivent pas repousser
+ * « Valider » hors de vue — c'est le bouton qu'on cherche après avoir relu ce qui attend. */
+.corps {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Pas de rebond élastique aux extrémités sous WKWebView — voir la note de `reset.css`. */
+  overscroll-behavior: none;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.instructions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.instruction {
+  border-radius: var(--radius-control-2);
+  background: var(--warn-bg-2);
+  border: 1px solid var(--warn-bg);
+}
+
+/* **Le rembourrage vit sur l'enveloppe du contenu, non sur la carte ni sur ses enfants.** Sur la
+   carte, la cible du bouton se serait arrêtée à quelques pixels de la bordure et le survol aurait
+   laissé une bande morte ; sur les enfants (`.instruction > *`), les deux sortes de carte n'avaient
+   plus le même rythme — l'en-tête et le bloc de SQL cumulaient chacun leur marge, quatre pixels de
+   plus entre eux que dans une carte cliquable. Vu à la capture, les deux côte à côte. */
+.choix,
+.fixe {
+  display: block;
+  padding: var(--space-4) var(--space-5);
+}
+
+/* **La carte entière est la cible** : ce qu'on lit est ce qu'on clique. Un bouton qui ne dessine
+   rien de lui-même — pas de bordure, pas de fond, la trame reste celle de la carte —, parce que
+   c'est la carte qui est le contrôle. */
+.choix {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  border: none;
+  border-radius: inherit;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* `--hover-row`, la teinte de la ligne d'arbre et de l'entrée de menu : c'est l'un des cinq états
+   de survol du dépôt, réemployé, jamais une valeur inventée. */
+.choix:hover {
+  background: var(--hover-row);
+}
+
+.choix:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* L'instruction dont la réponse est dans la grille. **Un anneau intérieur en accent**, non un fond
+   teinté : la carte a déjà le sien, et « désigné » est exactement ce que l'accent veut dire. */
+.choixAffiche {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/* Le verbe du bouton, lu et non vu : `clip-path` plutôt que `display: none`, qui le retirerait de
+   l'arbre d'accessibilité — donc du nom du contrôle (piège n° 2). */
+.masque {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Une instruction refusée porte la trame du danger, pas celle de l'attente : ce n'est plus quelque
+   chose qui va s'écrire, c'est quelque chose qui n'a pas eu lieu. */
+.refusee {
+  background: var(--danger-bg);
+  border-color: var(--danger-bg);
+}
+
+.instructionEntete {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.rang {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-medium);
+  color: var(--ink-meta);
+}
+
+/* La réponse du serveur, à droite du rang : c'est le chiffre qui décide d'une validation, et il se
+   lit sans avoir à parcourir le SQL. */
+.reponse {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-family: var(--font-ui);
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-2);
+}
+
+.duree {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-medium);
+  color: var(--ink-meta);
+}
+
+.sql {
+  margin-top: var(--space-3);
+}
+
+.echec {
+  margin: var(--space-3) 0 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: 1.45;
+  color: var(--danger-ink);
+}
+
+/* L'invite d'une transaction qui n'a rien retenu : la même trame que le bloc « SQL qui sera
+   exécuté » de `PendingPanel` quand il n'a rien à montrer — un cadre pointillé dit « il y aura
+   quelque chose ici » là où un texte nu se lirait comme un état final. */
+.invite {
+  margin: 0;
+  padding: var(--space-5);
+  border-radius: var(--radius-control-2);
+  background: var(--field);
+  border: 1px dashed var(--border);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: 1.45;
+  color: var(--ink-meta);
+}
+
+/* **La transaction est abandonnée.** La trame du danger, comme un refus : ce n'est plus quelque
+   chose qui va s'écrire. Elle prend la place du bouton « Valider », qui est retiré — la raison doit
+   donc se lire, et non se survoler. */
+.abandon {
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-control-2);
+  background: var(--danger-bg);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: 1.45;
+  color: var(--danger-ink);
+}
+
+.refus {
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-control-2);
+  background: var(--danger-bg);
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  line-height: 1.45;
+  color: var(--danger-ink);
+}
+
+.pied {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  box-sizing: content-box;
+  padding: var(--space-5) var(--space-6);
+  border-top: 1px solid var(--divider);
+  background: var(--bar);
+}
+
+.cible {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-caps-sm);
+  font-weight: var(--weight-medium);
+  color: var(--ink-meta);
+}
+
+.annuler {
+  padding: var(--space-3) var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--field);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-2);
+}
+
+.annuler:hover {
+  background: var(--hover-row);
+}
+
+.valider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border: none;
+  border-radius: var(--radius-field);
+  background: var(--success);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  color: var(--ink-on-accent);
+}
+
+/* **`aria-disabled` et non `disabled`**, parce que les deux boutons portent leur raison : un
+   `<button disabled>` ne reçoit ni focus ni survol, donc son infobulle serait inatteignable
+   exactement là où elle est utile (piège n° 3 d'accessibilité). Le grisé est donc à écrire, le
+   navigateur ne le posant plus lui-même. */
+.annuler[aria-disabled="true"],
+.valider[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.annuler:focus-visible,
+.valider:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}

@@ -439,6 +439,13 @@ pub async fn create_schema(
     name: String,
     registry: tauri::State<'_, ConnectionRegistry>,
 ) -> Result<(), EngineError> {
+    // Refusé pendant une transaction de console : `create schema` prend des verrous que la
+    // transaction ouverte à côté peut tenir, donc il **attendrait** — et le registre garde le verrou
+    // de la connexion pendant ce temps. Voir la méthode du registre.
+    registry
+        .refuser_pendant_une_transaction(&key.cle(), "créer un schéma")
+        .await?;
+
     registry
         // **Jamais rejouée.** Un `create schema` peut avoir été validé par le serveur avant que
         // la coupure n'empêche l'accusé de réception d'arriver : le rejeu échouerait alors en
@@ -449,6 +456,84 @@ pub async fn create_schema(
             Box::pin(async move { adaptateur.create_schema(&name).await })
         })
         .await
+}
+
+/// L'état de la transaction manuelle d'une connexion, **vu par une console** (`API-38`).
+///
+/// Lue par le panneau après chaque exécution, et à l'arrivée sur une console. **Une transaction
+/// appartient à une console**, qui a sa propre session pour la tenir : `console` désigne donc
+/// laquelle, et l'état rendu est le sien seul. Aucun aller-retour vers le serveur — le journal est
+/// ici.
+///
+/// **`Result` alors que rien ne peut échouer** : une commande asynchrone qui reçoit une référence —
+/// ici l'état Tauri — doit en rendre un, faute de quoi le futur emprunterait le message de l'appel.
+/// C'est la contrainte du harnais, pas une issue de cette lecture ; `connection_states` la porte
+/// déjà pour la même raison.
+#[tauri::command]
+pub async fn transaction_state(
+    key: DatabaseKey,
+    console: String,
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<crate::engine::TransactionState, EngineError> {
+    Ok(registry.etat_de_transaction(&key.cle(), &console).await)
+}
+
+/// La réponse d'une instruction de la transaction, désignée par son rang (`API-38`).
+///
+/// **Une seule, et à la demande** : le journal que le panneau relit à chaque exécution ne porte que
+/// des comptes, et c'est celle qu'on désigne qui traverse l'IPC — la règle du projet, « le cœur
+/// détient les résultats ; la webview ne reçoit que ce qu'elle montre ». L'écran la remet dans la
+/// grille de la console, à la place de la dernière exécution.
+#[tauri::command]
+pub async fn transaction_result(
+    key: DatabaseKey,
+    console: String,
+    index: usize,
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<crate::engine::QueryResult, EngineError> {
+    let resultat = registry
+        .reponse_de_transaction(&key.cle(), &console, index)
+        .await;
+    // Le SQL n'est **pas** journalisé, comme en `12c` : il peut contenir des valeurs de
+    // l'utilisateur, et un journal ne doit pas devenir une copie des données.
+    if let Err(erreur) = &resultat {
+        log::warn!("transaction_result → refusé : {erreur}");
+    }
+    resultat
+}
+
+/// Valide la transaction manuelle **d'une console** (`API-38`).
+///
+/// Journalisée dans les deux cas, comme `apply_changes` : c'est l'autre commande qui rend
+/// définitives des écritures de l'utilisateur, et savoir après coup ce qui est parti vaut la ligne.
+/// Aucune valeur, aucun SQL — un journal ne doit pas devenir une copie des données.
+#[tauri::command]
+pub async fn commit_transaction(
+    key: DatabaseKey,
+    console: String,
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<(), EngineError> {
+    let resultat = registry.valider_la_transaction(&key.cle(), &console).await;
+    match &resultat {
+        Ok(()) => log::info!("commit_transaction → validée"),
+        Err(erreur) => log::warn!("commit_transaction → refusée : {erreur}"),
+    }
+    resultat
+}
+
+/// Annule la transaction manuelle **d'une console** (`API-38`).
+#[tauri::command]
+pub async fn rollback_transaction(
+    key: DatabaseKey,
+    console: String,
+    registry: tauri::State<'_, ConnectionRegistry>,
+) -> Result<(), EngineError> {
+    let resultat = registry.annuler_la_transaction(&key.cle(), &console).await;
+    match &resultat {
+        Ok(()) => log::info!("rollback_transaction → annulée"),
+        Err(erreur) => log::warn!("rollback_transaction → refusée : {erreur}"),
+    }
+    resultat
 }
 
 /// Les objets d'**un** schéma.
@@ -628,6 +713,14 @@ pub async fn apply_changes(
     plan: crate::engine::UpdatePlan,
     registry: tauri::State<'_, ConnectionRegistry>,
 ) -> Result<crate::engine::ApplyOutcome, EngineError> {
+    // **Refusé pendant une transaction de console** : les lignes qu'elle retient sont verrouillées
+    // jusqu'à son issue, donc cette écriture attendrait — indéfiniment sur PostgreSQL —, et le
+    // registre tient le verrou de la connexion pendant l'opération : toute lecture de cette base
+    // gèlerait derrière. Voir `ConnectionRegistry::refuser_pendant_une_transaction`.
+    registry
+        .refuser_pendant_une_transaction(&key.cle(), "écrire les modifications de la grille")
+        .await?;
+
     let resultat = registry
         // **Jamais rejouée.** Le serveur peut avoir validé la transaction *avant* que la coupure
         // n'empêche l'accusé de réception d'arriver : un second passage insérerait une deuxième
@@ -659,21 +752,30 @@ pub async fn apply_changes(
 ///
 /// La limite ajoutée est **rendue**, jamais tue : une limite silencieuse ferait croire à une table de
 /// mille lignes.
+///
+/// **`mode` choisit la session** (`API-38`) : `manual` ouvre celle de cette console à la première
+/// exécution et l'y garde, `auto` passe par celle de la connexion — qui n'a pas de transaction, et
+/// que la transaction d'une console voisine n'atteint pas. Voir
+/// `ConnectionRegistry::executer_une_requete`.
+///
+/// **`console` est le jeton de l'onglet**, opaque : c'est lui qui désigne la session à employer, et
+/// le cœur ne le compare qu'à lui-même.
 #[tauri::command]
 pub async fn run_sql(
     key: DatabaseKey,
     sql: String,
     limit: crate::engine::RowLimit,
+    mode: crate::engine::TransactionMode,
+    console: String,
     registry: tauri::State<'_, ConnectionRegistry>,
 ) -> Result<crate::engine::QueryResult, EngineError> {
     let resultat = registry
-        // **Jamais rejouée** : c'est le SQL de l'utilisateur, et la console accepte les DML.
-        // Rien ici ne sait si cette requête lit ou si elle écrit, et une reprise décidée dans le
-        // doute écrirait deux fois.
-        .avec(&key.cle(), Reprise::Unique, move |adaptateur| {
-            let sql = sql.clone();
-            Box::pin(async move { adaptateur.run_sql(&sql, limit).await })
-        })
+        // **Ni `avec` ni `Reprise` ici**, et pourtant les deux y sont : `executer_une_requete` passe
+        // chacun de ses deux ordres par `avec` — le `begin` en `Rejouable`, la requête en `Unique`,
+        // qui est le verdict de ce chemin depuis `API-37` : rien ici ne sait si cette requête lit ou
+        // si elle écrit, et une reprise décidée dans le doute écrirait deux fois. Ce que cette
+        // méthode ajoute est le journal de la transaction, qui doit être tenu en travers des deux.
+        .executer_une_requete(&key.cle(), &sql, limit, mode, &console)
         .await;
 
     match &resultat {

@@ -20,6 +20,8 @@ import type {
   SchemaInfo,
   TableDetail,
   TableSummary,
+  TransactionMode,
+  TransactionState,
   UpdatePlan,
   Value,
 } from '../domain/engine'
@@ -297,8 +299,79 @@ export async function installUpdate(): Promise<void> {
   return appeler<void>('install_update')
 }
 
-export async function runSql(key: DatabaseKey, sql: string, limit: RowLimit): Promise<QueryResult> {
-  return appeler<QueryResult>('run_sql', { key, sql, limit })
+/**
+ * Exécute le SQL d'une console.
+ *
+ * **`mode` décide d'une seule chose : ouvrir une transaction si aucune ne l'est** (`API-38`). Une
+ * requête lancée en `auto` pendant qu'une transaction est ouverte y entre de toute façon — c'est la
+ * session qui la porte, non ce paramètre —, et le journal du panneau le dit.
+ *
+ * **`console` ne décide rien** : il est inscrit à côté de l'instruction pour que chaque console
+ * retrouve les siennes dans son panneau. Le cœur ne le compare qu'à lui-même — voir
+ * `useTransaction`, qui le mint.
+ */
+export async function runSql(
+  key: DatabaseKey,
+  sql: string,
+  limit: RowLimit,
+  mode: TransactionMode,
+  console: string,
+): Promise<QueryResult> {
+  return appeler<QueryResult>('run_sql', { key, sql, limit, mode, console })
+}
+
+/**
+ * L'état de la transaction manuelle d'une connexion (`API-38`).
+ *
+ * **Relu plutôt que déduit de ce que l'écran a envoyé.** Le journal vit dans le registre, à côté de
+ * la session qui tient la transaction : une liste tenue côté écran aurait été juste sur l'onglet et
+ * fausse sur ce qu'un « Valider » emporte.
+ *
+ * **`console` désigne la session**, et l'état rendu est le sien seul : chaque console a la sienne,
+ * donc sa transaction (`API-38`).
+ */
+export async function transactionState(
+  key: DatabaseKey,
+  console: string,
+): Promise<TransactionState> {
+  return appeler<TransactionState>('transaction_state', { key, console })
+}
+
+/**
+ * La réponse d'une instruction de la transaction, désignée par son **rang** (`API-38`).
+ *
+ * **Une seule, et à la demande.** Le journal que le panneau relit après chaque exécution ne porte
+ * que des comptes : les lignes restent au cœur, et c'est celle qu'on désigne qui traverse l'IPC.
+ * Un rang plutôt qu'un identifiant parce que ce journal ne fait que s'allonger — voir
+ * `ConnectionRegistry::reponse_de_transaction`.
+ */
+export async function transactionResult(
+  key: DatabaseKey,
+  console: string,
+  index: number,
+): Promise<QueryResult> {
+  return appeler<QueryResult>('transaction_result', { key, console, index })
+}
+
+/**
+ * Valide la transaction manuelle d'une console (`API-38`).
+ *
+ * **Après cet appel, la transaction est terminée quoi qu'il arrive** : un `commit` refusé est suivi
+ * d'une annulation côté Rust, pour que l'écran n'ait qu'un état à afficher — voir
+ * `ConnectionRegistry::valider_la_transaction`.
+ */
+export async function commitTransaction(key: DatabaseKey, console: string): Promise<void> {
+  return appeler<void>('commit_transaction', { key, console })
+}
+
+/**
+ * Annule la transaction manuelle d'une console (`API-38`).
+ *
+ * **C'est aussi ce qui rend sa session**, et c'est pourquoi l'écran l'appelle en quittant le mode
+ * manuel : une session gardée pour rien tiendrait une transaction vide et ses verrous côté serveur.
+ */
+export async function rollbackTransaction(key: DatabaseKey, console: string): Promise<void> {
+  return appeler<void>('rollback_transaction', { key, console })
 }
 
 /**

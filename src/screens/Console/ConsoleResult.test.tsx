@@ -18,6 +18,7 @@ const RESULTAT: QueryResult = {
   sql: 'select id, statut, total from commandes limit 1000',
   durationMs: 12,
   appliedLimit: null,
+  affected: null,
 }
 
 /**

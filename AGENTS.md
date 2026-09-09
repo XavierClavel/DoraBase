@@ -918,6 +918,408 @@ illisibles, et le total est ce qui dit si un schéma est vide. Et les deux planc
 qui rend la section repliée mesurable par Playwright — mais un vrai `pg_catalog` porte des milliers
 de fonctions, et la colonne « objets » n'a jamais affiché cinq chiffres.
 
+### La transaction d'une console : automatique ou manuelle (9 septembre 2026, `API-38`)
+
+La console exécutait toujours à découvert : chaque requête partait telle quelle, et c'était
+l'autocommit du serveur qui décidait. Un interrupteur « Transaction manuelle » entre dans sa barre
+d'outils, à côté du stepper `LIMIT` — allumé, la première exécution ouvre une transaction, les
+suivantes s'y ajoutent, et le panneau de droite liste ce qu'elle retient avec deux boutons pour la
+finir.
+
+**Une console, une transaction, une session** — et c'est ce fait de serveur qui tient tout le reste.
+Une transaction est un état de **session** : deux consoles qui partagent une session partagent sa
+transaction, quoi qu'en dise l'écran. Un `begin` posé depuis l'une englobe ce que l'autre exécute, et
+un `commit` emporte les deux.
+
+Le registre ne détenant qu'un adaptateur par connexion, ce partage a d'abord été la règle : le
+journal était celui de la connexion, et une console en `auto` participait **en silence** à la
+transaction de sa voisine. Trois passages successifs ont essayé de rendre cela lisible — un régime
+par connexion, puis un régime par console, puis un journal filtré par console — et le dernier a
+montré ce que les deux premiers cachaient : ce n'était pas un problème d'affichage. **Une console qui
+passe en mode manuel reçoit donc sa propre session**, ouverte à sa première exécution, et sa
+transaction y vit seule (`ConnectionRegistry::assurer_la_session`).
+
+Les trois états sont alors au même endroit, l'onglet — le régime, ce qu'on regarde, et la transaction
+elle-même —, indexés par identité d'onglet comme le texte (`12a`), le résultat (`12c`) et les
+modifications en attente (`11b`). Ce qui reste côté Rust est le **journal**, à côté de la session qui
+porte la transaction : une liste tenue par l'écran aurait été juste sur ce que l'onglet a lancé et
+fausse sur ce qu'un « Valider » emporte — un refus, par exemple, entre dans la transaction sans que
+l'écran l'y mette.
+
+**Ce que la session par console a fait disparaître**, et qu'il ne faut pas réintroduire :
+
+- la notion de **transaction étrangère**. Une console en `auto` n'entre dans aucune transaction, même
+  si sa voisine en tient une : ses requêtes partent sur la session de la connexion, qui n'a pas de
+  `begin`. Le pied de la console ne l'annonce donc plus, et `TransactionState` n'a plus à dire quoi
+  que ce soit des autres consoles ;
+- le **filtre** du journal, et le `foreign` qui l'accompagnait. Le journal d'une console est le sien,
+  entier : la place d'une instruction y est son rang, et il n'y a rien de plus à dire sur ce qu'un
+  `commit` emporte. Le champ `index` qui portait le rang à part est parti avec ;
+- et le **trou** que ce filtre avait ouvert : une console qui n'avait rien écrit validait le `delete`
+  d'une voisine sans aucune confirmation. La règle est redevenue celle de `demandeConfirmation` — une
+  transaction qui n'a fait que lire se valide sans question —, et elle est de nouveau vraie.
+
+**Ce qu'elle coûte, et qui est le vrai prix** : ce qu'une transaction retient n'est visible que
+d'elle. La grille de `A5`, l'arbre et les autres consoles lisent la session de la connexion, donc ils
+ne voient pas les lignes qu'une transaction ouverte a écrites. C'est l'isolation que le serveur
+promet — la contrepartie exacte de « les transactions ne sont pas partagées » —, et c'est un
+renversement : la version à session partagée le notait comme une propriété à garder, MySQL ayant
+demandé un champ pour l'obtenir (voir `Prise`). L'aide de l'interrupteur le **dit** plutôt que de le
+laisser découvrir.
+
+Dix décisions à ne pas défaire :
+
+- **la transaction s'ouvre à la première exécution**, jamais au réglage. Il n'y a donc pas de bouton
+  « Ouvrir », pas d'état intermédiaire où une transaction vide tiendrait des verrous, et rien à
+  fermer si l'on change d'avis. Le panneau paraît quand même dès le réglage, et **dit** ce qui va se
+  passer : c'est le seul endroit qui puisse expliquer le régime dans lequel on vient d'entrer, et une
+  colonne vide n'aurait rien dit ;
+- **le mode choisit la session, et une console qui tient la sienne y reste.** Une requête lancée en
+  `auto` par une console qui a déjà une transaction ouverte y est inscrite quand même — elle est bel
+  et bien dedans, et c'est un `commit` qui décidera de son sort. Une console **voisine**, elle, n'y
+  entre jamais ;
+- **les échecs y figurent aussi.** PostgreSQL abandonne la transaction après une erreur, donc toute
+  la suite sera refusée jusqu'à l'annulation : un journal qui n'aurait gardé que les succès aurait
+  laissé chercher pourquoi plus rien ne répond. Une instruction refusée laisse d'ailleurs la
+  transaction **ouverte**, le `begin`, lui, ayant réussi ;
+- **une instruction se désigne, et sa réponse revient dans la grille.** La grille du centre n'en
+  tient qu'une — celle de la dernière exécution : dans une transaction de cinq requêtes, les quatre
+  autres n'existaient plus nulle part, et un compte de lignes dit qu'il s'est passé quelque chose
+  sans dire quoi, alors que c'est sur ces réponses-là qu'on décide de valider. Cliquer une carte du
+  panneau y remet donc sa réponse. Cinq points :
+  - **le panneau ne contient pas les réponses, il les désigne.** Le journal est **relu à chaque
+    exécution** : y mettre les lignes ferait traverser l'IPC à toutes les réponses de la transaction
+    chaque fois qu'on en ajoute une, ce que la contrainte transverse du projet interdit. Elles
+    restent donc au cœur — « le cœur détient les résultats ; la webview ne reçoit que ce qu'elle
+    montre » — et `transaction_result` en rend **une**, celle qu'on lui nomme. Un premier jet mettait
+    un aperçu de cinq lignes dans chaque carte : c'était un tableau de plus dans 330 px, et une
+    réponse tronquée là où l'écran a déjà une grille pour la montrer en entier ;
+  - **un rang, pas un identifiant.** Le journal d'une transaction ne fait que s'allonger : rien ne
+    s'y retire, rien ne s'y déplace, et un `commit` le remplace en entier. Un rang y désigne donc
+    toujours la même instruction, sans distribuer d'identifiants ni les faire voyager avec chaque
+    exécution — et comme ce journal est celui d'une console, ce rang est la place que le panneau
+    affiche. Un champ `index` a porté ce rang à part le temps où la liste était filtrée ; la session
+    par console l'a rendu inutile, et il est parti ;
+  - **rien n'est rejoué.** Les lignes viennent de ce que le cœur a gardé : relancer la requête serait
+    la seule autre façon de les retrouver, et une requête de console n'est pas forcément idempotente
+    — c'est déjà la raison pour laquelle un geste de colonne ne réexécute rien ;
+  - **une écriture ne se désigne pas.** `displayable` vient du cœur, et il est faux quand
+    l'instruction n'a rendu aucune ligne : un clic ne ferait que vider la grille, et son compte de
+    lignes touchées est déjà sa réponse. Pas d'infobulle « rien à afficher » sur ces cartes non plus
+    — l'information y est déjà lue ;
+  - **et ce que garder coûte est borné par `RowLimit`.** Une réponse de console fait au plus mille
+    lignes (`12c`), donc le journal pèse au plus ce plafond par instruction qui rend des lignes ; une
+    écriture n'en garde aucune, et un `commit` ou un `rollback` efface tout. Ce qui n'a pas été
+    retenu : jeter les plus anciennes réponses au-delà d'un plafond global — cela rendrait une
+    instruction non consultable pour une raison que l'utilisateur n'a pas provoquée, et qu'il
+    faudrait alors lui dire.
+- **`QueryResult.affected` a été ajouté pour cela**, et il manquait avant. La console affichait « 0
+  ligne » sur un `update` — vrai de ce qu'il *rend*, faux de ce qu'il a *fait* — et le panneau en
+  aurait fait sa réponse principale : le seul chiffre qui décide d'un `commit` aurait dit « rien ne
+  s'est passé ». Il est rendu **seulement quand l'instruction ne rend pas de lignes**, faute de quoi
+  un `select` afficherait deux fois le même nombre sous deux noms dont l'un serait faux. `None` chez
+  MongoDB parce que sa console ne fait que lire — ce n'est pas « le pilote ne le dit pas », c'est
+  « il n'y a rien à dire » ;
+- **deux moteurs refusent, nommés un par un, et pas pour un retard.** La console MongoDB ne fait que
+  **lire** — `find`, `aggregate`, `countDocuments`, `distinct` : une transaction manuelle n'y aurait
+  rien à valider, alors que la grille en ouvre déjà une dès qu'elle porte plus d'une écriture.
+  BigQuery exécute chaque requête comme un **job indépendant** : il n'y a pas de session à tenir
+  entre deux exécutions, et ses transactions s'écrivent dans un script, donc en une seule requête —
+  ce que la console exécute déjà. L'interrupteur reste et se **désactive avec sa raison**, comme
+  l'entrée « Gérer les schémas… » hors PostgreSQL : le cacher ferait croire qu'il n'existera jamais ;
+- **MySQL tient une connexion du pool, et c'est le seul écart entre les trois moteurs qui
+  transigent.** PostgreSQL et SQLite détiennent *une* connexion : un `BEGIN` y survit d'un appel à
+  l'autre sans que personne ait rien à garder. Le pilote MySQL travaille sur un **pool** — sans le
+  champ `transaction` de `MysqlAdapter`, le `START TRANSACTION` serait resté sur une connexion rendue
+  au pool aussitôt après, et les requêtes suivantes en auraient pris une autre : une transaction qui
+  ne contient rien, des écritures validées d'office par l'autocommit de leur propre connexion, et un
+  panneau qui promet un `commit` sur du vide. Le pire mode de défaillance possible pour cette
+  fonction — pas une panne, une écriture définitive présentée comme en attente. **Le corollaire, lui,
+  s'est inversé** : il disait que toute opération de la connexion passait par cette connexion-là
+  (`Prise`), lecture de grille comprise, pour que MySQL ne soit pas le seul moteur où la table qu'on
+  regarde ignore ce que la transaction vient d'écrire. Depuis qu'une console tient sa transaction
+  dans sa **propre session**, cet adaptateur est celui de la console et la grille lit sur celui de la
+  connexion : elle ne voit rien, et c'est vrai des trois moteurs de la même façon ;
+- **l'écriture de la grille et la création d'un schéma restent refusées pendant une transaction de
+  console, et pour une autre raison qu'avant.** Ce n'était d'abord qu'une question de `begin`
+  imbriqué : les deux posaient les leurs sur la session de la console, et les trois moteurs en
+  faisaient trois choses dont aucune n'était acceptable — MySQL validait implicitement, PostgreSQL
+  avalait le `BEGIN` puis validait tout, SQLite échouait en accusant l'écriture plutôt que ce qui la
+  gêne. Une session par console a supprimé cette cause ; ce qui reste est **pire**, et c'est le
+  **verrou** : les lignes qu'une transaction ouverte a touchées le sont jusqu'à son issue, donc
+  l'écriture **attendrait** — indéfiniment sur PostgreSQL. Et le registre tient le verrou de la
+  connexion pendant l'opération, donc cette attente gèlerait *toute* lecture de cette base : l'arbre,
+  les autres consoles, la grille. Le refus nomme les deux issues ; c'est la règle du bouton désactivé
+  qui dit ce qui manque ;
+- **un `commit` refusé est suivi d'une annulation**, et le journal est vidé dans les deux cas. Ce
+  n'est pas une observation mais une **décision** : l'état d'après un `commit` échoué n'est pas le
+  même d'un moteur à l'autre — PostgreSQL a déjà tout annulé, SQLite peut rendre `SQLITE_BUSY` en
+  laissant la transaction **ouverte**. Plutôt que d'afficher un état qui dépend du moteur, on le rend
+  vrai : après « Valider », la transaction est terminée, et le message dit qu'elle a été annulée.
+  C'est la conduite d'`apply_updates`, y compris quand l'annulation échoue à son tour — « rouvrez la
+  connexion » ;
+- **sortir du mode manuel n'est ni une validation ni une annulation.** Tant que la transaction
+  retient des instructions, l'interrupteur est figé avec sa raison : valider d'office écrirait ce que
+  personne n'a relu, annuler d'office jetterait un travail en cours. Les deux boutons du panneau
+  sont les deux issues qu'on **choisit** — la troisième, fermer l'onglet, annule, et c'est le seul
+  geste qui le fasse sans le demander (voir plus bas). Et le figer se fait en `aria-disabled`, non en `disabled` : la
+  raison vit dans une infobulle, qu'un bouton désactivé rendrait inatteignable (piège n° 3) ;
+- **`BEGIN IMMEDIATE` chez SQLite**, pour la raison d'`apply_updates` : une transaction différée
+  prend le verrou de lecture d'abord et doit le *promouvoir* à la première écriture — promotion qui
+  échoue en `SQLITE_BUSY` au milieu d'une transaction qu'on croyait tenue. Prendre le verrou
+  d'écriture à l'ouverture échoue tout de suite, ou pas du tout.
+
+**Et la confirmation d'écriture a suivi le geste qui engage : elle est passée de l'exécution à la
+validation** (rapporté à l'usage). La confirmation de `12c` attrape la faute de frappe juste avant
+que ce soit écrit ; en transaction manuelle, rien n'est écrit — la requête entre dans la
+transaction, le panneau la liste, et c'est le `commit` qui devient le moment où l'on s'engage.
+Confirmer les deux faisait cliquer deux fois pour un seul engagement, et le premier clic, celui
+qu'on fait vingt fois, ne protégeait de rien. Quatre points :
+
+- **`CommitConfirm` récapitule ce qui devient définitif** : les verbes des écritures dans l'ordre —
+  « UPDATE, DELETE », et non « 2 écritures », parce que deux corrections ne sont pas une suppression
+  —, le compte d'instructions, la cible, le drapeau de production, et le `where` manquant **en
+  premier** s'il en manque un. Le panneau derrière elle porte déjà la liste complète : la modale
+  n'en redit rien, elle en donne la mesure. Elle emprunte la feuille de style de `RunConfirm` plutôt
+  qu'une copie — même écran, même coquille, mêmes blocs ;
+- **une transaction qui n'a fait que lire se valide sans question.** C'est la règle de
+  `demandeConfirmation` — un `select` n'en demande pas — appliquée à un lot, et le classificateur
+  est le **même** (`natureDe`) : deux règles pour « est-ce que ceci écrit ? » auraient divergé, et
+  c'est de cette question que dépend l'affichage de la modale ;
+- **une modification de structure garde la sienne**, et c'est la seule nature qui n'est pas
+  dispensée. Une transaction ne la retient pas toujours : MySQL **valide d'office** ce qui attend
+  avant d'exécuter un `create`, un `alter` ou un `drop` — le `delete` qu'on relisait dans le panneau
+  partirait alors sans qu'aucun clic ne l'ait décidé. Le rappel de la modale dit exactement cela, là
+  où « rien ne sera écrit avant que vous validiez » aurait été une promesse que le moteur peut ne
+  pas tenir ;
+- **et l'annulation ne se confirme pas.** Elle rend la base à son état : c'est le geste de repli, et
+  le confronter à une question ferait hésiter là où il n'y a rien à perdre. Ce qui se perd — les
+  instructions qu'on avait écrites — est dans l'éditeur, que rien n'efface.
+
+**Une session par console, et ce que cela demande au registre** (rapporté à l'usage, en deux temps :
+« les requêtes lancées depuis une autre console ne devraient pas apparaître dans la vue de la
+transaction », puis « les transactions ne devraient pas être partagées entre consoles »). Le premier
+signalement a été traité comme une question de vue — un filtre au cœur, et le compte de ce qui n'est
+pas montré. Le second a dit que ce n'en était pas une : avec une seule session, le partage n'est pas
+un choix d'écran, et la seule façon de ne pas partager une transaction est de ne pas partager la
+session. Huit décisions :
+
+- **la session est ouverte depuis la recette de la connexion, et par son tunnel.** `assurer_la_session`
+  clone la variante, remplace l'hôte et le port par le **bout local du proxy déjà monté**, et retire
+  le tunnel : sans cette redirection, `connect_via` monterait un second tunnel SSH par console — une
+  session SSH et un port de plus par transaction. Rien d'autre n'est touché, donc la configuration
+  TLS est identique à celle de la connexion, au champ près ;
+- **et sans proxy vivant, elle refuse plutôt que de joindre le serveur en direct.** C'est
+  `postgres::connect::preparer` qui le garantit depuis toujours : une variante qui déclare un tunnel
+  sans redirection est un refus. Le port du proxy est donc relu au moment d'ouvrir, et s'il a disparu
+  la variante **garde** son tunnel — ce qui fait refuser. Contourner le tunnel serait contourner la
+  consigne de sécurité de la connexion, en silence ;
+- **elle s'ouvre à la première exécution, jamais au réglage** — la décision d'origine, et elle vaut
+  davantage maintenant : ouvrir au réglage prendrait une session sur le serveur et, sur SQLite, le
+  verrou d'écriture du fichier, pour une transaction que personne n'a encore remplie. Corollaire :
+  `open` implique au moins une instruction, donc la bascule est figée exactement quand une session
+  existe — c'est ce qui garantit qu'une session n'est jamais laissée sans son panneau pour la finir.
+  Une garde « éteindre l'interrupteur annule la transaction » a été écrite puis retirée le jour même,
+  pour cette raison : elle était **inatteignable** ;
+- **une session de console n'a pas de reprise, et c'est le seul chemin du produit dans ce cas.**
+  `avec` rouvre une connexion perdue parce que la suivante repartira du même endroit ; ici la session
+  *est* la transaction — la rouvrir donnerait une session neuve où le `commit` ne validerait rien, et
+  le panneau annoncerait des instructions que le serveur a annulées. Une session perdue est donc
+  retirée avec sa transaction, et le refus le dit ;
+- **`achever` ne consulte plus la connexion du tout.** La session est la sienne : elle est retirée
+  avant l'ordre, et **fermée après**, dans les deux issues. C'est aussi ce qui rattrape le pire cas
+  — un `commit` refusé dont l'annulation échoue à son tour : la fermeture de la session annule côté
+  serveur ce que deux ordres n'ont pas su annuler, là où l'ancien message ne pouvait que dire
+  « rouvrez la connexion » ;
+- **une session de console meurt avec sa connexion**, et les trois endroits qui retirent une entrée
+  du registre les ferment : `fermer`, `tenter` quand la connexion s'est révélée perdue, et `achever`
+  pour la sienne. Elle emprunte le proxy de la connexion, donc elle ne lui survit pas — et une
+  session oubliée tiendrait une transaction et ses verrous sans que rien à l'écran puisse le dire.
+  C'est la seule chose qu'aucun test de comportement ne pouvait voir : d'où
+  `sessions_de_console()`, un compteur qui n'existe que pour les tests ;
+- **un fichier SQLite ne tient qu'une transaction à la fois, et le refus le dit.** Un fichier n'a
+  qu'un verrou d'écriture : la seconde console qui ouvre une transaction reçoit « un autre programme
+  tient le verrou d'écriture de ce fichier » — vrai au sens du moteur, et trompeur ici, puisque ce
+  programme est nous. `qualifier_le_refus_d_ouvrir` met donc **la cause devant** et garde le mot du
+  moteur derrière : un refus peut toujours avoir une autre cause. PostgreSQL et MySQL tiennent autant
+  de transactions que de sessions, donc la qualification ne les atteint jamais ;
+- **et le jeton d'onglet désigne désormais une session, non plus une origine.** Il était déjà une
+  *valeur* que `reindexer` déplace avec son onglet, plutôt que `Console.id`, qui dérive du nom ; ce
+  qu'un oubli coûte a changé d'échelle — non plus des instructions qui paraissent étrangères, mais une
+  transaction ouverte, avec ses verrous, que plus rien ne peut atteindre.
+
+**Ce que cela coûte, mesuré et non supposé** (9 septembre 2026, contre les décors locaux). Une
+session de console est ouverte à la **première exécution en mode manuel** et rendue par sa validation
+ou son annulation : tant que personne n'est en manuel, il n'y a **rien** de plus qu'avant — ni
+connexion, ni appel.
+
+| | connexions serveur en plus | première exécution | exécution suivante | validation |
+| --- | --- | --- | --- | --- |
+| PostgreSQL (décor **TLS**) | **+1** backend, rendu au `commit` | 40,4 ms | 0,58 ms | 0,27 ms |
+| MySQL (sans TLS) | **+2**, rendues au `commit` | 5,1 ms | 0,22 ms | — |
+
+Trois choses à en retenir :
+
+- **le coût est celui d'une poignée de main, une fois par transaction**, pas par instruction : les
+  exécutions suivantes sont au prix habituel. Les 40 ms de PostgreSQL sont dominés par TLS — le décor
+  l'active délibérément —, et derrière un tunnel SSH il faut y ajouter l'ouverture d'un canal, que ce
+  fichier a mesurée à ~217 ms sur un bastion à 50 ms. C'est le seul endroit du produit où un geste
+  d'écran paie une connexion, et il vaut d'être connu avant qu'on le rapporte comme une lenteur ;
+- **MySQL en coûte deux, et c'est le prix de son pool.** Une session de console est un second `Pool`,
+  paresseux — mais la sonde de version qu'`ouvrir` fait à la connexion en prend une, que
+  `DEFAULT_POOL_CONSTRAINTS` (min **10**) garde ensuite au chaud, et la transaction en tient une
+  seconde. Les deux repartent avec la session. Le ramener à une demanderait de passer des
+  `PoolConstraints` à `connect_via`, donc d'inscrire au contrat des cinq moteurs une optimisation
+  qu'un seul a — c'est l'arbitrage de `table_details`, et il tombe du même côté ;
+- **et le verrou du registre y gagne.** Avant, une instruction de console en manuel passait par
+  `avec`, qui tient `ouvertes` pendant toute l'opération : une requête lente y gelait l'arbre, la
+  grille et les autres consoles de cette connexion. Elle ne tient plus que `transactions` — la table
+  des sessions —, donc plus rien de la connexion partagée n'attend derrière elle. Ce qui reste vrai,
+  et qui l'était déjà, est qu'une instruction lente retarde la **lecture des panneaux** des autres
+  consoles, ce verrou étant unique pour toute la table.
+
+**Ce qu'on gagne au passage** : deux consoles peuvent enfin travailler en parallèle, chacune avec sa
+transaction, sur PostgreSQL et MySQL. Un test contre un vrai PostgreSQL le mesure — deux `insert`
+retenus en même temps, chacune ne voyant que le sien, la connexion partagée n'en voyant aucun, puis
+un `commit` qui n'emporte que sa moitié. C'est le test que SQLite ne peut pas porter, et les deux
+ensemble sont ce qui rend la limite du fichier digne d'être dite plutôt que subie.
+
+**Le décor du test d'assemblage a dû apprendre l'isolation**, et c'est la règle n° 5 pour la troisième
+fois dans ce chantier : un faux journal tenu en commun laissait passer exactement ce que
+l'application isole. Il tient donc **un journal par console**, comme le cœur tient une session par
+console. Même chose pour `?demo`.
+
+**Et fermer l'onglet annule la transaction** (rapporté à l'usage). C'est la **troisième issue**, à
+côté des deux boutons, et elle est nécessaire : le panneau et ses deux boutons vivent *dans*
+l'onglet, donc une transaction dont l'onglet est fermé n'est plus atteignable par aucun geste. La
+laisser attendre tiendrait ses verrous côté serveur — et sur un fichier SQLite elle empêcherait
+**toute autre console** d'en ouvrir une, jusqu'au prochain lancement de l'application. La première
+version laissait ce cas ouvert, en le notant : c'était le comportement d'avant, où la transaction
+restait sur la connexion et où une autre console pouvait encore la finir ; une session par console a
+retiré ce recours, donc l'issue devait devenir explicite. Quatre points :
+
+- **sans confirmation**, et c'est la règle de l'annulation : elle rend la base à son état, il n'y a
+  rien à perdre. Ce qui se perd — les instructions qu'on avait écrites — est dans l'éditeur, que la
+  fermeture d'un onglet n'efface pas ;
+- **le jeton part avec.** Réouvrir la console en reminte un : c'est un onglet neuf devant une session
+  neuve, et garder l'ancien ferait désigner au cœur une session qu'il a fermée ;
+- **le régime reste**, lui. C'est un réglage de cet onglet, comme son texte : réouvrir une console
+  qu'on avait mise en manuel la retrouve en manuel, avec un panneau vide qui dit ce qui va se passer.
+  La rendre éteinte au retour serait l'avoir défaite en silence ;
+- **et le refus de l'annulation n'est remonté à personne** — le seul endroit du produit où un rejet
+  s'avale pour cette raison-là : le panneau qui l'afficherait vient de se fermer. Rien ne se perd
+  pourtant, `achever` fermant la session dans les deux issues : la transaction est annulée par le
+  serveur même quand l'ordre échoue.
+
+**Ce qui ferme aussi ces sessions, et qu'il ne faut pas croire couvert par l'onglet** : retirer une
+console de l'arbre, comme les cinq autres commandes de configuration, ferme la **connexion** — donc
+`fermer` emporte toutes les sessions de console de cette base. Le geste d'onglet n'a donc à traiter
+que la fermeture d'onglet.
+
+**Et une transaction abandonnée n'offre plus que l'annulation** (rapporté à l'usage). Après une
+instruction refusée, PostgreSQL refuse tout ce qui suit jusqu'à la fin du bloc, et un `commit` s'y
+comporte comme un `rollback` : le bouton « Valider » y promettait donc **l'inverse** de ce qu'il
+faisait. Il est **retiré**, et non grisé — c'est l'exception à la règle du contrôle désactivé qui
+porte sa raison : un contrôle grisé annonce « pas maintenant », or celui-ci ne pourra jamais valider
+cette transaction-là. Sa raison prend sa place, **écrite** dans le corps du panneau, un bouton disparu
+sans explication faisant chercher où il est passé. Trois points :
+
+- **la réponse vient du moteur, jamais de l'échec.** `AnyEngine::transaction_abandonnee_par_une_erreur`
+  est inhérente et répartie par un `match` sans bras attrape-tout, comme `connexion_perdue` : **seul
+  PostgreSQL abandonne**. SQLite et MySQL laissent l'instruction échouer seule, et ce qui précède
+  reste validable — le déduire de l'erreur aurait retiré à ces deux-là une capacité qu'ils ont, en
+  silence. C'est le même arbitrage que les modes SSL : ne pas offrir ce qui ne marche pas, ne pas
+  retirer ce qui marche ;
+- **le verdict est figé au moment de l'échec**, dans le journal, et non recalculé à la lecture :
+  c'est cette instruction-là qui a abandonné la transaction, et une reconnexion survenue depuis ne
+  doit pas changer la réponse. C'est aussi ce qui laisse `etat_de_transaction` répondre sans
+  consulter l'adaptateur ;
+- **et la bascule de mode nomme alors le seul geste qui reste** — « annulez-la », non « validez-la ou
+  annulez-la » : proposer dans une infobulle ce que le panneau vient de retirer serait se contredire
+  à deux centimètres d'écart.
+
+Les deux moteurs qui n'abandonnent pas ont leur test — SQLite sans décor, PostgreSQL contre le
+conteneur —, et c'est **leur paire** qui rend la question digne d'être posée au moteur : la même
+suite de gestes donne deux réponses, et un écran qui aurait conclu de l'échec seul se serait trompé
+pour l'un des deux.
+
+**Et la reconnexion d'`API-37` a demandé quatre accords**, tous dans le registre. La transaction y
+est un état de plus, à côté de l'entrée et de la recette, et c'est leur rapport qu'il faut tenir :
+
+- **le journal vit et meurt avec l'entrée du registre.** Une transaction ne survit pas à sa
+  connexion — le serveur l'annule —, donc les trois endroits qui retirent une entrée le vident :
+  `fermer`, `tenter` quand la connexion s'est révélée perdue, et `achever`. Laisser ses instructions
+  au panneau offrirait un « Valider » sur une session qui n'existe plus ;
+- **`achever` est la seule opération qui ne rouvre pas.** Partout ailleurs, rouvrir avant d'agir est
+  l'étage du bas de la reconnexion, refusé à personne. Ici il donnerait une session **neuve**, où un
+  `commit` réussirait sans rien valider — PostgreSQL n'y voit qu'un avertissement — et l'écran
+  lirait « validée » sur une transaction que le serveur avait annulée. Une entrée absente est donc un
+  refus ;
+- **`executer_une_requete` passe ses deux ordres par `avec`**, plutôt que de refaire sa moitié
+  délicate : `Rejouable` pour le `begin`, qui est juste à rejouer sur une connexion qui vient de se
+  rouvrir — l'ancienne transaction est partie avec sa session, il n'y a rien à écrire deux fois —, et
+  `Unique` pour la requête, qui est le verdict d'`API-37` sur `run_sql`. Sans cela la console aurait
+  été le seul chemin du produit où une connexion morte reste au registre ;
+- **le panneau, lui, ne s'abonne pas au signal d'échec de commande**, et c'est une limite assumée.
+  L'arbre le fait — c'est la moitié écran d'`API-37` —, mais le panneau relit son journal après
+  chaque exécution et à chaque changement de `projects` : une connexion perdue par une **autre**
+  onglet le laisse donc afficher ses instructions un moment. S'y abonner demanderait d'exclure
+  `transaction_state` de l'annonce, comme `connection_states` l'est déjà, faute de quoi une lecture
+  qui échoue s'annoncerait à elle-même et tournerait sans fin hors de la webview. Ce qui rattrape
+  l'écart : les deux boutons disent la vérité quand on les presse — « aucune transaction n'est
+  ouverte » —, et la relecture qui suit ce refus vide le panneau. L'arbre, lui, a déjà rougi.
+- **et l'ordre des verrous est `transactions` puis `ouvertes`.** Le journal est pris d'abord et tenu
+  pendant les deux ordres : c'est ce qui empêche deux consoles d'ouvrir chacune sa transaction sur la
+  même connexion. `tenter` ne les imbrique pas — il rend `ouvertes` avant de purger le journal —,
+  donc aucun cycle. La **réouverture**, elle, se fait verrou rendu : elle peut monter un tunnel SSH,
+  et tenir le journal pendant ce temps bloquerait la lecture du panneau des autres consoles.
+
+**Le panneau n'existe qu'en mode manuel, et c'est ce qui laisse tout le reste intact.** En `auto` —
+le défaut — la console occupe toute la largeur du centre comme avant, aucune commande de transaction
+n'est appelée, et aucune capture de fidélité ne bouge. C'est l'arbitrage de la recherche de mise à
+jour, pour la même raison : une fonction que personne n'a demandée ne doit rien demander au pont.
+Son `storageKey` est le sien (`console:transaction`) et non celui du panneau de détail — deux
+partages différents, et régler la largeur de l'un ne doit pas déplacer l'autre.
+
+**Trois choses apprises en le vérifiant, et les trois par sabotage** (règle n° 1) :
+
+- **`QueryResult::columns()` de `mysql_async` rend `Some(liste vide)` pour un `insert`, jamais
+  `None`.** Tester l'option — ce que la première version faisait — rendait donc « aucune ligne
+  touchée » sur **chaque** écriture, c'est-à-dire exactement le mensonge que ce champ existe pour
+  éviter. C'est la **vacuité** de la liste qui dit « cette instruction n'a jamais eu de lignes à
+  rendre », et c'est le mot du pilote. Gain au passage : les colonnes viennent maintenant du
+  protocole et non de la première ligne, donc un `select` qui ne rend rien garde ses en-têtes —
+  PostgreSQL les donnait déjà par son `prepare` ;
+- **le test d'assemblage est resté vert sous sabotage parce que le harnais écrivait le décor.**
+  `useTransaction` relit le journal quand `projects` change — le témoin des six commandes qui
+  ferment une connexion — et le harnais de `Workbench.test.tsx` réécrit `projets` à chaque frappe
+  enregistrée : le panneau se remplissait donc même en retirant la relecture qui suit une exécution.
+  Le décor rendait le défaut indiscernable (règle n° 5), et le remède est une console dont
+  l'enregistrement ne touche pas au décor ;
+- **une lecture identique ne doit pas reposer un objet neuf.** L'effet qui relit le journal dépend de
+  l'identité de la passerelle, qu'un appelant peut reconstruire à chaque rendu — la démo le fait —
+  donc une lecture qui aurait toujours reposé un état neuf aurait relancé l'effet **indéfiniment**.
+  C'est le piège de `10d`, désarmé à la source plutôt que confié à la discipline des appelants ; la
+  démo mémoïse quand même sa passerelle.
+
+**Et une cote du panneau vient de la capture, non du raisonnement** — la méthode qui a le plus payé,
+appliquée à 330 px de large. Le rembourrage d'une carte vit sur **l'enveloppe de son contenu**, et
+non sur ses enfants : posé sur les enfants, l'en-tête et le bloc de SQL cumulaient leurs marges dans
+une carte **inerte** — quatre pixels de plus entre eux que dans une carte cliquable, où le bouton est
+l'unique enfant. Rien ne l'aurait dit : les deux cartes sont justes séparément, et c'est de les voir
+côte à côte qui a montré l'écart. Un test de bout en bout compare désormais les deux rythmes au
+pixel, ce qui est une **égalité** et non un ordre de grandeur (règle n° 18). Le rembourrage n'est pas
+non plus sur la carte : la cible du bouton se serait arrêtée avant la bordure, et le survol aurait
+laissé une bande morte.
+
+**Ce qui reste à voir à l'œil** : le panneau sous WKWebView, et en « Nuit » — même réserve que les
+dix écrans, pour la même raison. Et le journal de `?demo` est **simulé** au même degré que son
+`runSql` : il rend une instruction plausible pour que l'écran soit visible sans base réelle. Ce
+qu'une transaction fait vraiment — retenir, puis écrire ou rendre, et n'être visible que d'elle — est
+mesuré contre un vrai fichier SQLite (`registry.rs`, sans `db-tests`, donc partout), un vrai
+PostgreSQL et un vrai MySQL, où le test regarde ce qu'une **autre session** voit avant la
+validation.
+
 ### Les filtres suivent la colonne (3 septembre 2026)
 
 Le popover d'en-tête proposait **les mêmes cinq opérateurs à toutes les colonnes**, et les quatre
@@ -2505,6 +2907,8 @@ manière de reprendre des données sans que `serde` les efface en silence.
 | Le compte de lignes | estimé (`reltuples`) | estimé | **exact** | estimé (InnoDB) ou **exact** (MyISAM) | estimé (`numRows`, hors tampon de diffusion) |
 | L'égalité sûre au nul | `is not distinct from` | `$in: [null]` | `is` | `<=>` | pas nécessaire — filtres en `cast(… as string)` paramétré |
 | Les transactions | toujours | jeu de réplicas requis | toujours | InnoDB oui, MyISAM **non** | aucune édition offerte, voir plus bas |
+| La transaction **manuelle** d'une console (`API-38`) | oui | **non** — sa console ne fait que lire | oui, en `begin immediate` | oui, sur une connexion **tenue** hors du pool | **non** — un job par requête, pas de session |
+| Deux consoles, deux transactions **à la fois** (`API-38`) | oui — une session chacune | — | **non** : un fichier, un verrou d'écriture, et le refus le dit | oui — une session chacune | — |
 | La citation | guillemet double | — | guillemet double | **backtick** | **backtick**, table en un seul jeton `` `projet.jeu.table` `` |
 | Le port par défaut | 5432 | 27017 | **aucun** — un fichier | 3306 | **aucun** — HTTPS vers l'API Google |
 | La connexion | hôte et port | hôte et port | **un fichier** | hôte et port | **un projet GCP**, identifiants par défaut de l'application |
@@ -2771,6 +3175,18 @@ présenter comme vérifiées tant qu'un humain ne les a pas faites :
   un fichier non vide arriver au chemin choisi ; puis `⇧⌘I` sur ce fichier doit nommer projet,
   base et environnement avant de laisser confirmer. Les sélecteurs de fichiers natifs ne sont
   pas dans le DOM — même angle mort que « Parcourir… ».
+- **Tenir une transaction manuelle du début à la fin, dans l'application** (`API-38`). Tout est
+  couvert côté cœur — un vrai fichier SQLite, un vrai PostgreSQL, un vrai MySQL, et jusqu'à deux
+  consoles qui retiennent chacune la sienne en même temps — mais le parcours entier n'a jamais été
+  fait à la main : allumer l'interrupteur, écrire, relire le panneau, ouvrir la table dans un autre
+  onglet (elle ne doit **pas** montrer la ligne retenue, chaque console ayant sa session), valider,
+  et la voir paraître. Quatre points ne se voient que là : que fermer l'application sans valider ne
+  laisse rien derrière — c'est le serveur qui annule —, que le refus d'écrire depuis la grille
+  pendant une transaction arrive bien avec sa phrase plutôt qu'avec l'erreur du moteur, **ce que
+  coûte l'ouverture d'une seconde session** (une poignée de main de plus à la première exécution en
+  mode manuel, imperceptible en local, à mesurer derrière un tunnel), et que **fermer l'onglet rend
+  bien la session** : sur SQLite, une seconde console doit pouvoir ouvrir sa transaction juste après
+  — c'est le fichier qui répond, et lui seul dira si le verrou est vraiment rendu.
 - **Régler « Afficher les barres de défilement : toujours »**, puis regarder la sidebar et
   la bande d'onglets. Chromium sans tête rend des barres en survol, qui n'occupent aucune
   place : la mesure vaut 0 avec comme sans la correction.
@@ -3046,6 +3462,15 @@ Aucun de ces points ne bloque le code en place.
 
 ## Réserves connues
 
+- **Les deux refus de transaction manuelle n'ont jamais été prononcés par un vrai serveur**
+  (`API-38`). Ceux de MongoDB et de BigQuery sont gardés par un test sur leur message — comme le
+  refus d'écriture de `21` —, et l'écran ne les atteint pas : l'interrupteur y est figé avant l'appel.
+  Ce qui n'est donc pas exercé est le chemin qui contourne l'écran, celui d'un front en retard sur
+  son cœur. **Et ce chemin-là dépense une connexion pour rien** depuis qu'une console ouvre sa propre
+  session : elle est ouverte, le `begin` est refusé, elle est refermée. Le prévenir demanderait une
+  table « quels moteurs tiennent une transaction » côté Rust, donc une seconde source de vérité à
+  côté de celle de l'écran (`TRANSACTIONS_MANUELLES_PAR_MOTEUR`) — deux listes qui divergeraient
+  (règle n° 17), pour un chemin que l'interface n'offre pas.
 - **`verify-ca` — vérifier la chaîne sans vérifier le nom — n'est disponible que pour
   PostgreSQL.** Les pilotes MySQL et MongoDB ne savent pas l'exprimer, et le premier a même
   un drapeau silencieusement sans effet. Les deux **refusent avec leur raison** plutôt que
