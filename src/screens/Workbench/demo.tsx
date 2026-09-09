@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   Database,
   EnvironmentColor,
@@ -9,10 +9,13 @@ import type {
 } from '../../domain/config'
 import type {
   ColumnInfo,
+  DatabaseKey,
+  QueryResult,
   Relation,
   SchemaInfo,
   TableDetail,
   TableSummary,
+  TransactionStatement,
 } from '../../domain/engine'
 import { LanguageProvider, langueAppliquee } from '../../i18n/LanguageContext'
 import { NewConnection } from '../NewConnection/NewConnection'
@@ -814,6 +817,14 @@ const PASSERELLE_LIGNES: PasserelleLignes = {
 const rowAsInsert = async () =>
   'INSERT INTO "public"."orders" ("id", "user_id", "status")\nVALUES (184220, 44019, \'paid\');'
 
+/**
+ * L'index d'une connexion dans le journal de la démo — la même forme que celui de `useTransaction`,
+ * et pour la même raison : ce n'est pas la clé du registre, que le Rust compose seul.
+ */
+function indexDeConnexion(cle: DatabaseKey): string {
+  return `${cle.project}/${cle.database}/${cle.environment}`
+}
+
 export function WorkbenchDemo() {
   // **La démo monte `A2` en mode édition**, et ce n'est pas de la décoration. Elle se contentait
   // d'inscrire la cible dans le titre du document, ce qui vérifiait un *proxy* du chemin : un test
@@ -841,6 +852,55 @@ export function WorkbenchDemo() {
    */
   const [preferences, setPreferences] = useState<Preferences>(PREFERENCES_PAR_DEFAUT)
   const [preferencesOuvertes, setPreferencesOuvertes] = useState(false)
+  /**
+   * Le journal de la transaction manuelle, **par connexion** (`API-38`).
+   *
+   * **La démo ne retient rien** : elle inscrit une instruction plausible pour que le panneau d'`A7`
+   * soit visible sans base réelle, comme son `runSql` rend un résultat plausible sans rien exécuter.
+   * Ce qu'une transaction fait vraiment — retenir, puis écrire ou rendre — est ce que les tests Rust
+   * mesurent contre un vrai fichier SQLite et un vrai serveur.
+   *
+   * Un `useRef` suffit : c'est `useTransaction` qui relit ce journal après chaque exécution, et son
+   * état à lui déclenche le rendu.
+   */
+  const journaux = useRef<
+    Record<string, { rendue: TransactionStatement; reponse: QueryResult | null }[]>
+  >({})
+  /**
+   * **Mémoïsée, et c'est la règle de toute passerelle** (`useLignes`) : une littérale reconstruite
+   * à chaque rendu relancerait la lecture du journal indéfiniment. Le `useRef` qu'elle referme est
+   * stable, donc la liste de dépendances est vide à bon droit.
+   */
+  const passerelleTransaction = useMemo(
+    () => ({
+      transactionState: async (cle: DatabaseKey) => {
+        const journal = journaux.current[indexDeConnexion(cle)] ?? []
+        // Comme le registre : ce qui voyage est ce que l'écran lit, les réponses restent ici.
+        return {
+          open: journal.length > 0,
+          statements: journal.map((entree) => entree.rendue),
+          // **La démo n'échoue jamais** : son `runSql` rend toujours une réponse, donc aucune de
+          // ses transactions n'est abandonnée. C'est ce que les tests unitaires du panneau
+          // couvrent, et ce que les tests Rust mesurent contre un vrai PostgreSQL.
+          aborted: false,
+        }
+      },
+      transactionResult: async (cle: DatabaseKey, rang: number) => {
+        const reponse = journaux.current[indexDeConnexion(cle)]?.[rang]?.reponse
+        // Le même refus que le cœur, dans les mêmes termes : sans lui, un clic sur une instruction
+        // sans réponse rendrait `undefined` et la grille se viderait en silence.
+        if (!reponse) throw new Error('cette instruction n’a rendu aucune ligne.')
+        return reponse
+      },
+      commitTransaction: async (cle: DatabaseKey) => {
+        delete journaux.current[indexDeConnexion(cle)]
+      },
+      rollbackTransaction: async (cle: DatabaseKey) => {
+        delete journaux.current[indexDeConnexion(cle)]
+      },
+    }),
+    [],
+  )
 
   useEffect(() => {
     const racine = document.documentElement
@@ -1045,8 +1105,13 @@ export function WorkbenchDemo() {
         // La démo **n'exécute rien** : elle rend un résultat plausible pour que `12c` soit visible sans
         // base réelle. Une exécution simulée ne prouve rien du moteur — c'est ce que les tests Rust sur
         // PostgreSQL vérifient. La limite ajoutée est annoncée, comme le fait la commande réelle.
+        /* **La transaction de la console** (`API-38`), simulée au même degré que l'exécution : le
+           journal est celui que la démo tient, pas celui d'un registre. Sans elle, le panneau
+           paraîtrait vide en mode manuel — le pont ne répondant pas en Chromium — et l'écran ne
+           serait vérifiable qu'à l'œil dans l'application réelle. */
+        passerelleTransaction={passerelleTransaction}
         passerelleExecution={{
-          runSql: async (cle, sql) => {
+          runSql: async (cle, sql, _limite, mode) => {
             // **Le décor mongo rend des documents**, pas des lignes : sans cela l'arbre de `13b`
             // n'aurait rien à déplier, et `A8` ne se verrait pas en démo.
             if (estMongo(cle.database)) {
@@ -1079,26 +1144,65 @@ export function WorkbenchDemo() {
                 sql: `${sql}\n// $limit 1000 ajouté par DoraBase`,
                 durationMs: 61,
                 appliedLimit: 1000,
+                // Une lecture ne touche rien, et la console mongo ne fait que lire (`API-38`).
+                affected: null,
               }
             }
-            return {
-              columns: ['jour', 'commandes', 'ca_eur'],
-              rows: [
-                [
-                  { kind: 'timestamp', value: '2026-07-31' },
-                  { kind: 'int', value: 1204 },
-                  { kind: 'decimal', value: '184902.40' },
-                ],
-                [
-                  { kind: 'timestamp', value: '2026-07-30' },
-                  { kind: 'int', value: 1188 },
-                  { kind: 'decimal', value: '176320.00' },
-                ],
-              ],
-              sql: `${sql}\nlimit 1000`,
-              durationMs: 128,
-              appliedLimit: 1000,
+            // **Une écriture ne rend pas de lignes, elle en touche** (`API-38`) : le décor le
+            // distingue, sans quoi le panneau de transaction n'aurait qu'une réponse à montrer et la
+            // moitié de son intérêt — le chiffre qui décide d'un « Valider » — resterait invisible.
+            const ecrit = !/^\s*(select|with|show|explain)\b/i.test(sql)
+            const resultat: QueryResult = ecrit
+              ? {
+                  columns: [],
+                  rows: [],
+                  sql,
+                  durationMs: 34,
+                  appliedLimit: null,
+                  affected: 2,
+                }
+              : {
+                  columns: ['jour', 'commandes', 'ca_eur'],
+                  rows: [
+                    [
+                      { kind: 'timestamp', value: '2026-07-31' },
+                      { kind: 'int', value: 1204 },
+                      { kind: 'decimal', value: '184902.40' },
+                    ],
+                    [
+                      { kind: 'timestamp', value: '2026-07-30' },
+                      { kind: 'int', value: 1188 },
+                      { kind: 'decimal', value: '176320.00' },
+                    ],
+                  ],
+                  sql: `${sql}\nlimit 1000`,
+                  durationMs: 128,
+                  appliedLimit: 1000,
+                  affected: null,
+                }
+
+            // Le pendant du journal du registre : en mode manuel, l'instruction entre dans la
+            // transaction de **sa connexion**. C'est `useTransaction` qui la relira.
+            if (mode === 'manual') {
+              const id = indexDeConnexion(cle)
+              journaux.current[id] = [
+                ...(journaux.current[id] ?? []),
+                {
+                  rendue: {
+                    sql: resultat.sql,
+                    durationMs: resultat.durationMs,
+                    returned: resultat.rows.length,
+                    affected: resultat.affected,
+                    displayable: resultat.rows.length > 0,
+                    error: null,
+                  },
+                  // La réponse est gardée ici, comme le cœur la garde : c'est ce qui permet de la
+                  // remettre dans la grille en désignant son instruction.
+                  reponse: resultat.rows.length > 0 ? resultat : null,
+                },
+              ]
             }
+            return resultat
           },
         }}
         passerelleApply={{

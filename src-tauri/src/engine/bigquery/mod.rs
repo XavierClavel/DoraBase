@@ -59,6 +59,13 @@ const REFUS_ECRITURE: &str =
     moteur ne connaît pas de clé primaire déclarée pour garantir le même contrôle de conflit que \
     les autres moteurs. Utilisez la console SQL pour un UPDATE, un INSERT ou un DELETE explicite.";
 
+/// Pourquoi la console BigQuery n'a pas de transaction manuelle — voir `transaction`.
+const REFUS_DE_TRANSACTION: &str =
+    "BigQuery exécute chaque requête comme un job indépendant : il n'y a pas de session à tenir \
+     ouverte entre deux exécutions, donc rien à valider plus tard. Une transaction s'y écrit dans \
+     un script — « begin transaction … commit transaction » — que la console exécute en une seule \
+     requête.";
+
 impl BigQueryAdapter {
     pub async fn connect_via(
         variante: &ConnectionSettings,
@@ -97,7 +104,7 @@ impl BigQueryAdapter {
         &self,
         sql: &str,
         parametres: Vec<gcp_bigquery_client::model::query_parameter::QueryParameter>,
-    ) -> Result<(Vec<String>, Vec<Vec<Value>>), EngineError> {
+    ) -> Result<(Vec<String>, Vec<Vec<Value>>, Option<u64>), EngineError> {
         let requete = QueryRequest {
             query: sql.to_owned(),
             use_legacy_sql: false,
@@ -139,7 +146,14 @@ impl BigQueryAdapter {
             }
             lignes.push(valeurs);
         }
-        Ok((colonnes, lignes))
+        // **Les lignes touchées viennent du job, en texte** : l'API REST rend les entiers de plus de
+        // 53 bits en chaîne, `numDmlAffectedRows` compris. Absent d'une requête qui n'est pas un
+        // DML, ce qui est exactement le cas où il n'y aurait rien à en dire (`API-38`).
+        let affectees = reponse
+            .num_dml_affected_rows
+            .as_deref()
+            .and_then(|compte| compte.parse::<u64>().ok());
+        Ok((colonnes, lignes, affectees))
     }
 }
 
@@ -186,7 +200,7 @@ impl EngineAdapter for BigQueryAdapter {
         let colonnes = introspect::colonnes_de(&table);
 
         let (sql, parametres) = rows::requete_de(&self.projet, &query.schema, query, &colonnes);
-        let (_, lignes) = self.executer(&sql, parametres).await?;
+        let (_, lignes, _) = self.executer(&sql, parametres).await?;
 
         let total = table
             .num_rows
@@ -231,7 +245,7 @@ impl EngineAdapter for BigQueryAdapter {
     async fn run_sql(&self, sql: &str, limite: RowLimit) -> Result<QueryResult, EngineError> {
         let debut = Instant::now();
         let (borne, ajoutee) = rows::avec_limite(sql, limite);
-        let (colonnes, lignes) = self.executer(&borne, Vec::new()).await?;
+        let (colonnes, lignes, affectees) = self.executer(&borne, Vec::new()).await?;
 
         Ok(QueryResult {
             columns: colonnes,
@@ -239,7 +253,26 @@ impl EngineAdapter for BigQueryAdapter {
             sql: borne,
             duration_ms: u64::try_from(debut.elapsed().as_millis()).unwrap_or(u64::MAX),
             applied_limit: ajoutee,
+            affected: affectees,
         })
+    }
+
+    /// Refusé, et **pas pour un retard** (`API-38`).
+    ///
+    /// BigQuery n'a pas de session à tenir : chaque requête est un **job** indépendant, et rien de ce
+    /// que l'un ouvre ne survit à l'autre. Ses transactions multi-instructions existent, mais elles
+    /// s'écrivent `begin transaction … commit transaction` **dans un script**, donc dans une seule
+    /// requête — ce que la console exécute déjà telle quelle. Une transaction que DoraBase tiendrait
+    /// ouverte entre deux exécutions n'aurait aucun équivalent côté serveur.
+    ///
+    /// L'API des sessions BigQuery serait le chemin ; elle demande de porter un identifiant de
+    /// session dans chaque job, ce que `gcp_bigquery_client` 0.24 ne modélise pas — le même obstacle
+    /// que pour les clés primaires déclarées, qui fait déjà refuser l'édition de lignes (`21`).
+    async fn transaction(
+        &self,
+        _ordre: crate::engine::OrdreDeTransaction,
+    ) -> Result<(), EngineError> {
+        Err(EngineError::local(REFUS_DE_TRANSACTION))
     }
 }
 
@@ -249,6 +282,27 @@ mod tests {
 
     /// Le refus d'écriture est **identique en aperçu et à l'exécution** — sans quoi `A6`
     /// afficherait un aperçu qui promet ce qu'`apply_updates` refuserait ensuite (`11c`).
+    /// Le refus de la transaction manuelle nomme **la forme qui, elle, marche** (`API-38`).
+    ///
+    /// Le critère est celui du refus d'écriture juste en dessous : dire ce qu'il faut faire à la
+    /// place vaut mieux qu'un « indisponible ». Ici la transaction existe, elle s'écrit dans une
+    /// seule requête.
+    #[test]
+    fn le_refus_de_transaction_nomme_la_forme_qui_marche() {
+        assert!(
+            REFUS_DE_TRANSACTION.contains("job"),
+            "{REFUS_DE_TRANSACTION}"
+        );
+        assert!(
+            REFUS_DE_TRANSACTION.contains("begin transaction"),
+            "{REFUS_DE_TRANSACTION}"
+        );
+        assert!(
+            !REFUS_DE_TRANSACTION.contains("pas encore"),
+            "l'obstacle est la forme du service, pas un retard : {REFUS_DE_TRANSACTION}"
+        );
+    }
+
     #[test]
     fn le_refus_d_ecriture_nomme_l_alternative() {
         assert!(REFUS_ECRITURE.contains("console SQL"), "{REFUS_ECRITURE}");

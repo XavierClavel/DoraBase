@@ -31,7 +31,7 @@ use dorabase_lib::engine::commands::{
 use dorabase_lib::engine::registry::ConnectionState;
 use dorabase_lib::engine::{
     ApplyOutcome, ConnectionProbe, EngineError, PendingUpdate, QueryResult, RowQuery, RowWindow,
-    SchemaInfo, TableDetail, TableSummary, UpdatePlan,
+    SchemaInfo, TableDetail, TableSummary, TransactionMode, TransactionState, UpdatePlan,
 };
 use dorabase_lib::maj::AvailableUpdate;
 use dorabase_lib::secrets::SecretMechanism;
@@ -96,6 +96,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ApplyOutcome::export_all(&config)?;
     QueryResult::export_all(&config)?;
     RowWindow::export_all(&config)?;
+    // La transaction manuelle d'une console (`API-38`). **Les deux, un par sens** : `TransactionMode`
+    // part de l'écran à chaque exécution, `TransactionState` revient à chaque lecture du panneau — et
+    // il entraîne `TransactionStatement` avec lui.
+    TransactionMode::export_all(&config)?;
+    TransactionState::export_all(&config)?;
 
     // Les deux types du pont IPC de `08d`. `ConnectionRequest` entraîne `ConnectionSettings`
     // et `Tunnel` avec lui, donc les nommer ici suffit.

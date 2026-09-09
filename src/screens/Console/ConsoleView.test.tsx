@@ -22,6 +22,7 @@ const RESULTAT: QueryResult = {
   sql: 'select * from commandes',
   durationMs: 12,
   appliedLimit: null,
+  affected: null,
 }
 
 /** Le texte du document de l'éditeur — même lecture que `SqlEditor.test.tsx`, même raison. */
@@ -238,4 +239,83 @@ test('une requête qui porte déjà sa limite pilote le stepper', () => {
   const stepper = screen.getByText('LIMIT').parentElement
   if (!stepper) throw new Error('stepper introuvable')
   expect(stepper).toHaveTextContent('37')
+})
+
+/**
+ * Le régime de transaction (`API-38`), dans la barre d'outils.
+ *
+ * Ce que ces tests mesurent est le **contrôle** : qu'il ne paraît pas sans son réglage, qu'il
+ * publie les deux modes, et qu'il ne bouge pas quand une raison l'en empêche. Qu'il soit branché à
+ * la connexion — donc que le panneau de droite suive — appartient à l'assemblage, et c'est
+ * `Workbench.test.tsx` qui le garde (règle n° 8).
+ */
+function monterAvecTransaction(
+  transaction: Parameters<typeof ConsoleView>[0]['transaction'],
+  texteInitial = 'select 1',
+) {
+  return render(
+    <LanguageProvider preferences={{ language: 'fr' }}>
+      <ConsoleView
+        texte={texteInitial}
+        onTexteChange={() => {}}
+        onExecuter={() => {}}
+        transaction={transaction}
+      />
+    </LanguageProvider>,
+  )
+}
+
+test('sans réglage de transaction, la barre d’outils n’en montre pas', () => {
+  monter('select 1')
+  // **Une bascule sans effet se lirait comme une panne** (défaut n° 36) : la galerie et les
+  // vitrines montent la console sans connexion, donc sans régime à régler.
+  expect(screen.queryByRole('switch', { name: 'Transaction manuelle' })).toBeNull()
+})
+
+test('la bascule publie les deux modes', async () => {
+  const utilisateur = userEvent.setup()
+  const changements: string[] = []
+  monterAvecTransaction({
+    mode: 'auto',
+    onModeChange: (mode) => changements.push(mode),
+  })
+
+  const bascule = screen.getByRole('switch', { name: 'Transaction manuelle' })
+  expect(bascule).toHaveAttribute('aria-checked', 'false')
+  await utilisateur.click(bascule)
+  expect(changements).toEqual(['manual'])
+})
+
+test('en mode manuel, la bascule est allumée et rend au mode automatique', async () => {
+  const utilisateur = userEvent.setup()
+  const changements: string[] = []
+  monterAvecTransaction({
+    mode: 'manual',
+    onModeChange: (mode) => changements.push(mode),
+  })
+
+  const bascule = screen.getByRole('switch', { name: 'Transaction manuelle' })
+  expect(bascule).toHaveAttribute('aria-checked', 'true')
+  await utilisateur.click(bascule)
+  expect(changements).toEqual(['auto'])
+})
+
+test('une raison fige la bascule, et l’explique', async () => {
+  const utilisateur = userEvent.setup()
+  const changements: string[] = []
+  monterAvecTransaction({
+    mode: 'auto',
+    onModeChange: (mode) => changements.push(mode),
+    raison: 'La console MongoDB ne fait que lire.',
+  })
+
+  const bascule = screen.getByRole('switch', { name: 'Transaction manuelle' })
+  // **`aria-disabled` et non `disabled`** : la raison vit dans une infobulle, qu'un bouton
+  // désactivé rendrait inatteignable (piège n° 3).
+  expect(bascule).toHaveAttribute('aria-disabled', 'true')
+  expect(bascule).not.toBeDisabled()
+  expect(bascule).toHaveAttribute('title', 'La console MongoDB ne fait que lire.')
+  // Et la garde n'est pas décorative : le clic ne change rien.
+  await utilisateur.click(bascule)
+  expect(changements).toEqual([])
 })

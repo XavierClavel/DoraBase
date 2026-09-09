@@ -75,6 +75,40 @@
   flex: 1;
 }
 
+/* --- Le régime de transaction (`API-38`) --------------------------------- */
+
+/*
+ * **L'idiome du réglage du diagramme, repris et non réinventé** : `Toggle` de `ui/`, son libellé
+ * posé à côté, et l'encre du libellé qui suit l'état — encre pleine allumé, secondaire éteint.
+ * C'est la règle relevée sur les deux instances d'`A2`, et deux dessins de bascule dans le même
+ * produit se remarqueraient.
+ */
+.reglage {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+}
+
+.reglageNom {
+  font: var(--weight-semibold) var(--text-label) / 1 var(--font-ui);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.reglageNomEteint {
+  color: var(--ink-2);
+}
+
+/* **Figé, et non désactivé** : la bascule porte sa raison — un moteur qui ne tient pas de
+   transaction manuelle, ou une transaction qu'il faut d'abord achever —, et un `<button disabled>`
+   ne reçoit ni survol ni focus, donc son infobulle serait inatteignable (piège n° 3). Le grisé est
+   donc à écrire ici, le navigateur ne le posant plus lui-même. */
+.reglageFige {
+  cursor: default;
+  opacity: 0.5;
+}
+
 .limite {
   font-family: var(--font-ui);
   font-size: var(--text-caps-sm);

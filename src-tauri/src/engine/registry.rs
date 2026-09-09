@@ -11,6 +11,10 @@ use tokio::sync::Mutex;
 use crate::config::ConnectionSettings;
 use crate::engine::AnyEngine;
 use crate::engine::EngineError;
+use crate::engine::{
+    OrdreDeTransaction, QueryResult, RowLimit, TransactionMode, TransactionState,
+    TransactionStatement,
+};
 use crate::secrets::Secret;
 
 /// L'identité d'une connexion : projet / base / environnement.
@@ -117,6 +121,63 @@ pub struct ConnectionRegistry {
     /// Seul `fermer` la vide — un changement de configuration périme la recette par construction,
     /// et rouvrir sur l'ancien hôte serait pire que ne rien rouvrir.
     recettes: Mutex<HashMap<String, Recette>>,
+    /// Le journal de la transaction manuelle d'une connexion, quand il y en a une (`API-38`).
+    ///
+    /// **L'absence d'entrée est l'absence de transaction**, et une entrée vide est une transaction
+    /// ouverte qui n'a encore rien joué — les deux existent, puisque le journal s'écrit après
+    /// l'ouverture. C'est « jamais tentée n'est pas hors ligne » (`09d`) sur une autre question.
+    ///
+    /// **Ici et non dans l'adaptateur** : ce journal survit à chaque appel, il vaut pour la
+    /// connexion entière — deux consoles ouvertes sur la même base écrivent dans la même
+    /// transaction — et il doit pouvoir être lu alors que rien n'est en cours. L'adaptateur, lui,
+    /// ne sait que poser les trois ordres.
+    ///
+    /// **Il vit et meurt avec l'entrée du registre** (`API-37`) : une transaction ne survit pas à sa
+    /// connexion — le serveur l'annule —, donc les trois endroits qui retirent une entrée le vident.
+    /// `fermer`, `tenter` quand la connexion s'est révélée perdue, et `achever`. C'est la règle de
+    /// l'arbre appliquée ici : ce que le registre ne tient plus ne doit plus être affiché, et un
+    /// « Valider » sur une transaction dont la session est partie serait le pire des boutons.
+    transactions: Mutex<HashMap<String, Journal>>,
+}
+
+/// Une instruction du journal : ce que l'écran en lit, et la réponse que le cœur en garde.
+///
+/// # Pourquoi les deux sont séparés
+///
+/// Le journal est **relu à chaque exécution**, pour que le panneau suive. Si les lignes y étaient,
+/// chaque exécution ferait traverser l'IPC à toutes les réponses de la transaction — la contrainte
+/// transverse du projet interdit exactement cela. `TransactionStatement` est donc ce qui voyage
+/// (des comptes, un SQL, un drapeau), et `reponse` reste ici jusqu'à ce que l'écran en désigne
+/// une : c'est la règle générale du projet, « le cœur détient les résultats ; la webview ne reçoit
+/// que ce qu'elle montre ».
+///
+/// # Ce que garder coûte, et pourquoi c'est borné
+///
+/// Une réponse de console est déjà bornée par `RowLimit` — mille lignes pour la console (`12c`) —
+/// donc le journal pèse au plus ce plafond par instruction qui rend des lignes. Une écriture n'en
+/// garde aucune. La transaction, elle, vit le temps qu'on met à la relire : ce n'est pas un cache
+/// qui grandit, c'est un état qu'un `commit` ou un `rollback` efface.
+///
+/// **Ce qui n'a pas été retenu** : jeter les réponses les plus anciennes au-delà d'un plafond
+/// global. Cela rendrait une instruction non consultable pour une raison que l'utilisateur n'a pas
+/// provoquée, et qu'il faudrait alors lui dire — beaucoup de mécanique pour un cas que le plafond
+/// de lignes rend déjà improbable.
+struct Instruction {
+    rendue: TransactionStatement,
+    /// La réponse, quand elle porte des lignes. `None` pour une écriture ou un refus.
+    reponse: Option<QueryResult>,
+}
+
+/// La transaction d'une connexion : ce qu'elle a joué, et si le moteur l'a abandonnée.
+///
+/// **`abandonnee` est figée au moment de l'échec**, non recalculée à la lecture : c'est cette
+/// instruction-là qui a abandonné la transaction, et le moteur est le seul à savoir si un refus le
+/// fait — PostgreSQL oui, SQLite et MySQL non. Une reconnexion survenue depuis ne doit pas changer
+/// la réponse, et `etat_de_transaction` n'a ainsi pas à consulter l'adaptateur pour la rendre.
+#[derive(Default)]
+struct Journal {
+    instructions: Vec<Instruction>,
+    abandonnee: bool,
 }
 
 impl ConnectionRegistry {
@@ -335,10 +396,7 @@ impl ConnectionRegistry {
                 )
                 .await
             }
-            None => Err(EngineError::local(format!(
-                "aucune connexion ouverte pour « {cle} » — la base doit être ouverte avant d'être \
-                 interrogée"
-            ))),
+            None => Err(aucune_connexion(cle)),
         }
     }
 
@@ -362,10 +420,7 @@ impl ConnectionRegistry {
             let Some(adaptateur) = garde.get(cle) else {
                 // La connexion vient d'être fermée par ailleurs — une commande de configuration,
                 // par exemple. Rien à retirer, rien à rouvrir de notre fait.
-                return Issue::Rendue(Err(EngineError::local(format!(
-                    "aucune connexion ouverte pour « {cle} » — la base doit être ouverte avant \
-                     d'être interrogée"
-                ))));
+                return Issue::Rendue(Err(aucune_connexion(cle)));
             };
             let resultat = operation(adaptateur).await;
             let perdue = resultat.is_err() && adaptateur.connexion_perdue();
@@ -384,6 +439,11 @@ impl ConnectionRegistry {
             // La fermeture, elle, se fait verrou rendu : elle attend que le port du proxy soit
             // rendu, et le tenir pendant ce temps bloquerait toute autre base.
             Some(adaptateur) => {
+                // **Le journal de transaction part avec l'entrée** (`API-38`) : une transaction ne
+                // survit pas à sa connexion — le serveur l'annule —, donc laisser ses instructions
+                // au panneau offrirait un « Valider » qui n'a plus rien à valider, sur une session
+                // qui n'existe plus. C'est ce que `fermer` fait déjà pour une fermeture demandée.
+                self.transactions.lock().await.remove(cle);
                 adaptateur.close().await;
                 match resultat {
                     Err(perte) => Issue::ConnexionPerdue(perte),
@@ -411,12 +471,320 @@ impl ConnectionRegistry {
             adaptateur.close().await;
         }
         self.etats.lock().await.remove(cle);
+        // **Le journal part avec la connexion** (`API-38`). Fermer annule la transaction — c'est le
+        // serveur qui le fait, aucune des trois sortes de moteur ne validant une transaction
+        // inachevée — donc garder ses instructions afficherait un `commit` qui n'a plus rien à
+        // valider. C'est la règle de l'arbre : ce que le registre ne tient plus ne doit plus être
+        // caché.
+        self.transactions.lock().await.remove(cle);
+    }
+
+    /// Exécute le SQL d'une console, en tenant la transaction quand le mode le demande (`API-38`).
+    ///
+    /// # Ce que fait cette méthode que `avec` ne peut pas faire
+    ///
+    /// Trois choses qui doivent tenir **sous le même verrou** : constater qu'une transaction est
+    /// ouverte, l'ouvrir si le mode manuel le demande, et inscrire l'instruction au journal. Faites
+    /// de part et d'autre d'un `avec`, deux consoles qui exécutent en même temps ouvriraient chacune
+    /// la sienne — la seconde tombant sur un serveur qui a déjà une transaction en cours.
+    ///
+    /// # Elle emprunte les deux moitiés d'`avec` plutôt que de les refaire (`API-37`)
+    ///
+    /// Chacun des deux ordres qu'elle envoie — le `begin`, puis la requête — passe par `avec` : la
+    /// réouverture avant l'opération, et le retrait de l'entrée si la connexion s'est révélée
+    /// perdue. Sans cela la console aurait été le seul chemin du produit où une connexion morte
+    /// reste au registre, c'est-à-dire exactement le défaut qu'`API-37` a corrigé.
+    ///
+    /// **`Rejouable` pour le `begin`, `Unique` pour la requête.** Un `begin` rejoué sur une
+    /// connexion qui vient de se rouvrir est juste : l'ancienne transaction est partie avec sa
+    /// session, et il n'y a rien à écrire deux fois. La requête, elle, ne se rejoue pas — rien ici
+    /// ne sait si elle lit ou si elle écrit, et une écriture peut avoir été validée par le serveur
+    /// avant que la coupure n'empêche l'accusé de réception d'arriver.
+    ///
+    /// # L'ordre des verrous : `transactions`, puis `ouvertes`
+    ///
+    /// Le journal est pris **d'abord**, et tenu pendant les deux ordres : c'est ce qui empêche deux
+    /// consoles d'ouvrir chacune sa transaction sur la même connexion, et c'est l'ordre que suit
+    /// aussi `achever`. Deux méthodes qui les prendraient en sens contraire s'interbloqueraient.
+    /// `tenter`, lui, ne les imbrique pas — il rend `ouvertes` avant de purger le journal.
+    ///
+    /// **La réouverture, elle, se fait verrou rendu** : elle peut monter un tunnel SSH, et tenir le
+    /// journal pendant ce temps bloquerait la lecture du panneau des autres consoles.
+    ///
+    /// # Le journal dit ce que la transaction contient, pas ce que le mode demandait
+    ///
+    /// Une instruction lancée en mode `auto` alors qu'une transaction est ouverte y est **inscrite
+    /// quand même** : elle est bel et bien dedans, et c'est un `commit` qui décidera de son sort. Le
+    /// mode ne décide que d'une chose, l'ouverture.
+    pub async fn executer_une_requete(
+        &self,
+        cle: &str,
+        sql: &str,
+        limite: RowLimit,
+        mode: TransactionMode,
+    ) -> Result<QueryResult, EngineError> {
+        self.assurer_l_ouverture(cle).await?;
+        let mut journaux = self.transactions.lock().await;
+
+        if !journaux.contains_key(cle) && mode == TransactionMode::Manual {
+            // **L'ouverture avant la requête, et son échec avant elle aussi** : un moteur qui refuse
+            // la transaction manuelle — MongoDB, BigQuery — doit le dire au lieu d'exécuter hors
+            // transaction ce que l'écran annonce comme retenu.
+            self.avec(cle, Reprise::Rejouable, |adaptateur| {
+                Box::pin(async move { adaptateur.transaction(OrdreDeTransaction::Ouvrir).await })
+            })
+            .await?;
+            journaux.insert(cle.to_owned(), Journal::default());
+        }
+
+        let depart = std::time::Instant::now();
+        let a_executer = sql.to_owned();
+        let issue = self
+            .avec(cle, Reprise::Unique, move |adaptateur| {
+                // Le clone par essai, comme les six autres appelants d'`avec` : c'est le prix de
+                // `Fn`, et il ne pèse rien contre un aller-retour réseau.
+                let sql = a_executer.clone();
+                Box::pin(async move { adaptateur.run_sql(&sql, limite).await })
+            })
+            .await;
+
+        // **La question n'est posée qu'après un refus**, et sous le verrou du journal : c'est
+        // l'ordre `transactions` puis `ouvertes` de cette méthode, et une lecture de plus sur le
+        // chemin heureux ne serait qu'un verrou pris pour rien.
+        let abandonnee = issue.is_err()
+            && self
+                .ouvertes
+                .lock()
+                .await
+                .get(cle)
+                .is_some_and(AnyEngine::transaction_abandonnee_par_une_erreur);
+
+        if let Some(journal) = journaux.get_mut(cle) {
+            journal.abandonnee = journal.abandonnee || abandonnee;
+            journal.instructions.push(match &issue {
+                Ok(resultat) => Instruction {
+                    rendue: TransactionStatement {
+                        sql: resultat.sql.clone(),
+                        duration_ms: resultat.duration_ms,
+                        returned: resultat.rows.len() as u64,
+                        affected: resultat.affected,
+                        // **Consultable seulement s'il y a des lignes.** Une écriture n'a rien à
+                        // remettre dans une grille, et son compte de lignes touchées est déjà sa
+                        // réponse : son entrée ne se clique pas, plutôt qu'un clic qui viderait la
+                        // grille.
+                        displayable: !resultat.rows.is_empty(),
+                        error: None,
+                    },
+                    // Gardée pour que l'écran puisse la redemander : la grille du centre n'en tient
+                    // qu'une, celle de la dernière exécution, et c'est le seul endroit où les
+                    // autres existent encore.
+                    reponse: (!resultat.rows.is_empty()).then(|| resultat.clone()),
+                },
+                // **L'échec est inscrit, et la transaction reste ouverte.** C'est l'état réel :
+                // `begin` a réussi, donc il y a quelque chose à annuler — et sur PostgreSQL la
+                // transaction est désormais abandonnée, donc la suite sera refusée jusque-là. Un
+                // journal qui n'aurait que les succès laisserait chercher pourquoi plus rien ne
+                // répond.
+                //
+                // **Sauf si la connexion s'est révélée perdue** : `tenter` a alors purgé le journal
+                // avec l'entrée, et ce `get_mut` ne trouve plus rien — l'instruction n'est inscrite
+                // dans aucune transaction, ce qui est la vérité.
+                Err(erreur) => Instruction {
+                    rendue: TransactionStatement {
+                        sql: sql.to_owned(),
+                        duration_ms: u64::try_from(depart.elapsed().as_millis())
+                            .unwrap_or(u64::MAX),
+                        returned: 0,
+                        affected: None,
+                        displayable: false,
+                        error: Some(erreur.message.clone()),
+                    },
+                    // Un refus n'a **rien** rendu. Le message du serveur est sa réponse, et il est
+                    // dans l'entrée juste au-dessus.
+                    reponse: None,
+                },
+            });
+        }
+
+        issue
+    }
+
+    /// L'état de la transaction d'une connexion — ce que le panneau affiche.
+    ///
+    /// **Ne prend pas `ouvertes`** : une connexion fermée n'a pas de transaction, et répondre
+    /// « aucune » sans consulter l'adaptateur est à la fois juste et sans latence.
+    pub async fn etat_de_transaction(&self, cle: &str) -> TransactionState {
+        match self.transactions.lock().await.get(cle) {
+            Some(journal) => TransactionState {
+                open: true,
+                // Les réponses restent ici : seul ce que l'écran affiche traverse l'IPC, et ce
+                // journal est relu à chaque exécution.
+                statements: journal
+                    .instructions
+                    .iter()
+                    .map(|entree| entree.rendue.clone())
+                    .collect(),
+                aborted: journal.abandonnee,
+            },
+            None => TransactionState::default(),
+        }
+    }
+
+    /// La réponse d'**une** instruction de la transaction, désignée par son rang (`API-38`).
+    ///
+    /// # Pourquoi un rang, et pas un identifiant
+    ///
+    /// Le journal d'une transaction ne fait que s'allonger : aucune entrée ne se retire, aucune ne
+    /// se déplace, et un `commit` ou un `rollback` le remplace en entier. Un rang y désigne donc
+    /// toujours la même instruction, sans qu'on ait à distribuer des identifiants ni à les faire
+    /// voyager avec chaque exécution. C'est ce qui permet aussi à une console d'afficher la réponse
+    /// d'une instruction qu'une **autre** console a exécutée : la liste est la même pour les deux.
+    ///
+    /// Les trois refus disent lequel des trois cas s'est présenté : aucune transaction, un rang qui
+    /// n'existe pas, ou une instruction qui n'a rendu aucune ligne. L'écran ne propose le geste que
+    /// sur `displayable`, donc ces messages ne se lisent que par un chemin qui le contourne — un
+    /// panneau en retard d'une validation, par exemple.
+    pub async fn reponse_de_transaction(
+        &self,
+        cle: &str,
+        rang: usize,
+    ) -> Result<QueryResult, EngineError> {
+        let journaux = self.transactions.lock().await;
+        let journal = journaux.get(cle).ok_or_else(|| {
+            EngineError::local("aucune transaction n'est ouverte sur cette connexion.")
+        })?;
+        let entree = journal.instructions.get(rang).ok_or_else(|| {
+            EngineError::local(format!(
+                "cette transaction ne porte pas d'instruction n° {} : elle en compte {}.",
+                rang + 1,
+                journal.instructions.len()
+            ))
+        })?;
+        entree.reponse.clone().ok_or_else(|| {
+            EngineError::local(
+                "cette instruction n'a rendu aucune ligne : il n'y a pas de résultat à afficher.",
+            )
+        })
+    }
+
+    /// Vrai quand une transaction manuelle est ouverte sur cette connexion.
+    ///
+    /// Le prédicat de `refuser_pendant_une_transaction`, séparé pour ce qu'il dit de lui-même :
+    /// « une transaction est-elle ouverte ici ? » est une question à laquelle le journal répond
+    /// seul, sans consulter le moteur.
+    pub async fn transaction_ouverte(&self, cle: &str) -> bool {
+        self.transactions.lock().await.contains_key(cle)
+    }
+
+    /// Refuse une écriture qui conduirait **sa propre** transaction pendant qu'une transaction
+    /// manuelle est ouverte sur la même connexion (`API-38`).
+    ///
+    /// # Pourquoi ce refus n'est pas une prudence excessive
+    ///
+    /// `apply_updates` et `create_schema` posent leur `begin` et leur `commit` sur la session de la
+    /// connexion — la même que celle de la console, puisque le registre n'en tient qu'une. Ce que
+    /// chaque moteur en ferait est différent, et aucune des trois issues n'est acceptable :
+    ///
+    /// - **MySQL** : `START TRANSACTION` **valide implicitement** la transaction en cours. Les
+    ///   instructions que la console retenait partiraient définitivement, sans que personne ait
+    ///   cliqué sur « Valider » ;
+    /// - **PostgreSQL** : le `BEGIN` est un avertissement sans effet, puis le `COMMIT` de l'écriture
+    ///   valide **tout**, la transaction de la console comprise ;
+    /// - **SQLite** : `BEGIN IMMEDIATE` échoue — « cannot start a transaction within a
+    ///   transaction » — avec un message qui accuse l'écriture, pas ce qui la gêne.
+    ///
+    /// Refuser en nommant les deux gestes possibles est la seule issue qui ne surprenne personne.
+    pub async fn refuser_pendant_une_transaction(
+        &self,
+        cle: &str,
+        geste: &str,
+    ) -> Result<(), EngineError> {
+        if self.transaction_ouverte(cle).await {
+            return Err(EngineError::local(format!(
+                "une transaction manuelle est ouverte sur cette connexion : validez-la ou \
+                 annulez-la dans la console avant de {geste}. Sans cela, sa validation emporterait \
+                 ce que vous n'avez pas relu."
+            )));
+        }
+        Ok(())
+    }
+
+    /// Valide la transaction d'une connexion.
+    ///
+    /// **Après cet appel, la transaction est terminée quoi qu'il arrive** — et c'est une décision,
+    /// pas une observation. Un `commit` refusé ne laisse pas le même état d'un moteur à l'autre :
+    /// PostgreSQL a déjà tout annulé, SQLite peut rendre `SQLITE_BUSY` en **laissant la transaction
+    /// ouverte**. Plutôt que d'afficher un état qui dépend du moteur, l'échec est suivi d'une
+    /// annulation : le panneau peut alors dire une seule chose, vraie partout.
+    pub async fn valider_la_transaction(&self, cle: &str) -> Result<(), EngineError> {
+        self.achever(cle, OrdreDeTransaction::Valider).await
+    }
+
+    /// Annule la transaction d'une connexion.
+    pub async fn annuler_la_transaction(&self, cle: &str) -> Result<(), EngineError> {
+        self.achever(cle, OrdreDeTransaction::Annuler).await
+    }
+
+    /// # Elle ne rouvre pas, contrairement à toutes les autres (`API-37`)
+    ///
+    /// Une transaction ne survit pas à sa connexion : rouvrir donnerait une session **neuve**, où un
+    /// `commit` réussirait sans rien valider — PostgreSQL n'y voit qu'un avertissement. L'écran
+    /// lirait « validée » sur une transaction que le serveur avait annulée, ce qui est le pire
+    /// mensonge que ce chemin puisse porter. Une entrée absente est donc un refus.
+    ///
+    /// **`transactions` avant `ouvertes`**, comme `executer_une_requete` et pour la même raison.
+    async fn achever(&self, cle: &str, ordre: OrdreDeTransaction) -> Result<(), EngineError> {
+        let mut journaux = self.transactions.lock().await;
+        let garde = self.ouvertes.lock().await;
+        let adaptateur = garde.get(cle).ok_or_else(|| aucune_connexion(cle))?;
+        if !journaux.contains_key(cle) {
+            return Err(EngineError::local(
+                "aucune transaction n'est ouverte sur cette connexion : il n'y a rien à valider ni                  à annuler.",
+            ));
+        }
+
+        let issue = adaptateur.transaction(ordre).await;
+        // **Le journal est vidé dans les deux cas.** Le garder après un échec offrirait un bouton
+        // qui ne peut plus rien faire, et le vider est ce qui rend l'état déterministe — voir
+        // `valider_la_transaction`.
+        journaux.remove(cle);
+
+        match issue {
+            Ok(()) => Ok(()),
+            // Une annulation qui échoue n'a rien à réessayer : c'est déjà le geste de repli.
+            Err(erreur) if ordre == OrdreDeTransaction::Annuler => Err(erreur),
+            Err(erreur) => {
+                // Le `commit` a échoué : on annule, pour que « la transaction est terminée » soit
+                // vrai sur les trois moteurs. Si l'annulation échoue aussi, la connexion tient des
+                // verrous côté serveur et il faut le dire — c'est la conduite d'`apply_updates`.
+                match adaptateur.transaction(OrdreDeTransaction::Annuler).await {
+                    Ok(()) => Err(EngineError::local(format!(
+                        "{} — la transaction a été annulée.",
+                        erreur.message
+                    ))),
+                    Err(_) => Err(EngineError::local(format!(
+                        "{} — et la transaction n'a pas pu être annulée : rouvrez la connexion.",
+                        erreur.message
+                    ))),
+                }
+            }
+        }
     }
 
     /// Le nombre de connexions ouvertes. Employé par les tests, et par rien d'autre.
     pub async fn ouvertes(&self) -> usize {
         self.ouvertes.lock().await.len()
     }
+}
+
+/// Le refus d'une connexion absente du registre, **écrit une fois**.
+///
+/// Trois méthodes le rendent maintenant, et le message dit la manœuvre plutôt que l'échec : c'est
+/// lui que l'écran affiche quand un onglet est arrivé sur une connexion fermée.
+fn aucune_connexion(cle: &str) -> EngineError {
+    EngineError::local(format!(
+        "aucune connexion ouverte pour « {cle} » — la base doit être ouverte avant d'être          interrogée"
+    ))
 }
 
 #[cfg(test)]
@@ -493,6 +861,541 @@ mod tests {
             let json = serde_json::to_value(&etat).expect("sérialisation");
             assert_eq!(json["kind"], attendu, "{json}");
         }
+    }
+}
+
+/// La transaction manuelle d'une console (`API-38`), **contre un vrai fichier SQLite**.
+///
+/// # Pourquoi SQLite, et sans `db-tests`
+///
+/// Le décor est un fichier temporaire que le test crée lui-même : ces tests tournent donc partout,
+/// y compris sur une machine sans Docker, et exercent le chemin **complet** — le registre, un
+/// adaptateur réel, un `BEGIN` réel et une base qui garde ou rend ce qu'on lui a écrit. Le mode
+/// manuel serait resté sans test si on l'avait réservé aux décors à conteneur, alors que c'est
+/// exactement la fonction dont un test doit dire si elle écrit ou non.
+///
+/// Ce que ces tests **ne** disent pas : le comportement des trois autres moteurs. MySQL tient sa
+/// transaction sur une connexion prise au pool, ce que rien ici n'exerce — voir `MysqlAdapter` et la
+/// réserve d'`AGENTS.md`.
+#[cfg(test)]
+mod tests_transaction {
+    use super::*;
+    use crate::config::{Engine, SslMode};
+
+    /// Un fichier neuf, une table d'une colonne, et une connexion au registre.
+    async fn registre_sqlite() -> (tempfile::TempDir, ConnectionRegistry, String) {
+        let dossier = tempfile::tempdir().expect("répertoire temporaire");
+        let chemin = dossier.path().join("atelier.db");
+        rusqlite::Connection::open(&chemin)
+            .expect("fichier")
+            .execute_batch("create table jetons (valeur integer)")
+            .expect("décor");
+
+        let variante = ConnectionSettings {
+            // Un moteur de fichier n'a ni hôte, ni port, ni utilisateur : le chemin vit dans
+            // `default_database` (`17a`).
+            host: String::new(),
+            port: 0,
+            default_database: chemin.to_string_lossy().into_owned(),
+            username: String::new(),
+            password: None,
+            ssl_mode: SslMode::Disable,
+            ca_certificate: None,
+            auth_database: None,
+            read_only: false,
+            reconnect_on_startup: false,
+            tunnel: None,
+        };
+
+        let registre = ConnectionRegistry::new();
+        let cle = cle("Atelier", "jetons", "dev");
+        registre
+            .ouvrir(
+                &cle,
+                Engine::Sqlite,
+                &variante,
+                None,
+                std::path::Path::new("/aucun/known_hosts"),
+            )
+            .await
+            .expect("un fichier SQLite doit s'ouvrir");
+        (dossier, registre, cle)
+    }
+
+    /// Le compte des lignes de la table, tel que la connexion du registre le voit.
+    ///
+    /// **En mode `auto`**, ce qui ne veut pas dire « hors de la transaction » : s'il y en a une
+    /// d'ouverte, la lecture est dedans et voit ce qu'elle a écrit. C'est exactement ce qu'il faut
+    /// pour distinguer « retenu » de « jamais écrit » — voir les deux tests qui s'en servent.
+    async fn compte(registre: &ConnectionRegistry, cle: &str) -> i64 {
+        let resultat = registre
+            .executer_une_requete(
+                cle,
+                "select count(*) as n from jetons",
+                RowLimit::OneHundred,
+                TransactionMode::Auto,
+            )
+            .await
+            .expect("lecture");
+        match &resultat.rows[0][0] {
+            crate::engine::Value::Int { value } => *value,
+            autre => panic!("un compte doit être un entier : {autre:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn en_mode_auto_rien_n_est_retenu_et_rien_n_est_journalise() {
+        let (_dossier, registre, cle) = registre_sqlite().await;
+        registre
+            .executer_une_requete(
+                &cle,
+                "insert into jetons (valeur) values (1)",
+                RowLimit::OneHundred,
+                TransactionMode::Auto,
+            )
+            .await
+            .expect("écriture");
+
+        // Aucune transaction n'a été ouverte : il n'y a rien à valider, et le panneau ne doit pas
+        // paraître.
+        assert_eq!(
+            registre.etat_de_transaction(&cle).await,
+            TransactionState::default()
+        );
+        assert!(!registre.transaction_ouverte(&cle).await);
+        assert_eq!(compte(&registre, &cle).await, 1);
+    }
+
+    #[tokio::test]
+    async fn en_mode_manuel_l_annulation_rend_la_base_a_son_etat() {
+        let (_dossier, registre, cle) = registre_sqlite().await;
+        registre
+            .executer_une_requete(
+                &cle,
+                "insert into jetons (valeur) values (1)",
+                RowLimit::OneHundred,
+                TransactionMode::Manual,
+            )
+            .await
+            .expect("écriture");
+
+        // **Dans la transaction, la ligne est là** : c'est ce qui distingue « retenue » de « jamais
+        // écrite », et c'est ce que la console montre à qui relit avant de valider.
+        assert_eq!(compte(&registre, &cle).await, 1);
+
+        registre
+            .annuler_la_transaction(&cle)
+            .await
+            .expect("annulation");
+        assert_eq!(compte(&registre, &cle).await, 0);
+        assert!(!registre.transaction_ouverte(&cle).await);
+    }
+
+    #[tokio::test]
+    async fn en_mode_manuel_la_validation_ecrit_pour_de_bon() {
+        let (_dossier, registre, cle) = registre_sqlite().await;
+        registre
+            .executer_une_requete(
+                &cle,
+                "insert into jetons (valeur) values (7)",
+                RowLimit::OneHundred,
+                TransactionMode::Manual,
+            )
+            .await
+            .expect("écriture");
+        registre
+            .valider_la_transaction(&cle)
+            .await
+            .expect("validation");
+
+        assert_eq!(compte(&registre, &cle).await, 1);
+        assert_eq!(
+            registre.etat_de_transaction(&cle).await,
+            TransactionState::default(),
+            "une transaction validée n'est plus ouverte, et son journal est vide"
+        );
+    }
+
+    #[tokio::test]
+    async fn le_journal_porte_ce_que_le_serveur_a_dit() {
+        let (_dossier, registre, cle) = registre_sqlite().await;
+        registre
+            .executer_une_requete(
+                &cle,
+                "insert into jetons (valeur) values (1), (2), (3)",
+                RowLimit::OneHundred,
+                TransactionMode::Manual,
+            )
+            .await
+            .expect("écriture");
+
+        let etat = registre.etat_de_transaction(&cle).await;
+        assert!(etat.open);
+        assert_eq!(etat.statements.len(), 1);
+        let instruction = &etat.statements[0];
+        assert!(
+            instruction.sql.contains("insert into jetons"),
+            "{instruction:?}"
+        );
+        // **Trois lignes touchées, zéro rendue** : c'est la réponse que le panneau affiche, et sans
+        // `affected` elle aurait dit « 0 ligne » d'une écriture qui en a fait trois.
+        assert_eq!(instruction.affected, Some(3), "{instruction:?}");
+        assert_eq!(instruction.returned, 0, "{instruction:?}");
+        assert_eq!(instruction.error, None, "{instruction:?}");
+    }
+
+    #[tokio::test]
+    async fn une_lecture_rend_ses_lignes_et_ne_touche_rien() {
+        let (_dossier, registre, cle) = registre_sqlite().await;
+        registre
+            .executer_une_requete(
+                &cle,
+                "insert into jetons (valeur) values (1), (2)",
+                RowLimit::OneHundred,
+                TransactionMode::Manual,
+            )
+            .await
+            .expect("écriture");
+        registre
+            .executer_une_requete(
+                &cle,
+                "select valeur from jetons",
+                RowLimit::OneHundred,
+                TransactionMode::Manual,
+            )
+            .await
+            .expect("lecture");
+
+        let etat = registre.etat_de_transaction(&cle).await;
+        let lecture = etat.statements.last().expect("deux instructions");
+        assert_eq!(lecture.returned, 2, "{lecture:?}");
+        // `None`, et non `Some(0)` : une lecture ne touche rien, et le compte de lignes touchées de
+        // l'écriture d'avant ne doit pas lui être attribué.
+        assert_eq!(lecture.affected, None, "{lecture:?}");
+    }
+
+    #[tokio::test]
+    async fn la_reponse_d_une_instruction_se_redemande_par_son_rang() {
+        let (_dossier, registre, cle) = registre_sqlite().await;
+        registre
+            .executer_une_requete(
+                &cle,
+                "insert into jetons (valeur) values (1), (2), (3)",
+                RowLimit::OneHundred,
+                TransactionMode::Manual,
+            )
+            .await
+            .expect("écriture");
+        registre
+            .executer_une_requete(
+                &cle,
+                "select valeur from jetons order by valeur",
+                RowLimit::OneHundred,
+                TransactionMode::Manual,
+            )
+            .await
+            .expect("première lecture");
+        // Une seconde lecture, **différente** : sans elle, le rang demandé ne prouverait rien —
+        // rendre « la dernière réponse » suffirait à faire passer le test (règle n° 5).
+        registre
+            .executer_une_requete(
+                &cle,
+                "select valeur from jetons where valeur > 2",
+                RowLimit::OneHundred,
+                TransactionMode::Manual,
+            )
+            .await
+            .expect("seconde lecture");
+
+        let etat = registre.etat_de_transaction(&cle).await;
+        // **Ce que l'écran lit du journal** : des comptes et un drapeau, jamais les lignes — le
+        // journal est relu à chaque exécution, et y mettre les réponses les ferait toutes traverser
+        // l'IPC à chaque fois.
+        assert_eq!(etat.statements.len(), 3);
+        assert!(
+            !etat.statements[0].displayable,
+            "une écriture n'a rien à afficher"
+        );
+        assert_eq!(etat.statements[0].affected, Some(3));
+        assert!(etat.statements[1].displayable);
+
+        // **La réponse de la première lecture, pas de la dernière.** C'est tout l'intérêt du rang :
+        // la grille du centre ne tient qu'une réponse, et c'est ici que les autres existent encore.
+        let premiere = registre
+            .reponse_de_transaction(&cle, 1)
+            .await
+            .expect("la réponse de l'instruction 2");
+        assert_eq!(premiere.rows.len(), 3);
+        assert_eq!(premiere.columns, vec!["valeur".to_owned()]);
+        let seconde = registre
+            .reponse_de_transaction(&cle, 2)
+            .await
+            .expect("la réponse de l'instruction 3");
+        assert_eq!(seconde.rows.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn les_trois_refus_de_reponse_ne_se_confondent_pas() {
+        let (_dossier, registre, cle) = registre_sqlite().await;
+        // Aucune transaction ouverte.
+        let sans = registre
+            .reponse_de_transaction(&cle, 0)
+            .await
+            .expect_err("aucune transaction");
+        assert!(sans.message.contains("aucune transaction"), "{sans}");
+
+        registre
+            .executer_une_requete(
+                &cle,
+                "insert into jetons (valeur) values (1)",
+                RowLimit::OneHundred,
+                TransactionMode::Manual,
+            )
+            .await
+            .expect("écriture");
+
+        // Un rang qui n'existe pas : le message dit **combien** il y en a, plutôt que « invalide ».
+        let hors = registre
+            .reponse_de_transaction(&cle, 7)
+            .await
+            .expect_err("rang hors de la liste");
+        assert!(hors.message.contains("elle en compte 1"), "{hors}");
+
+        // Une instruction qui n'a rien rendu : ce n'est ni une absence de transaction ni un mauvais
+        // rang, et l'écran ne propose d'ailleurs pas le geste — `displayable` est faux.
+        let vide = registre
+            .reponse_de_transaction(&cle, 0)
+            .await
+            .expect_err("une écriture n'a pas de résultat");
+        assert!(vide.message.contains("aucune ligne"), "{vide}");
+    }
+
+    #[tokio::test]
+    async fn une_instruction_refusee_est_inscrite_et_laisse_la_transaction_ouverte() {
+        let (_dossier, registre, cle) = registre_sqlite().await;
+        let erreur = registre
+            .executer_une_requete(
+                &cle,
+                "insert into jetons_absents (valeur) values (1)",
+                RowLimit::OneHundred,
+                TransactionMode::Manual,
+            )
+            .await
+            .expect_err("une table inconnue doit être refusée");
+
+        let etat = registre.etat_de_transaction(&cle).await;
+        assert!(
+            etat.open,
+            "le `begin` a réussi : il y a quelque chose à annuler"
+        );
+        let instruction = &etat.statements[0];
+        assert_eq!(
+            instruction.error.as_deref(),
+            Some(erreur.message.as_str()),
+            "l'échec est ce qu'on vient lire dans le panneau : {instruction:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn sqlite_n_abandonne_pas_sa_transaction_sur_un_refus() {
+        let (_dossier, registre, cle) = registre_sqlite().await;
+        registre
+            .executer_une_requete(
+                &cle,
+                "insert into jetons (valeur) values (1)",
+                RowLimit::OneHundred,
+                TransactionMode::Manual,
+            )
+            .await
+            .expect("écriture");
+        registre
+            .executer_une_requete(
+                &cle,
+                "insert into jetons_absents (valeur) values (1)",
+                RowLimit::OneHundred,
+                TransactionMode::Manual,
+            )
+            .await
+            .expect_err("une table inconnue doit être refusée");
+
+        // **La réponse vient du moteur, et ce moteur-ci n'abandonne pas** : l'instruction échoue
+        // seule, l'écriture d'avant reste bonne, et le panneau doit continuer d'offrir « Valider ».
+        // Le déduire d'un simple échec aurait retiré à SQLite et MySQL une capacité qu'ils ont —
+        // c'est PostgreSQL qui abandonne, et lui seul.
+        let etat = registre.etat_de_transaction(&cle).await;
+        assert!(etat.open);
+        assert!(!etat.aborted, "{etat:?}");
+
+        // Et la validation écrit vraiment ce qui avait réussi.
+        registre
+            .valider_la_transaction(&cle)
+            .await
+            .expect("validation");
+        assert_eq!(compte(&registre, &cle).await, 1);
+    }
+
+    #[tokio::test]
+    async fn une_seconde_execution_reste_dans_la_meme_transaction() {
+        let (_dossier, registre, cle) = registre_sqlite().await;
+        for _ in 0..2 {
+            registre
+                .executer_une_requete(
+                    &cle,
+                    "insert into jetons (valeur) values (1)",
+                    RowLimit::OneHundred,
+                    TransactionMode::Manual,
+                )
+                .await
+                .expect("écriture");
+        }
+
+        // Deux instructions dans **une** transaction, et non deux transactions : un second `begin`
+        // aurait été refusé par SQLite, et une transaction par requête ne retiendrait rien.
+        assert_eq!(registre.etat_de_transaction(&cle).await.statements.len(), 2);
+        registre
+            .annuler_la_transaction(&cle)
+            .await
+            .expect("annulation");
+        assert_eq!(compte(&registre, &cle).await, 0);
+    }
+
+    #[tokio::test]
+    async fn une_execution_en_auto_pendant_une_transaction_y_entre_quand_meme() {
+        let (_dossier, registre, cle) = registre_sqlite().await;
+        registre
+            .executer_une_requete(
+                &cle,
+                "insert into jetons (valeur) values (1)",
+                RowLimit::OneHundred,
+                TransactionMode::Manual,
+            )
+            .await
+            .expect("écriture");
+        registre
+            .executer_une_requete(
+                &cle,
+                "insert into jetons (valeur) values (2)",
+                RowLimit::OneHundred,
+                TransactionMode::Auto,
+            )
+            .await
+            .expect("écriture");
+
+        // **Le journal dit ce que la transaction contient, pas ce que le mode demandait.** La
+        // seconde ligne est dedans — la session la porte — donc l'annulation l'emporte aussi, et le
+        // panneau doit l'avoir annoncée.
+        assert_eq!(registre.etat_de_transaction(&cle).await.statements.len(), 2);
+        registre
+            .annuler_la_transaction(&cle)
+            .await
+            .expect("annulation");
+        assert_eq!(compte(&registre, &cle).await, 0);
+    }
+
+    #[tokio::test]
+    async fn fermer_la_connexion_emporte_la_transaction() {
+        let (_dossier, registre, cle) = registre_sqlite().await;
+        registre
+            .executer_une_requete(
+                &cle,
+                "insert into jetons (valeur) values (1)",
+                RowLimit::OneHundred,
+                TransactionMode::Manual,
+            )
+            .await
+            .expect("écriture");
+        registre.fermer(&cle).await;
+
+        // Le serveur annule ce qui n'est pas validé ; garder le journal offrirait un « Valider » qui
+        // n'a plus rien à valider.
+        assert!(!registre.transaction_ouverte(&cle).await);
+        assert_eq!(
+            registre.etat_de_transaction(&cle).await,
+            TransactionState::default()
+        );
+    }
+
+    #[tokio::test]
+    async fn une_ecriture_de_la_grille_est_refusee_pendant_une_transaction_de_console() {
+        let (_dossier, registre, cle) = registre_sqlite().await;
+        // Sans transaction, rien ne gêne : le refus ne doit pas mordre hors de son cas.
+        registre
+            .refuser_pendant_une_transaction(&cle, "écrire")
+            .await
+            .expect("aucune transaction ouverte");
+
+        registre
+            .executer_une_requete(
+                &cle,
+                "insert into jetons (valeur) values (1)",
+                RowLimit::OneHundred,
+                TransactionMode::Manual,
+            )
+            .await
+            .expect("écriture");
+
+        let erreur = registre
+            .refuser_pendant_une_transaction(&cle, "écrire les modifications de la grille")
+            .await
+            .expect_err("une écriture qui conduit sa propre transaction doit être refusée");
+        // Le message nomme les **deux** issues : un refus qui dirait seulement « impossible »
+        // laisserait chercher où déverrouiller.
+        assert!(
+            erreur.message.contains("validez-la ou annulez-la"),
+            "{erreur}"
+        );
+        assert!(
+            erreur
+                .message
+                .contains("écrire les modifications de la grille"),
+            "le geste refusé est nommé : {erreur}"
+        );
+    }
+
+    #[tokio::test]
+    async fn achever_ce_qui_n_est_pas_ouvert_est_refuse_avec_sa_raison() {
+        let (_dossier, registre, cle) = registre_sqlite().await;
+        let erreur = registre
+            .valider_la_transaction(&cle)
+            .await
+            .expect_err("il n'y a rien à valider");
+        assert!(erreur.message.contains("aucune transaction"), "{erreur}");
+    }
+
+    #[tokio::test]
+    async fn sur_une_connexion_fermee_tout_est_refuse_clairement() {
+        let registre = ConnectionRegistry::new();
+        let cle = cle("Atelier", "jetons", "dev");
+        for erreur in [
+            registre
+                .executer_une_requete(
+                    "x",
+                    "select 1",
+                    RowLimit::OneHundred,
+                    TransactionMode::Manual,
+                )
+                .await
+                .expect_err("aucune connexion"),
+            registre
+                .valider_la_transaction(&cle)
+                .await
+                .expect_err("aucune connexion"),
+            registre
+                .annuler_la_transaction(&cle)
+                .await
+                .expect_err("aucune connexion"),
+        ] {
+            assert!(
+                erreur.message.contains("aucune connexion ouverte"),
+                "{erreur}"
+            );
+        }
+        // Et la lecture d'état, elle, répond sans se plaindre : une connexion fermée n'a pas de
+        // transaction, et l'écran doit pouvoir le demander à tout moment.
+        assert_eq!(
+            registre.etat_de_transaction(&cle).await,
+            TransactionState::default()
+        );
     }
 }
 
@@ -599,6 +1502,62 @@ mod tests_db {
     ///
     /// Une fenêtre vide se confondrait avec une table sans ligne, et `A5` afficherait « aucune
     /// ligne » sur une base parfaitement peuplée mais fermée.
+    /// **Le verdict que le panneau lit**, contre un vrai PostgreSQL (`API-38`).
+    ///
+    /// C'est le pendant de `sqlite_n_abandonne_pas_sa_transaction_sur_un_refus`, et les deux
+    /// ensemble sont ce qui rend la question digne d'être posée au moteur : la même suite de gestes
+    /// donne deux réponses, et un écran qui aurait conclu de l'échec seul se serait trompé pour l'un
+    /// des deux.
+    #[tokio::test]
+    async fn une_instruction_refusee_abandonne_la_transaction_sur_postgresql() {
+        let registre = ConnectionRegistry::new();
+        let cle = "Halle/analytics/dev";
+        registre
+            .ouvrir(
+                cle,
+                crate::config::Engine::PostgreSql,
+                &variante(),
+                secret().as_ref(),
+                &known_hosts(),
+            )
+            .await
+            .expect("la base de test doit s'ouvrir");
+
+        registre
+            .executer_une_requete(
+                cle,
+                "select 1",
+                RowLimit::OneHundred,
+                TransactionMode::Manual,
+            )
+            .await
+            .expect("lecture");
+        registre
+            .executer_une_requete(
+                cle,
+                "select depuis_nulle_part",
+                RowLimit::OneHundred,
+                TransactionMode::Manual,
+            )
+            .await
+            .expect_err("une colonne inconnue doit être refusée");
+
+        // **La transaction est abandonnée, et l'écran doit le savoir** : un « Valider » offert là
+        // se comporterait comme un « Annuler ». Elle reste **ouverte** — il y a bien quelque chose à
+        // annuler.
+        let etat = registre.etat_de_transaction(cle).await;
+        assert!(etat.open, "{etat:?}");
+        assert!(etat.aborted, "{etat:?}");
+        assert_eq!(etat.statements.len(), 2, "{etat:?}");
+
+        registre
+            .annuler_la_transaction(cle)
+            .await
+            .expect("annulation");
+        assert!(!registre.etat_de_transaction(cle).await.open);
+        registre.fermer(cle).await;
+    }
+
     #[tokio::test]
     async fn lire_une_base_non_ouverte_echoue_avec_un_message_qui_le_dit() {
         let registre = ConnectionRegistry::new();

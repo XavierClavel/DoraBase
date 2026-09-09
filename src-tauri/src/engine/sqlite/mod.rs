@@ -267,12 +267,19 @@ impl EngineAdapter for SqliteAdapter {
         let (borne, ajoutee) = rows::avec_limite(sql, limite);
         let a_executer = borne.clone();
 
-        let (colonnes, lignes) = self
+        let (colonnes, lignes, affectees) = self
             .avec(move |connexion| {
                 // **Le SQL de l'utilisateur, tel quel.** Une requête qui ne rend pas de lignes —
                 // `update`, `create` — n'a pas de colonnes : `prepare` réussit, et le curseur est
                 // vide. Les deux cas passent par le même chemin.
-                rows::lire(connexion, &a_executer, &[])
+                let (colonnes, lignes) = rows::lire(connexion, &a_executer, &[])?;
+                // **`changes()` est lu tout de suite, et sous le même verrou** : il rend le compte de
+                // la *dernière* instruction terminée sur cette connexion, donc une lecture faite plus
+                // tard rendrait celui de l'instruction d'un autre onglet. Et seulement pour une
+                // instruction sans colonnes : SQLite laisse `changes()` inchangé après un `select`,
+                // donc le rendre là afficherait le compte d'une écriture antérieure (`API-38`).
+                let affectees = colonnes.is_empty().then(|| connexion.changes());
+                Ok((colonnes, lignes, affectees))
             })
             .await?;
 
@@ -282,7 +289,34 @@ impl EngineAdapter for SqliteAdapter {
             sql: borne,
             duration_ms: u64::try_from(debut.elapsed().as_millis()).unwrap_or(u64::MAX),
             applied_limit: ajoutee,
+            affected: affectees,
         })
+    }
+
+    /// `BEGIN IMMEDIATE`, `COMMIT`, `ROLLBACK` sur la connexion du fichier (`API-38`).
+    ///
+    /// **`BEGIN IMMEDIATE` et non `BEGIN`**, pour la raison d'`apply_updates` : une transaction
+    /// différée prend le verrou de lecture d'abord et doit le *promouvoir* à la première écriture —
+    /// promotion qui échoue en `SQLITE_BUSY` si quelqu'un a écrit entre-temps, c'est-à-dire au
+    /// milieu d'une transaction qu'on croyait tenue. Prendre le verrou d'écriture dès l'ouverture
+    /// échoue tout de suite, ou pas du tout.
+    ///
+    /// **Une seule connexion, donc une transaction qui survit à l'appel** : `SqliteAdapter` détient
+    /// un `Connection` derrière un `Mutex`, et chaque `avec` reprend le même.
+    async fn transaction(
+        &self,
+        ordre: crate::engine::OrdreDeTransaction,
+    ) -> Result<(), EngineError> {
+        let sql = match ordre {
+            crate::engine::OrdreDeTransaction::Ouvrir => "BEGIN IMMEDIATE",
+            autre => autre.sql(),
+        };
+        self.avec(move |connexion| {
+            connexion
+                .execute_batch(sql)
+                .map_err(|e| error::traduire(&e))
+        })
+        .await
     }
 }
 

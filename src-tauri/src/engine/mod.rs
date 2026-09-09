@@ -44,6 +44,8 @@ mod rows;
 pub mod sous_processus;
 pub mod sqlite;
 pub mod tls;
+/// Le mode de transaction d'une console et le journal de sa transaction (`API-38`).
+pub mod transaction;
 pub mod tunnel;
 
 use std::future::Future;
@@ -58,6 +60,9 @@ pub use rows::{
     ApplyOutcome, Filter, FilterOperator, PendingDelete, PendingInsert, PendingInsertValue,
     PendingUpdate, QueryResult, RowLimit, RowQuery, RowWindow, SortDirection, SortKey, UpdatePlan,
     Value,
+};
+pub use transaction::{
+    OrdreDeTransaction, TransactionMode, TransactionState, TransactionStatement,
 };
 
 /// Ce que chaque moteur doit savoir faire.
@@ -141,6 +146,20 @@ pub trait EngineAdapter {
         sql: &str,
         limite: RowLimit,
     ) -> impl Future<Output = Result<QueryResult, EngineError>> + Send;
+
+    /// Ouvre, valide ou annule la transaction de cette connexion (`API-38`).
+    ///
+    /// **Une seule méthode pour les trois ordres** : les deux moteurs qui n'ont pas de transaction à
+    /// tenir depuis une console refusent alors en un seul endroit, et un sixième moteur n'aura qu'une
+    /// méthode à écrire — celle où son auteur devra répondre à la question.
+    ///
+    /// Rien n'est rendu : la transaction ne se raconte pas, elle est ou n'est pas. C'est le registre
+    /// qui tient le journal de ce qu'elle contient, parce que ce journal survit à chaque appel et
+    /// qu'un adaptateur ne sait pas ce qu'un autre onglet a exécuté.
+    fn transaction(
+        &self,
+        ordre: OrdreDeTransaction,
+    ) -> impl Future<Output = Result<(), EngineError>> + Send;
 }
 
 /// Le moteur actif, réparti statiquement.
@@ -262,6 +281,35 @@ impl AnyEngine {
             Self::Sqlite(adaptateur) => adaptateur.connexion_perdue(),
             Self::MySql(adaptateur) => adaptateur.connexion_perdue(),
             Self::BigQuery(adaptateur) => adaptateur.connexion_perdue(),
+        }
+    }
+
+    /// Une instruction refusée **abandonne-t-elle** la transaction en cours ? (`API-38`)
+    ///
+    /// # Pourquoi la question est posée au moteur
+    ///
+    /// Les réponses diffèrent, et l'écart décide de ce qu'un panneau offre. **PostgreSQL abandonne**
+    /// : après une erreur dans un bloc de transaction, toute instruction suivante est refusée par
+    /// « current transaction is aborted », et un `commit` s'y comporte comme un `rollback` — le
+    /// bouton « Valider » y promettrait donc l'inverse de ce qu'il ferait. **SQLite et MySQL, non** :
+    /// l'instruction échoue, la transaction continue, et les précédentes restent validables. Le
+    /// deviner à l'écran aurait retiré à ces deux-là une capacité qu'ils ont.
+    ///
+    /// **Inhérente et répartie par un `match` sans bras attrape-tout**, comme `connexion_perdue` et
+    /// `close` : un sixième moteur ne compilera pas tant qu'il n'aura pas répondu. Une méthode de
+    /// trait à corps par défaut lui donnerait « n'abandonne pas » sans que personne l'ait choisi.
+    pub fn transaction_abandonnee_par_une_erreur(&self) -> bool {
+        match self {
+            // Le seul des cinq qui abandonne. Voir la documentation du serveur : dans un bloc de
+            // transaction, une erreur fait refuser tout ce qui suit jusqu'à sa fin.
+            Self::Postgres(_) => true,
+            // Une instruction refusée n'annule pas la transaction : elle échoue seule, et ce qui
+            // précède reste bon. Les deux le documentent, et un test de base le garde.
+            Self::Sqlite(_) | Self::MySql(_) => false,
+            // La question ne se pose pas : leurs consoles n'ont pas de transaction manuelle — la
+            // mongo ne fait que lire, BigQuery n'a pas de session à tenir. La valeur n'est jamais
+            // lue, et « n'abandonne pas » est la réponse la moins présomptueuse.
+            Self::MongoDb(_) | Self::BigQuery(_) => false,
         }
     }
 
@@ -490,6 +538,16 @@ impl AnyEngine {
             Self::Sqlite(adaptateur) => adaptateur.run_sql(sql, limite).await,
             Self::MySql(adaptateur) => adaptateur.run_sql(sql, limite).await,
             Self::BigQuery(adaptateur) => adaptateur.run_sql(sql, limite).await,
+        }
+    }
+
+    pub async fn transaction(&self, ordre: OrdreDeTransaction) -> Result<(), EngineError> {
+        match self {
+            Self::Postgres(adaptateur) => adaptateur.transaction(ordre).await,
+            Self::MongoDb(adaptateur) => adaptateur.transaction(ordre).await,
+            Self::Sqlite(adaptateur) => adaptateur.transaction(ordre).await,
+            Self::MySql(adaptateur) => adaptateur.transaction(ordre).await,
+            Self::BigQuery(adaptateur) => adaptateur.transaction(ordre).await,
         }
     }
 
@@ -750,7 +808,12 @@ mod tests {
                 sql: String::new(),
                 duration_ms: 0,
                 applied_limit: None,
+                affected: None,
             })
+        }
+
+        async fn transaction(&self, _ordre: OrdreDeTransaction) -> Result<(), EngineError> {
+            Ok(())
         }
 
         async fn apply_updates(&self, _plan: &UpdatePlan) -> Result<ApplyOutcome, EngineError> {
@@ -775,6 +838,7 @@ mod tests {
         exige_send(adaptateur.objects("public"));
         exige_send(adaptateur.table_detail("public", "orders"));
         exige_send(adaptateur.rows(&RowQuery::new("public", "orders", RowLimit::FiveHundred)));
+        exige_send(adaptateur.transaction(OrdreDeTransaction::Ouvrir));
     }
 
     #[test]
@@ -787,6 +851,7 @@ mod tests {
             exige_send(moteur.objects("public"));
             exige_send(moteur.table_detail("public", "orders"));
             exige_send(moteur.rows(&RowQuery::new("public", "t", RowLimit::OneHundred)));
+            exige_send(moteur.transaction(OrdreDeTransaction::Valider));
         }
     }
 

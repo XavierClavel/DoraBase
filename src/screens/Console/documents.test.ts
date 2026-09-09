@@ -9,6 +9,7 @@ function resultat(partiel: Partial<QueryResult> = {}): QueryResult {
     sql: 'db.commandes.find({})',
     durationMs: 4,
     appliedLimit: null,
+    affected: null,
     ...partiel,
   }
 }

@@ -65,6 +65,73 @@ export const consoleFr: Dictionnaire = {
       },
     },
   },
+  transaction: {
+    ariaLabel: 'Transaction en cours',
+    titre: 'Transaction',
+    // La transaction s'ouvre à la **première exécution** : entre le réglage et elle, le panneau dit
+    // ce qui va se passer plutôt que de laisser une colonne vide.
+    invite:
+      'Rien n’est encore retenu. La transaction s’ouvrira à la première exécution, et rien ne sera écrit avant que vous la validiez.',
+    rang: (p) => `#${p.rang}`,
+    duree: (p) => `${p.ms} ms`,
+    rendues: (p) => `${p.n} ligne${Number(p.n) > 1 ? 's' : ''} rendue${Number(p.n) > 1 ? 's' : ''}`,
+    // **Les lignes touchées, dites à part** : « 0 ligne rendue » sur un `update` qui en a écrit
+    // trois est le mensonge que ce compte existe pour éviter.
+    touchees: (p) =>
+      `${p.n} ligne${Number(p.n) > 1 ? 's' : ''} touchée${Number(p.n) > 1 ? 's' : ''}`,
+    refusee: 'refusée',
+    // **Le verbe du bouton**, ajouté au nom accessible de la carte : sans lui, celle-ci s'annoncerait
+    // « #2 12 lignes rendues 4 ms select … », ce qui décrit sans dire ce qu'un clic fera.
+    afficher: 'Afficher ce résultat dans la grille',
+    valider: 'Valider',
+    annuler: 'Annuler',
+    enCours: 'Validation…',
+    // **Le moteur, sans le nommer** : la phrase est vraie de PostgreSQL, seul des trois à
+    // abandonner, et l'écran ne sait pas lequel répond — il lit `aborted`.
+    abandonnee:
+      'Une instruction a échoué et le moteur a abandonné la transaction : elle ne peut plus être validée, seulement annulée.',
+    rienAValider: 'Aucune transaction n’est ouverte : il n’y a rien à valider.',
+    rienAAnnuler: 'Aucune transaction n’est ouverte : il n’y a rien à annuler.',
+    modeLabel: 'Transaction manuelle',
+    // **Le réglage vaut pour la connexion**, pas pour cet onglet, et la phrase le dit : c'est ce qui
+    // explique pourquoi la console voisine change d'aspect en même temps, et pourquoi un « Valider »
+    // emporte aussi ce qu'elle a exécuté.
+    modeAide:
+      'Éteint, chaque requête est validée par le serveur. Allumé, les requêtes s’accumulent dans une transaction que vous validez ou annulez vous-même. Le réglage vaut pour cette connexion : les consoles ouvertes sur la même base partagent sa transaction.',
+    modeVerrouille:
+      'Cette transaction contient des instructions : validez-la ou annulez-la avant de revenir au mode automatique.',
+    // **Le geste qui reste, et lui seul** : proposer de valider une transaction abandonnée serait
+    // proposer ce que le panneau vient de retirer.
+    modeVerrouilleAbandon:
+      'Cette transaction a été abandonnée : annulez-la avant de revenir au mode automatique.',
+    raisons: {
+      mongodb:
+        'La console MongoDB ne fait que lire — find, aggregate, countDocuments, distinct : une transaction manuelle n’y aurait rien à valider.',
+      bigquery:
+        'BigQuery exécute chaque requête comme un job indépendant : il n’y a pas de session à tenir ouverte entre deux exécutions. Une transaction s’y écrit dans un script, en une seule requête.',
+      redis:
+        'DoraBase ne sait pas encore parler à Redis : sa connexion est refusée avant qu’une console s’ouvre.',
+      snowflake:
+        'DoraBase ne sait pas encore parler à Snowflake : sa connexion est refusée avant qu’une console s’ouvre.',
+    },
+  },
+  commitConfirm: {
+    titre: 'Valider la transaction',
+    // Le pluriel de l'alerte n'est pas décidé ici : une seule écriture sans `where` suffit à la
+    // faire paraître, et c'est le fait qui compte, pas leur nombre.
+    sansRestrictionAvant: 'L’une des écritures n’a pas de ',
+    sansRestrictionApres: ' : elle touche toutes les lignes de sa table.',
+    ecritures: 'Écritures',
+    instructions: 'Instructions',
+    base: 'Base',
+    environnement: 'Environnement',
+    production: 'production',
+    rappel:
+      'La validation est définitive : DoraBase ne sait pas la défaire, et il n’y a pas de patch inverse pour une requête de console.',
+    annuler: 'Annuler',
+    enCours: 'Validation…',
+    confirmer: (p) => `Valider ${p.n} écriture${Number(p.n) > 1 ? 's' : ''}`,
+  },
   runConfirm: {
     titreSchema: 'Modifier la structure',
     titreEcriture: 'Écrire dans la base',
@@ -79,6 +146,13 @@ export const consoleFr: Dictionnaire = {
     production: 'production',
     rappel:
       'DoraBase exécute la requête telle qu’elle est écrite, sans transaction et sans patch inverse.',
+    // **Seule une modification de structure arrive ici en transaction manuelle** (`API-38`) : les
+    // écritures y sont dispensées de confirmation, c'est la validation qui la porte. Et la structure
+    // n'est pas dispensée parce qu'une transaction ne la retient pas toujours — le rappel dit
+    // exactement cela, là où « sans transaction » serait faux et « rien ne sera écrit » serait une
+    // promesse que le moteur peut ne pas tenir.
+    rappelTransaction:
+      'Une modification de structure n’est pas toujours retenue par une transaction : selon le moteur, elle valide d’office ce qui attend avant de s’exécuter.',
     annuler: 'Annuler',
     enCours: 'Exécution…',
     confirmer: (p) => `Exécuter ce ${p.instruction}`,
@@ -167,6 +241,57 @@ export const consoleEn: Dictionnaire = {
       },
     },
   },
+  transaction: {
+    ariaLabel: 'Open transaction',
+    titre: 'Transaction',
+    invite:
+      'Nothing is held yet. The transaction will open on the first run, and nothing will be written until you commit it.',
+    rang: (p) => `#${p.rang}`,
+    duree: (p) => `${p.ms} ms`,
+    rendues: (p) => `${p.n} row${Number(p.n) > 1 ? 's' : ''} returned`,
+    touchees: (p) => `${p.n} row${Number(p.n) > 1 ? 's' : ''} affected`,
+    refusee: 'refused',
+    afficher: 'Show this result in the grid',
+    valider: 'Commit',
+    annuler: 'Roll back',
+    enCours: 'Committing…',
+    abandonnee:
+      'A statement failed and the engine abandoned the transaction: it can no longer be committed, only rolled back.',
+    rienAValider: 'No transaction is open: there is nothing to commit.',
+    rienAAnnuler: 'No transaction is open: there is nothing to roll back.',
+    modeLabel: 'Manual transaction',
+    modeAide:
+      'Off, every query is committed by the server. On, queries pile up in a transaction that you commit or roll back yourself. The setting belongs to this connection: consoles open on the same database share its transaction.',
+    modeVerrouille:
+      'This transaction holds statements: commit it or roll it back before returning to automatic mode.',
+    modeVerrouilleAbandon:
+      'This transaction was abandoned: roll it back before returning to automatic mode.',
+    raisons: {
+      mongodb:
+        'The MongoDB console only reads — find, aggregate, countDocuments, distinct: a manual transaction would have nothing to commit.',
+      bigquery:
+        'BigQuery runs every query as an independent job: there is no session to hold open between two runs. A transaction is written there as a script, in a single query.',
+      redis:
+        'DoraBase cannot talk to Redis yet: its connection is refused before a console can open.',
+      snowflake:
+        'DoraBase cannot talk to Snowflake yet: its connection is refused before a console can open.',
+    },
+  },
+  commitConfirm: {
+    titre: 'Commit the transaction',
+    sansRestrictionAvant: 'One of the writes has no ',
+    sansRestrictionApres: ': it affects every row of its table.',
+    ecritures: 'Writes',
+    instructions: 'Statements',
+    base: 'Database',
+    environnement: 'Environment',
+    production: 'production',
+    rappel:
+      'Committing is final: DoraBase cannot undo it, and there is no inverse patch for a console query.',
+    annuler: 'Cancel',
+    enCours: 'Committing…',
+    confirmer: (p) => `Commit ${p.n} write${Number(p.n) > 1 ? 's' : ''}`,
+  },
   runConfirm: {
     titreSchema: 'Modify the structure',
     titreEcriture: 'Write to the database',
@@ -181,6 +306,8 @@ export const consoleEn: Dictionnaire = {
     production: 'production',
     rappel:
       'DoraBase runs the query exactly as written, without a transaction and without an inverse patch.',
+    rappelTransaction:
+      'A structural change is not always held by a transaction: depending on the engine, it commits whatever is pending before running.',
     annuler: 'Cancel',
     enCours: 'Running…',
     confirmer: (p) => `Run this ${p.instruction}`,

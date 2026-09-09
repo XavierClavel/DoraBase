@@ -352,13 +352,49 @@ impl EngineAdapter for PostgresAdapter {
             .map(|ligne| rows::valeurs_textuelles(ligne, &colonnes))
             .collect();
 
+        // **Les lignes touchées viennent du `CommandComplete` du protocole**, et non d'un comptage
+        // maison : c'est le serveur qui dit combien un `update` a écrit, et personne d'autre ne le
+        // sait. Il en porte un par instruction — le dernier est celui de la requête soumise.
+        //
+        // **Seulement quand l'instruction ne rend pas de lignes.** PostgreSQL y met aussi le compte
+        // des lignes *sélectionnées* : le rendre pour un `select` afficherait deux fois le même
+        // nombre sous deux noms, dont l'un serait faux (« touchées »).
+        let affected = if colonnes.is_empty() {
+            messages
+                .iter()
+                .filter_map(|message| match message {
+                    tokio_postgres::SimpleQueryMessage::CommandComplete(compte) => Some(*compte),
+                    _ => None,
+                })
+                .next_back()
+        } else {
+            None
+        };
+
         Ok(crate::engine::QueryResult {
             columns: colonnes.into_iter().map(|(nom, _)| nom).collect(),
             rows: valeurs,
             sql: execute,
             duration_ms,
             applied_limit: ajoutee,
+            affected,
         })
+    }
+
+    /// `BEGIN`, `COMMIT`, `ROLLBACK` sur le client de la connexion (`API-38`).
+    ///
+    /// **Le même client que tout le reste, et c'est ce qui fait tenir la transaction** :
+    /// `PostgresAdapter` en détient exactement un, donc un `BEGIN` posé ici survit d'un appel à
+    /// l'autre et englobe ce que la console exécute ensuite. C'est déjà ainsi qu'`apply_updates`
+    /// conduit la sienne, à la main, faute d'un client mutable derrière `&self`.
+    async fn transaction(
+        &self,
+        ordre: crate::engine::OrdreDeTransaction,
+    ) -> Result<(), EngineError> {
+        self.client
+            .batch_execute(ordre.sql())
+            .await
+            .map_err(|e| error::traduire(&e))
     }
 
     async fn apply_updates(
@@ -1640,6 +1676,178 @@ mod tests_db {
         assert_eq!(issue.rows.len(), 3);
         // Le SQL est celui qu'on a écrit, sans ajout.
         assert!(!issue.sql.contains("limit 1000"));
+    }
+
+    /// Le compte d'une table temporaire, dans la session de cet adaptateur.
+    async fn jetons_de(adaptateur: &PostgresAdapter, table: &str) -> i64 {
+        let issue = adaptateur
+            .run_sql(
+                &format!("select count(*) as n from {table}"),
+                crate::engine::RowLimit::OneHundred,
+            )
+            .await
+            .expect("lecture");
+        match &issue.rows[0][0] {
+            crate::engine::Value::Int { value } => *value,
+            // `count(*)` est un `bigint` ; s'il arrivait en texte, la catégorisation par nom de type
+            // serait en cause, et le dire vaut mieux qu'un `unwrap_or(0)` qui rendrait le test muet.
+            autre => panic!("un compte doit être un entier : {autre:?}"),
+        }
+    }
+
+    /// Une table **temporaire**, et c'est délibéré.
+    ///
+    /// Elle vit dans la session de cet adaptateur : aucun autre test ne la voit, ni dans ses lignes
+    /// ni dans le catalogue du schéma `introspection`. C'est la leçon du schéma jetable de
+    /// `ddl_rejeu_orders`, qui a fait rougir `main` sur une lecture d'`users` — sur un décor partagé
+    /// par des tests parallèles, ce qui bouge n'est pas seulement les statistiques.
+    async fn table_temporaire(adaptateur: &PostgresAdapter, nom: &str) {
+        adaptateur
+            .run_sql(
+                &format!("create temp table {nom} (valeur int)"),
+                crate::engine::RowLimit::OneHundred,
+            )
+            .await
+            .expect("la table temporaire doit se créer");
+    }
+
+    #[tokio::test]
+    async fn la_console_annonce_les_lignes_touchees_et_non_celles_qu_elle_rend() {
+        let adaptateur = adaptateur().await;
+        table_temporaire(&adaptateur, "jetons_touches").await;
+
+        let ecriture = adaptateur
+            .run_sql(
+                "insert into jetons_touches (valeur) values (1), (2), (3)",
+                crate::engine::RowLimit::OneHundred,
+            )
+            .await
+            .expect("écriture");
+        // **Trois, et non zéro.** Sans `affected`, un `insert` de console s'affichait « 0 ligne » —
+        // vrai de ce qu'il rend, faux de ce qu'il a fait (`API-38`).
+        assert_eq!(ecriture.affected, Some(3), "{ecriture:?}");
+        assert!(ecriture.rows.is_empty());
+
+        let lecture = adaptateur
+            .run_sql(
+                "select valeur from jetons_touches",
+                crate::engine::RowLimit::OneHundred,
+            )
+            .await
+            .expect("lecture");
+        // **`None` sur une lecture**, alors que PostgreSQL met le compte des lignes *sélectionnées*
+        // dans le même message du protocole : le rendre ici afficherait deux fois le même nombre,
+        // dont l'un sous un nom faux.
+        assert_eq!(lecture.affected, None, "{lecture:?}");
+        assert_eq!(lecture.rows.len(), 3);
+
+        let retour = adaptateur
+            .run_sql(
+                "update jetons_touches set valeur = valeur + 1 returning valeur",
+                crate::engine::RowLimit::OneHundred,
+            )
+            .await
+            .expect("écriture qui rend des lignes");
+        // Un `returning` rend des lignes : c'est `rows` qui compte, et `affected` se tait plutôt que
+        // de doubler l'information.
+        assert_eq!(retour.affected, None, "{retour:?}");
+        assert_eq!(retour.rows.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn une_instruction_refusee_abandonne_la_transaction_de_postgresql() {
+        use crate::engine::OrdreDeTransaction;
+        let adaptateur = adaptateur().await;
+        table_temporaire(&adaptateur, "jetons_abandon").await;
+
+        adaptateur
+            .transaction(OrdreDeTransaction::Ouvrir)
+            .await
+            .expect("ouverture");
+        adaptateur
+            .run_sql(
+                "insert into jetons_abandon (valeur) values (1)",
+                crate::engine::RowLimit::OneHundred,
+            )
+            .await
+            .expect("écriture");
+        adaptateur
+            .run_sql(
+                "select depuis_nulle_part",
+                crate::engine::RowLimit::OneHundred,
+            )
+            .await
+            .expect_err("une colonne inconnue doit être refusée");
+
+        // **C'est le fait que `transaction_abandonnee_par_une_erreur` décrit**, mesuré plutôt que
+        // supposé : après un refus, PostgreSQL refuse tout ce qui suit jusqu'à la fin du bloc. Un
+        // « Valider » offert là promettrait l'inverse de ce qu'il ferait, un `commit` s'y comportant
+        // comme un `rollback` (`API-38`).
+        let suivante = adaptateur
+            .run_sql(
+                "select 1 as toujours_la",
+                crate::engine::RowLimit::OneHundred,
+            )
+            .await
+            .expect_err("la transaction est abandonnée : la suite est refusée");
+        assert!(
+            suivante.message.contains("aborted") || suivante.message.contains("abandon"),
+            "{suivante}"
+        );
+
+        // Le seul geste qui reste : annuler. Et il rend la table à son état.
+        adaptateur
+            .transaction(OrdreDeTransaction::Annuler)
+            .await
+            .expect("annulation");
+        assert_eq!(jetons_de(&adaptateur, "jetons_abandon").await, 0);
+    }
+
+    #[tokio::test]
+    async fn une_transaction_manuelle_retient_ce_qu_elle_ecrit_puis_le_rend() {
+        use crate::engine::OrdreDeTransaction;
+        let adaptateur = adaptateur().await;
+        // Créée **hors** transaction, sinon l'annulation emporterait la table avec les lignes : le
+        // DDL de PostgreSQL est transactionnel, et le test ne mesurerait plus rien.
+        table_temporaire(&adaptateur, "jetons_annules").await;
+
+        adaptateur
+            .transaction(OrdreDeTransaction::Ouvrir)
+            .await
+            .expect("ouverture");
+        adaptateur
+            .run_sql(
+                "insert into jetons_annules (valeur) values (1)",
+                crate::engine::RowLimit::OneHundred,
+            )
+            .await
+            .expect("écriture");
+        // **Retenue, pas perdue** : la session voit sa propre écriture, ce qui est ce que la console
+        // montre à qui relit avant de valider.
+        assert_eq!(jetons_de(&adaptateur, "jetons_annules").await, 1);
+
+        adaptateur
+            .transaction(OrdreDeTransaction::Annuler)
+            .await
+            .expect("annulation");
+        assert_eq!(jetons_de(&adaptateur, "jetons_annules").await, 0);
+
+        adaptateur
+            .transaction(OrdreDeTransaction::Ouvrir)
+            .await
+            .expect("seconde ouverture");
+        adaptateur
+            .run_sql(
+                "insert into jetons_annules (valeur) values (2)",
+                crate::engine::RowLimit::OneHundred,
+            )
+            .await
+            .expect("écriture");
+        adaptateur
+            .transaction(OrdreDeTransaction::Valider)
+            .await
+            .expect("validation");
+        assert_eq!(jetons_de(&adaptateur, "jetons_annules").await, 1);
     }
 
     #[tokio::test]

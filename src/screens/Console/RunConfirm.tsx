@@ -12,6 +12,14 @@ type RunConfirmProps = {
   cible: string
   /** Vrai quand la base est déclarée en production. */
   production: boolean
+  /**
+   * Vrai quand la connexion est en **transaction manuelle** (`API-38`).
+   *
+   * Le rappel du pied dit alors autre chose, et c'est la raison de cette prop : « sans transaction »
+   * devient faux dès qu'il y en a une, et c'est la seule phrase de cette modale qui promette quelque
+   * chose. Un rappel qui ment est pire qu'un rappel absent.
+   */
+  dansUneTransaction?: boolean
   onClose: () => void
   onConfirmer: () => void
   enCours?: boolean
@@ -33,6 +41,7 @@ export function RunConfirm({
   sansRestriction,
   cible,
   production,
+  dansUneTransaction = false,
   onClose,
   onConfirmer,
   enCours = false,
@@ -80,8 +89,16 @@ export function RunConfirm({
         </dl>
         {/* Ce que DoraBase ne fera pas : il n'y a ni patch inverse ni transaction ici, contrairement
             à `11d`. Le dire est le minimum honnête — laisser croire à un filet qui n'existe pas
-            serait pire que de ne rien annoncer. */}
-        <p className={styles.rappel}>{t('console.runConfirm.rappel')}</p>
+            serait pire que de ne rien annoncer.
+            **Et en mode manuel, c'est l'inverse qu'il faut dire** (`API-38`) : le filet existe, la
+            requête part dans la transaction en cours, et rien ne sera écrit avant sa validation. */}
+        <p className={styles.rappel}>
+          {t(
+            dansUneTransaction
+              ? 'console.runConfirm.rappelTransaction'
+              : 'console.runConfirm.rappel',
+          )}
+        </p>
       </div>
       <div className={styles.pied}>
         <Button variant="secondary" size="md" onClick={onClose} disabled={enCours}>
