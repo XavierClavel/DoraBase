@@ -278,7 +278,7 @@ mod tests {
 
 // --- Le câblage de `09b` : ouverture et introspection ------------------------------------
 
-use crate::engine::registry::{cle, ConnectionRegistry, ConnectionState};
+use crate::engine::registry::{cle, ConnectionRegistry, ConnectionState, Reprise};
 use crate::engine::{RowQuery, RowWindow, SchemaInfo, TableDetail, TableSummary, Value};
 
 /// Désigne une base dans un projet, pour un environnement.
@@ -421,7 +421,9 @@ pub async fn list_schemas(
     registry: tauri::State<'_, ConnectionRegistry>,
 ) -> Result<Vec<SchemaInfo>, EngineError> {
     registry
-        .avec(&key.cle(), |adaptateur| Box::pin(adaptateur.schemas()))
+        .avec(&key.cle(), Reprise::Rejouable, |adaptateur| {
+            Box::pin(adaptateur.schemas())
+        })
         .await
 }
 
@@ -438,7 +440,12 @@ pub async fn create_schema(
     registry: tauri::State<'_, ConnectionRegistry>,
 ) -> Result<(), EngineError> {
     registry
-        .avec(&key.cle(), move |adaptateur| {
+        // **Jamais rejouée.** Un `create schema` peut avoir été validé par le serveur avant que
+        // la coupure n'empêche l'accusé de réception d'arriver : le rejeu échouerait alors en
+        // « existe déjà » sur un schéma qui vient bel et bien d'être créé — un message qui accuse
+        // ce qui a marché. Et c'est le geste que le gestionnaire annonce comme sans retour.
+        .avec(&key.cle(), Reprise::Unique, move |adaptateur| {
+            let name = name.clone();
             Box::pin(async move { adaptateur.create_schema(&name).await })
         })
         .await
@@ -456,7 +463,11 @@ pub async fn list_objects(
     registry: tauri::State<'_, ConnectionRegistry>,
 ) -> Result<Vec<TableSummary>, EngineError> {
     registry
-        .avec(&key.cle(), move |adaptateur| {
+        .avec(&key.cle(), Reprise::Rejouable, move |adaptateur| {
+            // **Cloné à chaque essai**, et c'est le prix de `Fn` : une fermeture rejouable ne peut
+            // pas déplacer ce qu'elle capture. Un `RowQuery` ou un nom de schéma pèse moins qu'un
+            // aller-retour réseau, et l'exemplaire meurt avec l'essai.
+            let schema = schema.clone();
             Box::pin(async move { adaptateur.objects(&schema).await })
         })
         .await
@@ -471,7 +482,8 @@ pub async fn describe_table(
     registry: tauri::State<'_, ConnectionRegistry>,
 ) -> Result<TableDetail, EngineError> {
     registry
-        .avec(&key.cle(), move |adaptateur| {
+        .avec(&key.cle(), Reprise::Rejouable, move |adaptateur| {
+            let (schema, table) = (schema.clone(), table.clone());
             Box::pin(async move { adaptateur.table_detail(&schema, &table).await })
         })
         .await
@@ -507,7 +519,8 @@ pub async fn describe_tables(
     registry: tauri::State<'_, ConnectionRegistry>,
 ) -> Result<Vec<TableDetail>, EngineError> {
     registry
-        .avec(&key.cle(), move |adaptateur| {
+        .avec(&key.cle(), Reprise::Rejouable, move |adaptateur| {
+            let (schema, tables) = (schema.clone(), tables.clone());
             Box::pin(async move { adaptateur.table_details(&schema, &tables).await })
         })
         .await
@@ -547,7 +560,8 @@ pub async fn read_rows(
     );
 
     let resultat = registry
-        .avec(&key.cle(), move |adaptateur| {
+        .avec(&key.cle(), Reprise::Rejouable, move |adaptateur| {
+            let query = query.clone();
             Box::pin(async move { adaptateur.rows(&query).await })
         })
         .await;
@@ -577,7 +591,8 @@ pub async fn row_as_insert(
     registry: tauri::State<'_, ConnectionRegistry>,
 ) -> Result<String, EngineError> {
     registry
-        .avec(&key.cle(), move |adaptateur| {
+        .avec(&key.cle(), Reprise::Rejouable, move |adaptateur| {
+            let (schema, table, values) = (schema.clone(), table.clone(), values.clone());
             Box::pin(async move { adaptateur.row_as_insert(&schema, &table, &values).await })
         })
         .await
@@ -594,7 +609,10 @@ pub async fn preview_updates(
     registry: tauri::State<'_, ConnectionRegistry>,
 ) -> Result<String, EngineError> {
     registry
-        .avec(&key.cle(), move |adaptateur| {
+        // **Rejouable bien qu'elle parle de modifications** : elle n'ouvre aucune transaction et
+        // n'exécute rien — elle rend le texte que `Appliquer` exécutera.
+        .avec(&key.cle(), Reprise::Rejouable, move |adaptateur| {
+            let plan = plan.clone();
             Box::pin(async move { adaptateur.preview_updates(&plan).await })
         })
         .await
@@ -611,7 +629,12 @@ pub async fn apply_changes(
     registry: tauri::State<'_, ConnectionRegistry>,
 ) -> Result<crate::engine::ApplyOutcome, EngineError> {
     let resultat = registry
-        .avec(&key.cle(), move |adaptateur| {
+        // **Jamais rejouée.** Le serveur peut avoir validé la transaction *avant* que la coupure
+        // n'empêche l'accusé de réception d'arriver : un second passage insérerait une deuxième
+        // fois les lignes ajoutées, et c'est précisément le geste que `11d` dit ne pas savoir
+        // défaire. La connexion est rouverte pour la suite ; c'est le rejeu qui est refusé.
+        .avec(&key.cle(), Reprise::Unique, move |adaptateur| {
+            let plan = plan.clone();
             Box::pin(async move { adaptateur.apply_updates(&plan).await })
         })
         .await;
@@ -644,7 +667,11 @@ pub async fn run_sql(
     registry: tauri::State<'_, ConnectionRegistry>,
 ) -> Result<crate::engine::QueryResult, EngineError> {
     let resultat = registry
-        .avec(&key.cle(), move |adaptateur| {
+        // **Jamais rejouée** : c'est le SQL de l'utilisateur, et la console accepte les DML.
+        // Rien ici ne sait si cette requête lit ou si elle écrit, et une reprise décidée dans le
+        // doute écrirait deux fois.
+        .avec(&key.cle(), Reprise::Unique, move |adaptateur| {
+            let sql = sql.clone();
             Box::pin(async move { adaptateur.run_sql(&sql, limit).await })
         })
         .await;

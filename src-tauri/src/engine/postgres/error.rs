@@ -54,6 +54,21 @@ fn position_de(db: &tokio_postgres::error::DbError) -> Option<u32> {
 fn message_local(erreur: &tokio_postgres::Error) -> String {
     use std::error::Error as _;
 
+    // **« connection closed » est tout ce que le pilote dit, et il le dit en anglais.** C'est le
+    // `Display` de `Kind::Closed`, sans source : la boucle d'entrées-sorties s'est arrêtée et le
+    // client survit, muet. Le message brut ne nomme ni la cause ni la manœuvre, et c'est
+    // pourtant **celui-là** que la grille de `A5` affiche en toutes lettres — la barre d'état ne
+    // porte que le verdict, « lecture impossible ».
+    //
+    // Le registre retire l'entrée dans la foulée (`ConnectionRegistry::avec`), donc la manœuvre
+    // annoncée est vraie : rouvrir la base rétablit vraiment la connexion.
+    if erreur.is_closed() {
+        return "la connexion au serveur PostgreSQL a été fermée — session inactive coupée par le \
+                serveur, veille, changement de réseau, ou proxy tombé. Rouvrez la base pour la \
+                rétablir."
+            .to_owned();
+    }
+
     match erreur.source() {
         Some(cause) => format!("{erreur} : {cause}"),
         None => erreur.to_string(),

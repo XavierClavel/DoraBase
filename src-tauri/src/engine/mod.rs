@@ -246,6 +246,25 @@ impl AnyEngine {
         }
     }
 
+    /// La connexion est-elle définitivement perdue ? — la question que le registre pose après un
+    /// échec, et dont chaque moteur a sa propre réponse (voir chaque adaptateur).
+    ///
+    /// **Inhérente et répartie par un `match` sans bras attrape-tout**, comme `close` et
+    /// `port_local_tunnel` : un sixième moteur ne compilera pas tant qu'il n'aura pas répondu. Une
+    /// méthode de trait à corps par défaut rendrait `false` pour lui sans que personne l'ait
+    /// choisi — c'est exactement le bras attrape-tout qui a absorbé SQLite et MySQL dans
+    /// `connect_via` (règle n° 16), et le prix serait le même : une connexion morte annoncée
+    /// vivante, sans que rien n'échoue.
+    pub fn connexion_perdue(&self) -> bool {
+        match self {
+            Self::Postgres(adaptateur) => adaptateur.connexion_perdue(),
+            Self::MongoDb(adaptateur) => adaptateur.connexion_perdue(),
+            Self::Sqlite(adaptateur) => adaptateur.connexion_perdue(),
+            Self::MySql(adaptateur) => adaptateur.connexion_perdue(),
+            Self::BigQuery(adaptateur) => adaptateur.connexion_perdue(),
+        }
+    }
+
     /// Ferme la connexion et **attend** que le port local du tunnel soit rendu.
     pub async fn close(self) {
         match self {

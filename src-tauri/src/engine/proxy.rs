@@ -203,6 +203,17 @@ impl ProxyOuvert {
         }
     }
 
+    /// Le transport est-il tombé ? La forme booléenne d'`etat`, pour qui n'a pas de raison à
+    /// afficher.
+    ///
+    /// **Le seul verdict qui vaille pour un pilote à pool.** `mysql_async` et le pilote MongoDB
+    /// écartent d'eux-mêmes une connexion morte et en rouvrent une : un socket coupé n'y est pas
+    /// définitif. Un proxy tombé, si — le pool rouvrirait indéfiniment vers un port local que plus
+    /// personne n'écoute.
+    pub fn est_tombe(&self) -> bool {
+        matches!(self.etat(), EtatProxy::Tombe { .. })
+    }
+
     /// **Asynchrone à cause des deux proxys en sous-processus** : chacun laisse une fenêtre courte
     /// au programme pour expliquer l'échec, qu'il écrit au moment du refus et non avant. Le tunnel
     /// SSH, lui, sait déjà tout ce qu'il sait.

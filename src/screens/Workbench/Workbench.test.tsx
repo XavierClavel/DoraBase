@@ -167,6 +167,7 @@ function passerelles() {
     closeDatabase: vi.fn(async (cle) => {
       ouvertes.delete(identite(cle))
     }),
+    surEchecDeCommande: () => () => {},
     connectionStates: vi.fn(async () => [...ouvertes.values()]),
     listSchemas: vi.fn(async () => SCHEMAS),
     listObjects: vi.fn(async () => [objet('orders'), objet('order_items')]),
@@ -1342,6 +1343,7 @@ describe('la console SQL (`12a`)', () => {
           tunnelLocalPort: null,
         }),
         closeDatabase: async () => {},
+        surEchecDeCommande: () => () => {},
         connectionStates: async () => [
           {
             key: { project: 'Atelier Nord', database: 'analytics', environment: 'prod' as const },
@@ -1386,6 +1388,7 @@ describe('la console SQL (`12a`)', () => {
           tunnelLocalPort: null,
         }),
         closeDatabase: async () => {},
+        surEchecDeCommande: () => () => {},
         connectionStates: async () => [
           {
             key: { project: 'Atelier Nord', database: 'analytics', environment: 'prod' as const },
@@ -1445,6 +1448,7 @@ describe('la console SQL (`12a`)', () => {
           tunnelLocalPort: null,
         }),
         closeDatabase: async () => {},
+        surEchecDeCommande: () => () => {},
         connectionStates: async () => [
           {
             key: { project: 'Atelier Nord', database: 'analytics', environment: 'prod' as const },
@@ -1513,6 +1517,7 @@ describe('la console SQL (`12a`)', () => {
           tunnelLocalPort: null,
         }),
         closeDatabase: async () => {},
+        surEchecDeCommande: () => () => {},
         connectionStates: async () => [
           {
             key: { project: 'Atelier Nord', database: 'analytics', environment: 'prod' as const },
@@ -1576,6 +1581,7 @@ describe('la console SQL (`12a`)', () => {
           tunnelLocalPort: null,
         }),
         closeDatabase: async () => {},
+        surEchecDeCommande: () => () => {},
         connectionStates: async () => [
           {
             key: { project: 'Atelier Nord', database: 'analytics', environment: 'prod' as const },
@@ -2479,6 +2485,11 @@ describe('le gestionnaire de schémas', () => {
         return SCHEMAS
       }),
       listObjects: vi.fn(async () => [objet('orders'), objet('order_items')]),
+      // **Nécessaire malgré le transtypage**, et c'est lui qui l'a rendu nécessaire : `as unknown
+      // as` désarme le contrôle du compilateur, donc l'absence d'un membre de la passerelle ne se
+      // voit qu'à l'exécution. Ici l'arbre s'abonne au montage, et le manque faisait tomber le test
+      // sur « surEchecDeCommande is not a function ».
+      surEchecDeCommande: () => () => {},
     } as unknown as PasserelleArbre
   }
 

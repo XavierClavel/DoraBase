@@ -126,6 +126,23 @@ impl PostgresAdapter {
         self.proxy.as_ref().map(ProxyOuvert::port_local)
     }
 
+    /// La connexion est-elle définitivement perdue ?
+    ///
+    /// **PostgreSQL est le seul des cinq moteurs à tenir un socket unique et durable**, et c'est
+    /// pour cela que la question se pose surtout ici. `tokio-postgres` sépare le client de sa
+    /// boucle d'entrées-sorties (`connect.rs`) : quand celle-ci s'arrête — session inactive coupée
+    /// par le serveur, veille du Mac, changement de réseau, redémarrage du serveur —, le `Client`
+    /// **survit, muet**, et toute requête suivante échoue en « connection closed ». Rien ne le
+    /// remet debout : il n'y a pas de pool derrière lui pour rouvrir.
+    ///
+    /// **Deux faits, pas un.** Le pilote peut n'avoir encore rien remarqué alors que le transport
+    /// est mort : un tunnel tombé se voit chez le proxy avant de se voir dans le socket, et
+    /// attendre la seconde nouvelle laisserait le registre annoncer une connexion vivante pendant
+    /// tout ce temps.
+    pub fn connexion_perdue(&self) -> bool {
+        self.client.is_closed() || self.proxy.as_ref().is_some_and(ProxyOuvert::est_tombe)
+    }
+
     /// Ferme la connexion et **attend** que le port local du tunnel soit rendu.
     ///
     /// Consomme l'adaptateur : après cet appel il n'y a plus rien à interroger, et le laisser
@@ -2950,5 +2967,77 @@ mod tests_db {
             .batch_execute(&format!("drop schema {schema} cascade"))
             .await
             .unwrap();
+    }
+
+    /// **Une session coupée par le serveur se dit en français, et se sait** (8 septembre 2026).
+    ///
+    /// Le pilote n'a qu'un mot pour ça — « connection closed », le `Display` de `Kind::Closed`,
+    /// sans source —, et c'est ce mot que la grille de `A5` affichait en toutes lettres pendant que
+    /// la barre d'état disait « lecture impossible ». Ni la cause, ni la manœuvre.
+    ///
+    /// **`pg_terminate_backend(pg_backend_pid())` coupe notre propre session**, ce qui reproduit
+    /// exactement ce qu'une coupure d'inactivité, une veille ou un proxy tombé produisent — et sans
+    /// dormir, là où attendre une vraie coupure serait un tirage au sort (règle n° 3).
+    ///
+    /// **C'est la *seconde* requête qui juge, pas celle qui coupe.** Celle-ci reçoit un `FATAL` du
+    /// serveur, donc une erreur *de base* avec son `SQLSTATE`, et la boucle d'entrées-sorties peut
+    /// n'avoir pas encore vu la fin du flux. La suivante, elle, est fermée dans les deux ordres
+    /// possibles : ou l'émetteur est déjà clos (`send` refuse), ou la réponse n'arrive jamais et
+    /// `Responses::next` rend le même `Error::closed()`. Aucune fenêtre, aucune attente.
+    #[tokio::test]
+    async fn une_session_coupee_par_le_serveur_se_dit_en_francais_et_se_sait_perdue() {
+        let adaptateur = adaptateur().await;
+        let limite = crate::engine::RowLimit::OneHundred;
+
+        let _ = adaptateur
+            .run_sql("select pg_terminate_backend(pg_backend_pid())", limite)
+            .await;
+
+        let echec = adaptateur
+            .run_sql("select 1", limite)
+            .await
+            .expect_err("la session a été coupée");
+
+        // Aucun `SQLSTATE` : il n'y a plus de serveur pour en donner un. Confondre cet échec avec
+        // une erreur de base enverrait chercher un problème de requête.
+        assert!(echec.code.is_none(), "{echec:?}");
+        assert!(
+            echec.message.contains("Rouvrez la base"),
+            "le message doit porter la manœuvre : {}",
+            echec.message
+        );
+        assert!(
+            !echec.message.contains("connection closed"),
+            "le mot du pilote ne doit plus paraître : {}",
+            echec.message
+        );
+
+        // **La moitié que le registre interroge.** Sans elle, le message serait juste et l'entrée
+        // resterait au registre, l'arbre continuant d'annoncer « OK » sur une base morte.
+        assert!(
+            adaptateur.connexion_perdue(),
+            "l'adaptateur doit savoir que sa connexion est perdue"
+        );
+    }
+
+    /// **Le contrôle négatif du test précédent** : une requête fautive ne perd pas la connexion.
+    ///
+    /// Sans lui, un `connexion_perdue` qui rendrait toujours `true` passerait — et le registre
+    /// fermerait la connexion à la première faute de frappe dans la console, tunnel compris.
+    #[tokio::test]
+    async fn une_requete_fautive_ne_perd_pas_la_connexion() {
+        let adaptateur = adaptateur().await;
+        let limite = crate::engine::RowLimit::OneHundred;
+
+        let echec = adaptateur
+            .run_sql("select * from table_qui_n_existe_pas", limite)
+            .await
+            .expect_err("la table n'existe pas");
+
+        assert_eq!(echec.code.as_deref(), Some("42P01"), "{echec:?}");
+        assert!(
+            !adaptateur.connexion_perdue(),
+            "une erreur de requête laisse la connexion en place"
+        );
     }
 }

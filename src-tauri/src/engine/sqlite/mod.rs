@@ -86,6 +86,13 @@ impl SqliteAdapter {
         None
     }
 
+    /// **Jamais.** Un moteur de fichier n'a ni socket ni proxy à perdre : la connexion vit aussi
+    /// longtemps que l'`Arc`. Un fichier effacé sous nos pieds reste un échec de requête, que la
+    /// prochaine tentative rejouera — pas une connexion à refermer.
+    pub fn connexion_perdue(&self) -> bool {
+        false
+    }
+
     pub async fn close(self) {
         // Rien à attendre : pas de port à rendre, pas de socket à fermer. La connexion se libère
         // avec l'`Arc`.

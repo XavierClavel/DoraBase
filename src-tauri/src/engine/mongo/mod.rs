@@ -104,6 +104,16 @@ impl MongoAdapter {
         self.proxy.as_ref().map(ProxyOuvert::port_local)
     }
 
+    /// La connexion est-elle définitivement perdue ?
+    ///
+    /// **Même réponse que MySQL, pour une raison de plus.** `mongodb::Client` n'est pas un socket
+    /// mais une vue sur une topologie qu'il surveille : il rouvre, et sur un jeu de réplicas il
+    /// change même de nœud. Un échec de commande ne dit donc rien de définitif — seul un proxy
+    /// tombé sous lui l'est.
+    pub fn connexion_perdue(&self) -> bool {
+        self.proxy.as_ref().is_some_and(ProxyOuvert::est_tombe)
+    }
+
     pub async fn close(self) {
         if let Some(proxy) = self.proxy {
             proxy.fermer().await;
